@@ -5,7 +5,7 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 
 **Module ID**: relative path from workspace root, no extension, no `/index`. Example: `drive/modules/drive_db/api/drive_db_api.ts` -> `drive/modules/drive_db/api/drive_db_api`.
 
-## Raw Graph Facts (in .belief_map.sexp)
+## Raw Graph Facts (in .code_graph.sexp)
 
 ```scheme
 (node <id> <lang> "<purpose>" :naming <convention> :pkg <repo>)

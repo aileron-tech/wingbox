@@ -116,7 +116,7 @@ class LanguageRegistryTests(unittest.TestCase):
                 [
                     sys.executable,
                     "-B",
-                    str(repository_root / "scripts" / "build_belief_map.py"),
+                    str(repository_root / "scripts" / "build_code_graph.py"),
                     "--root",
                     str(target),
                 ],
@@ -131,7 +131,7 @@ class LanguageRegistryTests(unittest.TestCase):
                 "Found 7 source files (1 py, 1 ts, 1 rs, 1 cs, 1 java, 1 go, 0 rb, 1 pas)",
                 completed.stdout,
             )
-            self.assertTrue((target / ".belief_map.sexp").is_file())
+            self.assertTrue((target / ".code_graph.sexp").is_file())
 
 
 if __name__ == "__main__":

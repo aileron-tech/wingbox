@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_belief_map import Ok, build_graph, discover_files
+from scripts.build_code_graph import Ok, build_graph, discover_files
 from scripts.lang.go import GO_LANGUAGE, parse_go_treesitter
 from scripts.lang.interface import FileResult
 

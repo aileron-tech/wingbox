@@ -1,4 +1,4 @@
-# Codespaces - Code Search, Dependency Graphs, and Impact Analysis
+# Wingbox - Code Search, Dependency Graphs, and Impact Analysis
 
 > Architecture-aware code search, dependency graphs, and impact analysis for
 > Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus,
@@ -8,11 +8,11 @@
 >
 > **Release notes:** [Changelog](CHANGELOG.md)
 >
-> **Note:** this repository continues the project formerly published as
-> `codespaces`. The rename to Wingbox is in progress; the skill is still
-> installed under the name `codespaces`.
+> **Note:** Wingbox was formerly published as `codespaces`. The skill, the
+> scripts and the generated files were renamed on 2026-11-15; see the
+> [Changelog](CHANGELOG.md) for the old and new names.
 
-Understand a large codebase before you change it. Codespaces is an
+Understand a large codebase before you change it. Wingbox is an
 architecture-aware code search tool for Python, TypeScript, TSX, Rust, C#,
 Java, Go, Ruby, Ruby on Rails, Free Pascal, and Lazarus repositories. It helps
 developers and AI coding agents find the right module, trace dependencies,
@@ -21,7 +21,7 @@ measure change impact, and read only the source files that matter.
 Use it for codebase architecture discovery, dependency graph search, blast-radius
 analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 
-## What can Codespaces answer?
+## What can Wingbox answer?
 
 - Where is authentication, billing, upload, or another feature implemented?
 - Which modules depend on this service, class, function, or type?
@@ -32,7 +32,7 @@ analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 - Which Rails models, services, jobs, mailers, concerns, and specs are affected?
 - Can you draw a call-flow, data-flow, or sequence diagram from the code?
 
-Instead of searching a repository one text match at a time, Codespaces turns code
+Instead of searching a repository one text match at a time, Wingbox turns code
 into a queryable map of modules, entities, imports, references, call relationships,
 architecture layers, and infrastructure connections.
 
@@ -47,12 +47,12 @@ npx skills add aileron-tech/wingbox
 Then ask your agent a natural question:
 
 ```text
-Use the Codespaces skill before reading source.
+Use the Wingbox skill before reading source.
 Find where file uploads are handled, analyze that module, show its dependencies
 and blast radius, then list only the boundary files needed for the change.
 ```
 
-Codespaces works with Codex, Claude Code, and other clients that support Agent
+Wingbox works with Codex, Claude Code, and other clients that support Agent
 Skills.
 
 ## Quick start from the command line
@@ -67,14 +67,14 @@ cd wingbox
 Build an architecture map for an explicit project directory:
 
 ```bash
-python3 scripts/build_belief_map.py --root /absolute/path/to/project
+python3 scripts/build_code_graph.py --root /absolute/path/to/project
 ```
 
 Exclude tracked source snapshots or generated fixture trees by directory name.
 The option is repeatable and applies at any depth:
 
 ```bash
-python3 scripts/build_belief_map.py \
+python3 scripts/build_code_graph.py \
   --root /absolute/path/to/project \
   --exclude-dir review-bundles \
   --exclude-dir generated-fixtures
@@ -104,13 +104,13 @@ dependency.
 Run a relevant search and get the first matching module with its full context:
 
 ```bash
-python3 scripts/belief_search.py \
-  --map /absolute/path/to/project/.belief_map.sexp \
+python3 scripts/code_graph_search.py \
+  --map /absolute/path/to/project/.code_graph.sexp \
   --root /absolute/path/to/project \
   quick "file upload"
 ```
 
-The map is written to `.belief_map.sexp`. Codespaces does not modify the source
+The map is written to `.code_graph.sexp`. Wingbox does not modify the source
 files it analyzes.
 
 ## Common code searches
@@ -148,7 +148,7 @@ is outside the current directory.
 | Ruby and Rails | Ruby classes, modules, instance and singleton methods, inheritance, requires, Zeitwerk constants, concerns, associations, callbacks, jobs, mailers, and impacted specs |
 | Free Pascal and Lazarus | Units, programs, uses/includes, classes, records, interfaces, inheritance, methods, and routines |
 
-Codespaces is designed for single repositories and monorepos. It understands
+Wingbox is designed for single repositories and monorepos. It understands
 Python project roots, TypeScript configuration and package aliases, Cargo package
 names and local Rust crate dependencies, .NET solutions and projects, Maven and
 Gradle projects, Go modules and workspaces, and Rails application/autoload
@@ -165,7 +165,7 @@ It can also map infrastructure relationships from Kustomize, Helm, and Terraform
 
 ## Ruby and Rails dependency search
 
-Rails code often depends on constants without an explicit `require`. Codespaces
+Rails code often depends on constants without an explicit `require`. Wingbox
 builds a project-local constant index and follows conservative Zeitwerk naming
 rules, so changing a shared model, concern, service, job, or mailer can reveal
 its likely callers and affected specs.
@@ -194,7 +194,7 @@ edges. Add `--lsp` when supported language servers are installed to enrich the m
 with precise call-site information:
 
 ```bash
-python3 scripts/build_belief_map.py \
+python3 scripts/build_code_graph.py \
   --root /absolute/path/to/project \
   --lsp
 ```
@@ -202,13 +202,13 @@ python3 scripts/build_belief_map.py \
 You can then ask an agent to render Mermaid diagrams from the graph:
 
 ```text
-Use Codespaces to trace the file upload flow and render a Mermaid sequence diagram.
-Base every participant and edge on the belief-map facts.
+Use Wingbox to trace the file upload flow and render a Mermaid sequence diagram.
+Base every participant and edge on the code-graph facts.
 ```
 
 ## Accuracy and limits
 
-Codespaces is an architecture and impact-analysis tool, not a compiler replacement.
+Wingbox is an architecture and impact-analysis tool, not a compiler replacement.
 The default map comes from deterministic static parsing. Optional LSP enrichment
 adds call hierarchy and reference detail when the relevant language server is
 available.

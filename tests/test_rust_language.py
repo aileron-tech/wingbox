@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_belief_map import Ok, build_graph
+from scripts.build_code_graph import Ok, build_graph
 from scripts.lang.interface import FileResult
 from scripts.lang.rust import RUST_LANGUAGE, parse_rust_treesitter
 

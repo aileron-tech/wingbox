@@ -29,7 +29,7 @@ def _read_source(path: Path, label: str) -> str:
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError as error:
         print(
-            f"[belief-map] Cannot read Ruby {label} from {path}: {error}",
+            f"[code-graph] Cannot read Ruby {label} from {path}: {error}",
             file=sys.stderr,
         )
         return ""
@@ -90,7 +90,7 @@ def _default_autoload_roots(
             app_children = tuple(app_root.iterdir())
         except OSError as error:
             print(
-                f"[belief-map] Cannot inspect Rails app roots in {app_root}: {error}",
+                f"[code-graph] Cannot inspect Rails app roots in {app_root}: {error}",
                 file=sys.stderr,
             )
             app_children = ()

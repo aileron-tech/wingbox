@@ -22,7 +22,7 @@ def file_hash(path: str) -> str:
         return digest.hexdigest()
     except OSError as error:
         print(
-            f"[belief-map] ERROR: could not hash {path}: {error}",
+            f"[code-graph] ERROR: could not hash {path}: {error}",
             file=sys.stderr,
         )
         return ""

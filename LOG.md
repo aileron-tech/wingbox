@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-15 - rename to Wingbox and code graph
+
+### Changes
+- Renamed the project and the skill from `codespaces` to `wingbox` in `README.md`, `SKILL.md`, `SAMPLE_AGENTS.md` and the design note.
+- Replaced "belief map" with "code graph" everywhere outside the history files: scripts `build_code_graph.py` and `code_graph_search.py`, test file `test_code_graph_search.py`, class `CodeGraph`, generated files `.code_graph.sexp` and `.code_graph_cache.json`, S-expression header `code-graph`, lock file prefix `wingbox-code-graph-`, log prefix `[code-graph]`.
+- Updated `.gitignore` to the new generated file names.
+- Verification: the full unit suite (93 tests) passes before and after the rename.
+
+### Motivation
+- "codespaces" is the name of a GitHub product, and "belief map" is not a term developers search for; "code graph" is.
+
 ## 2026-11-15
 
 ### Changes

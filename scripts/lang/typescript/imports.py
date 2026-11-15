@@ -68,7 +68,7 @@ def _load_ts_path_aliases(
                 data = _json.loads(raw)
             except (OSError, _json.JSONDecodeError) as error:
                 print(
-                    f"[belief-map] Cannot read TS aliases from {tsconfig_path}: {error}",
+                    f"[code-graph] Cannot read TS aliases from {tsconfig_path}: {error}",
                     file=sys.stderr,
                 )
                 continue
@@ -146,7 +146,7 @@ def _load_ts_packages(
                 data = json.load(file)
         except (OSError, json.JSONDecodeError) as error:
             print(
-                f"[belief-map] Cannot read local package identity from {package_path}: {error}",
+                f"[code-graph] Cannot read local package identity from {package_path}: {error}",
                 file=sys.stderr,
             )
             continue
@@ -182,7 +182,7 @@ def _resolve_typescript_path(
                 relative_candidate = os.path.relpath(candidate, root)
             except ValueError as error:
                 print(
-                    f"[belief-map] Cannot relativize {candidate} to {root}: {error}",
+                    f"[code-graph] Cannot relativize {candidate} to {root}: {error}",
                     file=sys.stderr,
                 )
                 relative_candidate = candidate
@@ -196,7 +196,7 @@ def _is_within(path: str, directory: str) -> bool:
         return os.path.commonpath((path, directory)) == directory
     except ValueError as error:
         print(
-            f"[belief-map] Cannot compare path scopes {path} and {directory}: {error}",
+            f"[code-graph] Cannot compare path scopes {path} and {directory}: {error}",
             file=sys.stderr,
         )
         return False
@@ -292,13 +292,13 @@ class BoundTypeScriptLanguage:
         alias_contexts = _load_ts_path_aliases(root, discovery_exclusions)
         if alias_contexts:
             print(
-                f"[belief-map] Loaded {len(alias_contexts)} TS alias contexts",
+                f"[code-graph] Loaded {len(alias_contexts)} TS alias contexts",
                 file=sys.stderr,
             )
         packages = _load_ts_packages(root, discovery_exclusions)
         if packages:
             print(
-                f"[belief-map] Loaded {len(packages)} local TS packages",
+                f"[code-graph] Loaded {len(packages)} local TS packages",
                 file=sys.stderr,
             )
         return cls(root, path_to_id, alias_contexts, packages)

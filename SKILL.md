@@ -1,24 +1,24 @@
 ---
-name: codespaces
+name: wingbox
 description: >
   Build and query architecture-aware code search, dependency graphs, call flows,
-  impact analysis, and belief maps for Python, TypeScript, TSX, Rust, C#, Java,
+  impact analysis, and code graphs for Python, TypeScript, TSX, Rust, C#, Java,
   Go, Ruby, and Ruby on Rails repositories.
   Use before non-trivial code changes to find module boundaries, blast radius,
   architecture violations, and the minimal source files to read.
 ---
 
-# Codespaces -- Belief Map Architecture Discovery
+# Wingbox -- Code Graph Architecture Discovery
 
-Query `.belief_map.sexp` to discover modules, boundaries, and dependencies before reading source files. Never read code blindly -- query the graph first.
+Query `.code_graph.sexp` to discover modules, boundaries, and dependencies before reading source files. Never read code blindly -- query the graph first.
 
 ## Scripts
 
 This skill bundles Python scripts. Resolve the skill and target roots before
 running them so the scanned project is always explicit:
 
-- `scripts/belief_search.py` -- query the belief map graph
-- `scripts/build_belief_map.py` -- generate the belief map from source
+- `scripts/code_graph_search.py` -- query the code graph
+- `scripts/build_code_graph.py` -- generate the code graph from source
 - `scripts/build_infra_topology.py` -- extract Kustomize, Helm, and Terraform topology facts
 - `scripts/git_descendants.py` -- find all commits descending from HEAD (or a given ref)
 
@@ -26,14 +26,14 @@ Never use project-local copies of these scripts -- they may be outdated and outp
 
 ## Prerequisite
 
-Locate the belief map. If absent, build it:
+Locate the code graph. If absent, build it:
 
 ```bash
-ls .belief_map.sexp belief_map.sexp 2>/dev/null
+ls .code_graph.sexp code_graph.sexp 2>/dev/null
 SKILL_ROOT="$(pwd -P)"
 TARGET_ROOT="$(cd /absolute/path/to/project && pwd -P)"
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" --root "$TARGET_ROOT"
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" --root "$TARGET_ROOT" --full
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
 ```
 
 Python indexing has no external parser dependency. For other detected
@@ -51,14 +51,14 @@ Install only the requirement files named by the builder, then rerun it.
 
 ## Mandatory Workflow: Query Before Code
 
-For non-trivial code work, run a belief-map query before `rg`, `find`, `sed`,
+For non-trivial code work, run a code-graph query before `rg`, `find`, `sed`,
 `cat`, `nl`, opening directories, or reading source files. The skill only helps
 when it is used as the first scoping step, not as confirmation after source has
 already been inspected.
 
 **Fast first pass when the task has a clear keyword:**
 ```bash
-python3 scripts/belief_search.py quick "keyword"
+python3 scripts/code_graph_search.py quick "keyword"
 ```
 `quick` searches for the first matching module and immediately runs `analyze`.
 Use it to get boundary files, dependencies, reverse dependencies, layers, and
@@ -67,14 +67,14 @@ explicit `search` -> `analyze` flow below.
 
 **Step 1 -- Find the module ID:**
 ```bash
-python3 scripts/belief_search.py search "keyword"
-python3 scripts/belief_search.py entity EntityName
+python3 scripts/code_graph_search.py search "keyword"
+python3 scripts/code_graph_search.py entity EntityName
 ```
-Use `search` or `entity` to locate the module ID. Module IDs are **full relative paths** like `billing-service/src/modules/invoice/invoice.service`, not short codes like `bs34`. The belief map may contain short path-map IDs internally, but they are resolved automatically -- always pass human-readable path-like strings. Do NOT guess or invent module IDs -- always confirm with `search` first.
+Use `search` or `entity` to locate the module ID. Module IDs are **full relative paths** like `billing-service/src/modules/invoice/invoice.service`, not short codes like `bs34`. The code graph may contain short path-map IDs internally, but they are resolved automatically -- always pass human-readable path-like strings. Do NOT guess or invent module IDs -- always confirm with `search` first.
 
 **Step 2 -- Analyze the module (do this IMMEDIATELY, not optionally):**
 ```bash
-python3 scripts/belief_search.py analyze <module-id>
+python3 scripts/code_graph_search.py analyze <module-id>
 ```
 `analyze` is the PRIMARY command. It returns the full context: boundary files, dependencies, reverse dependencies, architecture layer, and violations. Always run it before reading any source.
 
@@ -111,26 +111,26 @@ python3 scripts/belief_search.py analyze <module-id>
 
 ## Quick Reference: rg Queries
 
-When you need fast, targeted lookups without invoking the Python script, query the belief map directly with `rg`. The bundled builder writes `.belief_map.sexp`; if a repo still uses the legacy `belief_map.sexp`, substitute that filename in the commands below:
+When you need fast, targeted lookups without invoking the Python script, query the code graph directly with `rg`. The bundled builder writes `.code_graph.sexp`; if a repo still uses the legacy `code_graph.sexp`, substitute that filename in the commands below:
 
 ```bash
 # All facts about a module
-rg 'drive/modules/drive_db/api ' .belief_map.sexp
+rg 'drive/modules/drive_db/api ' .code_graph.sexp
 
 # Who imports a module
-rg 'imports .* drive/modules/commons/result' .belief_map.sexp
+rg 'imports .* drive/modules/commons/result' .code_graph.sexp
 
 # What does a module import
-rg 'imports drive/modules/drive_db/api' .belief_map.sexp
+rg 'imports drive/modules/drive_db/api' .code_graph.sexp
 
 # All references to an entity
-rg 'DriveDbCommitResponse' .belief_map.sexp
+rg 'DriveDbCommitResponse' .code_graph.sexp
 
 # All classes in a repo
-rg '^\(cls drive/' .belief_map.sexp
+rg '^\(cls drive/' .code_graph.sexp
 
 # Data flow edges
-rg 'data-flow' .belief_map.sexp
+rg 'data-flow' .code_graph.sexp
 ```
 
 These one-liners are useful for quick checks. For structured output and full analysis, use the Python script commands.
@@ -222,34 +222,34 @@ If a command returns `(error no-match ...)`:
 
 ```bash
 # Wrong: guessing IDs
-python3 scripts/belief_search.py analyze bs34        # fails: bs34 is a short path-map ID
-python3 scripts/belief_search.py analyze invoice.service  # fails: incomplete path
+python3 scripts/code_graph_search.py analyze bs34        # fails: bs34 is a short path-map ID
+python3 scripts/code_graph_search.py analyze invoice.service  # fails: incomplete path
 
 # Right: search first, then use the full path from results
-python3 scripts/belief_search.py search "invoice.*service"
+python3 scripts/code_graph_search.py search "invoice.*service"
 # Output shows: billing-service/src/modules/invoice/invoice.service
-python3 scripts/belief_search.py analyze billing-service/src/modules/invoice/invoice.service
+python3 scripts/code_graph_search.py analyze billing-service/src/modules/invoice/invoice.service
 ```
 
 ## Anti-patterns
 
 - **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are internal path-map IDs and must not be used directly. Always `search` first.
-- **Build but never query.** Building the belief map and then never running `search`, `analyze`, or `boundary` provides zero value.
+- **Build but never query.** Building the code graph and then never running `search`, `analyze`, or `boundary` provides zero value.
 - **Querying after reading source.** The first source-code read should come from `boundary-file` lines in `analyze` output.
-- **Reading `.belief_map.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
-- **Skipping the belief map for cross-module tasks.** Always query the graph to understand boundaries before reading source files.
+- **Reading `.code_graph.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
+- **Skipping the code graph for cross-module tasks.** Always query the graph to understand boundaries before reading source files.
 - **Reading all files in a directory.** When the boundary shows 2-3 files, read only those.
 - **Using project-local scripts.** Always use this skill's bundled scripts. Project copies may output JSON instead of sexp.
 
 ## Rebuilding the Graph
 
 ```bash
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" --root "$TARGET_ROOT"
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" --root "$TARGET_ROOT" --full
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" --root "$TARGET_ROOT" --lsp
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" \
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --lsp
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" \
   --root "$TARGET_ROOT" --output "$TARGET_ROOT/custom-map.sexp"
-python3 "$SKILL_ROOT/scripts/build_belief_map.py" \
+python3 "$SKILL_ROOT/scripts/build_code_graph.py" \
   --root "$TARGET_ROOT" --exclude-dir review-bundles
 ```
 
@@ -263,7 +263,7 @@ Targets inside Git worktrees also use Git's repository ignore rules. The same
 resolved policy filters source files, TypeScript aliases and packages, Go and
 Rust package manifests, Ruby project configuration, and LSP project discovery.
 Git is invoked with index checks disabled so tracked snapshot paths that match
-`.gitignore` remain excluded from the belief map.
+`.gitignore` remain excluded from the code graph.
 
 Rebuild after structural changes (add/remove files, change imports, add classes).
 Search patterns support literals, `.*`, boundary `^`/`$` anchors, and
@@ -309,13 +309,13 @@ python3 scripts/build_infra_topology.py                    # auto-detect all IaC
 python3 scripts/build_infra_topology.py --kustomize .      # kustomize only
 python3 scripts/build_infra_topology.py --helm ./charts    # helm charts only
 python3 scripts/build_infra_topology.py --terraform ./infra # terraform only
-python3 scripts/build_infra_topology.py --append .belief_map.sexp  # merge into graph
+python3 scripts/build_infra_topology.py --append .code_graph.sexp  # merge into graph
 ```
 
 Emits `infra-node`, `k8s-depends`, `k8s-service`, `helm-depends`, `tf-depends`, and `infra-maps` edges. Query with:
 ```bash
-rg 'infra-node' .belief_map.sexp                  # all services
-rg 'k8s-depends' .belief_map.sexp                 # service dependencies
-rg 'infra-node.*:component database' .belief_map.sexp  # all databases
-rg 'infra-maps.*app-service' .belief_map.sexp     # infra -> source code mapping
+rg 'infra-node' .code_graph.sexp                  # all services
+rg 'k8s-depends' .code_graph.sexp                 # service dependencies
+rg 'infra-node.*:component database' .code_graph.sexp  # all databases
+rg 'infra-maps.*app-service' .code_graph.sexp     # infra -> source code mapping
 ```

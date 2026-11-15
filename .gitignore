@@ -6,6 +6,6 @@ __pycache__/
 *.py[cod]
 .ruff_cache/
 
-# Generated belief-map artifacts (produced by scripts/build_belief_map.py)
-.belief_map.sexp
-.belief_map_cache.json
+# Generated code-graph artifacts (produced by scripts/build_code_graph.py)
+.code_graph.sexp
+.code_graph_cache.json

@@ -1,12 +1,12 @@
 # Repository Agent Instructions
 
-## Mandatory Codespaces discovery before code
+## Mandatory Wingbox discovery before code
 
 For every task that may create, edit, rename, or delete source code, use the
-installed `codespaces` skill before reading source files or writing code. This
+installed `wingbox` skill before reading source files or writing code. This
 is a hard pre-write gate, not an optional validation step.
 
-The belief map scopes the investigation. Source code remains the final source
+The code graph scopes the investigation. Source code remains the final source
 of truth for behavior.
 
 ### 1. Resolve the exact environment
@@ -14,8 +14,8 @@ of truth for behavior.
 Before running a command, resolve and verify:
 
 - the repository root with `git rev-parse --show-toplevel`;
-- the active installed `codespaces` skill root from the agent's skill catalog;
-- `scripts/build_belief_map.py` and `scripts/belief_search.py` under that skill;
+- the active installed `wingbox` skill root from the agent's skill catalog;
+- `scripts/build_code_graph.py` and `scripts/code_graph_search.py` under that skill;
 - the current working directory and expected command exit code.
 
 Use the installed skill scripts. Never use a project-local copy because it may
@@ -24,7 +24,7 @@ be stale or implement a different output contract.
 In the examples below, replace the placeholders with verified absolute paths:
 
 ```bash
-python3 "<codespaces-skill-root>/scripts/build_belief_map.py" \
+python3 "<wingbox-skill-root>/scripts/build_code_graph.py" \
   --root "<repository-root>"
 ```
 
@@ -41,7 +41,7 @@ installation is authorized. Do not install every supported parser.
 Search the refreshed map using a concrete task keyword:
 
 ```bash
-python3 "<codespaces-skill-root>/scripts/belief_search.py" \
+python3 "<wingbox-skill-root>/scripts/code_graph_search.py" \
   search "<task-keyword>"
 ```
 
@@ -57,7 +57,7 @@ relevant state.
 Immediately analyze the confirmed module:
 
 ```bash
-python3 "<codespaces-skill-root>/scripts/belief_search.py" \
+python3 "<wingbox-skill-root>/scripts/code_graph_search.py" \
   analyze "<confirmed-module-id>"
 ```
 
@@ -98,9 +98,9 @@ After structural changes such as adding, removing, renaming, or changing
 imports between source files, refresh the map again. Then run focused checks:
 
 ```bash
-python3 "<codespaces-skill-root>/scripts/belief_search.py" \
+python3 "<wingbox-skill-root>/scripts/code_graph_search.py" \
   boundaries "<confirmed-module-id>"
-python3 "<codespaces-skill-root>/scripts/belief_search.py" \
+python3 "<wingbox-skill-root>/scripts/code_graph_search.py" \
   invariants "<confirmed-module-id>"
 ```
 
@@ -113,7 +113,7 @@ implementation is correct.
 
 ## Exceptions
 
-Codespaces discovery is not required for tasks that cannot change source code,
+Wingbox discovery is not required for tasks that cannot change source code,
 such as commit-only operations, Git history summaries, issue comments, or
 documentation-only edits. If a documentation task requires claims about code
-behavior, query Codespaces before reading the relevant source.
+behavior, query Wingbox before reading the relevant source.

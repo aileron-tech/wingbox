@@ -109,7 +109,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
 
     except SyntaxError as error:
         print(
-            f"[belief-map] WARNING: AST parse failed for {path}: {error}",
+            f"[code-graph] WARNING: AST parse failed for {path}: {error}",
             file=sys.stderr,
         )
         # Fallback: regex for imports only

@@ -24,7 +24,7 @@ def _is_within(path: str, directory: str) -> bool:
         return os.path.commonpath((path, directory)) == directory
     except ValueError as error:
         print(
-            f"[belief-map] Cannot compare Rust path scopes {path} and {directory}: {error}",
+            f"[code-graph] Cannot compare Rust path scopes {path} and {directory}: {error}",
             file=sys.stderr,
         )
         return False
@@ -52,7 +52,7 @@ def _load_rust_packages(
                 manifest = tomllib.load(manifest_file)
         except (OSError, tomllib.TOMLDecodeError) as error:
             print(
-                f"[belief-map] Cannot read Rust package identity from {manifest_path}: {error}",
+                f"[code-graph] Cannot read Rust package identity from {manifest_path}: {error}",
                 file=sys.stderr,
             )
             continue
@@ -175,7 +175,7 @@ class BoundRustLanguage:
         packages = _load_rust_packages(root, discovery_exclusions)
         if packages:
             print(
-                f"[belief-map] Loaded {len(packages)} local Rust packages",
+                f"[code-graph] Loaded {len(packages)} local Rust packages",
                 file=sys.stderr,
             )
         return cls(os.path.normpath(root), path_to_id, packages)

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts import build_belief_map
+from scripts import build_code_graph
 from scripts.git_ignore import GitIgnoreLoaded, load_git_ignored_paths
 from scripts.lang.go.imports import _load_go_modules
 from scripts.lang.interface import DiscoveryExclusions, FileResult
@@ -18,7 +18,7 @@ from scripts.lang.typescript.imports import (
 )
 
 
-BUILD_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "build_belief_map.py"
+BUILD_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "build_code_graph.py"
 
 
 def _file_result(path: Path, language: str) -> FileResult:
@@ -70,7 +70,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
         """/* REQ-CS-034: Exclusion inputs are repeatable portable basenames. */"""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            parsed = build_belief_map.parse_builder_options(
+            parsed = build_code_graph.parse_builder_options(
                 [
                     "--root",
                     str(root),
@@ -82,7 +82,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                     "review-bundles",
                 ]
             )
-            if isinstance(parsed, build_belief_map.Err):
+            if isinstance(parsed, build_code_graph.Err):
                 self.fail(parsed.error)
             self.assertTrue(
                 {
@@ -104,7 +104,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
             )
             for invalid_value in invalid_values:
                 with self.subTest(invalid_value=invalid_value):
-                    invalid = build_belief_map.parse_builder_options(
+                    invalid = build_code_graph.parse_builder_options(
                         [
                             "--root",
                             str(root),
@@ -112,7 +112,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                             invalid_value,
                         ]
                     )
-                    self.assertIsInstance(invalid, build_belief_map.Err)
+                    self.assertIsInstance(invalid, build_code_graph.Err)
 
     def test_caller_exclusions_apply_to_every_configuration_walk(self) -> None:
         """/* REQ-CS-035: One policy owns source, package, tsconfig, and LSP discovery. */"""
@@ -122,17 +122,17 @@ class IssueSevenExclusionTests(unittest.TestCase):
             stale_source = _write_project_configuration(root, "review-bundles")
             exclusions = DiscoveryExclusions(
                 directory_names=frozenset(
-                    build_belief_map.SKIP_DIRS | {"review-bundles"}
+                    build_code_graph.SKIP_DIRS | {"review-bundles"}
                 ),
                 paths=frozenset(),
             )
 
-            discovered = build_belief_map.discover_files(str(root), exclusions)
+            discovered = build_code_graph.discover_files(str(root), exclusions)
             aliases = _load_ts_path_aliases(str(root), exclusions)
             packages = _load_ts_packages(str(root), exclusions)
             go_modules = _load_go_modules(str(root), exclusions)
             rust_packages = _load_rust_packages(str(root), exclusions)
-            projects = build_belief_map.discover_projects(
+            projects = build_code_graph.discover_projects(
                 str(root),
                 [
                     _file_result(live_source, "typescript"),
@@ -172,20 +172,20 @@ class IssueSevenExclusionTests(unittest.TestCase):
 
             ignored_result = load_git_ignored_paths(
                 str(root),
-                frozenset(build_belief_map.SKIP_DIRS),
+                frozenset(build_code_graph.SKIP_DIRS),
             )
             if not isinstance(ignored_result, GitIgnoreLoaded):
                 self.fail(ignored_result.reason)
             exclusions = DiscoveryExclusions(
-                directory_names=frozenset(build_belief_map.SKIP_DIRS),
+                directory_names=frozenset(build_code_graph.SKIP_DIRS),
                 paths=ignored_result.paths,
             )
-            discovered = build_belief_map.discover_files(str(root), exclusions)
+            discovered = build_code_graph.discover_files(str(root), exclusions)
             aliases = _load_ts_path_aliases(str(root), exclusions)
             packages = _load_ts_packages(str(root), exclusions)
             go_modules = _load_go_modules(str(root), exclusions)
             rust_packages = _load_rust_packages(str(root), exclusions)
-            projects = build_belief_map.discover_projects(
+            projects = build_code_graph.discover_projects(
                 str(root),
                 [
                     _file_result(live_source, "typescript"),
@@ -235,7 +235,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            excluded_map = (root / ".belief_map.sexp").read_text(encoding="utf-8")
+            excluded_map = (root / ".code_graph.sexp").read_text(encoding="utf-8")
             ignore_path.write_text("", encoding="utf-8")
             included = subprocess.run(
                 command,
@@ -243,7 +243,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            included_map = (root / ".belief_map.sexp").read_text(encoding="utf-8")
+            included_map = (root / ".code_graph.sexp").read_text(encoding="utf-8")
 
         self.assertIn("Found 1 source files", excluded.stdout)
         self.assertNotIn("review-bundles", excluded_map)

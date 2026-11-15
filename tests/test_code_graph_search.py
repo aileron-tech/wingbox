@@ -10,29 +10,29 @@ from pathlib import Path
 from typing import Protocol
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "belief_search.py"
-SPEC = importlib.util.spec_from_file_location("belief_search", SCRIPT_PATH)
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "code_graph_search.py"
+SPEC = importlib.util.spec_from_file_location("code_graph_search", SCRIPT_PATH)
 if SPEC is None or SPEC.loader is None:
-    raise RuntimeError(f"Could not load belief search module from {SCRIPT_PATH}")
-belief_search = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = belief_search
-SPEC.loader.exec_module(belief_search)
+    raise RuntimeError(f"Could not load code graph search module from {SCRIPT_PATH}")
+code_graph_search = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = code_graph_search
+SPEC.loader.exec_module(code_graph_search)
 
 
-class BeliefGraphContract(Protocol):
+class CodeGraphContract(Protocol):
     def resolve_module(self, query: str) -> list[str]: ...
 
 
-class BeliefSearchAliasTest(unittest.TestCase):
-    def _load_graph(self) -> tuple[BeliefGraphContract, str]:
+class CodeGraphSearchAliasTest(unittest.TestCase):
+    def _load_graph(self) -> tuple[CodeGraphContract, str]:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
 
-        sexp_path = Path(tmpdir.name) / ".belief_map.sexp"
+        sexp_path = Path(tmpdir.name) / ".code_graph.sexp"
         sexp_path.write_text(
             textwrap.dedent(
                 """
-                (belief-map :schema 1 :files 2 :nodes 2 :edges 1 :violations 0)
+                (code-graph :schema 1 :files 2 :nodes 2 :edges 1 :violations 0)
                 (paths
                   (app-service
                     (app-service
@@ -55,13 +55,13 @@ class BeliefSearchAliasTest(unittest.TestCase):
             encoding="utf-8",
         )
 
-        graph = belief_search.BeliefGraph()
+        graph = code_graph_search.CodeGraph()
         load_result = graph.load(str(sexp_path))
-        self.assertIsInstance(load_result, belief_search.MapLoadOk)
+        self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
         return graph, str(sexp_path)
 
     def test_resolve_module_accepts_path_aliases(self) -> None:
-        """/* REQ-CS-001: analyze must accept internal path-map aliases returned by older belief maps. */"""
+        """/* REQ-CS-001: analyze must accept internal path-map aliases returned by older code graphs. */"""
         graph, _sexp_path = self._load_graph()
 
         self.assertEqual(
@@ -71,7 +71,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_analyze(graph, "asp543")
+            code_graph_search.cmd_analyze(graph, "asp543")
 
         self.assertIn(
             "(analyze app-service/app-service/src/workspace-operatives/workspace-operative.service",
@@ -84,7 +84,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_search(graph, "workspace-operative.service", sexp_path)
+            code_graph_search.cmd_search(graph, "workspace-operative.service", sexp_path)
 
         lines = output.getvalue().strip().splitlines()
         self.assertEqual(
@@ -102,7 +102,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_quick(graph, "workspace-operative.service", sexp_path)
+            code_graph_search.cmd_quick(graph, "workspace-operative.service", sexp_path)
 
         text = output.getvalue()
         self.assertIn(
@@ -116,12 +116,12 @@ class BeliefSearchAliasTest(unittest.TestCase):
         self.assertNotIn("(boundary app-service/app-service/src/workspace-operatives/workspace-operative.service", text)
 
     def test_quick_resolves_alias_from_raw_search_hits(self) -> None:
-        """/* REQ-CS-004: quick must resolve legacy path-map aliases found in raw belief-map facts. */"""
+        """/* REQ-CS-004: quick must resolve legacy path-map aliases found in raw code-graph facts. */"""
         graph, sexp_path = self._load_graph()
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_quick(graph, "WorkspaceOperativeService", sexp_path)
+            code_graph_search.cmd_quick(graph, "WorkspaceOperativeService", sexp_path)
 
         self.assertIn(
             "(analyze app-service/app-service/src/workspace-operatives/workspace-operative.service",
@@ -134,7 +134,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_boundary(graph, "workspace-operative.service", files_only=True)
+            code_graph_search.cmd_boundary(graph, "workspace-operative.service", files_only=True)
 
         self.assertEqual(
             output.getvalue().strip().splitlines(),
@@ -157,11 +157,11 @@ class BeliefSearchAliasTest(unittest.TestCase):
             flat_module.write_text("pub mod payments;\n", encoding="utf-8")
             child_module.write_text("use super::*;\n", encoding="utf-8")
             nested_module.write_text("pub struct Database;\n", encoding="utf-8")
-            sexp_path = root / ".belief_map.sexp"
+            sexp_path = root / ".code_graph.sexp"
             sexp_path.write_text(
                 textwrap.dedent(
                     """
-                    (belief-map :schema 1 :files 3 :nodes 3 :edges 1 :violations 0)
+                    (code-graph :schema 1 :files 3 :nodes 3 :edges 1 :violations 0)
                     (paths
                       (src
                         (r1 handlers)
@@ -181,22 +181,22 @@ class BeliefSearchAliasTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            graph = belief_search.BeliefGraph()
+            graph = code_graph_search.CodeGraph()
             load_result = graph.load(str(sexp_path), str(root))
-            self.assertIsInstance(load_result, belief_search.MapLoadOk)
+            self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
 
             self.assertEqual(
                 str(flat_module),
-                belief_search._module_id_to_file("src/handlers", str(root)),
+                code_graph_search._module_id_to_file("src/handlers", str(root)),
             )
             self.assertEqual(
                 str(nested_module),
-                belief_search._module_id_to_file("src/storage", str(root)),
+                code_graph_search._module_id_to_file("src/storage", str(root)),
             )
 
             boundary_output = io.StringIO()
             with redirect_stdout(boundary_output):
-                belief_search.cmd_boundary(
+                code_graph_search.cmd_boundary(
                     graph,
                     "src/handlers/payments",
                     files_only=True,
@@ -208,7 +208,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
             analyze_output = io.StringIO()
             with redirect_stdout(analyze_output):
-                belief_search.cmd_analyze(graph, "src/handlers/payments")
+                code_graph_search.cmd_analyze(graph, "src/handlers/payments")
             self.assertIn(
                 f"(boundary-file src/handlers/payments {child_module})",
                 analyze_output.getvalue(),
@@ -233,11 +233,11 @@ class BeliefSearchAliasTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("", encoding="utf-8")
 
-        sexp_path = root / ".belief_map.sexp"
+        sexp_path = root / ".code_graph.sexp"
         sexp_path.write_text(
             textwrap.dedent(
                 """
-                (belief-map :schema 1 :files 4 :nodes 4 :edges 0 :violations 0)
+                (code-graph :schema 1 :files 4 :nodes 4 :edges 0 :violations 0)
                 (paths
                   (soft
                     (p1 ipKernel)
@@ -257,19 +257,19 @@ class BeliefSearchAliasTest(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        graph = belief_search.BeliefGraph()
+        graph = code_graph_search.CodeGraph()
         load_result = graph.load(str(sexp_path), str(root))
-        self.assertIsInstance(load_result, belief_search.MapLoadOk)
+        self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
 
         for module_id, path in expected.items():
             with self.subTest(module_id=module_id):
                 self.assertEqual(
                     str(path),
-                    belief_search._module_id_to_file(module_id, str(root)),
+                    code_graph_search._module_id_to_file(module_id, str(root)),
                 )
                 boundary_output = io.StringIO()
                 with redirect_stdout(boundary_output):
-                    belief_search.cmd_boundary(graph, module_id, files_only=True)
+                    code_graph_search.cmd_boundary(graph, module_id, files_only=True)
                 self.assertEqual(
                     [str(path)],
                     boundary_output.getvalue().strip().splitlines(),
@@ -277,7 +277,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
                 analyze_output = io.StringIO()
                 with redirect_stdout(analyze_output):
-                    belief_search.cmd_analyze(graph, module_id)
+                    code_graph_search.cmd_analyze(graph, module_id)
                 self.assertIn(
                     f"(boundary-file {module_id} {path})",
                     analyze_output.getvalue(),
@@ -289,7 +289,7 @@ class BeliefSearchAliasTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_analyze(graph, "workspace-operative.controller")
+            code_graph_search.cmd_analyze(graph, "workspace-operative.controller")
 
         text = output.getvalue()
         self.assertIn("(error no-match workspace-operative.controller :suggestions", text)
@@ -345,11 +345,11 @@ class BeliefSearchAliasTest(unittest.TestCase):
         """/* REQ-RUBY-010: Function search returns the precise Ruby method entity once when a class also lists that method. */"""
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
-        sexp_path = Path(tmpdir.name) / ".belief_map.sexp"
+        sexp_path = Path(tmpdir.name) / ".code_graph.sexp"
         sexp_path.write_text(
             textwrap.dedent(
                 """
-                (belief-map :schema 1 :files 1 :nodes 1 :edges 0 :violations 0)
+                (code-graph :schema 1 :files 1 :nodes 1 :edges 0 :violations 0)
                 (paths
                   (app
                     (services
@@ -365,13 +365,13 @@ class BeliefSearchAliasTest(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        graph = belief_search.BeliefGraph()
+        graph = code_graph_search.CodeGraph()
         load_result = graph.load(str(sexp_path))
-        self.assertIsInstance(load_result, belief_search.MapLoadOk)
+        self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
 
         output = io.StringIO()
         with redirect_stdout(output):
-            belief_search.cmd_find_function(graph, "call")
+            code_graph_search.cmd_find_function(graph, "call")
 
         result_lines = output.getvalue().splitlines()
         self.assertEqual(1, len(result_lines))
