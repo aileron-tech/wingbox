@@ -1,8 +1,10 @@
-# Wingbox - Code Search, Dependency Graphs, and Impact Analysis
+# Wingbox: Code Graph and Blast Radius Analysis for AI Coding Agents
 
-> Architecture-aware code search, dependency graphs, and impact analysis for
-> Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus,
-> for AI coding agents.
+> Wingbox builds a local **code graph** of your repository so that AI coding
+> agents and developers can see dependencies, call flows, architecture
+> boundaries and the **blast radius** of a change before editing code.
+> It works as an agent skill in Claude Code and Codex and supports Python,
+> TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus.
 >
 > **Install:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
@@ -13,13 +15,17 @@
 > [Changelog](CHANGELOG.md) for the old and new names.
 
 Understand a large codebase before you change it. Wingbox is an
-architecture-aware code search tool for Python, TypeScript, TSX, Rust, C#,
+architecture-aware code search and impact analysis tool for Python, TypeScript, TSX, Rust, C#,
 Java, Go, Ruby, Ruby on Rails, Free Pascal, and Lazarus repositories. It helps
 developers and AI coding agents find the right module, trace dependencies,
 measure change impact, and read only the source files that matter.
 
 Use it for codebase architecture discovery, dependency graph search, blast-radius
 analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
+
+Everything runs on your machine. The code graph is built by deterministic
+static parsing: no LLM call, no embeddings, no vector database, and no network
+access to build or query it.
 
 ## What can Wingbox answer?
 
@@ -33,8 +39,23 @@ analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 - Can you draw a call-flow, data-flow, or sequence diagram from the code?
 
 Instead of searching a repository one text match at a time, Wingbox turns code
-into a queryable map of modules, entities, imports, references, call relationships,
-architecture layers, and infrastructure connections.
+into a queryable code graph of modules, entities, imports, references, call
+relationships, architecture layers, and infrastructure connections.
+
+## What is a code graph?
+
+A code graph describes a codebase as facts instead of text. Modules, classes,
+functions and types are nodes; imports, references, data flows, calls and
+architecture layers are edges. Wingbox writes the graph to `.code_graph.sexp`
+as plain S-expression facts, so the bundled query tool and ordinary text search
+can both read it.
+
+## What is blast radius analysis?
+
+The blast radius of a change is everything that depends, directly or
+transitively, on the code you are about to edit. Wingbox computes it from the
+reverse dependencies in the code graph (`rdeps`), and `boundary` lists the
+minimal set of files to read before making the change.
 
 ## Quick start for AI coding agents
 
@@ -64,7 +85,7 @@ git clone https://github.com/aileron-tech/wingbox.git
 cd wingbox
 ```
 
-Build an architecture map for an explicit project directory:
+Build the code graph for an explicit project directory:
 
 ```bash
 python3 scripts/build_code_graph.py --root /absolute/path/to/project
@@ -110,8 +131,8 @@ python3 scripts/code_graph_search.py \
   quick "file upload"
 ```
 
-The map is written to `.code_graph.sexp`. Wingbox does not modify the source
-files it analyzes.
+The code graph is written to `.code_graph.sexp`. Wingbox does not modify the
+source files it analyzes.
 
 ## Common code searches
 
@@ -216,6 +237,39 @@ available.
 For generated imports, runtime dependency injection, reflection, or framework
 behavior that is not explicit in source, verify the result against the running
 application or the owning framework.
+
+## FAQ
+
+### Does Wingbox send my code anywhere?
+
+No. The code graph is built and queried locally by deterministic static
+parsing. Building and querying need no LLM, no embeddings, no vector database
+and no network access.
+
+### Which AI coding agents does Wingbox work with?
+
+Codex, Claude Code, and other clients that support Agent Skills. The scripts
+can also be run directly from the command line.
+
+### How is a code graph different from text search with grep or ripgrep?
+
+Text search finds lines that match a pattern. A code graph answers structural
+questions: which modules depend on this one, what a change can break, which
+architecture boundary a dependency crosses, and which few files are worth
+reading first.
+
+### Does Wingbox replace a compiler or a language server?
+
+No. It is an architecture and impact-analysis tool. Optional LSP enrichment
+adds call hierarchy and reference detail; behavior that is not explicit in
+source, such as generated imports, runtime dependency injection or reflection,
+must be verified against the running application.
+
+### Which languages are supported?
+
+Python, TypeScript and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails, Free
+Pascal and Lazarus, plus infrastructure relationships from Kustomize, Helm and
+Terraform.
 
 ## Project resources
 

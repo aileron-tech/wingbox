@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-15 - README discoverability
+
+### Changes
+- README: title and opening lines name the main search terms (code graph, blast radius, impact analysis, AI coding agents, Claude Code, Codex); added the sections "What is a code graph?", "What is blast radius analysis?" and an FAQ; "map" wording replaced by "code graph" in the quick start.
+- Statements checked against the source: no network, LLM or embedding use in `scripts/`.
+
+### Motivation
+- The repository page and the README are what GitHub and web search index; the previous title did not contain the terms developers search for.
+
 ## 2026-11-15 - rename to Wingbox and code graph
 
 ### Changes
