@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-15 - published on PyPI
+
+### Changes
+- `wingbox` 0.1.1 (sdist and wheel built from `main` at the v0.1.1 tag) is on PyPI: https://pypi.org/project/wingbox/. README and CHANGELOG now give `pipx install wingbox` and `uvx wingbox`.
+- Verified: `uvx --from wingbox==0.1.1 wingbox --version`, `build .` and `impact` in a clean environment.
+
+### Motivation
+- One-line install without the repository URL.
+
 ## 2026-11-15 - wingbox command and package
 
 ### Changes

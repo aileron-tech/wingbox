@@ -10,7 +10,7 @@
 >
 > **Install the agent skill:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
-> **Install the command:** `pipx install git+https://github.com/aileron-tech/wingbox`
+> **Install the command:** `pipx install wingbox` | [PyPI](https://pypi.org/project/wingbox/)
 >
 > **Release notes:** [Changelog](CHANGELOG.md)
 >
@@ -104,13 +104,13 @@ Skills.
 Install the `wingbox` command (Python 3.11 or newer, macOS or Linux):
 
 ```bash
-pipx install git+https://github.com/aileron-tech/wingbox
+pipx install wingbox
 ```
 
 Or run it without installing:
 
 ```bash
-uvx --from git+https://github.com/aileron-tech/wingbox wingbox --help
+uvx wingbox --help
 ```
 
 Build the code graph of a project, then ask what a change will break:
