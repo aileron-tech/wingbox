@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-15 - maintainer instructions
+
+### Changes
+- Added `AGENTS.md` (with the `CLAUDE.md` symlink): scope, layout, rules for changes, the test command, the release steps and the handling of the upload token.
+
+### Motivation
+- The release and contribution procedure existed only in the maintainer's notes outside the repository.
+
 ## 2026-11-15 - published on PyPI
 
 ### Changes
