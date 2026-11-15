@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-15 - impact command
+
+### Changes
+- `scripts/code_graph_search.py`: new `impact <file|id> [depth] [--sexp]` command. It resolves an ordinary file path (relative to the root or absolute, with its extension) to a module, walks reverse dependencies breadth-first so each dependent is listed once at its shortest depth, and lists the files to read first (the target and its direct dependents).
+- Output: readable text by default; `--sexp` prints `impact-root`, `impact`, `impact-summary` and `read-first` facts. An ambiguous target names the module shown and the other matches.
+- Tests: REQ-CS-038 to REQ-CS-044 in `tests/test_code_graph_search.py`; the full unit suite passes.
+- Documentation: README (command table, blast radius section with a real run on this repository), SKILL.md, CHANGELOG.
+
+### Motivation
+- `rdeps` and `boundary` gave the facts separately, only as S-expressions, and did not accept a file path with its extension. S-expressions stay the compact format for agents; people get text.
+
 ## 2026-11-15 - README hero image
 
 ### Changes

@@ -378,5 +378,170 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
         self.assertIn("Billing::Charge#call :line 9", result_lines[0])
 
 
+class CodeGraphImpactTest(unittest.TestCase):
+    def _load_graph(self) -> tuple[CodeGraphContract, str]:
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        root = Path(tmpdir.name).resolve()
+        for relative in (
+            "app/core/util.py",
+            "app/billing/invoice.py",
+            "app/billing/report.py",
+            "app/api/handler.py",
+            "app/api/health.py",
+        ):
+            source = root / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("", encoding="utf-8")
+
+        sexp_path = root / ".code_graph.sexp"
+        sexp_path.write_text(
+            textwrap.dedent(
+                """
+                (code-graph :schema 1 :files 5 :nodes 5 :edges 4 :violations 0)
+                (paths
+                  (app
+                    (core
+                      (m0 util)
+                    )
+                    (billing
+                      (m1 invoice)
+                      (m2 report)
+                    )
+                    (api
+                      (m3 handler)
+                      (m4 health)
+                    )
+                  )
+                )
+                (node m0 py shared)
+                (node m1 py service)
+                (node m2 py service)
+                (node m3 py api)
+                (node m4 py api)
+                (imports m1 m0)
+                (imports m2 m0)
+                (imports m3 m1)
+                (imports m3 m2)
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        graph = code_graph_search.CodeGraph()
+        load_result = graph.load(str(sexp_path), str(root))
+        self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
+        return graph, str(root)
+
+    def _impact(self, graph: CodeGraphContract, *args: object, **kwargs: object) -> str:
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code_graph_search.cmd_impact(graph, *args, **kwargs)
+        return output.getvalue()
+
+    def test_impact_accepts_file_paths_with_extension(self) -> None:
+        """/* REQ-CS-038: impact must accept an ordinary source file path, relative to the root or absolute. */"""
+        graph, root = self._load_graph()
+
+        relative = self._impact(graph, "app/core/util.py", 2, sexp=True)
+        absolute = self._impact(graph, str(Path(root) / "app" / "core" / "util.py"), 2, sexp=True)
+
+        self.assertIn("(impact-root app/core/util :lang py :file app/core/util.py)", relative)
+        self.assertEqual(relative, absolute)
+
+    def test_impact_text_lists_dependents_by_depth_and_files_to_read(self) -> None:
+        """/* REQ-CS-039: impact must print a readable summary: counts, dependents per depth, files to read first. */"""
+        graph, _root = self._load_graph()
+
+        self.assertEqual(
+            self._impact(graph, "app/core/util.py", 2),
+            textwrap.dedent(
+                """\
+                Impact of changing app/core/util.py
+                  direct dependents   2
+                  within 2 hops       3
+
+                Depth 1
+                  app/billing/invoice.py   imports
+                  app/billing/report.py    imports
+
+                Depth 2
+                  app/api/handler.py   imports
+
+                Read first (3 files)
+                  app/core/util.py
+                  app/billing/invoice.py
+                  app/billing/report.py
+                """
+            ),
+        )
+
+    def test_impact_sexp_reports_each_dependent_once_at_its_shortest_depth(self) -> None:
+        """/* REQ-CS-040: impact --sexp must emit compact facts with every dependent once, at its shortest depth. */"""
+        graph, _root = self._load_graph()
+
+        self.assertEqual(
+            self._impact(graph, "app/core/util", 2, sexp=True).splitlines(),
+            [
+                "(impact-root app/core/util :lang py :file app/core/util.py)",
+                "(impact app/core/util app/billing/invoice :lang py :via imports :depth 1)",
+                "(impact app/core/util app/billing/report :lang py :via imports :depth 1)",
+                "(impact app/core/util app/api/handler :lang py :via imports :depth 2)",
+                "(impact-summary app/core/util :direct 2 :total 3 :depth 2)",
+                "(read-first app/core/util.py)",
+                "(read-first app/billing/invoice.py)",
+                "(read-first app/billing/report.py)",
+            ],
+        )
+
+    def test_impact_depth_limits_the_walk(self) -> None:
+        """/* REQ-CS-041: impact must stop at the requested depth. */"""
+        graph, _root = self._load_graph()
+
+        output = self._impact(graph, "app/core/util.py", 1, sexp=True)
+
+        self.assertNotIn("app/api/handler", output)
+        self.assertIn("(impact-summary app/core/util :direct 2 :total 2 :depth 1)", output)
+
+    def test_impact_reports_unknown_targets_and_isolated_modules(self) -> None:
+        """/* REQ-CS-042: impact must report an unknown target as no-match and an unused module as zero dependents. */"""
+        graph, _root = self._load_graph()
+
+        self.assertIn("(error no-match", self._impact(graph, "app/missing/thing.py", 2))
+        isolated = self._impact(graph, "app/api/health.py", 2)
+        self.assertIn("direct dependents   0", isolated)
+        self.assertIn("No other module depends on it.", isolated)
+
+    def test_impact_names_the_other_matches_of_an_ambiguous_target(self) -> None:
+        """/* REQ-CS-044: impact must say which module it shows when the target matches several modules. */"""
+        graph, _root = self._load_graph()
+
+        self.assertEqual(
+            self._impact(graph, "app/api/h", 2, sexp=True).splitlines()[0],
+            "(impact-ambiguous app/api/h :showing app/api/handler :others app/api/health)",
+        )
+        self.assertIn(
+            "Note: 2 modules match app/api/h; showing app/api/handler. Others: app/api/health",
+            self._impact(graph, "app/api/h", 2),
+        )
+
+    def test_impact_cli_parses_depth_and_sexp_flag(self) -> None:
+        """/* REQ-CS-043: the impact command must accept [depth] and --sexp in any order and reject a bad depth. */"""
+        _graph, root = self._load_graph()
+        base = ["--map", str(Path(root) / ".code_graph.sexp"), "--root", root]
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = code_graph_search.main(base + ["impact", "--sexp", "app/core/util.py", "1"])
+        self.assertEqual(0, status)
+        self.assertIn("(impact-summary app/core/util :direct 2 :total 2 :depth 1)", output.getvalue())
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = code_graph_search.main(base + ["impact", "app/core/util.py", "many"])
+        self.assertEqual(2, status)
+        self.assertIn("(error invalid-argument", output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

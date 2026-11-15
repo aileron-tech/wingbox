@@ -16,6 +16,7 @@ Usage::
     code_graph_search.py module <id>            Show module with entities and edges
     code_graph_search.py deps <id> [depth]      Outgoing dependency tree (default depth 2)
     code_graph_search.py rdeps <id> [depth]     Reverse dependency tree (default depth 2)
+    code_graph_search.py impact <file|id> [depth] [--sexp]  Blast radius of a change: dependents by depth and files to read first
     code_graph_search.py entity <name>          Find entity: definition + all usages
     code_graph_search.py flow <id> <entity>     Trace data/call flow from entity
     code_graph_search.py search <pattern>       Safe pattern search across all facts
@@ -972,6 +973,135 @@ def cmd_rdeps(g: CodeGraph, module_id: str, max_depth: int) -> None:
         print(f"(rdeps-root {start} :lang {g.module_lang(start)})")
         _walk_rdeps(g, start, visited, max_depth, 1,
                     lambda d, et, src, cyc: print(f"(rdep {start} {src} :lang {g.module_lang(src)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+
+
+# ---------------------------------------------------------------------------
+# Impact: blast radius of changing one file or module
+# ---------------------------------------------------------------------------
+
+_IMPACT_SOURCE_EXTENSIONS = tuple(
+    sorted(
+        _TS_EXTENSIONS
+        + _PY_EXTENSIONS
+        + _RUBY_EXTENSIONS
+        + _RUST_EXTENSIONS
+        + _PASCAL_EXTENSIONS
+        + (".cs", ".java", ".go"),
+        key=len,
+        reverse=True,
+    )
+)
+
+
+def _target_to_module_pattern(target: str, root: str) -> str:
+    """Turn a source file path (absolute, or relative to the graph root) into a module pattern."""
+    path = target
+    if root and os.path.isabs(path):
+        relative = os.path.relpath(os.path.realpath(path), root)
+        if not relative.startswith(".."):
+            path = relative
+    path = path.replace(os.sep, "/")
+    if path.startswith("./"):
+        path = path[2:]
+    for extension in _IMPACT_SOURCE_EXTENSIONS:
+        if path.endswith(extension):
+            return path[: -len(extension)]
+    return path
+
+
+def _impact_levels(g: CodeGraph, start: str, max_depth: int) -> list[list[tuple[str, str]]]:
+    """Modules that depend on start, grouped by shortest hop distance.
+
+    Each level is a sorted list of (module ID, edge type); a module appears once,
+    at the first depth that reaches it.
+    """
+    seen: set[str] = {start}
+    frontier: list[str] = [start]
+    levels: list[list[tuple[str, str]]] = []
+    for _depth in range(max_depth):
+        found: dict[str, str] = {}
+        for module in frontier:
+            for source, edge_type in sorted(_collect_rdep_mods(g, module).items()):
+                if source not in seen and source not in found:
+                    found[source] = edge_type
+        if not found:
+            break
+        seen.update(found)
+        level = sorted(found.items())
+        levels.append(level)
+        frontier = [module for module, _edge_type in level]
+    return levels
+
+
+def _impact_file(g: CodeGraph, module_id: str) -> str:
+    """File of a module relative to the graph root; the module ID when it is not on disk."""
+    path = g.module_to_file(module_id)
+    if g._root and os.path.isabs(path):
+        relative = os.path.relpath(path, g._root)
+        if not relative.startswith(".."):
+            return relative.replace(os.sep, "/")
+    return path
+
+
+def _print_impact_block(title: str, rows: list[tuple[str, str]]) -> None:
+    width = max(len(name) for name, _detail in rows)
+    print(title)
+    for name, detail in rows:
+        print(f"  {name:<{width}}   {detail}" if detail else f"  {name}")
+
+
+def cmd_impact(g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False) -> None:
+    """Show what depends on a file or module: the blast radius of changing it.
+
+    Prints readable text for people by default. With sexp=True it prints the
+    same facts in the compact S-expression form used by agents.
+    """
+    pattern = _target_to_module_pattern(target, g._root)
+    matches = g.resolve_module(pattern)
+    if not matches:
+        _print_no_match(g, pattern)
+        return
+
+    root_id = matches[0]
+    others = matches[1:]
+    levels = _impact_levels(g, root_id, max_depth)
+    direct = len(levels[0]) if levels else 0
+    total = sum(len(level) for level in levels)
+    root_file = _impact_file(g, root_id)
+    read_first = list(
+        dict.fromkeys(
+            [root_file] + [_impact_file(g, module) for module, _edge_type in (levels[0] if levels else [])]
+        )
+    )
+
+    if sexp:
+        if others:
+            print(f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})")
+        print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q(root_file)})")
+        for depth, level in enumerate(levels, start=1):
+            for module, edge_type in level:
+                print(f"(impact {root_id} {module} :lang {g.module_lang(module)} :via {edge_type} :depth {depth})")
+        print(f"(impact-summary {root_id} :direct {direct} :total {total} :depth {max_depth})")
+        for path in read_first:
+            print(f"(read-first {_q(path)})")
+        return
+
+    if others:
+        print(f"Note: {len(matches)} modules match {pattern}; showing {root_id}. Others: {', '.join(others)}")
+        print()
+    hops = "hop" if max_depth == 1 else "hops"
+    print(f"Impact of changing {root_file}")
+    print(f"  {'direct dependents':<20}{direct}")
+    print(f"  {f'within {max_depth} {hops}':<20}{total}")
+    print()
+    if not levels:
+        print("No other module depends on it.")
+        return
+    for depth, level in enumerate(levels, start=1):
+        _print_impact_block(f"Depth {depth}", [(_impact_file(g, module), edge_type) for module, edge_type in level])
+        print()
+    files = "file" if len(read_first) == 1 else "files"
+    _print_impact_block(f"Read first ({len(read_first)} {files})", [(path, "") for path in read_first])
 
 
 def cmd_entity(g: CodeGraph, name: str) -> None:
@@ -2537,6 +2667,15 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         if isinstance(pattern_result, SearchPatternErr):
             return f"invalid pattern {args[1]}: {pattern_result.error}"
 
+    if args[0] == "impact":
+        positional = [argument for argument in args[1:] if argument != "--sexp"]
+        if not positional:
+            return "impact requires a file path or module ID"
+        if len(positional) >= 2:
+            _impact_depth, impact_depth_error = _parse_depth(positional[1])
+            return impact_depth_error
+        return None
+
     depth_positions = {
         "deps": 2,
         "rdeps": 2,
@@ -2590,6 +2729,10 @@ def main(args: Optional[list[str]] = None) -> int:
     elif cmd == "rdeps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
         cmd_rdeps(g, args[1], depth)
+    elif cmd == "impact" and len(args) >= 2:
+        impact_args = [argument for argument in args[1:] if argument != "--sexp"]
+        impact_depth = int(impact_args[1]) if len(impact_args) >= 2 else 2
+        cmd_impact(g, impact_args[0], impact_depth, sexp="--sexp" in args)
     elif cmd == "entity" and len(args) >= 2:
         cmd_entity(g, args[1])
     elif cmd == "flow" and len(args) >= 3:
@@ -2628,7 +2771,7 @@ def main(args: Optional[list[str]] = None) -> int:
         cmd_repl(g, sexp_path)
     else:
         print(f"(error unknown-command {_q(cmd if args else 'none')})")
-        print("; Commands: analyze, boundary, quick, boundaries, layers, invariants, module, deps, rdeps, entity, flow, search,")
+        print("; Commands: analyze, boundary, quick, boundaries, layers, invariants, module, deps, rdeps, impact, entity, flow, search,")
         print(";          find_function, find_type, find_callchain, find_callers, find_calls, grep_functions, diff_functions,")
         print(";          query, repl")
         return 1

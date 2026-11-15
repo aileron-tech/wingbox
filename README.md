@@ -56,8 +56,27 @@ can both read it.
 
 The blast radius of a change is everything that depends, directly or
 transitively, on the code you are about to edit. Wingbox computes it from the
-reverse dependencies in the code graph (`rdeps`), and `boundary` lists the
-minimal set of files to read before making the change.
+reverse dependencies in the code graph. `impact path/to/file` prints the
+dependents by depth and the files to read first; `rdeps` and `boundary` give
+the same facts as a tree and as a change boundary.
+
+```text
+$ python3 scripts/code_graph_search.py impact scripts/lang/treesitter.py
+
+Impact of changing scripts/lang/treesitter.py
+  direct dependents   4
+  within 2 hops       11
+
+Depth 1
+  scripts/lang/csharp/parser.py   imports
+  scripts/lang/go/parser.py       imports
+  scripts/lang/java/parser.py     imports
+  scripts/lang/ruby/parser.py     imports
+...
+```
+
+The text form is for people. Agents add `--sexp` to get the same facts as
+compact S-expressions.
 
 ## Quick start for AI coding agents
 
@@ -145,7 +164,8 @@ source files it analyzes.
 | See full module context | `analyze path/to/module` |
 | Find files needed for a change | `boundary path/to/module --files-only` |
 | Trace dependencies | `deps path/to/module 2` |
-| Measure blast radius | `rdeps path/to/module 2` |
+| See what a change will break | `impact path/to/file.py` |
+| Measure blast radius as a tree | `rdeps path/to/module 2` |
 | Find a class, module, interface, enum, or type | `find_type OrderService` |
 | Find a function or method | `find_function createOrder` |
 | Find callers | `find_callers createOrder 2` |
