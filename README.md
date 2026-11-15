@@ -1,5 +1,7 @@
 # Wingbox: Code Graph and Blast Radius Analysis for AI Coding Agents
 
+![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](docs/assets/wingbox-social-preview.png)
+
 > Wingbox builds a local **code graph** of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture
 > boundaries and the **blast radius** of a change before editing code.
