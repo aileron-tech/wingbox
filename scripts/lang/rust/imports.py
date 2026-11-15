@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -159,11 +160,45 @@ def _crate_source_directory(
     return os.path.dirname(source_path)
 
 
+_EXPORTED_MACRO = re.compile(
+    r"#\[macro_export[^\]]*\]\s*(?:#\[[^\]]*\]\s*)*macro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _load_exported_macros(
+    path_to_id: Mapping[str, str],
+    packages: tuple[RustPackage, ...],
+) -> dict[str, dict[str, str]]:
+    """Files that define #[macro_export] macros, by package directory and macro name.
+
+    An exported macro lives at the crate root by name (use crate::emit), wherever
+    it is written; without this index such a use would point at lib.rs.
+    """
+    macros: dict[str, dict[str, str]] = {}
+    for path in sorted(path_to_id):
+        if not path.endswith(".rs"):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as source:
+                text = source.read()
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"[code-graph] Cannot read Rust macros from {path}: {error}", file=sys.stderr)
+            continue
+        if "macro_export" not in text:
+            continue
+        owner = _owning_package(path, packages)
+        by_name = macros.setdefault(owner.directory if owner is not None else "", {})
+        for match in _EXPORTED_MACRO.finditer(text):
+            by_name.setdefault(match.group(1), path)
+    return macros
+
+
 @dataclass(frozen=True)
 class BoundRustLanguage:
     root: str
     path_to_id: Mapping[str, str]
     packages: tuple[RustPackage, ...]
+    exported_macros: Mapping[str, Mapping[str, str]]
 
     @classmethod
     def create(
@@ -178,7 +213,12 @@ class BoundRustLanguage:
                 f"[code-graph] Loaded {len(packages)} local Rust packages",
                 file=sys.stderr,
             )
-        return cls(os.path.normpath(root), path_to_id, packages)
+        return cls(
+            os.path.normpath(root),
+            path_to_id,
+            packages,
+            _load_exported_macros(path_to_id, packages),
+        )
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         segments = tuple(segment for segment in import_name.split("::") if segment)
@@ -194,9 +234,24 @@ class BoundRustLanguage:
             fallbacks = (
                 _package_entrypoints(owner) if owner is not None else (absolute_source,)
             )
-            return _resolve_from_directory(
+            module_target = _resolve_from_directory(
                 source_directory,
                 segments[1:],
+                self.path_to_id,
+            )
+            if module_target is not None:
+                return module_target
+            if len(segments) == 2:
+                macro_file = self.exported_macros.get(
+                    owner.directory if owner is not None else "", {}
+                ).get(segments[1])
+                if macro_file is not None:
+                    macro_target = _candidate_id(macro_file, self.path_to_id)
+                    if macro_target is not None:
+                        return macro_target
+            return _resolve_from_directory(
+                source_directory,
+                (),
                 self.path_to_id,
                 fallbacks,
             )
@@ -212,14 +267,15 @@ class BoundRustLanguage:
                 index += 1
             remaining_segments = segments[index:]
             fallbacks: tuple[str, ...] = ()
-            if not remaining_segments:
-                if traversed_parent:
-                    fallbacks = _logical_module_files(module_directory)
-                    crate_source = _crate_source_directory(absolute_source, owner)
-                    if module_directory == crate_source and owner is not None:
-                        fallbacks = (*fallbacks, *_package_entrypoints(owner))
-                else:
-                    fallbacks = (absolute_source,)
+            if traversed_parent:
+                # `super::Item` depends on the parent module wherever Item is defined:
+                # the parent may only re-export it.
+                fallbacks = _logical_module_files(module_directory)
+                crate_source = _crate_source_directory(absolute_source, owner)
+                if module_directory == crate_source and owner is not None:
+                    fallbacks = (*fallbacks, *_package_entrypoints(owner))
+            elif not remaining_segments:
+                fallbacks = (absolute_source,)
             return _resolve_from_directory(
                 module_directory,
                 remaining_segments,
@@ -232,7 +288,13 @@ class BoundRustLanguage:
             None,
         )
         if package is None:
-            return None
+            # A relative path that starts at a child module: use codegen::emit::X.
+            # An external crate has no file below this module, so it resolves to nothing.
+            return _resolve_from_directory(
+                _logical_module_directory(absolute_source),
+                segments,
+                self.path_to_id,
+            )
         return _resolve_from_directory(
             os.path.join(package.directory, "src"),
             segments[1:],

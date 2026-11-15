@@ -127,6 +127,41 @@ query command in [Common code searches](#common-code-searches) is available as
 `wingbox <command>`. The command installs the parsers for all supported
 languages and finds `.code_graph.sexp` in the current directory or its parents.
 
+### The report and the map
+
+`wingbox build` writes three things into the project:
+
+| File | For whom | What it is |
+|---|---|---|
+| `.code_graph.sexp` | AI coding agents | The code graph in a compact form that the query commands read |
+| `wingbox-out/REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
+| `wingbox-out/map.html` | People | An interactive map of the code graph: one file, opens in a browser, works without a network connection |
+
+On the map, click a file to see its blast radius: the files that depend on it
+move onto rings, one ring per hop. The layers view stacks the architecture
+layers as planes in 3D and can be turned with the mouse. A link such as
+`map.html#select=src/app.ts` opens the map on that file.
+
+Both files are rewritten on every build. Add `wingbox-out/` to `.gitignore`
+unless you want them in the repository.
+
+### Run in Docker, with nothing installed
+
+```bash
+git clone https://github.com/aileron-tech/wingbox
+docker build -t wingbox wingbox
+
+cd /path/to/project
+docker run --rm --network none -v "$PWD":/repo wingbox
+docker run --rm --network none -v "$PWD":/repo wingbox impact path/to/file.py
+```
+
+The first `docker run` builds the code graph, the report and the map of the
+mounted project; any other Wingbox command goes after the image name. The
+container needs no network, and `--network none` shows it: nothing leaves the
+machine. On Linux add `--user "$(id -u):$(id -g)"` so that the written files
+belong to you.
+
 ### Running the scripts from a clone
 
 Clone the repository:
@@ -213,7 +248,7 @@ is outside the current directory.
 | Language | What is indexed |
 |---|---|
 | Python | Modules, imports, classes, functions, methods, inheritance, and references |
-| TypeScript and TSX | Imports, re-exports, classes, interfaces, functions, types, decorators, aliases, and references |
+| TypeScript, TSX and JavaScript | Imports, re-exports, classes, interfaces, functions, types, decorators, aliases, and references |
 | Rust | Cargo crates, modules, `use` dependencies, structs, traits, enums, functions, implementations, and methods |
 | C# | Namespaces, types, interfaces, records, enums, methods, attributes, inheritance, and local type dependencies |
 | Java | Packages, imports, classes, interfaces, records, enums, methods, annotations, inheritance, and local type dependencies |
@@ -319,7 +354,7 @@ must be verified against the running application.
 
 ### Which languages are supported?
 
-Python, TypeScript and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails, Free
+Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on Rails, Free
 Pascal and Lazarus, plus infrastructure relationships from Kustomize, Helm and
 Terraform.
 

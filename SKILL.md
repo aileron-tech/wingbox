@@ -276,10 +276,25 @@ backslash escapes. Other regex operators are rejected.
 
 The TypeScript AST contract covers TS/TSX imports and re-exports, literal
 `import()`/`require()`, `import = require()`, literal template imports, emitted
-`.js`/`.jsx` specifiers, project-scoped path aliases, and conventional exact
-self-imports. It does not promise inherited `tsconfig` aliases,
-`baseUrl`-only resolution, package `source`/`exports`, or self-package export
-subpaths.
+`.js`/`.jsx` specifiers, project-scoped path aliases including `paths`
+inherited through a relative `extends` chain, and imports that name a package
+of the repository: the package entry (`exports`, `source`, `types`, `module`,
+`main`) and its subpaths resolve to the TypeScript source, also when the entry
+points at build output. Packages outside the repository stay external. It does
+not promise aliases from an `extends` preset that lives in a package or
+`baseUrl`-only resolution.
+
+JavaScript files (`.js`, `.jsx`, `.mjs`, `.cjs`) are modules under the same
+contract. An import written as `./x.js` names `x.ts` when it exists and the
+real `x.js` otherwise; `.mjs` and `.cjs` are matched by their own extension.
+Minified files (`*.min.js`, or any line longer than 5,000 characters) and
+bundles (`bundle` in the file name) are left out, like everything in excluded
+or ignored directories.
+
+An import that goes through the `outDir` of a `tsconfig*.json`, written as a
+relative path, through an alias or as a package entry, resolves to the file
+under `rootDir` that it is compiled from. Without `rootDir` the source is
+looked up next to that tsconfig, then in its `src` folder.
 
 C# indexing follows namespaces and referenced local types; Java indexing
 follows packages, explicit imports, and referenced wildcard types. Unused

@@ -1,5 +1,31 @@
 # Completion Log
 
+## 2026-11-15 - version 0.2.0 and base classes matched by name
+
+### Changes
+- `pyproject.toml`: version 0.2.0 (report, map, Docker image, JavaScript modules and the resolution fixes of this date).
+- `scripts/lang/python/parser.py`: a base class keeps its written form (`nn.Module`); for a base reached through a name that an import binds, the parser records the class as a name taken from that module, so the provider is resolved by the import and an external module gives no edge.
+- `scripts/build_code_graph.py` (`_resolve_provider`): a base that the file does not import is matched by name only among providers of the same language; in Python and TypeScript/JavaScript the provider must also come from a wildcard import of the file.
+- `scripts/lang/rust/parser.py` (`_type_name`): a generic type gives its own name, not the last type argument.
+- `scripts/code_graph_search.py` (`_collect_dep_mods`, `_collect_rdep_mods`): a pair of files that has an import is reported as `imports`; another relation is named only when there is no import. An agent that was asked about imports and saw `data-flow` checked the whole list again with a text search.
+- Tests: REQ-CS-051, REQ-CS-052, REQ-CS-053, REQ-RUST-012.
+- Verified on six open-source repositories by listing every `calls-api` edge that has no `imports` edge between the same two files and reading the source: the wrong edges found (2 Python, 1 TypeScript to Go, Rust generic arguments read as traits) are gone, the 2 edges that remain without an import are a trait reached through a re-exporting module, and the `imports` edges are unchanged.
+
+### Motivation
+- A check on three small Python repositories placed in one folder showed two `calls-api` edges from files that use `torch.nn.Module` to a local file that defines its own `Module`; `impact` on that file listed 8 files where none depends on it. The same audit found a TypeScript `extends Error` linked to a Go type named `Error` and Rust generic arguments read as traits.
+
+## 2026-11-15 - TypeScript and JavaScript import resolution
+
+### Changes
+- `scripts/lang/typescript/tsconfig.py` (new) reads tsconfig files: comments and trailing commas are removed outside string literals, a byte order mark is accepted, and `extends` (a relative file, a chain or a list) is applied as TypeScript applies it, the nearest `paths`, `baseUrl`, `outDir` and `rootDir` winning.
+- `scripts/lang/typescript/imports.py`: an import that names a package of the repository resolves through `exports`, `source`, `types`, `module`, `main`, then `src/index` or `index`; a path inside a tsconfig `outDir` resolves to the file under `rootDir`; `./x.js` names `x.ts` first and the real `x.js` otherwise, `.mjs` and `.cjs` by their own extension.
+- `scripts/lang/typescript/javascript.py` (new) and `discover_files`: `.js`, `.jsx`, `.mjs` and `.cjs` files are modules with the language code `js`, except minified files and bundles.
+- Tests in `tests/test_typescript_language.py`: REQ-TS-ALIAS-001 to 006, REQ-TS-WS-001 to 008, REQ-TS-JS-001 to 005, REQ-TS-OUT-001 to 004.
+- Verified against an independent import resolver on two open-source repositories: recall of the TypeScript and JavaScript dependencies went from 0.971 to 0.999 and from 0.784 to 0.997, precision stayed 1.000; on a monorepo of 7,900 modules the dependencies between modules went from 19,734 to 37,893 and none was removed.
+
+### Motivation
+- A comparison of the graph with the source showed where TypeScript dependencies were lost: a tsconfig that named its schema by URL was skipped, inherited `paths` were ignored, packages of the same repository imported by name stayed external, JavaScript files were not modules, and imports through a build output folder named files that are not in the repository.
+
 ## 2026-11-15 - maintainer instructions
 
 ### Changes
@@ -142,7 +168,7 @@
   AI-agent workflows.
 
 ### Fixes
-- Verified Ruby support on `/Users/alexeus/src/masha`: all 244 Ruby/Rake files
+- Verified Ruby support on a Rails application: all 244 Ruby/Rake files
   parsed without syntax errors in 2.82 seconds, producing 244 nodes, 881
   entities, and 852 edges in a 120,660-byte map. A second build reused all 244
   cached results and completed in 2.04 seconds.
@@ -161,7 +187,7 @@
 - Compared the extracted Python and TypeScript adapters with the upstream
   pre-extraction builder on the current Upgraide mono checkout: all 7,215 files,
   7,215 nodes, and 55,972 edges produced identical facts and graph hashes.
-- Verified Rust support against `diskd-cli`: all 4 tracked Rust files were
+- Verified Rust support against a small command-line project: all 4 tracked Rust files were
   discovered, all 256 source-oracle entities matched, and both local crate
   dependency edges matched, with 100% precision and recall.
 - Verified C# on a private API codebase: 254/254 authored files, 286/286

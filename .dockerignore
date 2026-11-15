@@ -1,0 +1,8 @@
+.git
+.venv
+tests
+dist
+wingbox-out
+**/__pycache__
+.code_graph.sexp
+.code_graph_cache.json

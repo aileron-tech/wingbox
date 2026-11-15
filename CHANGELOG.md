@@ -4,6 +4,43 @@
 
 ### Changes
 
+- Package version 0.2.0.
+- `wingbox build` now also writes `wingbox-out/REPORT.md` (key findings, the
+  most depended-on files, layers, boundary violations, entry points) and
+  `wingbox-out/map.html`, an interactive map of the code graph in one file
+  that works offline: click a file to see its blast radius on rings, switch to
+  the 3D layers view, link to a file with `map.html#select=<file>`.
+- Added a `Dockerfile`: `docker run --rm --network none -v "$PWD":/repo wingbox`
+  builds the graph, the report and the map with nothing installed on the
+  machine and no network access.
+- `boundaries` prints `(violation ...)` only when both layers come from the
+  folders or the file type; a pair that rests on a layer guessed from the role
+  of a file is printed as `(violation-candidate ...)`, and the summary gives
+  both counts.
+- Layers: a `.tsx` component is UI whatever its folder is called; folders named
+  `tools` or `cli` are no longer classified as configuration; test files are
+  recognised by folder (`tests/`, `__tests__/`, `e2e/`) and by name (`*.test`,
+  `*.spec`, `*_test`, `test_*`) before any other rule.
+- Files that would share a module ID (`x.test.ts` next to `x.test.tsx`,
+  `tool.py` next to `tool.ts`) are all kept: the first keeps the plain ID, the
+  others are named by their full path. A repository with such files used to
+  stop the build with "module ID collision".
+- A folder named `bin` is skipped only as a .NET build output (next to `.cs`
+  or project files); elsewhere its sources are part of the graph.
+- `impact` accepts the path of an index file (`src/lib/index.ts`) and of a
+  file named by its full path.
+- JavaScript files (`.js`, `.jsx`, `.mjs`, `.cjs`) are modules: an import of a
+  real JavaScript file and the dependencies between JavaScript files are part
+  of the graph. `./x.js` still names `x.ts` when it exists. Minified files
+  (`*.min.js`, or any line longer than 5,000 characters) and bundles (`bundle`
+  in the file name) are left out. A project with JavaScript files now needs
+  the TypeScript parser packages.
+- TypeScript: an import that names a package of the repository (a workspace
+  member such as `@scope/shared`) resolves to its source through `exports`,
+  `source`, `types`, `module` or `main`, subpaths included.
+- TypeScript: an import that goes through the `outDir` of a tsconfig
+  (`../dist/index.js` in a test or a script) resolves to the source file under
+  `rootDir`.
 - Added the `wingbox` command and the Python package metadata (version 0.1.1):
   `wingbox build [PATH]` builds the code graph and every query command runs as
   `wingbox <command>`, for example `wingbox impact path/to/file.py`. Install it
@@ -23,6 +60,45 @@
 - Existing maps are not read under the old names: rebuild the code graph once,
   delete the old generated files, and update agent instructions and ignore
   rules that mention the old script or file names.
+
+### Fixes
+
+- A class is no longer linked to a file that merely defines a class of the
+  same name. A Python base written as `module.Class` (`nn.Module` after
+  `import torch.nn as nn`) follows the module that the import binds, so a
+  module of an external package gives no dependency; a base that the file does
+  not import is matched by name only inside the same language, and in Python,
+  TypeScript and JavaScript only through a wildcard import. Before, `impact`
+  could list files that do not depend on the changed file.
+- `impact`, `deps` and `rdeps` name the relation as `imports` whenever the file
+  imports the target; `data-flow` or `calls-api` was printed instead when such
+  an edge existed next to the import, which made a plain import look like
+  something else.
+- Rust: in `impl From<eyre::Report> for AppError` the implemented trait is
+  `From` and in `impl Runner for Wrapper<T>` the type is `Wrapper`; a generic
+  argument was taken as the trait or the type.
+- The graph reader hung, growing memory without bound, when an entity listed a
+  quoted bracket, for example a constant `[")", "]", "}"]`. Every query and
+  the report step hung on such a repository.
+- Rust: `use super::*` inside an inline module (`mod tests { ... }`) created a
+  false dependency on the parent module.
+- Rust: dependencies written as a path without `use` (`crate::a::b::f()`,
+  `super::x::Y`), through an imported module (`x86::linker::link()`), through
+  the crate name in a binary, inside macro arguments, through a relative path
+  that starts at a child module, and on an item the parent only re-exports are
+  now part of the graph. `use crate::name` of a `#[macro_export]` macro points
+  at the file that defines the macro, not at the crate root.
+- Folder rules such as `/tests/` did not match a top-level folder, so test
+  files were classified by a guess from the file role.
+- Go, Java and C# files were reported without their extension.
+- A Go build scanned every file of the project for every import; a 1,200-file
+  project now builds in a third of the time. The report step of a 7,800-module
+  project takes 5 seconds.
+- TypeScript: a tsconfig with a URL in a string value (`"$schema":
+  "https://..."`), a block comment or a byte order mark was skipped as
+  unreadable, and every import through its `paths` aliases was lost.
+- TypeScript: `paths` and `baseUrl` inherited through `extends` were not read,
+  so a project whose tsconfig only extends a base file had no aliases.
 
 ## 2026-08-11
 

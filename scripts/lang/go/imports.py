@@ -4,7 +4,6 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Mapping
 
 from ..discovery import is_excluded_path, retained_directory_names
@@ -63,6 +62,10 @@ def _load_go_modules(
 class BoundGoLanguage:
     path_to_id: Mapping[str, str]
     modules: tuple[GoModule, ...]
+    # Non-test Go files of each directory, indexed once: a Go import names a
+    # package (a directory), and scanning every file for every import made a
+    # 1,200-file build spend nine tenths of its time here.
+    package_ids_by_directory: Mapping[str, tuple[str, ...]]
 
     @classmethod
     def create(
@@ -71,9 +74,16 @@ class BoundGoLanguage:
         path_to_id: Mapping[str, str],
         discovery_exclusions: DiscoveryExclusions,
     ) -> BoundGoLanguage:
+        by_directory: dict[str, set[str]] = {}
+        for path, node_id in path_to_id.items():
+            if path.endswith(".go") and not path.endswith("_test.go"):
+                by_directory.setdefault(
+                    os.path.normpath(os.path.dirname(path)), set()
+                ).add(node_id)
         return cls(
             path_to_id,
             _load_go_modules(root, discovery_exclusions),
+            {directory: tuple(sorted(ids)) for directory, ids in by_directory.items()},
         )
 
     def _package_ids(self, import_name: str) -> tuple[str, ...]:
@@ -92,14 +102,7 @@ class BoundGoLanguage:
         package_directory = os.path.normpath(
             os.path.join(module.directory, *relative_package.split("/"))
         )
-        candidates = [
-            node_id
-            for path, node_id in self.path_to_id.items()
-            if path.endswith(".go")
-            and not path.endswith("_test.go")
-            and Path(path).parent == Path(package_directory)
-        ]
-        return tuple(sorted(set(candidates)))
+        return self.package_ids_by_directory.get(package_directory, ())
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         package_ids = self._package_ids(import_name)

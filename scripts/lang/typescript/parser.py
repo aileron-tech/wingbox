@@ -9,6 +9,7 @@ from tree_sitter import Node, Parser as _TsParser
 from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
+from .javascript import is_javascript_file
 
 
 _TS_LANG = _TsLanguage(_tst.language_typescript())
@@ -216,7 +217,9 @@ def parse_typescript_treesitter(
     path: str, content: str, repo: str, mtime: float,
 ) -> FileResult:
     """Parse a TypeScript file using tree-sitter for precise entity extraction."""
-    lang = _TSX_LANG if path.endswith(".tsx") else _TS_LANG
+    # JavaScript may hold JSX in any of its extensions; the TSX grammar reads both.
+    is_javascript = is_javascript_file(path)
+    lang = _TSX_LANG if path.endswith(".tsx") or is_javascript else _TS_LANG
     parser = _TsParser(lang)
     tree = parser.parse(content.encode("utf-8"))
     root = tree.root_node
@@ -395,6 +398,8 @@ def parse_typescript_treesitter(
                 exported_names.append(name)
 
     file_lang = "tsx" if path.endswith(".tsx") else "typescript"
+    if is_javascript:
+        file_lang = "javascript"
     return FileResult(
         path=path, language=file_lang, repo=repo, mtime=mtime,
         content_hash=file_hash(path),
