@@ -1,6 +1,6 @@
 # Wingbox: Code Graph and Blast Radius Analysis for AI Coding Agents
 
-![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](docs/assets/wingbox-social-preview.png)
+![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
 > Wingbox builds a local **code graph** of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture
@@ -8,7 +8,9 @@
 > It works as an agent skill in Claude Code and Codex and supports Python,
 > TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus.
 >
-> **Install:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
+> **Install the agent skill:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
+>
+> **Install the command:** `pipx install git+https://github.com/aileron-tech/wingbox`
 >
 > **Release notes:** [Changelog](CHANGELOG.md)
 >
@@ -98,6 +100,34 @@ Wingbox works with Codex, Claude Code, and other clients that support Agent
 Skills.
 
 ## Quick start from the command line
+
+Install the `wingbox` command (Python 3.11 or newer, macOS or Linux):
+
+```bash
+pipx install git+https://github.com/aileron-tech/wingbox
+```
+
+Or run it without installing:
+
+```bash
+uvx --from git+https://github.com/aileron-tech/wingbox wingbox --help
+```
+
+Build the code graph of a project, then ask what a change will break:
+
+```bash
+cd /path/to/project
+wingbox build .
+wingbox impact path/to/file.py
+wingbox quick "file upload"
+```
+
+`wingbox build [PATH]` accepts the builder options described below, and every
+query command in [Common code searches](#common-code-searches) is available as
+`wingbox <command>`. The command installs the parsers for all supported
+languages and finds `.code_graph.sexp` in the current directory or its parents.
+
+### Running the scripts from a clone
 
 Clone the repository:
 

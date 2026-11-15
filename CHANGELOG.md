@@ -4,6 +4,10 @@
 
 ### Changes
 
+- Added the `wingbox` command and the Python package metadata (version 0.1.1):
+  `wingbox build [PATH]` builds the code graph and every query command runs as
+  `wingbox <command>`, for example `wingbox impact path/to/file.py`. Install it
+  with `pipx install git+https://github.com/aileron-tech/wingbox`.
 - Added the `impact <file|id> [depth] [--sexp]` command: the modules that
   depend on a file, grouped by shortest distance, and the files to read first.
   It accepts an ordinary file path, prints readable text by default and

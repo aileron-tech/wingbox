@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-15 - wingbox command and package
+
+### Changes
+- `pyproject.toml` (hatchling, version 0.1.1, Python 3.11+ because the builder imports `tomllib`): package `wingbox` with the console command `wingbox`; the `scripts/` directory is bundled unchanged as `wingbox/_scripts`, so the skill layout and the script paths stay as they are.
+- `src/wingbox/cli.py`: `wingbox build [PATH]` calls `build_code_graph.main` with an absolute `--root` (default: the current directory); `wingbox infra` calls the topology builder; any other command goes to `code_graph_search.main`. Relative `--root`, `--map` and `--output` values are resolved against the current directory.
+- The package depends on the parsers of all supported languages at the versions in `requirements/`.
+- Tests: REQ-CLI-001 to REQ-CLI-006 in `tests/test_cli.py`. Verified: wheel built with `uv build`, installed in a clean environment with `uvx --from <wheel>` on Python 3.11 and 3.13, `wingbox build .` and `wingbox impact` run on a small project; the unit suite (106 tests) passes on Python 3.11, 3.12 and 3.13.
+- README: install and quick start with the command; the image uses an absolute URL so it also renders outside GitHub.
+
+### Motivation
+- Using the tool from a terminal required cloning the repository and calling the scripts by path with absolute options.
+
 ## 2026-11-15 - impact command
 
 ### Changes
