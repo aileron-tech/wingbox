@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Belief Map Search -- query tool for S-expression belief maps.
+Code Graph Search -- query tool for S-expression code graphs.
 
-Reads ``.belief_map.sexp`` and provides structured queries: module views,
+Reads ``.code_graph.sexp`` and provides structured queries: module views,
 dependency trees, reverse dependency analysis, entity lookups, data flow
 tracing, and boundary discovery for minimal context loading.
 
@@ -10,46 +10,46 @@ Output is S-expression facts (one per line, greppable).
 
 Usage::
 
-    belief_search.py analyze <id>           Full analysis in one step
-    belief_search.py boundary <id>          File paths for change boundary
-    belief_search.py quick <keyword>        Search + analyze in one step
-    belief_search.py module <id>            Show module with entities and edges
-    belief_search.py deps <id> [depth]      Outgoing dependency tree (default depth 2)
-    belief_search.py rdeps <id> [depth]     Reverse dependency tree (default depth 2)
-    belief_search.py entity <name>          Find entity: definition + all usages
-    belief_search.py flow <id> <entity>     Trace data/call flow from entity
-    belief_search.py search <pattern>       Safe pattern search across all facts
-    belief_search.py invariants [scope]     Check naming-convention violations (default: all)
-    belief_search.py find_function <name>   Find function/method definitions by name
-    belief_search.py find_type <name>       Find type/class/interface/enum definitions by name
-    belief_search.py find_callchain <src_fn> <tgt_fn> [depth]  Trace call path between two functions
-    belief_search.py find_callers <fn_name> [depth]  Who calls this function (incoming calls)
-    belief_search.py find_calls <fn_name> [depth]    What does this function call (outgoing calls)
-    belief_search.py grep_functions <pattern>         Search function bodies in source files
-    belief_search.py diff_functions [ref]             Identify changed functions in git diff (default: HEAD)
-    belief_search.py query <scheme-expr>    Evaluate a Scheme query expression
-    belief_search.py repl                   Interactive Scheme REPL
+    code_graph_search.py analyze <id>           Full analysis in one step
+    code_graph_search.py boundary <id>          File paths for change boundary
+    code_graph_search.py quick <keyword>        Search + analyze in one step
+    code_graph_search.py module <id>            Show module with entities and edges
+    code_graph_search.py deps <id> [depth]      Outgoing dependency tree (default depth 2)
+    code_graph_search.py rdeps <id> [depth]     Reverse dependency tree (default depth 2)
+    code_graph_search.py entity <name>          Find entity: definition + all usages
+    code_graph_search.py flow <id> <entity>     Trace data/call flow from entity
+    code_graph_search.py search <pattern>       Safe pattern search across all facts
+    code_graph_search.py invariants [scope]     Check naming-convention violations (default: all)
+    code_graph_search.py find_function <name>   Find function/method definitions by name
+    code_graph_search.py find_type <name>       Find type/class/interface/enum definitions by name
+    code_graph_search.py find_callchain <src_fn> <tgt_fn> [depth]  Trace call path between two functions
+    code_graph_search.py find_callers <fn_name> [depth]  Who calls this function (incoming calls)
+    code_graph_search.py find_calls <fn_name> [depth]    What does this function call (outgoing calls)
+    code_graph_search.py grep_functions <pattern>         Search function bodies in source files
+    code_graph_search.py diff_functions [ref]             Identify changed functions in git diff (default: HEAD)
+    code_graph_search.py query <scheme-expr>    Evaluate a Scheme query expression
+    code_graph_search.py repl                   Interactive Scheme REPL
 
 Scheme query examples::
 
-    belief_search.py query '(boundary "operatives.controller")'
-    belief_search.py query '(files (intersect (deps "A" 2) (rdeps "B" 1)))'
-    belief_search.py query '(filter (boundary "operatives.service") "dto")'
-    belief_search.py query '(count (deps "operatives.service" 3))'
+    code_graph_search.py query '(boundary "operatives.controller")'
+    code_graph_search.py query '(files (intersect (deps "A" 2) (rdeps "B" 1)))'
+    code_graph_search.py query '(filter (boundary "operatives.service") "dto")'
+    code_graph_search.py query '(count (deps "operatives.service" 3))'
 
 CLI examples::
 
-    belief_search.py analyze drive/tools/drive_vsearch
-    belief_search.py boundary operatives.service
-    belief_search.py entity DriveDbCommitResponse
-    belief_search.py deps drive/modules/drive_db/services/database_service 3
-    belief_search.py find_function createOrder
-    belief_search.py find_type DriveDbCommitResponse
-    belief_search.py find_callchain createOrder processPayment
-    belief_search.py find_callers handleRequest 3
-    belief_search.py find_calls createOrder 2
-    belief_search.py grep_functions "validate.*input"
-    belief_search.py diff_functions HEAD~3
+    code_graph_search.py analyze drive/tools/drive_vsearch
+    code_graph_search.py boundary operatives.service
+    code_graph_search.py entity DriveDbCommitResponse
+    code_graph_search.py deps drive/modules/drive_db/services/database_service 3
+    code_graph_search.py find_function createOrder
+    code_graph_search.py find_type DriveDbCommitResponse
+    code_graph_search.py find_callchain createOrder processPayment
+    code_graph_search.py find_callers handleRequest 3
+    code_graph_search.py find_calls createOrder 2
+    code_graph_search.py grep_functions "validate.*input"
+    code_graph_search.py diff_functions HEAD~3
 
 Patterns support literal text, ``.*`` wildcards, boundary ``^``/``$`` anchors,
 and backslash escapes. Other regex operators are rejected.
@@ -308,9 +308,9 @@ def _sexp_list(tag: str, items: list[str]) -> str:
 # No-match error helper
 # ---------------------------------------------------------------------------
 
-def _print_no_match(g: BeliefGraph, pattern: str) -> None:
+def _print_no_match(g: CodeGraph, pattern: str) -> None:
     """Print a structured no-match error with fuzzy suggestions."""
-    suggestions = BeliefGraph._suggest_similar(pattern, g.nodes)
+    suggestions = CodeGraph._suggest_similar(pattern, g.nodes)
     if suggestions:
         sug_str = " ".join(suggestions)
         print(f"(error no-match {_q(pattern)} :suggestions {sug_str})")
@@ -356,8 +356,8 @@ def _module_id_to_file(module_id: str, root: str) -> str:
 # Graph loader
 # ---------------------------------------------------------------------------
 
-class BeliefGraph:
-    """In-memory belief map graph built from S-expression facts."""
+class CodeGraph:
+    """In-memory code graph built from S-expression facts."""
 
     def __init__(self) -> None:
         self.nodes: dict[str, Node] = {}
@@ -385,8 +385,8 @@ class BeliefGraph:
             root if root is not None else os.path.dirname(os.path.abspath(path))
         )
         try:
-            with open(path, "r", encoding="utf-8") as belief_map:
-                map_lines = belief_map.readlines()
+            with open(path, "r", encoding="utf-8") as code_graph:
+                map_lines = code_graph.readlines()
         except OSError as error:
             return MapLoadErr(f"could not read {path}: {error}")
 
@@ -404,25 +404,25 @@ class BeliefGraph:
                 continue
 
             header_tokens = tokenize(stripped)
-            if header_tokens and header_tokens[0] == "belief-map":
+            if header_tokens and header_tokens[0] == "code-graph":
                 found_header = True
                 try:
                     schema_index = header_tokens.index(":schema")
                     nodes_index = header_tokens.index(":nodes")
                 except ValueError:
-                    return MapLoadErr("belief-map header is missing schema or node count")
+                    return MapLoadErr("code-graph header is missing schema or node count")
                 if schema_index + 1 >= len(header_tokens):
-                    return MapLoadErr("belief-map header has no schema value")
+                    return MapLoadErr("code-graph header has no schema value")
                 if header_tokens[schema_index + 1] != str(MAP_SCHEMA_VERSION):
                     return MapLoadErr(
-                        f"unsupported belief-map schema: "
+                        f"unsupported code-graph schema: "
                         f"{header_tokens[schema_index + 1]}"
                     )
                 if (
                     nodes_index + 1 >= len(header_tokens)
                     or not header_tokens[nodes_index + 1].isdigit()
                 ):
-                    return MapLoadErr("belief-map header has an invalid node count")
+                    return MapLoadErr("code-graph header has an invalid node count")
                 declared_node_count = int(header_tokens[nodes_index + 1])
                 continue
 
@@ -464,9 +464,9 @@ class BeliefGraph:
                 pmap[tokens[1]] = tokens[2]
 
         if not found_header:
-            return MapLoadErr("belief-map header is missing")
+            return MapLoadErr("code-graph header is missing")
         if not found_paths or in_paths:
-            return MapLoadErr("belief-map path section is missing or unbalanced")
+            return MapLoadErr("code-graph path section is missing or unbalanced")
 
         self.pmap = pmap
 
@@ -482,7 +482,7 @@ class BeliefGraph:
                 continue
             kind = tokens[0]
 
-            if kind in ("belief-map", "paths", "def", ")"):
+            if kind in ("code-graph", "paths", "def", ")"):
                 continue
 
             if kind == "node" and len(tokens) >= 4:
@@ -537,7 +537,7 @@ class BeliefGraph:
 
         if declared_node_count != len(self.nodes):
             return MapLoadErr(
-                f"belief-map node count mismatch: expected "
+                f"code-graph node count mismatch: expected "
                 f"{declared_node_count}, loaded {len(self.nodes)}"
             )
         return MapLoadOk()
@@ -631,7 +631,7 @@ class BeliefGraph:
 # Shared tree collectors
 # ---------------------------------------------------------------------------
 
-def _collect_dep_mods(g: BeliefGraph, nid: str) -> dict[str, str]:
+def _collect_dep_mods(g: CodeGraph, nid: str) -> dict[str, str]:
     """Outgoing dependency modules (deduped): module -> edge_type."""
     seen: dict[str, str] = {}
     for e in g.edges_from.get(nid, []):
@@ -641,7 +641,7 @@ def _collect_dep_mods(g: BeliefGraph, nid: str) -> dict[str, str]:
     return seen
 
 
-def _collect_rdep_mods(g: BeliefGraph, nid: str) -> dict[str, str]:
+def _collect_rdep_mods(g: CodeGraph, nid: str) -> dict[str, str]:
     """Incoming dependency modules (deduped): module -> edge_type."""
     seen: dict[str, str] = {}
     for e in g.edges_to.get(nid, []):
@@ -652,7 +652,7 @@ def _collect_rdep_mods(g: BeliefGraph, nid: str) -> dict[str, str]:
 
 
 def _walk_deps(
-    g: BeliefGraph, nid: str, visited: set[str], max_depth: int, depth: int,
+    g: CodeGraph, nid: str, visited: set[str], max_depth: int, depth: int,
     emit: Callable[[int, str, str, bool], None],
 ) -> None:
     if depth > max_depth:
@@ -666,7 +666,7 @@ def _walk_deps(
 
 
 def _walk_rdeps(
-    g: BeliefGraph, nid: str, visited: set[str], max_depth: int, depth: int,
+    g: CodeGraph, nid: str, visited: set[str], max_depth: int, depth: int,
     emit: Callable[[int, str, str, bool], None],
 ) -> None:
     if depth > max_depth:
@@ -928,7 +928,7 @@ def _edge_sexp(e: Edge) -> str:
     return f"({e.etype} {e.source} {e.target}{flags})"
 
 
-def cmd_module(g: BeliefGraph, module_id: str) -> None:
+def cmd_module(g: CodeGraph, module_id: str) -> None:
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
@@ -948,7 +948,7 @@ def cmd_module(g: BeliefGraph, module_id: str) -> None:
                 print(_edge_sexp(e))
 
 
-def cmd_deps(g: BeliefGraph, module_id: str, max_depth: int) -> None:
+def cmd_deps(g: CodeGraph, module_id: str, max_depth: int) -> None:
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
@@ -961,7 +961,7 @@ def cmd_deps(g: BeliefGraph, module_id: str, max_depth: int) -> None:
                    lambda d, et, tgt, cyc: print(f"(dep {start} {tgt} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
 
 
-def cmd_rdeps(g: BeliefGraph, module_id: str, max_depth: int) -> None:
+def cmd_rdeps(g: CodeGraph, module_id: str, max_depth: int) -> None:
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
@@ -974,7 +974,7 @@ def cmd_rdeps(g: BeliefGraph, module_id: str, max_depth: int) -> None:
                     lambda d, et, src, cyc: print(f"(rdep {start} {src} :lang {g.module_lang(src)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
 
 
-def cmd_entity(g: BeliefGraph, name: str) -> None:
+def cmd_entity(g: CodeGraph, name: str) -> None:
     # Always try exact match first, then safe-pattern fallback.
     definitions: list[EntityFact] = []
     if name in g.entity_by_name:
@@ -1009,7 +1009,7 @@ def cmd_entity(g: BeliefGraph, name: str) -> None:
         print(_edge_sexp(e))
 
 
-def cmd_flow(g: BeliefGraph, module_id: str, entity_name: str) -> None:
+def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> None:
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
@@ -1023,7 +1023,7 @@ def cmd_flow(g: BeliefGraph, module_id: str, entity_name: str) -> None:
 
 
 def _trace_flow(
-    g: BeliefGraph, entity_id: str, visited: set[str], depth: int,
+    g: CodeGraph, entity_id: str, visited: set[str], depth: int,
 ) -> None:
     if entity_id in visited or depth > 5:
         return
@@ -1047,7 +1047,7 @@ def _trace_flow(
                 _trace_flow(g, edge.target, visited, depth + 1)
 
 
-def cmd_boundary(g: BeliefGraph, module_id: str, files_only: bool = False) -> None:
+def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None:
     """Output the minimal set of files for a change boundary.
 
     When files_only is True, emit one bare file path per line instead of sexp.
@@ -1088,7 +1088,7 @@ def cmd_boundary(g: BeliefGraph, module_id: str, files_only: bool = False) -> No
     print(f"(boundary-summary {nid} :total {1 + len(import_mods) + len(dependent_mods)} :deps {len(import_mods)} :rdeps {len(dependent_mods)})")
 
 
-def cmd_analyze(g: BeliefGraph, module_id: str) -> None:
+def cmd_analyze(g: CodeGraph, module_id: str) -> None:
     """Full architectural analysis of a module."""
     matches = g.resolve_module(module_id)
     if not matches:
@@ -1172,7 +1172,7 @@ def cmd_analyze(g: BeliefGraph, module_id: str) -> None:
 
 
 def _analyze_sexp(
-    g: BeliefGraph, nid: str, node: Node, target_file: str,
+    g: CodeGraph, nid: str, node: Node, target_file: str,
     ents: list[EntityFact],
     import_targets: list[str], ref_targets: list[tuple[str, str]],
     data_flow_targets: list[str], call_targets: list[tuple[str, str]],
@@ -1243,7 +1243,7 @@ def _analyze_sexp(
     print(f"(analyze-summary {nid} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len(data_flow_targets)} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
 
 
-def cmd_quick(g: BeliefGraph, keyword: str, sexp_path: str) -> None:
+def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str) -> None:
     """Search for keyword then run analyze for the first match.
 
     Resolution order:
@@ -1283,7 +1283,7 @@ def cmd_quick(g: BeliefGraph, keyword: str, sexp_path: str) -> None:
     cmd_analyze(g, seen_modules[0])
 
 
-def cmd_search(_g: BeliefGraph, pattern: str, sexp_path: str) -> None:
+def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
     """Search module IDs first, then fall back to raw fact grep."""
     parsed_pattern = parse_search_pattern(pattern)
     if isinstance(parsed_pattern, SearchPatternErr):
@@ -1297,15 +1297,15 @@ def cmd_search(_g: BeliefGraph, pattern: str, sexp_path: str) -> None:
         return
 
     try:
-        with open(sexp_path, "r", encoding="utf-8") as belief_map:
-            for line in belief_map:
+        with open(sexp_path, "r", encoding="utf-8") as code_graph:
+            for line in code_graph:
                 if search_pattern_matches(parsed_pattern.value, line):
                     print(line.rstrip())
     except OSError as error:
         print(f"(error search-read-failed {_q(str(error))})")
 
 
-def cmd_boundaries(g: BeliefGraph, module_id: str) -> None:
+def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
     """Check boundary violations inferred from architecture layer patterns.
 
     Uses path-based layer classification and well-known architecture rules:
@@ -1361,7 +1361,7 @@ def cmd_boundaries(g: BeliefGraph, module_id: str) -> None:
     print(f"(boundaries-summary :violations {len(violations)} :checked {len(scope_mods)})")
 
 
-def cmd_layers(g: BeliefGraph) -> None:
+def cmd_layers(g: CodeGraph) -> None:
     """Show layer classification for all modules, grouped by layer."""
     by_layer: dict[str, list[str]] = {}
     for nid in sorted(g.nodes.keys()):
@@ -1390,7 +1390,7 @@ _NAMING_RULES: dict[str, set[str]] = {
 }
 
 
-def cmd_invariants(g: BeliefGraph, scope: str) -> None:
+def cmd_invariants(g: CodeGraph, scope: str) -> None:
     """Check naming-convention violations across modules.
 
     For each module that has a :naming annotation, validate the value against
@@ -1455,7 +1455,7 @@ def _short_function_name(entity_name: str) -> str:
     return entity_name[separator_index + 1 :]
 
 
-def cmd_find_function(g: BeliefGraph, name: str) -> None:
+def cmd_find_function(g: CodeGraph, name: str) -> None:
     """Find function/method definitions matching a name pattern.
 
     Searches fn entities and cls methods. Exact match first, then safe pattern.
@@ -1518,7 +1518,7 @@ def cmd_find_function(g: BeliefGraph, name: str) -> None:
                 print(f"(fn-def {ent.module}::{ent.name} :line {ent.line} :lang {lang} :file {_q(fpath)} :kind {function_kind})")
 
 
-def cmd_find_type(g: BeliefGraph, name: str) -> None:
+def cmd_find_type(g: CodeGraph, name: str) -> None:
     """Find type/class/interface/enum definitions matching a name pattern.
 
     Searches cls, mod, ifc, typ, enm entities.
@@ -1553,7 +1553,7 @@ def cmd_find_type(g: BeliefGraph, name: str) -> None:
         print(f"(type-def {ent.kind} {ent.module}::{ent.name} :line {ent.line} :lang {lang} :file {_q(fpath)}{extras})")
 
 
-def _resolve_fn_entity(g: BeliefGraph, fn_name: str) -> list[tuple[str, EntityFact]]:
+def _resolve_fn_entity(g: CodeGraph, fn_name: str) -> list[tuple[str, EntityFact]]:
     """Resolve a function name to (qualified_id, entity) pairs.
 
     Returns entity-qualified IDs like 'module::fnName'. Searches both
@@ -1590,10 +1590,10 @@ def _resolve_fn_entity(g: BeliefGraph, fn_name: str) -> list[tuple[str, EntityFa
     return results
 
 
-def cmd_find_callers(g: BeliefGraph, fn_name: str, max_depth: int) -> None:
+def cmd_find_callers(g: CodeGraph, fn_name: str, max_depth: int) -> None:
     """Find all callers of a function (incoming call graph).
 
-    Uses 'calls' edges from the belief map. Falls back to refs edges
+    Uses 'calls' edges from the code graph. Falls back to refs edges
     when calls edges are unavailable.
     """
     targets = _resolve_fn_entity(g, fn_name)
@@ -1636,10 +1636,10 @@ def cmd_find_callers(g: BeliefGraph, fn_name: str, max_depth: int) -> None:
                         f"{' :cycle' if cyc else ''})"))
 
 
-def cmd_find_calls(g: BeliefGraph, fn_name: str, max_depth: int) -> None:
+def cmd_find_calls(g: CodeGraph, fn_name: str, max_depth: int) -> None:
     """Find all functions called by a given function (outgoing call graph).
 
-    Uses 'calls' edges from the belief map.
+    Uses 'calls' edges from the code graph.
     """
     sources = _resolve_fn_entity(g, fn_name)
     if not sources:
@@ -1680,7 +1680,7 @@ def cmd_find_calls(g: BeliefGraph, fn_name: str, max_depth: int) -> None:
                        f"{' :cycle' if cyc else ''})"))
 
 
-def cmd_find_callchain(g: BeliefGraph, src_fn: str, tgt_fn: str, max_depth: int) -> None:
+def cmd_find_callchain(g: CodeGraph, src_fn: str, tgt_fn: str, max_depth: int) -> None:
     """Trace a call path between two functions via BFS on calls edges.
 
     Falls back to module-level path if no function-level calls edges exist.
@@ -1778,10 +1778,10 @@ def cmd_find_callchain(g: BeliefGraph, src_fn: str, tgt_fn: str, max_depth: int)
     print(f"(callchain-none {_q(src_fn)} -> {_q(tgt_fn)} :max-depth {max_depth})")
 
 
-def cmd_grep_functions(g: BeliefGraph, pattern: str) -> None:
+def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
     """Search function bodies using the supported linear pattern grammar.
 
-    For each function in the belief map, reads the source file and searches
+    For each function in the code graph, reads the source file and searches
     the function body (from definition line to next entity or EOF).
     """
     parsed_pattern = parse_search_pattern(pattern)
@@ -1845,15 +1845,15 @@ def cmd_grep_functions(g: BeliefGraph, pattern: str) -> None:
     print(f"(grep-functions-summary :matches {len(results)} :pattern {_q(pattern)})")
 
 
-def cmd_diff_functions(g: BeliefGraph, ref: str) -> None:
+def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
     """Identify which functions were changed in a git diff.
 
     Parses 'git diff <ref>' output to find changed line ranges,
-    then maps those ranges to function definitions in the belief map.
+    then maps those ranges to function definitions in the code graph.
     """
     import subprocess
 
-    # Use the belief map root as git working directory (not cwd)
+    # Use the code graph root as git working directory (not cwd)
     git_cwd = g._root or None
 
     try:
@@ -1919,7 +1919,7 @@ def cmd_diff_functions(g: BeliefGraph, ref: str) -> None:
     results: list[tuple[str, EntityFact, str]] = []  # (qualified_id, entity, file)
 
     for diff_file, ranges in changed_ranges.items():
-        # Try matching against belief map files
+        # Try matching against code graph files
         abs_path = os.path.join(repo_root, diff_file)
         # Also try relative path
         candidates = [abs_path, diff_file]
@@ -1975,7 +1975,7 @@ def cmd_diff_functions(g: BeliefGraph, ref: str) -> None:
 # Scheme query REPL -- composable S-expression queries on the graph
 # ---------------------------------------------------------------------------
 #
-# A tiny Scheme-dialect evaluator that exposes the belief graph as queryable
+# A tiny Scheme-dialect evaluator that exposes the code graph as queryable
 # data. Every value is either a string, int, bool, list, or a "module-set"
 # (set of module IDs). Functions compose naturally:
 #
@@ -1995,7 +1995,7 @@ def cmd_diff_functions(g: BeliefGraph, ref: str) -> None:
 #   (search "pattern")                      -> raw grep on sexp file
 
 _QUERY_HELP = """\
-; Scheme query language for .belief_map.sexp
+; Scheme query language for .code_graph.sexp
 ;
 ; Primitives (return module-set or list):
 ;   (resolve "pattern")                Find module IDs matching pattern
@@ -2006,7 +2006,7 @@ _QUERY_HELP = """\
 ;   (boundary "id")                    Target + deps + rdeps (change boundary)
 ;   (entity "Name")                    Modules defining entity
 ;   (refs-to "Name")                   Modules referencing entity
-;   (search "pattern")                 Grep .belief_map.sexp
+;   (search "pattern")                 Grep .code_graph.sexp
 ;
 ; Function & type search (return module-set):
 ;   (find-function "name")             Modules containing function definitions
@@ -2036,9 +2036,9 @@ _QUERY_HELP = """\
 
 
 class _SchemeEval:
-    """Tiny Scheme evaluator for belief graph queries."""
+    """Tiny Scheme evaluator for code graph queries."""
 
-    def __init__(self, g: BeliefGraph, sexp_path: str) -> None:
+    def __init__(self, g: CodeGraph, sexp_path: str) -> None:
         self._g = g
         self._sexp_path = sexp_path
 
@@ -2421,17 +2421,17 @@ def _format_result(val: object) -> None:
         print(f"(result {_q(str(val))})")
 
 
-def cmd_query(g: BeliefGraph, expr: str, sexp_path: str) -> None:
+def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> None:
     """Evaluate a single Scheme query expression."""
     evaluator = _SchemeEval(g, sexp_path)
     result = evaluator.eval_str(expr)
     _format_result(result)
 
 
-def cmd_repl(g: BeliefGraph, sexp_path: str) -> None:
-    """Interactive Scheme REPL for belief map queries."""
+def cmd_repl(g: CodeGraph, sexp_path: str) -> None:
+    """Interactive Scheme REPL for code graph queries."""
     evaluator = _SchemeEval(g, sexp_path)
-    print("; belief-map query REPL")
+    print("; code-graph query REPL")
     print("; type (help) for available functions, (quit) to exit")
     print()
 
@@ -2458,15 +2458,15 @@ def cmd_repl(g: BeliefGraph, sexp_path: str) -> None:
 # ---------------------------------------------------------------------------
 
 def find_sexp_file() -> str:
-    """Find belief_map.sexp in current or parent dirs.
+    """Find code_graph.sexp in current or parent dirs.
 
     Searches for (in priority order per directory):
-      .belief_map.sexp, belief_map.sexp
+      .code_graph.sexp, code_graph.sexp
 
-    If only a JSON belief map is found, prints a migration hint.
+    If only a JSON code graph is found, prints a migration hint.
     """
-    _SEXP_NAMES = (".belief_map.sexp", "belief_map.sexp")
-    _JSON_NAMES = (".belief_map.json", "belief_map.json")
+    _SEXP_NAMES = (".code_graph.sexp", "code_graph.sexp")
+    _JSON_NAMES = (".code_graph.json", "code_graph.json")
     cur = os.getcwd()
     json_found = ""
     while True:
@@ -2484,15 +2484,15 @@ def find_sexp_file() -> str:
             break
         cur = parent
     if json_found:
-        print(f"Error: found JSON belief map at {json_found} but this script requires sexp format.", file=sys.stderr)
+        print(f"Error: found JSON code graph at {json_found} but this script requires sexp format.", file=sys.stderr)
         print("Rebuild with the sexp builder:", file=sys.stderr)
         print(
-            "  python3 /absolute/path/to/codespaces/scripts/"
-            "build_belief_map.py --root /absolute/path/to/project",
+            "  python3 /absolute/path/to/wingbox/scripts/"
+            "build_code_graph.py --root /absolute/path/to/project",
             file=sys.stderr,
         )
     else:
-        print("Error: .belief_map.sexp not found. Run build_belief_map.py first.", file=sys.stderr)
+        print("Error: .code_graph.sexp not found. Run build_code_graph.py first.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -2567,7 +2567,7 @@ def main(args: Optional[list[str]] = None) -> int:
         return 2
 
     sexp_path = explicit_map or find_sexp_file()
-    g = BeliefGraph()
+    g = CodeGraph()
     load_result = g.load(sexp_path, explicit_root)
     if isinstance(load_result, MapLoadErr):
         print(f"(error invalid-map {_q(load_result.error)})")

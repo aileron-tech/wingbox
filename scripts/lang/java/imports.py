@@ -31,7 +31,7 @@ class BoundJavaLanguage:
                     content = source.read()
             except OSError as error:
                 print(
-                    f"[belief-map] Cannot index Java declarations from {path}: {error}",
+                    f"[code-graph] Cannot index Java declarations from {path}: {error}",
                     file=sys.stderr,
                 )
                 continue

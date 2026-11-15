@@ -38,7 +38,7 @@ def _load_go_modules(
                 content = manifest.read()
         except OSError as error:
             print(
-                f"[belief-map] Cannot read Go module identity from {manifest_path}: {error}",
+                f"[code-graph] Cannot read Go module identity from {manifest_path}: {error}",
                 file=sys.stderr,
             )
             continue

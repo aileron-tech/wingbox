@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Belief Map Builder -- Architecture Graph Generator.
+Code Graph Builder -- Architecture Graph Generator.
 
-Generates ``belief_map.sexp``, a flat S-expression graph of all modules,
+Generates ``code_graph.sexp``, a flat S-expression graph of all modules,
 entities, and relationships in a codebase. Each line is a self-contained
-fact, queryable with ``rg`` or ``scripts/belief_search.py``.
+fact, queryable with ``rg`` or ``scripts/code_graph_search.py``.
 
 Based on the Theory of Code Space (ToCS) methodology for reducing the
 "Active-Passive Gap" in AI code agents.
@@ -50,7 +50,7 @@ Edge Types
 
 Output Format
 -------------
-Flat S-expression facts (``belief_map.sexp``)::
+Flat S-expression facts (``code_graph.sexp``)::
 
     (node module/id ts "purpose description")
     (cls module/id ClassName 49 (:deco Injectable) (:methods create update delete))
@@ -81,11 +81,11 @@ Usage
 -----
 ::
 
-    python3 /absolute/path/to/scripts/build_belief_map.py \
+    python3 /absolute/path/to/scripts/build_code_graph.py \
         --root /absolute/path/to/project
-    python3 /absolute/path/to/scripts/build_belief_map.py \
+    python3 /absolute/path/to/scripts/build_code_graph.py \
         --root /absolute/path/to/project --full
-    python3 /absolute/path/to/scripts/build_belief_map.py \
+    python3 /absolute/path/to/scripts/build_code_graph.py \
         --root /absolute/path/to/project --lsp
 """
 
@@ -191,8 +191,8 @@ DEFAULT_DISCOVERY_EXCLUSIONS = DiscoveryExclusions(
     paths=frozenset(),
 )
 
-CACHE_FILE = ".belief_map_cache.json"
-OUTPUT_FILE = ".belief_map.sexp"
+CACHE_FILE = ".code_graph_cache.json"
+OUTPUT_FILE = ".code_graph.sexp"
 CACHE_SCHEMA_VERSION = 1
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-08-08-ruby"
@@ -350,7 +350,7 @@ def discover_files(
                             results.append((entry.path, language.name, repo))
         except PermissionError as exc:
             print(
-                f"[belief-map] WARNING: could not scan {dir_path}: {exc}",
+                f"[code-graph] WARNING: could not scan {dir_path}: {exc}",
                 file=sys.stderr,
             )
 
@@ -398,27 +398,27 @@ def _report_dependency_issues(
     issues: tuple[LanguageDependencyIssue, ...],
 ) -> None:
     print(
-        "[belief-map] ERROR: parser dependencies are missing or incompatible:",
+        "[code-graph] ERROR: parser dependencies are missing or incompatible:",
         file=sys.stderr,
     )
     for issue in issues:
         print(
-            f"[belief-map]   {issue.language.display_name}: {', '.join(issue.unavailable)}",
+            f"[code-graph]   {issue.language.display_name}: {', '.join(issue.unavailable)}",
             file=sys.stderr,
         )
     print(
-        "[belief-map] Install only the detected language dependencies:",
+        "[code-graph] Install only the detected language dependencies:",
         file=sys.stderr,
     )
     skill_root = Path(__file__).resolve().parent.parent
     for issue in issues:
         requirements_path = skill_root / "requirements" / f"{issue.language.name}.txt"
         print(
-            f'[belief-map]   python3 -m pip install -r "{requirements_path}"',
+            f'[code-graph]   python3 -m pip install -r "{requirements_path}"',
             file=sys.stderr,
         )
     print(
-        "[belief-map] ERROR: no cache or map was published",
+        "[code-graph] ERROR: no cache or map was published",
         file=sys.stderr,
     )
 
@@ -491,7 +491,7 @@ def _atomic_write_text(path: str, content: str) -> None:
                 os.unlink(temporary_path)
             except OSError as cleanup_error:
                 print(
-                    f"[belief-map] ERROR: could not remove {temporary_path}: {cleanup_error}",
+                    f"[code-graph] ERROR: could not remove {temporary_path}: {cleanup_error}",
                     file=sys.stderr,
                 )
         raise
@@ -511,14 +511,14 @@ def load_cache(
             cache = json.load(cache_file)
     except (json.JSONDecodeError, OSError) as exc:
         print(
-            f"[belief-map] WARNING: could not load cache {cache_path}: {exc}; rebuilding",
+            f"[code-graph] WARNING: could not load cache {cache_path}: {exc}; rebuilding",
             file=sys.stderr,
         )
         return {}
 
     if not isinstance(cache, dict):
         print(
-            f"[belief-map] WARNING: incompatible cache {cache_path}: top-level value must be an object; rebuilding",
+            f"[code-graph] WARNING: incompatible cache {cache_path}: top-level value must be an object; rebuilding",
             file=sys.stderr,
         )
         return {}
@@ -532,7 +532,7 @@ def load_cache(
         or not isinstance(cache.get("entries"), dict)
     ):
         print(
-            f"[belief-map] WARNING: incompatible cache {cache_path}: schema or builder fingerprint changed; rebuilding",
+            f"[code-graph] WARNING: incompatible cache {cache_path}: schema or builder fingerprint changed; rebuilding",
             file=sys.stderr,
         )
         return {}
@@ -2181,7 +2181,7 @@ def merge_lsp_edges(
             # Track so we don't add duplicates
             existing_keys[key] = -1
 
-    print(f"[belief-map] LSP merge: {verified_count} verified, {new_count} new edges")
+    print(f"[code-graph] LSP merge: {verified_count} verified, {new_count} new edges")
     return edges + new_edges
 
 
@@ -2220,7 +2220,7 @@ def enrich_with_lsp(
             )
         )
         print(
-            f"[belief-map] No LSP-compatible projects found (expected one of: {config_names})"
+            f"[code-graph] No LSP-compatible projects found (expected one of: {config_names})"
         )
         return nodes, edges
 
@@ -2234,7 +2234,7 @@ def enrich_with_lsp(
             language_stats.append(
                 f"{len(language_projects)} {language.lsp_label}/{file_count} files"
             )
-    print(f"[belief-map] LSP: {len(projects)} projects ({', '.join(language_stats)})")
+    print(f"[code-graph] LSP: {len(projects)} projects ({', '.join(language_stats)})")
 
     all_lsp_edges: list[LspEdge] = []
 
@@ -2381,7 +2381,7 @@ def render_sexp(
     total_files: int,
 ) -> str:
     """
-    Write the belief map as flat S-expression facts with path-map compression.
+    Write the code graph as flat S-expression facts with path-map compression.
 
     The file starts with ``(def <id> <full-path>)`` bindings that assign short
     numeric IDs to every module path. All subsequent lines use these IDs instead
@@ -2453,13 +2453,13 @@ def render_sexp(
     violations = [e for e in edges if e.get("type") == "VIOLATION"]
     real_edges = [e for e in edges if e.get("type") != "VIOLATION"]
 
-    lines.append("; Belief Map")
+    lines.append("; Code Graph")
     lines.append(f"; mode {mode}")
     lines.append(
         f"; {total_files} files {len(sorted_nodes)} nodes {len(real_edges)} edges {len(violations)} violations"
     )
     lines.append(
-        f"(belief-map :schema {MAP_SCHEMA_VERSION} :files {total_files} "
+        f"(code-graph :schema {MAP_SCHEMA_VERSION} :files {total_files} "
         f":nodes {len(sorted_nodes)} :edges {len(real_edges)} "
         f":violations {len(violations)})"
     )
@@ -2587,7 +2587,7 @@ def write_sexp(
     mode: str,
     total_files: int,
 ) -> None:
-    """Atomically publish a fully rendered belief map."""
+    """Atomically publish a fully rendered code graph."""
     content = render_sexp(nodes, edges, root, mode, total_files)
     _atomic_write_text(output_path, content)
 
@@ -2609,7 +2609,7 @@ class BuilderOptions:
 
 def _builder_usage() -> str:
     return (
-        "usage: build_belief_map.py --root ABSOLUTE_PATH "
+        "usage: build_code_graph.py --root ABSOLUTE_PATH "
         "[--output ABSOLUTE_PATH] [--full] [--lsp] "
         "[--lsp-timeout SECONDS] [--exclude-dir NAME ...]"
     )
@@ -2736,19 +2736,19 @@ def _run_build(options: BuilderOptions) -> int:
     root = options.root
     t0 = time.monotonic()
     mode = "LSP-enhanced" if options.use_lsp else "syntax"
-    print(f"[belief-map] Scanning {root} ... (mode: {mode})")
+    print(f"[code-graph] Scanning {root} ... (mode: {mode})")
 
     git_ignore_result = load_git_ignored_paths(root, options.skip_directories)
     if isinstance(git_ignore_result, GitIgnoreUnavailable):
         print(
-            f"[belief-map] WARNING: repository ignore rules unavailable: {git_ignore_result.reason}",
+            f"[code-graph] WARNING: repository ignore rules unavailable: {git_ignore_result.reason}",
             file=sys.stderr,
         )
         ignored_paths = frozenset()
     else:
         ignored_paths = git_ignore_result.paths
         if ignored_paths:
-            print(f"[belief-map] Git ignore rules excluded {len(ignored_paths)} paths")
+            print(f"[code-graph] Git ignore rules excluded {len(ignored_paths)} paths")
     exclusions = DiscoveryExclusions(
         directory_names=options.skip_directories,
         paths=ignored_paths,
@@ -2768,8 +2768,8 @@ def _run_build(options: BuilderOptions) -> int:
     extensions = ", ".join(
         extension for language in LANGUAGES for extension in language.source_extensions
     )
-    print(f"[belief-map] Found {len(files)} source files ({count_summary})")
-    print(f"[belief-map] Supported source: {extensions}")
+    print(f"[code-graph] Found {len(files)} source files ({count_summary})")
+    print(f"[code-graph] Supported source: {extensions}")
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
     dependency_issues = _dependency_issues(active_language_names)
@@ -2793,13 +2793,13 @@ def _run_build(options: BuilderOptions) -> int:
                 cached_results.append(cached_result.value)
                 continue
             print(
-                f"[belief-map] WARNING: rebuilding invalid cache entry for {path}: {cached_result.error}",
+                f"[code-graph] WARNING: rebuilding invalid cache entry for {path}: {cached_result.error}",
                 file=sys.stderr,
             )
         to_parse.append((path, lang, repo))
 
     print(
-        f"[belief-map] Parsing {len(to_parse)} changed files ({len(cached_results)} cached)"
+        f"[code-graph] Parsing {len(to_parse)} changed files ({len(cached_results)} cached)"
     )
 
     new_results: list[FileResult] = []
@@ -2819,11 +2819,11 @@ def _run_build(options: BuilderOptions) -> int:
         for collision in graph_result.error.collisions:
             paths = ", ".join(collision.paths)
             print(
-                f"[belief-map] ERROR: module ID collision {collision.node_id}: {paths}",
+                f"[code-graph] ERROR: module ID collision {collision.node_id}: {paths}",
                 file=sys.stderr,
             )
         print(
-            "[belief-map] ERROR: no cache or map was published",
+            "[code-graph] ERROR: no cache or map was published",
             file=sys.stderr,
         )
         return 1
@@ -2832,14 +2832,14 @@ def _run_build(options: BuilderOptions) -> int:
 
     syntax_elapsed = time.monotonic() - t0
     print(
-        f"[belief-map] Syntax pass: {syntax_elapsed:.2f}s -- {len(nodes)} nodes, {len(edges)} edges"
+        f"[code-graph] Syntax pass: {syntax_elapsed:.2f}s -- {len(nodes)} nodes, {len(edges)} edges"
     )
 
     # LSP enrichment pass (if requested)
     if options.use_lsp:
         t_lsp_start = time.monotonic()
         print(
-            f"[belief-map] Starting LSP enrichment (timeout={options.lsp_timeout}s per request) ..."
+            f"[code-graph] Starting LSP enrichment (timeout={options.lsp_timeout}s per request) ..."
         )
         nodes, edges = enrich_with_lsp(
             root,
@@ -2850,7 +2850,7 @@ def _run_build(options: BuilderOptions) -> int:
             exclusions,
         )
         t_lsp = time.monotonic() - t_lsp_start
-        print(f"[belief-map] LSP pass: {t_lsp:.2f}s")
+        print(f"[code-graph] LSP pass: {t_lsp:.2f}s")
 
     new_cache = {result.path: _serialize_file_result(result) for result in all_results}
     map_content = render_sexp(nodes, edges, root, mode, len(all_results))
@@ -2864,24 +2864,24 @@ def _run_build(options: BuilderOptions) -> int:
 
     elapsed = time.monotonic() - t0
     print(
-        f"[belief-map] Done in {elapsed:.2f}s -- {len(nodes)} nodes, {len(edges)} edges"
+        f"[code-graph] Done in {elapsed:.2f}s -- {len(nodes)} nodes, {len(edges)} edges"
     )
-    print(f"[belief-map] Output: {options.output_path}")
+    print(f"[code-graph] Output: {options.output_path}")
 
     # Stats
     repos = sorted(set(n["repo"] for n in nodes))
-    print(f"[belief-map] Repos: {', '.join(repos)}")
+    print(f"[code-graph] Repos: {', '.join(repos)}")
 
     from collections import Counter
 
     edge_types = Counter(e["type"] for e in edges)
     total_entities = sum(len(n.get("entities", [])) for n in nodes)
     lsp_verified = sum(1 for e in edges if e.get("lsp_verified"))
-    print(f"[belief-map] Entities: {total_entities}")
+    print(f"[code-graph] Entities: {total_entities}")
     for etype, count in sorted(edge_types.items()):
-        print(f"[belief-map]   {etype}: {count}")
+        print(f"[code-graph]   {etype}: {count}")
     if lsp_verified:
-        print(f"[belief-map]   LSP-verified: {lsp_verified}")
+        print(f"[code-graph]   LSP-verified: {lsp_verified}")
     return 0
 
 
@@ -2889,7 +2889,7 @@ def _lock_path(root: str) -> str:
     root_digest = hashlib.sha256(root.encode("utf-8")).hexdigest()[:20]
     return os.path.join(
         tempfile.gettempdir(),
-        f"codespaces-belief-map-{root_digest}.lock",
+        f"wingbox-code-graph-{root_digest}.lock",
     )
 
 
@@ -2910,7 +2910,7 @@ def main(args: Optional[list[str]] = None) -> int:
         lock_file = open(lock_path, "a+", encoding="utf-8")
     except OSError as error:
         print(
-            f"[belief-map] ERROR: could not open build lock {lock_path}: {error}",
+            f"[code-graph] ERROR: could not open build lock {lock_path}: {error}",
             file=sys.stderr,
         )
         return 1
@@ -2920,20 +2920,20 @@ def main(args: Optional[list[str]] = None) -> int:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             print(
-                f"[belief-map] ERROR: another build is active for {options.root}",
+                f"[code-graph] ERROR: another build is active for {options.root}",
                 file=sys.stderr,
             )
             return 1
         return _run_build(options)
     except OSError as error:
-        print(f"[belief-map] ERROR: build failed: {error}", file=sys.stderr)
+        print(f"[code-graph] ERROR: build failed: {error}", file=sys.stderr)
         return 1
     finally:
         try:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
         except OSError as error:
             print(
-                f"[belief-map] ERROR: could not release build lock: {error}",
+                f"[code-graph] ERROR: could not release build lock: {error}",
                 file=sys.stderr,
             )
         lock_file.close()

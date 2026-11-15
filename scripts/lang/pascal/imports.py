@@ -62,7 +62,7 @@ class BoundPascalLanguage:
                 content = Path(path).read_text(encoding="utf-8", errors="replace")
             except OSError as error:
                 print(
-                    f"[belief-map] Cannot index Pascal declarations from {path}: "
+                    f"[code-graph] Cannot index Pascal declarations from {path}: "
                     f"{error}",
                     file=sys.stderr,
                 )

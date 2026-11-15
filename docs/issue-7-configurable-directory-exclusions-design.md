@@ -1,4 +1,4 @@
-Configurable Directory Exclusions for Belief-Map Builds
+Configurable Directory Exclusions for Code-Graph Builds
 ========================================================
 
 Status
@@ -13,8 +13,8 @@ rules.
 Context and motivation
 ----------------------
 
-The belief-map builder owns a fixed `SKIP_DIRS` set in
-`scripts/build_belief_map.py`. `discover_files` applies that set while walking
+The code-graph builder owns a fixed `SKIP_DIRS` set in
+`scripts/build_code_graph.py`. `discover_files` applies that set while walking
 source trees. `build_graph` passes the same set into language adapters for local
 import resolution, and `discover_projects` applies it while finding LSP project
 configuration.
@@ -22,8 +22,8 @@ configuration.
 Callers cannot add repository-specific directory names. A tracked snapshot tree
 therefore looks like live source when its basename is not in `SKIP_DIRS`. The
 current checkout demonstrates the failure: a graph query for
-`build_belief_map` selects `.canonical-fix.6WjsfQ/scripts/build_belief_map`
-before the live `scripts/build_belief_map` module.
+`build_code_graph` selects `.canonical-fix.6WjsfQ/scripts/build_code_graph`
+before the live `scripts/build_code_graph` module.
 
 The builder needs one caller-extensible exclusion policy that every target-root
 discovery component consumes. Git remains the owner of repository ignore
@@ -78,7 +78,7 @@ C4 boundaries
 
 ### System context
 
-The caller is a developer or coding agent. It invokes the Codespaces belief-map
+The caller is a developer or coding agent. It invokes the Wingbox code-graph
 builder for a target repository and then queries the published map. The target
 repository is input data. Git is the external owner for repository ignore
 semantics. Optional language servers are external systems used only during LSP
@@ -87,14 +87,14 @@ enrichment.
 Contract:
 
 ```text
-Caller -> build_belief_map.py CLI -> cache and belief-map artifacts
+Caller -> build_code_graph.py CLI -> cache and code-graph artifacts
                                   -> Git ignore resolution
                                   -> optional language-server processes
 ```
 
 ### Container boundary
 
-`scripts/build_belief_map.py` is the builder process and composition root. It
+`scripts/build_code_graph.py` is the builder process and composition root. It
 owns CLI parsing, effective configuration, orchestration, cache publication,
 and map publication. Language adapters under `scripts/lang/` are in-process
 components behind the `Language` and `BoundLanguage` protocols.
@@ -102,7 +102,7 @@ components behind the `Language` and `BoundLanguage` protocols.
 The CLI/container contract is:
 
 ```text
-build_belief_map.py --root ABSOLUTE_PATH
+build_code_graph.py --root ABSOLUTE_PATH
   [--exclude-dir DIRECTORY_BASENAME]...
 ```
 
@@ -144,11 +144,11 @@ processes communicate through LSP DTOs.
 The implementation affects these source-owned contracts:
 
 - `parse_builder_options` and `BuilderOptions` in
-  `scripts/build_belief_map.py`.
+  `scripts/build_code_graph.py`.
 - `discover_files`, `build_graph`, `_builder_fingerprint`, `load_cache`, and
-  `save_cache` in `scripts/build_belief_map.py`.
+  `save_cache` in `scripts/build_code_graph.py`.
 - `discover_projects` and `enrich_with_lsp` in
-  `scripts/build_belief_map.py`.
+  `scripts/build_code_graph.py`.
 - `Language.bind` in `scripts/lang/interface.py` and the existing adapter
   implementations.
 - `load_git_ignored_paths` in `scripts/git_ignore.py` and shared path predicates
@@ -315,7 +315,7 @@ Implementation outline
 8. Run the smallest affected test modules and `git diff --check`.
 9. Rebuild the current repository with
    `--exclude-dir .canonical-fix.6WjsfQ` and verify the excluded module is absent
-   while `scripts/build_belief_map` remains queryable.
+   while `scripts/build_code_graph` remains queryable.
 
 Acceptance criteria
 -------------------
@@ -333,7 +333,7 @@ Acceptance criteria
 - Reordering or duplicating the same basename values preserves the effective
   immutable set.
 - The current repository rebuild excludes `.canonical-fix.6WjsfQ` and a graph
-  search resolves the live `scripts/build_belief_map` module without the
+  search resolves the live `scripts/build_code_graph` module without the
   snapshot candidate.
 - Focused tests pass and no external infrastructure test is required.
 

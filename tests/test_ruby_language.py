@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.build_belief_map import Ok, build_graph, discover_files, render_sexp
+from scripts.build_code_graph import Ok, build_graph, discover_files, render_sexp
 from scripts.lang.interface import FileResult
 from scripts.lang.ruby import RUBY_LANGUAGE, parse_ruby_treesitter
 

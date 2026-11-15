@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 from tests.test_audit_regressions import (
     BUILD_SCRIPT,
-    belief_search,
-    build_belief_map,
+    code_graph_search,
+    build_code_graph,
 )
 
 
@@ -25,7 +25,7 @@ class IssueOneRegressionTest(unittest.TestCase):
         path = root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        result = build_belief_map.parse_file((str(path), "typescript", "fixture"))
+        result = build_code_graph.parse_file((str(path), "typescript", "fixture"))
         self.assertIsNotNone(result)
         return result
 
@@ -34,8 +34,8 @@ class IssueOneRegressionTest(unittest.TestCase):
         results: list[object],
         root: Path,
     ) -> set[tuple[str, str]]:
-        graph_result = build_belief_map.build_graph(results, str(root))
-        self.assertIsInstance(graph_result, build_belief_map.Ok)
+        graph_result = build_code_graph.build_graph(results, str(root))
+        self.assertIsInstance(graph_result, build_code_graph.Ok)
         return {
             (edge["source"], edge["target"])
             for edge in graph_result.value.edges
@@ -72,8 +72,8 @@ class IssueOneRegressionTest(unittest.TestCase):
                 [provider_a, provider_b, consumer],
                 [provider_b, provider_a, consumer],
             ):
-                graph_result = build_belief_map.build_graph(results, str(root))
-                self.assertIsInstance(graph_result, build_belief_map.Ok)
+                graph_result = build_code_graph.build_graph(results, str(root))
+                self.assertIsInstance(graph_result, build_code_graph.Ok)
                 outputs.append(graph_result.value)
 
             call_edges = [
@@ -85,7 +85,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                 for output in outputs
             ]
             rendered = [
-                build_belief_map.render_sexp(
+                build_code_graph.render_sexp(
                     output.nodes,
                     output.edges,
                     str(root),
@@ -121,15 +121,15 @@ class IssueOneRegressionTest(unittest.TestCase):
                         path = root / relative_path
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_text(content, encoding="utf-8")
-                        result = build_belief_map.parse_file(
+                        result = build_code_graph.parse_file(
                             (str(path), language, "fixture")
                         )
                         self.assertIsNotNone(result)
                         results.append(result)
 
-                    graph_result = build_belief_map.build_graph(results, str(root))
-                    map_path = root / ".belief_map.sexp"
-                    cache_path = root / ".belief_map_cache.json"
+                    graph_result = build_code_graph.build_graph(results, str(root))
+                    map_path = root / ".code_graph.sexp"
+                    cache_path = root / ".code_graph_cache.json"
                     map_path.write_bytes(b"prior-map\n")
                     cache_path.write_bytes(b"prior-cache\n")
                     cli_result = subprocess.run(
@@ -145,7 +145,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                     preserved_map = map_path.read_bytes()
                     preserved_cache = cache_path.read_bytes()
 
-                self.assertIsInstance(graph_result, build_belief_map.Err)
+                self.assertIsInstance(graph_result, build_code_graph.Err)
                 collision = graph_result.error.collisions[0]
                 self.assertEqual(collision.node_id, expected_id)
                 self.assertEqual(
@@ -170,7 +170,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                 str(root),
             ]
             subprocess.run(command, check=True, capture_output=True, text=True)
-            cache_path = root / ".belief_map_cache.json"
+            cache_path = root / ".code_graph_cache.json"
 
             cache_path.write_text("[]\n", encoding="utf-8")
             wrong_shape = subprocess.run(
@@ -200,7 +200,7 @@ class IssueOneRegressionTest(unittest.TestCase):
         self.assertIn("Parsing 1 changed files", stale.stdout)
         self.assertEqual(
             rebuilt_cache["schema_version"],
-            build_belief_map.CACHE_SCHEMA_VERSION,
+            build_code_graph.CACHE_SCHEMA_VERSION,
         )
         self.assertNotEqual(
             rebuilt_cache["entries"][source_cache_key]["result"]["purpose"],
@@ -210,16 +210,16 @@ class IssueOneRegressionTest(unittest.TestCase):
     def test_atomic_write_preserves_prior_file_when_replace_fails(self) -> None:
         """/* REQ-CS-025: interrupted publication must retain the last good file. */"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / ".belief_map.sexp"
+            output_path = Path(tmpdir) / ".code_graph.sexp"
             output_path.write_text("prior-good\n", encoding="utf-8")
 
             with patch.object(
-                build_belief_map.os,
+                build_code_graph.os,
                 "replace",
                 side_effect=OSError("injected interruption"),
             ):
                 with self.assertRaisesRegex(OSError, "injected interruption"):
-                    build_belief_map._atomic_write_text(
+                    build_code_graph._atomic_write_text(
                         str(output_path),
                         "new-content\n",
                     )
@@ -253,11 +253,11 @@ class IssueOneRegressionTest(unittest.TestCase):
                     text=True,
                 )
 
-                graph = belief_search.BeliefGraph()
+                graph = code_graph_search.CodeGraph()
                 load_result = graph.load(str(output_path), str(root))
 
         self.assertIn(f"Scanning {os.path.realpath(root)}", result.stdout)
-        self.assertIsInstance(load_result, belief_search.MapLoadOk)
+        self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
         self.assertIn("source", graph.nodes)
 
     def test_additional_literal_typescript_dependency_forms_create_edges(self) -> None:
@@ -308,8 +308,8 @@ class IssueOneRegressionTest(unittest.TestCase):
             }
         ]
         with tempfile.TemporaryDirectory() as tmpdir:
-            map_path = Path(tmpdir) / ".belief_map.sexp"
-            build_belief_map.write_sexp(
+            map_path = Path(tmpdir) / ".code_graph.sexp"
+            build_code_graph.write_sexp(
                 str(map_path),
                 nodes,
                 [],
@@ -317,16 +317,16 @@ class IssueOneRegressionTest(unittest.TestCase):
                 "regex/AST",
                 1,
             )
-            graph = belief_search.BeliefGraph()
+            graph = code_graph_search.CodeGraph()
             load_result = graph.load(str(map_path))
 
             malformed_path = Path(tmpdir) / "malformed.sexp"
             malformed_path.write_text("(paths\n)\n", encoding="utf-8")
-            malformed_result = belief_search.BeliefGraph().load(str(malformed_path))
+            malformed_result = code_graph_search.CodeGraph().load(str(malformed_path))
 
-        self.assertIsInstance(load_result, belief_search.MapLoadOk)
+        self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
         self.assertIn("pkg/space name", graph.nodes)
-        self.assertIsInstance(malformed_result, belief_search.MapLoadErr)
+        self.assertIsInstance(malformed_result, code_graph_search.MapLoadErr)
         self.assertIn("header is missing", malformed_result.error)
 
     def test_active_build_lock_rejects_a_second_writer(self) -> None:
@@ -335,7 +335,7 @@ class IssueOneRegressionTest(unittest.TestCase):
             root = Path(tmpdir)
             (root / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
             canonical_root = os.path.realpath(root)
-            lock_path = build_belief_map._lock_path(canonical_root)
+            lock_path = build_code_graph._lock_path(canonical_root)
             with open(lock_path, "a+", encoding="utf-8") as lock_file:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 result = subprocess.run(
@@ -349,7 +349,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                     text=True,
                 )
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            map_exists = (root / ".belief_map.sexp").exists()
+            map_exists = (root / ".code_graph.sexp").exists()
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("another build is active", result.stderr)

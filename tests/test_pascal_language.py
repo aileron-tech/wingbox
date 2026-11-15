@@ -6,7 +6,7 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 
-from scripts.build_belief_map import Ok, build_graph, discover_files
+from scripts.build_code_graph import Ok, build_graph, discover_files
 from scripts.lang.interface import DiscoveryExclusions, FileResult
 from scripts.lang.pascal import PASCAL_LANGUAGE, parse_pascal
 from scripts.lang.pascal.imports import BoundPascalLanguage

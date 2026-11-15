@@ -31,7 +31,7 @@ class BoundCSharpLanguage:
                     content = source.read()
             except OSError as error:
                 print(
-                    f"[belief-map] Cannot index C# declarations from {path}: {error}",
+                    f"[code-graph] Cannot index C# declarations from {path}: {error}",
                     file=sys.stderr,
                 )
                 continue

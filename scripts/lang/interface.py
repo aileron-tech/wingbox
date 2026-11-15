@@ -191,7 +191,7 @@ class Language(Protocol):
         ...
 
     def output_language_code(self, result_language: str) -> str:
-        """Return the compact language code written to the belief map."""
+        """Return the compact language code written to the code graph."""
         ...
 
     def lsp_language_id(self, path: str) -> str:

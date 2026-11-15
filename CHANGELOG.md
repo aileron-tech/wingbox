@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-15
+
+### Changes
+
+- Renamed the project and the skill from `codespaces` to `wingbox`; the
+  repository is now `aileron-tech/wingbox`.
+- Replaced the term "belief map" with "code graph" in the documentation, the
+  scripts and the generated files: `scripts/build_belief_map.py` is now
+  `scripts/build_code_graph.py`, `scripts/belief_search.py` is now
+  `scripts/code_graph_search.py`, `.belief_map.sexp` is now `.code_graph.sexp`
+  and `.belief_map_cache.json` is now `.code_graph_cache.json`. The header of
+  the generated S-expression file is now `code-graph`.
+- Existing maps are not read under the old names: rebuild the code graph once,
+  delete the old generated files, and update agent instructions and ignore
+  rules that mention the old script or file names.
+
 ## 2026-08-11
 
 ### Changes

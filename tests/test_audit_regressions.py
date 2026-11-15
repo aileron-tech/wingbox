@@ -12,7 +12,7 @@ from types import ModuleType
 from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BUILD_SCRIPT = REPO_ROOT / "scripts" / "build_belief_map.py"
+BUILD_SCRIPT = REPO_ROOT / "scripts" / "build_code_graph.py"
 
 
 def _load_script(module_name: str, relative_path: str) -> ModuleType:
@@ -27,8 +27,8 @@ def _load_script(module_name: str, relative_path: str) -> ModuleType:
     return module
 
 
-build_belief_map = _load_script("audit_build_belief_map", "scripts/build_belief_map.py")
-belief_search = _load_script("audit_belief_search", "scripts/belief_search.py")
+build_code_graph = _load_script("audit_build_code_graph", "scripts/build_code_graph.py")
+code_graph_search = _load_script("audit_code_graph_search", "scripts/code_graph_search.py")
 build_infra_topology = _load_script(
     "audit_build_infra_topology",
     "scripts/build_infra_topology.py",
@@ -47,13 +47,13 @@ class AuditRegressionTest(unittest.TestCase):
         path = root / relative_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
-        result = build_belief_map.parse_file((str(path), "typescript", "fixture"))
+        result = build_code_graph.parse_file((str(path), "typescript", "fixture"))
         self.assertIsNotNone(result)
         return result
 
     def _import_edges(self, results: list[object], root: Path) -> set[tuple[str, str]]:
-        graph_result = build_belief_map.build_graph(results, str(root))
-        self.assertIsInstance(graph_result, build_belief_map.Ok)
+        graph_result = build_code_graph.build_graph(results, str(root))
+        self.assertIsInstance(graph_result, build_code_graph.Ok)
         edges = graph_result.value.edges
         return {
             (edge["source"], edge["target"])
@@ -66,10 +66,10 @@ class AuditRegressionTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             source_path = Path(tmpdir) / "large.py"
             source_path.write_bytes((b"a" * 9000) + b"x")
-            before = build_belief_map.file_hash(str(source_path))
+            before = build_code_graph.file_hash(str(source_path))
 
             source_path.write_bytes((b"a" * 9000) + b"y")
-            after = build_belief_map.file_hash(str(source_path))
+            after = build_code_graph.file_hash(str(source_path))
 
         self.assertNotEqual(before, after)
 
@@ -109,9 +109,9 @@ class AuditRegressionTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            graph = belief_search.BeliefGraph()
-            load_result = graph.load(str(root / ".belief_map.sexp"))
-            self.assertIsInstance(load_result, belief_search.MapLoadOk)
+            graph = code_graph_search.CodeGraph()
+            load_result = graph.load(str(root / ".code_graph.sexp"))
+            self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
 
         targets = {edge.target for edge in graph.edges_from["pkg/source"]}
         self.assertIn("Parsing 1 changed files", result.stdout)
@@ -138,19 +138,19 @@ class AuditRegressionTest(unittest.TestCase):
             )
             shared.write_text("VALUE = 'shared'\n", encoding="utf-8")
 
-            source_result = build_belief_map.parse_file(
+            source_result = build_code_graph.parse_file(
                 (str(source), "python", "fixture")
             )
-            shared_result = build_belief_map.parse_file(
+            shared_result = build_code_graph.parse_file(
                 (str(shared), "python", "fixture")
             )
             self.assertIsNotNone(source_result)
             self.assertIsNotNone(shared_result)
-            graph_result = build_belief_map.build_graph(
+            graph_result = build_code_graph.build_graph(
                 [source_result, shared_result],
                 str(root),
             )
-            self.assertIsInstance(graph_result, build_belief_map.Ok)
+            self.assertIsInstance(graph_result, build_code_graph.Ok)
             edges = graph_result.value.edges
 
         import_edges = {
@@ -172,19 +172,19 @@ class AuditRegressionTest(unittest.TestCase):
             )
             target.write_text("export const target = true;\n", encoding="utf-8")
 
-            source_result = build_belief_map.parse_file(
+            source_result = build_code_graph.parse_file(
                 (str(source), "typescript", "fixture")
             )
-            target_result = build_belief_map.parse_file(
+            target_result = build_code_graph.parse_file(
                 (str(target), "typescript", "fixture")
             )
             self.assertIsNotNone(source_result)
             self.assertIsNotNone(target_result)
-            graph_result = build_belief_map.build_graph(
+            graph_result = build_code_graph.build_graph(
                 [source_result, target_result],
                 str(root),
             )
-            self.assertIsInstance(graph_result, build_belief_map.Ok)
+            self.assertIsInstance(graph_result, build_code_graph.Ok)
             edges = graph_result.value.edges
 
         import_edges = {
@@ -356,7 +356,7 @@ class AuditRegressionTest(unittest.TestCase):
         references = [(index, f"name{index}", "module") for index in range(40)]
 
         taken_prepare, taken_refs, remaining_prepare, remaining_refs = (
-            build_belief_map._partition_lsp_batch([], references, 40)
+            build_code_graph._partition_lsp_batch([], references, 40)
         )
 
         self.assertEqual(taken_prepare, [])
@@ -368,26 +368,26 @@ class AuditRegressionTest(unittest.TestCase):
         """/* REQ-CS-011: source-aware queries must resolve from the map directory. */"""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            map_path = root / ".belief_map.sexp"
+            map_path = root / ".code_graph.sexp"
             map_path.write_text(
-                "(belief-map :schema 1 :files 0 :nodes 0 :edges 0 "
+                "(code-graph :schema 1 :files 0 :nodes 0 :edges 0 "
                 ":violations 0)\n(paths\n)\n",
                 encoding="utf-8",
             )
-            graph = belief_search.BeliefGraph()
+            graph = code_graph_search.CodeGraph()
 
             load_result = graph.load(str(map_path))
-            self.assertIsInstance(load_result, belief_search.MapLoadOk)
+            self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
 
         self.assertEqual(graph._root, str(root))
 
     def test_backend_state_store_is_not_classified_as_ui(self) -> None:
         """/* REQ-CS-012: store naming alone must not imply a UI boundary. */"""
-        backend_layer = belief_search._classify_layer(
+        backend_layer = code_graph_search._classify_layer(
             "platform-api/src/messagesStore/messagesStore",
             "state store",
         )
-        frontend_layer = belief_search._classify_layer(
+        frontend_layer = code_graph_search._classify_layer(
             "app-service/web/src/calendar/store/calendar-store",
             "state store",
         )
@@ -411,14 +411,14 @@ class AuditRegressionTest(unittest.TestCase):
             first_path = Path(tmpdir) / "first.sexp"
             second_path = Path(tmpdir) / "second.sexp"
             with patch.object(
-                build_belief_map.time,
+                build_code_graph.time,
                 "strftime",
                 side_effect=["first", "second"],
             ):
-                build_belief_map.write_sexp(
+                build_code_graph.write_sexp(
                     str(first_path), nodes, [], tmpdir, "regex/AST", 1
                 )
-                build_belief_map.write_sexp(
+                build_code_graph.write_sexp(
                     str(second_path), nodes, [], tmpdir, "regex/AST", 1
                 )
 
@@ -429,15 +429,15 @@ class AuditRegressionTest(unittest.TestCase):
 
     def test_language_detector_makes_unsupported_coverage_explicit(self) -> None:
         """/* REQ-CS-014: language gates must distinguish supported source files. */"""
-        self.assertEqual(build_belief_map.detect_source_language("module.py"), "python")
+        self.assertEqual(build_code_graph.detect_source_language("module.py"), "python")
         self.assertEqual(
-            build_belief_map.detect_source_language("module.tsx"), "typescript"
+            build_code_graph.detect_source_language("module.tsx"), "typescript"
         )
         self.assertEqual(
-            build_belief_map.detect_source_language("module.pas"), "pascal"
+            build_code_graph.detect_source_language("module.pas"), "pascal"
         )
-        self.assertIsNone(build_belief_map.detect_source_language("module.swift"))
-        self.assertIsNone(build_belief_map.detect_source_language("bootstrap.sh"))
+        self.assertIsNone(build_code_graph.detect_source_language("module.swift"))
+        self.assertIsNone(build_code_graph.detect_source_language("bootstrap.sh"))
 
     def test_empty_infra_result_names_the_supported_formats(self) -> None:
         """/* REQ-CS-015: empty topology must not imply that no infrastructure exists. */"""
