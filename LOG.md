@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-15 - README hero image
+
+### Changes
+- Added `docs/assets/wingbox-social-preview.png` (1280x640) with its SVG source and placed it under the README title; the same image is the repository social preview.
+
+### Motivation
+- A link to the repository had no picture, and the README opened with text only.
+
 ## 2026-11-15 - README discoverability
 
 ### Changes
