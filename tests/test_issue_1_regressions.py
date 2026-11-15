@@ -98,22 +98,22 @@ class IssueOneRegressionTest(unittest.TestCase):
         self.assertEqual(call_edges, [{("consumer", "provider_a")}] * 2)
         self.assertEqual(rendered[0], rendered[1])
 
-    def test_module_id_collisions_fail_with_every_conflicting_path(self) -> None:
-        """/* REQ-CS-023: colliding module IDs must hard-fail without discarding files. */"""
+    def test_files_sharing_a_module_id_all_stay_in_the_graph(self) -> None:
+        """/* REQ-CS-023: files that would share a module ID must all stay in the graph under distinct IDs; none is discarded and the build does not stop. */"""
         fixtures = (
             (
                 ("dual.py", "VALUE = 1\n", "python"),
                 ("dual.ts", "export const VALUE = 1;\n", "typescript"),
-                "dual",
+                {"dual": "dual.ts", "dual.py": "dual.py"},
             ),
             (
                 ("pkg.py", "VALUE = 1\n", "python"),
                 ("pkg/index.py", "VALUE = 2\n", "python"),
-                "pkg",
+                {"pkg": "pkg.py", "pkg/index.py": "pkg/index.py"},
             ),
         )
-        for first, second, expected_id in fixtures:
-            with self.subTest(expected_id=expected_id):
+        for first, second, expected_nodes in fixtures:
+            with self.subTest(expected=sorted(expected_nodes)):
                 with tempfile.TemporaryDirectory() as tmpdir:
                     root = Path(tmpdir)
                     results = []
@@ -128,10 +128,6 @@ class IssueOneRegressionTest(unittest.TestCase):
                         results.append(result)
 
                     graph_result = build_code_graph.build_graph(results, str(root))
-                    map_path = root / ".code_graph.sexp"
-                    cache_path = root / ".code_graph_cache.json"
-                    map_path.write_bytes(b"prior-map\n")
-                    cache_path.write_bytes(b"prior-cache\n")
                     cli_result = subprocess.run(
                         [
                             sys.executable,
@@ -142,20 +138,16 @@ class IssueOneRegressionTest(unittest.TestCase):
                         capture_output=True,
                         text=True,
                     )
-                    preserved_map = map_path.read_bytes()
-                    preserved_cache = cache_path.read_bytes()
+                    map_written = (root / ".code_graph.sexp").is_file()
 
-                self.assertIsInstance(graph_result, build_code_graph.Err)
-                collision = graph_result.error.collisions[0]
-                self.assertEqual(collision.node_id, expected_id)
+                self.assertIsInstance(graph_result, build_code_graph.Ok)
                 self.assertEqual(
-                    collision.paths,
-                    tuple(sorted((first[0], second[0]))),
+                    expected_nodes,
+                    {node["id"]: node["path"] for node in graph_result.value.nodes},
                 )
-                self.assertEqual(cli_result.returncode, 1)
-                self.assertIn("module ID collision", cli_result.stderr)
-                self.assertEqual(preserved_map, b"prior-map\n")
-                self.assertEqual(preserved_cache, b"prior-cache\n")
+                self.assertEqual(cli_result.returncode, 0, cli_result.stderr)
+                self.assertNotIn("module ID collision", cli_result.stderr)
+                self.assertTrue(map_written)
 
     def test_incompatible_and_legacy_caches_are_rebuilt(self) -> None:
         """/* REQ-CS-024: cache shape and provenance must gate incremental reuse. */"""

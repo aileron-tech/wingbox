@@ -10,6 +10,11 @@ from ..interface import (
     LanguageDependency,
 )
 from .imports import BoundTypeScriptLanguage
+from .javascript import (
+    JAVASCRIPT_EXTENSIONS,
+    is_bundled_javascript_name,
+    is_javascript_file,
+)
 
 
 def parse_typescript_treesitter(
@@ -26,7 +31,7 @@ def parse_typescript_treesitter(
 @dataclass(frozen=True)
 class TypeScriptLanguage:
     name: str = "typescript"
-    result_languages: tuple[str, ...] = ("typescript", "tsx")
+    result_languages: tuple[str, ...] = ("typescript", "tsx", "javascript")
     lsp_result_languages: tuple[str, ...] = ("typescript", "tsx")
     project_config_names: tuple[str, ...] = ("tsconfig.json",)
     lsp_command: tuple[str, ...] = ("typescript-language-server", "--stdio")
@@ -37,9 +42,11 @@ class TypeScriptLanguage:
         LanguageDependency("tree-sitter", "0.25.2"),
         LanguageDependency("tree-sitter-typescript", "0.23.2"),
     )
-    source_extensions: tuple[str, ...] = (".ts", ".tsx")
+    source_extensions: tuple[str, ...] = (".ts", ".tsx") + JAVASCRIPT_EXTENSIONS
 
     def accepts_file(self, file_name: str) -> bool:
+        if is_javascript_file(file_name):
+            return not is_bundled_javascript_name(file_name)
         return (
             file_name.endswith(".ts") or file_name.endswith(".tsx")
         ) and not file_name.endswith(".d.ts")
@@ -69,15 +76,18 @@ class TypeScriptLanguage:
         )
 
     def normalize_module_id(self, relative_path: str) -> str:
-        for extension in (".tsx", ".ts"):
+        # .mjs and .cjs keep their extension: an import names them only in full.
+        if relative_path.endswith((".mjs", ".cjs")):
+            return relative_path
+        for extension in (".tsx", ".ts", ".jsx", ".js"):
             if relative_path.endswith(extension):
                 module_id = relative_path[: -len(extension)]
                 break
         else:
             raise ValueError(
-                f"TypeScript module path must end in .ts or .tsx: {relative_path}"
+                f"Not a TypeScript or JavaScript module path: {relative_path}"
             )
-        if module_id.endswith("/index"):
+        if module_id.endswith("/index") and extension != ".jsx":
             return module_id[: -len("/index")]
         return module_id
 
@@ -86,6 +96,8 @@ class TypeScriptLanguage:
             return "ts"
         if result_language == "tsx":
             return "tsx"
+        if result_language == "javascript":
+            return "js"
         raise ValueError(f"Unsupported TypeScript result language: {result_language}")
 
     def lsp_language_id(self, path: str) -> str:

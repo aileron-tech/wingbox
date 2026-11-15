@@ -1,0 +1,1332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__WINGBOX_TITLE__ - Wingbox map</title>
+<style>
+:root {
+  --bg0: #070b16; --bg1: #0b1730; --navy: #0b1730; --pill: #0f2242;
+  --blue: #38bdf8; --sky: #7dd3fc; --ice: #bae6fd;
+  --amber: #fbbf24; --amber2: #f59e0b; --core: #fde68a;
+  --green: #34d399; --mint: #6ee7b7; --red: #f87171;
+  --text: #f8fafc; --sub: #e2e8f0; --muted: #94a3b8;
+  --mono: ui-monospace, "SF Mono", "GeistMono NF", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: var(--sans); color: var(--sub); overflow: hidden;
+  background:
+    radial-gradient(circle at 1.2px 1.2px, rgba(147,197,253,0.10) 1.2px, transparent 1.6px) 0 0 / 32px 32px,
+    radial-gradient(ellipse 55% 60% at 62% 50%, rgba(29,78,216,0.34), rgba(29,78,216,0) 70%),
+    linear-gradient(135deg, var(--bg0), var(--bg1));
+  background-color: var(--bg0);
+}
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#scene.over { cursor: pointer; }
+#head { position: fixed; left: 28px; top: 22px; right: 392px; pointer-events: none; }
+#head > * { pointer-events: auto; }
+.kicker { font-family: var(--mono); font-size: 12px; letter-spacing: 4px; color: var(--sky); opacity: .85; text-transform: uppercase; }
+h1 { margin: 8px 0 2px; font-size: 44px; line-height: 1.05; font-weight: 700; letter-spacing: -1px; color: var(--text); overflow-wrap: anywhere; }
+.lede { font-size: 16px; color: var(--sub); margin: 0 0 14px; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.group { display: inline-flex; border: 1.2px solid rgba(56,189,248,.55); border-radius: 20px; background: var(--pill); overflow: hidden; }
+.pill, .group button, #search {
+  font-family: var(--mono); font-size: 13px; color: var(--ice); background: var(--pill);
+  border: 1.2px solid rgba(56,189,248,.55); border-radius: 20px; padding: 6px 14px; cursor: pointer; line-height: 1.2;
+}
+.group button { border: 0; border-radius: 0; background: transparent; padding: 6px 12px; }
+.group button + button { border-left: 1px solid rgba(56,189,248,.28); }
+.group .cap { font-family: var(--mono); font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); padding: 7px 4px 6px 12px; }
+.pill:hover, .group button:hover { color: var(--text); background: rgba(56,189,248,.16); }
+.pill[aria-pressed="true"], .group button[aria-pressed="true"] { background: rgba(56,189,248,.26); color: var(--text); }
+.pill.warn { border-color: rgba(248,113,113,.7); color: #fecaca; }
+.pill.warn[aria-pressed="true"] { background: rgba(248,113,113,.24); color: #fff; }
+.pill:disabled { opacity: .45; cursor: default; }
+.pill:focus-visible, .group button:focus-visible, #search:focus-visible, .row:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
+#searchbox { position: relative; }
+#search { width: 220px; cursor: text; }
+#search::placeholder { color: var(--muted); }
+#hits { position: absolute; left: 0; top: 36px; width: 380px; max-width: 80vw; background: rgba(11,23,48,.97); border: 1px solid rgba(56,189,248,.45); border-radius: 12px; padding: 4px; display: none; z-index: 5; }
+#hits.on { display: block; }
+#panel {
+  position: fixed; right: 16px; top: 16px; bottom: 16px; width: 360px; overflow: auto;
+  background: rgba(9,18,38,.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(125,211,252,.28); border-radius: 16px; padding: 16px 16px 10px;
+  scrollbar-width: thin; scrollbar-color: rgba(125,211,252,.3) transparent;
+}
+#panel h2 { font-family: var(--mono); font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--sky); margin: 18px 0 8px; font-weight: 500; }
+#panel h2:first-child { margin-top: 0; }
+.card { border: 1px solid rgba(251,191,36,.55); background: rgba(251,191,36,.07); border-radius: 12px; padding: 12px; margin-bottom: 6px; }
+.card .name { font-family: var(--mono); font-size: 13px; color: var(--core); overflow-wrap: anywhere; }
+.card .meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.stats { display: flex; gap: 14px; margin: 10px 0 8px; }
+.stat b { display: block; font-size: 22px; color: var(--text); font-weight: 650; line-height: 1.1; }
+.stat span { font-size: 11px; color: var(--muted); }
+.cmd { display: flex; gap: 6px; align-items: stretch; margin: 8px 0 2px; }
+.cmd code { flex: 1; font-family: var(--mono); font-size: 12px; color: var(--ice); background: rgba(7,11,22,.75); border: 1px solid rgba(56,189,248,.3); border-radius: 8px; padding: 7px 9px; overflow-wrap: anywhere; }
+.cmd button { font-family: var(--mono); font-size: 12px; color: var(--ice); background: var(--pill); border: 1px solid rgba(56,189,248,.5); border-radius: 8px; padding: 0 10px; cursor: pointer; }
+.sub { font-family: var(--mono); font-size: 11px; color: var(--amber); margin: 10px 0 4px; }
+.sub.dep { color: var(--ice); }
+.row { display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 7px; padding: 4px 6px; color: var(--sub); font-family: var(--mono); font-size: 12px; cursor: pointer; }
+.row:hover { background: rgba(56,189,248,.14); color: var(--text); }
+.row .f { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.row .f bdi { direction: ltr; unicode-bidi: isolate; }
+.row .n { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.row .sw { flex: none; width: 9px; height: 9px; border-radius: 50%; border: 1.8px solid var(--sky); align-self: center; }
+.row.on { background: rgba(56,189,248,.2); color: var(--text); }
+.more { font-size: 11px; color: var(--muted); padding: 2px 6px 4px; }
+.close { float: right; font-family: var(--mono); font-size: 12px; color: var(--muted); background: transparent; border: 0; cursor: pointer; padding: 0 2px; }
+.close:hover { color: var(--text); }
+table.mx { border-collapse: separate; border-spacing: 2px; font-family: var(--mono); font-size: 11px; width: 100%; }
+table.mx th { color: var(--muted); font-weight: 400; text-align: right; padding: 2px 4px; white-space: nowrap; }
+table.mx thead th { text-align: center; }
+table.mx td { text-align: center; padding: 3px 2px; border-radius: 4px; background: rgba(56,189,248,.07); color: var(--sub); font-variant-numeric: tabular-nums; min-width: 26px; }
+table.mx td.z { color: rgba(148,163,184,.35); background: transparent; }
+table.mx td.same { background: rgba(148,163,184,.10); color: var(--muted); }
+table.mx td.bad { background: rgba(248,113,113,.26); color: #fff; outline: 1px solid rgba(248,113,113,.7); }
+.note { font-size: 12px; color: var(--muted); line-height: 1.45; margin: 4px 0; }
+.note a, .foot a { color: var(--sky); text-decoration: none; }
+.note a:hover, .foot a:hover { text-decoration: underline; }
+.rule { font-family: var(--sans); font-size: 11px; color: #fca5a5; padding: 0 6px 5px 23px; }
+.foot { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 18px; padding-top: 10px; border-top: 1px solid rgba(125,211,252,.16); line-height: 1.6; }
+#hint { position: fixed; left: 28px; bottom: 18px; font-family: var(--mono); font-size: 12px; color: var(--muted); pointer-events: none; }
+#tip { position: fixed; display: none; pointer-events: none; z-index: 6; max-width: 420px; font-family: var(--mono); font-size: 12px; color: var(--text); background: rgba(7,11,22,.94); border: 1px solid rgba(125,211,252,.45); border-radius: 8px; padding: 7px 9px; }
+#tip small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+noscript { position: fixed; inset: 40% 10% auto; text-align: center; color: var(--sub); }
+@media (max-width: 860px) {
+  body { overflow: hidden; }
+  #head { right: 16px; left: 16px; top: 12px; }
+  h1 { font-size: 26px; } .lede { font-size: 13px; margin-bottom: 8px; }
+  #panel { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; height: 38vh; }
+  #hint { display: none; }
+  #search { width: 130px; }
+  .pills { gap: 6px; margin-bottom: 0; }
+  .pill, .group button, #search { font-size: 11px; padding: 5px 9px; }
+  .group .cap { display: none; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="Interactive map of the code graph"></canvas>
+<div id="head">
+  <div class="kicker">Wingbox / code graph</div>
+  <h1 id="title"></h1>
+  <p class="lede" id="lede"></p>
+  <div class="pills" id="pills"></div>
+</div>
+<aside id="panel" aria-live="polite"></aside>
+<div id="hint">click: blast radius &nbsp;/&nbsp; double-click: open or close a package &nbsp;/&nbsp; drag: move, or turn the layers &nbsp;/&nbsp; scroll: zoom &nbsp;/&nbsp; esc: clear</div>
+<div id="tip" role="tooltip"></div>
+<noscript>This map needs JavaScript. The same facts are in REPORT.md next to this file.</noscript>
+<script id="wingbox-data" type="application/json">__WINGBOX_DATA__</script>
+<!--
+__WINGBOX_D3_LICENSE__
+-->
+<script>__WINGBOX_D3__</script>
+<script>
+(() => {
+"use strict";
+const DATA = JSON.parse(document.getElementById("wingbox-data").textContent);
+const MODS = DATA.modules, EDGES = DATA.edges, LAYERS = DATA.layers, N = MODS.length;
+const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const C = {
+  blue: "#38bdf8", sky: "#7dd3fc", ice: "#bae6fd", navy: "#0b1730", amber: "#fbbf24", amber2: "#f59e0b",
+  core: "#fde68a", green: "#34d399", red: "#f87171", text: "#f8fafc", muted: "#94a3b8",
+};
+const LAYER_COLOR = {
+  ui: "#a78bfa", api: "#60a5fa", service: "#f472b6", domain: "#34d399", infra: "#fb923c",
+  shared: "#a3e635", config: "#cbd5e1", test: "#7c8aa0", other: "#7c8aa0",
+};
+const PACKAGE_COLORS = ["#60a5fa", "#fb923c", "#34d399", "#f472b6", "#a3e635", "#a78bfa"];
+const OTHER_COLOR = "#7c8aa0";
+const MONO = 'ui-monospace, "SF Mono", "GeistMono NF", Menlo, Consolas, monospace';
+const MAX_PACKAGES = 140, OPEN_ALL_BELOW = 800, EXPAND_ALL_LIMIT = 3500, STEP = 520;
+
+// ---------- small helpers ----------
+const fmt = (n) => n.toLocaleString("en-US");
+const plural = (n, word) => `${fmt(n)} ${word}${n === 1 ? "" : "s"}`;
+const dependencies = (n) => `${fmt(n)} ${n === 1 ? "dependency" : "dependencies"}`;
+const share = (part) => (N ? Math.round((100 * part) / N) : 0) + "%";
+const base = (path) => path.slice(path.lastIndexOf("/") + 1);
+const dirOf = (path) => { const i = path.lastIndexOf("/"); return i < 0 ? "" : path.slice(0, i); };
+const rgba = (hex, a) => {
+  const v = parseInt(hex.slice(1), 16);
+  return `rgba(${v >> 16},${(v >> 8) & 255},${v & 255},${a})`;
+};
+const tints = new Map();
+const tint = (hex) => {
+  let out = tints.get(hex);
+  if (!out) {
+    const v = parseInt(hex.slice(1), 16), mix = (c, base) => Math.round(base + (c - base) * 0.2);
+    out = `rgb(${mix(v >> 16, 11)},${mix((v >> 8) & 255, 23)},${mix(v & 255, 48)})`;
+    tints.set(hex, out);
+  }
+  return out;
+};
+function el(tag, props, ...kids) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props || {})) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === "text") node.textContent = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? "" : value);
+  }
+  for (const kid of kids.flat()) if (kid) node.append(kid);
+  return node;
+}
+
+// ---------- module graph ----------
+const outOf = Array.from({ length: N }, () => []);
+const intoOf = Array.from({ length: N }, () => []);
+for (const [s, t] of EDGES) { outOf[s].push(t); intoOf[t].push(s); }
+const layerName = (i) => LAYERS[MODS[i].layer];
+
+// packages: directories cut at the deepest level that keeps the map readable
+const dirs = MODS.map((m) => dirOf(m.file));
+const cut = (dir, depth) => (dir ? dir.split("/").slice(0, depth).join("/") : ".");
+let maxDepth = 1;
+for (const d of dirs) if (d) maxDepth = Math.max(maxDepth, d.split("/").length);
+let pkgDepth = 1;
+for (let d = 1; d <= maxDepth; d++) {
+  if (new Set(dirs.map((x) => cut(x, d))).size <= MAX_PACKAGES) pkgDepth = d; else break;
+}
+const pkgOf = dirs.map((d) => cut(d, pkgDepth));
+const packages = new Map();
+MODS.forEach((m, i) => {
+  let p = packages.get(pkgOf[i]);
+  if (!p) { p = { key: pkgOf[i], mods: [], layers: {} }; packages.set(p.key, p); }
+  p.mods.push(i);
+  p.layers[m.layer] = (p.layers[m.layer] || 0) + 1;
+});
+for (const p of packages.values()) {
+  p.layer = +Object.entries(p.layers).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+}
+
+// colour groups for the "packages" colouring: top-level folders, the tail folds into "other"
+let colorDepth = 1;
+for (let d = 1; d <= maxDepth; d++) { colorDepth = d; if (new Set(dirs.map((x) => cut(x, d))).size >= 3) break; }
+const groupOf = dirs.map((d) => cut(d, colorDepth));
+const groupCount = new Map();
+for (const g of groupOf) groupCount.set(g, (groupCount.get(g) || 0) + 1);
+const groupRank = [...groupCount.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+const groupColor = new Map(groupRank.map(([g], i) => [g, i < PACKAGE_COLORS.length ? PACKAGE_COLORS[i] : OTHER_COLOR]));
+
+// ---------- state ----------
+const state = {
+  layout: "graph", color: "wire", depth: Math.min(4, Math.max(1, DATA.depth || 2)),
+  yaw: -0.55, pitch: 0.5, spin: true,
+  expanded: new Set(), violations: false, hover: null, focus: null, sel: null,
+};
+if (N <= OPEN_ALL_BELOW) for (const key of packages.keys()) state.expanded.add(key);
+let interacted = false;
+
+// ---------- visible graph: a node is a module, or a closed package ----------
+let nodes = [], links = [], nodeByKey = new Map(), bands = new Map(), bandWidth = 0;
+const rep = new Array(N);
+const moduleRadius = (i) => Math.min(16, 3.4 + Math.sqrt(MODS[i].in) * 1.5);
+const packageRadius = (count) => Math.min(46, 7 + Math.sqrt(count) * 2.4);
+
+function rebuild() {
+  const old = nodeByKey;
+  nodeByKey = new Map(); nodes = [];
+  for (const p of packages.values()) {
+    if (state.expanded.has(p.key)) {
+      const origin = old.get("p:" + p.key);
+      for (const i of p.mods) {
+        const key = "m" + i;
+        let n = old.get(key);
+        if (!n) {
+          n = { key, type: "m", i, pkg: p.key };
+          if (origin) { n.x = origin.x + (Math.random() - 0.5) * 30; n.y = origin.y + (Math.random() - 0.5) * 30; }
+        }
+        n.r = moduleRadius(i); n.layer = MODS[i].layer; n.label = base(MODS[i].file);
+        nodes.push(n); nodeByKey.set(key, n); rep[i] = n;
+      }
+    } else {
+      const key = "p:" + p.key;
+      let n = old.get(key);
+      if (!n) {
+        n = { key, type: "p", pkg: p.key };
+        let sx = 0, sy = 0, c = 0;
+        for (const i of p.mods) { const m = old.get("m" + i); if (m && m.x !== undefined) { sx += m.x; sy += m.y; c++; } }
+        if (c) { n.x = sx / c; n.y = sy / c; }
+      }
+      n.r = packageRadius(p.mods.length); n.layer = p.layer; n.count = p.mods.length;
+      n.label = p.key === "." ? "(root)" : p.key.split("/").slice(-2).join("/");
+      nodes.push(n); nodeByKey.set(key, n);
+      for (const i of p.mods) rep[i] = n;
+    }
+  }
+  const merged = new Map();
+  for (const [s, t] of EDGES) {
+    const a = rep[s], b = rep[t];
+    if (a === b) continue;
+    const key = a.key + ">" + b.key;
+    let l = merged.get(key);
+    if (!l) { l = { key, source: a, target: b, w: 0, bad: 0 }; merged.set(key, l); }
+    l.w++;
+  }
+  for (const [s, t] of DATA.violations) {
+    const l = merged.get(rep[s].key + ">" + rep[t].key);
+    if (l) l.bad++;
+  }
+  links = [...merged.values()];
+  countDegrees();
+  if (state.sel && !nodeByKey.has(state.sel.key)) dropSelection();
+  if (state.sel) projectSelection();
+  layoutBands();
+  sim.nodes(nodes);
+  linkForce.links(links);
+  applyForces();
+  sim.alpha(0.9).restart();
+}
+
+// ---------- layers layout: one band per architecture layer ----------
+const stage = { width: 900, depth: 600, gap: 160, focal: 3000, radius: 500, top: 0 };
+const layerTotals = new Map(DATA.layerCounts);
+function layoutBands() {
+  bands = new Map();
+  const area = new Map(), count = new Map();
+  for (const n of nodes) {
+    area.set(n.layer, (area.get(n.layer) || 0) + Math.PI * (n.r + 7) * (n.r + 7) * 2.6);
+    count.set(n.layer, (count.get(n.layer) || 0) + (n.count || 1));
+  }
+  let most = 0;
+  for (const value of area.values()) most = Math.max(most, value);
+  stage.width = Math.max(460, Math.min(2600, Math.sqrt(most * 1.5)));
+  stage.depth = stage.width / 1.5;
+  stage.gap = Math.max(96, Math.min(240, stage.width * 0.19));
+  const order = [...area.keys()].sort((x, y) => x - y);
+  const middle = (order.length - 1) / 2;
+  const span = stage.depth + 60;          // planes sit side by side in simulation space
+  order.forEach((layer, i) => {
+    const centre = (i - middle) * span;
+    bands.set(layer, {
+      y0: centre - stage.depth / 2, y1: centre + stage.depth / 2, mid: centre,
+      h: (middle - i) * stage.gap, name: LAYERS[layer], count: layerTotals.get(LAYERS[layer]) || count.get(layer),
+    });
+  });
+  bandWidth = stage.width;
+  stage.top = middle * stage.gap;
+  stage.radius = Math.hypot(stage.width / 2, stage.depth / 2);
+  stage.focal = Math.hypot(stage.radius, stage.top) * 3.4;
+}
+
+// ---------- forces ----------
+const linkForce = d3.forceLink().id((d) => d.key);
+const sim = d3.forceSimulation().velocityDecay(0.36).on("tick", () => { if (autoFit) fit(0); requestDraw(); });
+sim.force("link", linkForce);
+
+function clusterForce(alpha) {
+  const sum = new Map();
+  for (const n of nodes) {
+    if (n.type !== "m") continue;
+    let c = sum.get(n.pkg);
+    if (!c) { c = { x: 0, y: 0, n: 0 }; sum.set(n.pkg, c); }
+    c.x += n.x; c.y += n.y; c.n++;
+  }
+  for (const n of nodes) {
+    if (n.type !== "m") continue;
+    const c = sum.get(n.pkg);
+    n.vx += (c.x / c.n - n.x) * 0.09 * alpha;
+    n.vy += (c.y / c.n - n.y) * 0.09 * alpha;
+  }
+}
+function bandForce() {
+  const half = bandWidth / 2;
+  for (const n of nodes) {
+    const b = bands.get(n.layer);
+    if (!b) continue;
+    const lo = b.y0 + n.r + 8, hi = b.y1 - n.r - 8;
+    if (n.y < lo) { n.y = lo; n.vy = 0; } else if (n.y > hi) { n.y = hi; n.vy = 0; }
+    const edge = half - n.r - 8;
+    if (n.x < -edge) { n.x = -edge; n.vx = Math.max(0, n.vx); }
+    else if (n.x > edge) { n.x = edge; n.vx = Math.min(0, n.vx); }
+  }
+}
+function blastForce(alpha) {
+  const sel = state.sel;
+  if (!sel) return;
+  const root = nodeByKey.get(sel.key);
+  if (!root) return;
+  const outer = sel.rings[sel.rings.length - 1] + 70;
+  const pull = Math.min(1, alpha * 3.2);
+  for (const n of nodes) {
+    if (n === root) continue;
+    const aim = sel.aim.get(n.key);
+    if (aim) {
+      n.vx += (root.x + aim[0] - n.x) * 0.42 * pull;
+      n.vy += (root.y + aim[1] - n.y) * 0.42 * pull;
+      continue;
+    }
+    const dx = n.x - root.x, dy = n.y - root.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    if (dist < outer) {
+      const k = ((outer - dist) / dist) * 0.3 * pull;
+      n.vx += dx * k; n.vy += dy * k;
+    }
+  }
+}
+function applyForces() {
+  const layers = state.layout === "layers";
+  const radial = !layers && !!state.sel;
+  const big = nodes.length > 1500;
+  sim.alphaDecay(big ? 0.045 : 0.026);
+  linkForce
+    .distance((l) => 24 + l.source.r + l.target.r)
+    .strength((l) => {
+      const natural = 1 / Math.min(degree.get(l.source.key) || 1, degree.get(l.target.key) || 1);
+      return natural * (layers ? 0.12 : radial ? 0.012 : 1);
+    });
+  sim.force("charge", d3.forceManyBody().strength((n) => -(layers ? 26 : 46) - n.r * n.r * (layers ? 0.35 : 0.9)).distanceMax(900).theta(0.92));
+  sim.force("collide", d3.forceCollide((n) => n.r + (layers ? 5 : 4)).strength(0.85));
+  sim.force("x", d3.forceX(0).strength(layers ? 0.012 : 0.034));
+  sim.force("y", layers
+    ? d3.forceY((n) => { const b = bands.get(n.layer); return b ? (b.y0 + b.y1) / 2 : 0; }).strength(0.4)
+    : d3.forceY(0).strength(0.034));
+  sim.force("cluster", layers ? null : clusterForce);
+  sim.force("band", layers ? bandForce : null);
+  sim.force("blast", radial ? blastForce : null);
+}
+const degree = new Map();
+function countDegrees() {
+  degree.clear();
+  for (const l of links) {
+    degree.set(l.source.key, (degree.get(l.source.key) || 0) + 1);
+    degree.set(l.target.key, (degree.get(l.target.key) || 0) + 1);
+  }
+}
+
+// ---------- blast radius (always computed on modules, then shown on what is visible) ----------
+function blastDepths(roots, maxDepth) {
+  const depth = new Int16Array(N).fill(-1);
+  let frontier = roots.slice();
+  for (const r of roots) depth[r] = 0;
+  for (let k = 1; k <= maxDepth && frontier.length; k++) {
+    const next = [];
+    for (const m of frontier) for (const s of intoOf[m]) if (depth[s] < 0) { depth[s] = k; next.push(s); }
+    frontier = next;
+  }
+  return depth;
+}
+function dropSelection() {
+  for (const n of nodes) if (n.fx !== undefined && n.fx !== null) { n.fx = null; n.fy = null; }
+  state.sel = null;
+}
+function select(key, quiet) {
+  dropSelection();
+  const node = key ? nodeByKey.get(key) : null;
+  if (!node) { state.sel = null; }
+  else {
+    const roots = node.type === "m" ? [node.i] : packages.get(node.pkg).mods;
+    state.sel = { key, roots, t0: performance.now() };
+    projectSelection();
+    if (state.layout === "graph") { node.fx = node.x; node.fy = node.y; }
+  }
+  applyForces();
+  sim.alpha(Math.max(sim.alpha(), 0.55)).restart();
+  renderPanel(true);
+  if (node && !quiet) focusOn(node);
+  writeHash();
+  requestDraw();
+}
+function projectSelection() {
+  const sel = state.sel;
+  sel.depth = blastDepths(sel.roots, state.depth);
+  sel.byDepth = Array.from({ length: state.depth + 1 }, () => []);
+  for (let i = 0; i < N; i++) if (sel.depth[i] > 0) sel.byDepth[sel.depth[i]].push(i);
+  sel.total = sel.byDepth.reduce((a, list) => a + list.length, 0);
+  sel.reached = 0;
+  for (let d = 1; d <= state.depth; d++) if (sel.byDepth[d].length) sel.reached = d;
+  sel.nodeDepth = new Map([[sel.key, 0]]);
+  for (let i = 0; i < N; i++) {
+    const d = sel.depth[i];
+    if (d <= 0) continue;
+    const key = rep[i].key;
+    if (key === sel.key) continue;
+    const seen = sel.nodeDepth.get(key);
+    if (seen === undefined || d < seen) sel.nodeDepth.set(key, d);
+  }
+  sel.wave = new Map();
+  sel.parent = new Map();
+  for (const [s, t] of EDGES) {
+    const ds = sel.depth[s], dt = sel.depth[t];
+    if (ds > 0 && dt >= 0 && ds === dt + 1 && rep[s] !== rep[t]) {
+      const key = rep[s].key + ">" + rep[t].key;
+      const seen = sel.wave.get(key);
+      if (seen === undefined || ds < seen) sel.wave.set(key, ds);
+      if (sel.nodeDepth.get(rep[s].key) === ds && !sel.parent.has(rep[s].key)) sel.parent.set(rep[s].key, rep[t].key);
+    }
+  }
+  sel.uses = new Set();
+  const rootSet = new Set(sel.roots);
+  for (const r of sel.roots) for (const t of outOf[r]) if (!rootSet.has(t)) sel.uses.add(t);
+  sel.usesNodes = new Set();
+  for (const t of sel.uses) if (rep[t].key !== sel.key) sel.usesNodes.add(rep[t].key);
+  const perimeter = new Array(state.depth + 1).fill(0);
+  for (const [key, d] of sel.nodeDepth) perimeter[d] += 2 * nodeByKey.get(key).r + 10;
+  const root = nodeByKey.get(sel.key);
+  sel.rings = [0];
+  for (let d = 1; d <= state.depth; d++) {
+    sel.rings[d] = Math.max(sel.rings[d - 1] + (d === 1 ? 92 + root.r : 88), (perimeter[d] * 1.12) / (2 * Math.PI));
+  }
+  aimRings(sel, root);
+}
+// Give every affected node a place on the ring of its hop: hop 1 keeps the order the nodes
+// already have around the change, later hops sit next to the node they depend on.
+function aimRings(sel, root) {
+  sel.aim = new Map();
+  const angle = new Map();
+  for (let d = 1; d <= state.depth; d++) {
+    const ring = [];
+    for (const [key, depth] of sel.nodeDepth) if (depth === d) ring.push(nodeByKey.get(key));
+    if (!ring.length) continue;
+    const radius = sel.rings[d];
+    const wish = new Map(ring.map((n) => {
+      const parent = angle.get(sel.parent.get(n.key));
+      const own = Math.atan2((n.y || 0) - (root.y || 0), (n.x || 0) - (root.x || 0));
+      return [n.key, parent === undefined ? own : parent + own * 1e-4];
+    }));
+    ring.sort((a, b) => wish.get(a.key) - wish.get(b.key));
+    const width = (n) => (2 * n.r + 10) / radius;
+    const total = ring.reduce((sum, n) => sum + width(n), 0);
+    let spread = d > 1 && total < 5.6;
+    const placed = [];
+    if (spread) {
+      let previous = -Infinity;
+      for (const n of ring) {
+        const at = Math.max(wish.get(n.key), previous + width(n));
+        placed.push(at); previous = at;
+      }
+      const overflow = placed[placed.length - 1] - placed[0] - (6.2832 - width(ring[0]));
+      if (overflow > 0) spread = false;
+      else {
+        // pull the whole fan back so that it stays centred on what the nodes asked for
+        let drift = 0;
+        ring.forEach((n, i) => { drift += placed[i] - wish.get(n.key); });
+        drift /= ring.length;
+        for (let i = 0; i < placed.length; i++) placed[i] -= drift;
+      }
+    }
+    if (!spread) {
+      placed.length = 0;
+      const gap = Math.max(0, (6.2832 - total) / ring.length);
+      let cursor = wish.get(ring[0].key);
+      for (const n of ring) { placed.push(cursor + width(n) / 2); cursor += width(n) + gap; }
+    }
+    ring.forEach((n, i) => {
+      angle.set(n.key, placed[i]);
+      sel.aim.set(n.key, [Math.cos(placed[i]) * radius, Math.sin(placed[i]) * radius]);
+    });
+  }
+}
+
+// ---------- canvas ----------
+const canvas = document.getElementById("scene");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, DPR = 1, tf = d3.zoomIdentity, autoFit = true, raf = 0;
+function resize() {
+  DPR = Math.min(2.5, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  requestDraw();
+}
+let lite = false, lastFrame = 0, slowFrames = 0;
+function requestDraw() { if (!raf) raf = requestAnimationFrame(frame); }
+function frame(now) {
+  raf = 0;
+  const gap = now - lastFrame;
+  lastFrame = now;
+  if (!lite && gap < 400) {
+    slowFrames = gap > 48 ? slowFrames + 1 : Math.max(0, slowFrames - 2);
+    if (slowFrames > 40) lite = true;
+  }
+  const turning = state.layout === "layers" && state.spin && !REDUCED;
+  if (turning && gap < 400) state.yaw += (gap / 1000) * 0.11;
+  draw(now);
+  if (!REDUCED && (state.sel || state.violations || turning)) requestDraw();
+}
+function viewport() {
+  const panel = document.getElementById("panel").getBoundingClientRect();
+  const top = document.getElementById("head").getBoundingClientRect().bottom + 14;
+  const narrow = W <= 860;
+  return narrow
+    ? { x0: 12, y0: top, x1: W - 12, y1: Math.max(top + 160, panel.top - 12) }
+    : { x0: 28, y0: top, x1: panel.left - 28, y1: H - 52 };
+}
+function fit(duration) {
+  if (!nodes.length) return;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of nodes) {
+    if (n.x === undefined) continue;
+    x0 = Math.min(x0, n.x - n.r); x1 = Math.max(x1, n.x + n.r);
+    y0 = Math.min(y0, n.y - n.r); y1 = Math.max(y1, n.y + n.r);
+  }
+  if (state.layout === "layers") {
+    // the stack turns, so fit the circle its planes sweep, not the planes as they stand now
+    const reach = stage.radius * 1.1;
+    const tall = stage.top * Math.cos(state.pitch) + stage.radius * Math.sin(state.pitch) * 1.05;
+    x0 = -reach - 110; x1 = reach; y0 = -tall; y1 = tall;
+  }
+  if (!isFinite(x0)) return;
+  const v = viewport();
+  const k = Math.max(0.04, Math.min(2.4, Math.min((v.x1 - v.x0) / (x1 - x0 + 40), (v.y1 - v.y0) / (y1 - y0 + 40))));
+  const next = d3.zoomIdentity
+    .translate((v.x0 + v.x1) / 2, (v.y0 + v.y1) / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
+  moveTo(next, duration);
+}
+function focusOn(node) {
+  autoFit = false;
+  if (state.layout === "layers") { fit(750); return; }
+  const v = viewport();
+  const sel = state.sel;
+  const reach = sel ? sel.rings[sel.rings.length - 1] + 110 : 260;
+  const k = Math.max(0.12, Math.min(2.2, Math.min(v.x1 - v.x0, v.y1 - v.y0) / (2 * reach)));
+  moveTo(d3.zoomIdentity.translate((v.x0 + v.x1) / 2, (v.y0 + v.y1) / 2).scale(k).translate(-node.x, -node.y), 750);
+}
+function moveTo(next, duration) {
+  const target = d3.select(canvas);
+  if (duration && !REDUCED) target.transition().duration(duration).ease(d3.easeCubicInOut).call(zoom.transform, next);
+  else target.call(zoom.transform, next);
+}
+
+function strokeOf(n) {
+  if (state.color === "layers") return LAYER_COLOR[LAYERS[n.layer]] || OTHER_COLOR;
+  if (state.color === "packages") {
+    const any = n.type === "m" ? n.i : packages.get(n.pkg).mods[0];
+    return groupColor.get(groupOf[any]) || OTHER_COLOR;
+  }
+  return n.type === "p" ? C.blue : C.sky;
+}
+function focusKeyOf(n) {
+  if (state.color === "packages") {
+    const any = n.type === "m" ? n.i : packages.get(n.pkg).mods[0];
+    return "g:" + groupOf[any];
+  }
+  return "l:" + n.layer;
+}
+function dimmed(n) {
+  if (state.focus && focusKeyOf(n) !== state.focus) return true;
+  const sel = state.sel;
+  if (!sel) return false;
+  return !sel.nodeDepth.has(n.key) && !sel.usesNodes.has(n.key);
+}
+
+// Layers view: every layer is a plane, the planes are stacked and seen in perspective.
+// project() turns (across, height, depth) into the flat coordinates the drawing code uses.
+function projector() {
+  const cy = Math.cos(state.yaw), sy = Math.sin(state.yaw), cp = Math.cos(state.pitch), sp = Math.sin(state.pitch);
+  const focal = stage.focal;
+  return (x, h, z) => {
+    const x1 = x * cy - z * sy, z1 = x * sy + z * cy;
+    const scale = focal / (focal + z1 * cp - h * sp);
+    return [x1 * scale, -(h * cp + z1 * sp) * scale, scale];
+  };
+}
+function place() {
+  if (state.layout !== "layers") {
+    for (const n of nodes) { n.px = n.x; n.py = n.y; n.pr = n.r; }
+    return;
+  }
+  const project = projector();
+  for (const n of nodes) {
+    if (n.x === undefined) { n.px = undefined; continue; }
+    const band = bands.get(n.layer);
+    const p = project(n.x, band.h, n.y - band.mid);
+    n.px = p[0]; n.py = p[1]; n.pr = Math.max(1.3, n.r * p[2]);
+  }
+}
+function draw(now) {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!nodes.length) return;
+  place();
+  const k = tf.k, sel = state.sel;
+  const elapsed = sel ? now - sel.t0 : 0;
+  const shown = sel ? (REDUCED ? 99 : elapsed / STEP) : 0;   // hops revealed so far (fractional)
+  ctx.save();
+  ctx.translate(tf.x, tf.y); ctx.scale(k, k);
+  if (state.layout === "layers") drawPlanes(k);
+  else if (!lite || sim.alpha() < 0.06) drawHulls(k);
+  else hullLabels = [];
+  drawLinks(now, k, sel, shown);
+  if (sel) drawRings(now, k, sel, shown, elapsed);
+  drawNodes(k, sel, shown);
+  ctx.restore();
+  drawLabels(k, sel, shown);
+  if (sel) drawCallout(k, sel);
+}
+
+function drawPlanes(k) {
+  const project = projector();
+  const hw = stage.width / 2, hd = stage.depth / 2;
+  const planes = [...bands.values()].sort((x, y) => x.h - y.h);     // lowest first, so upper planes lie over it
+  ctx.lineJoin = "round";
+  for (const plane of planes) {
+    const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([x, z]) => project(x, plane.h, z));
+    const core = plane.name === "domain";
+    ctx.beginPath();
+    ctx.moveTo(corners[0][0], corners[0][1]);
+    for (let i = 1; i < 4; i++) ctx.lineTo(corners[i][0], corners[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = core ? "rgba(52,211,153,0.13)" : "rgba(56,189,248,0.07)";
+    ctx.fill();
+    ctx.lineWidth = (core ? 1.8 : 1.2) / k;
+    ctx.strokeStyle = core ? "rgba(52,211,153,0.9)" : "rgba(125,211,252,0.5)";
+    ctx.stroke();
+    // a few ribs across the plane, like the wing panel in the Wingbox image
+    ctx.lineWidth = 0.6 / k;
+    ctx.strokeStyle = core ? "rgba(52,211,153,0.22)" : "rgba(125,211,252,0.13)";
+    for (let i = 1; i < 6; i++) {
+      const x = -hw + (stage.width * i) / 6;
+      const from = project(x, plane.h, -hd), to = project(x, plane.h, hd);
+      seg(from[0], from[1], to[0], to[1]);
+    }
+    // name on the corner that is farthest to the left on screen
+    let anchor = corners[0];
+    for (const corner of corners) if (corner[0] < anchor[0]) anchor = corner;
+    plane.label = [anchor[0], anchor[1]];
+  }
+}
+
+let hullLabels = [];
+function drawHulls(k) {
+  hullLabels = [];
+  const groups = new Map();
+  const torn = new Set();
+  const sel = state.sel;
+  for (const n of nodes) {
+    if (n.type !== "m" || n.px === undefined) continue;
+    if (sel && sel.nodeDepth.has(n.key)) { torn.add(n.pkg); continue; }
+    let g = groups.get(n.pkg);
+    if (!g) { g = []; groups.set(n.pkg, g); }
+    g.push(n);
+  }
+  for (const key of torn) groups.delete(key);
+  if (groups.size + torn.size < 2 || groups.size > 90) return;
+  ctx.lineWidth = 1 / k;
+  ctx.lineJoin = "round";
+  for (const [key, members] of groups) {
+    const pts = [];
+    for (const n of members) {
+      const pad = n.pr + 13;
+      for (let a = 0; a < 10; a++) pts.push([n.px + Math.cos(a * 0.62832) * pad, n.py + Math.sin(a * 0.62832) * pad]);
+    }
+    const hull = d3.polygonHull(pts);
+    if (!hull) continue;
+    ctx.beginPath();
+    ctx.moveTo(hull[0][0], hull[0][1]);
+    for (let i = 1; i < hull.length; i++) ctx.lineTo(hull[i][0], hull[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(56,189,248,0.05)"; ctx.fill();
+    ctx.strokeStyle = "rgba(125,211,252,0.26)"; ctx.stroke();
+    let top = Infinity, cx = 0;
+    for (const p of hull) { if (p[1] < top) top = p[1]; cx += p[0]; }
+    const width = (d3.max(hull, (p) => p[0]) - d3.min(hull, (p) => p[0])) * k;
+    if (width > 90 && key !== ".") hullLabels.push({ x: cx / hull.length, y: top, size: members.length, text: key.split("/").slice(-2).join("/") });
+  }
+}
+
+function seg(x0, y0, x1, y1) { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); }
+function dot(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill(); }
+function drawLinks(now, k, sel, shown) {
+  const fade = sel ? 0.5 : 1;
+  const hover = state.hover;
+  const tiers = [
+    { test: (l) => l.w === 1, width: 0.9, alpha: 0.26 },
+    { test: (l) => l.w > 1 && l.w <= 5, width: 1.4, alpha: 0.40 },
+    { test: (l) => l.w > 5, width: 2.3, alpha: 0.58 },
+  ];
+  const dense = (links.length > 6000 ? 0.6 : 1) * (state.layout === "layers" ? 0.55 : 1);
+  for (const tier of tiers) {
+    ctx.strokeStyle = rgba(C.blue, tier.alpha * fade * dense);
+    ctx.lineWidth = tier.width / Math.sqrt(k);
+    for (const l of links) {
+      if (!tier.test(l)) continue;
+      if (state.focus && (focusKeyOf(l.source) !== state.focus || focusKeyOf(l.target) !== state.focus)) continue;
+      seg(l.source.px, l.source.py, l.target.px, l.target.py);
+    }
+  }
+  if (hover) {
+    ctx.strokeStyle = rgba(C.ice, 0.85); ctx.lineWidth = 1.5 / Math.sqrt(k);
+    for (const l of links) if (l.source === hover || l.target === hover) seg(l.source.px, l.source.py, l.target.px, l.target.py);
+  }
+  if (sel) {
+    // what the selection uses: outgoing dependencies
+    ctx.strokeStyle = rgba(C.ice, 0.55); ctx.lineWidth = 1.2 / Math.sqrt(k);
+    ctx.setLineDash([2 / k, 5 / k]);
+    for (const l of links) if (l.source.key === sel.key && !sel.wave.has(l.key)) seg(l.source.px, l.source.py, l.target.px, l.target.py);
+    ctx.setLineDash([]);
+    // the wave: target was changed, source depends on it
+    for (let d = sel.reached; d >= 1; d--) {
+      const progress = Math.max(0, Math.min(1, shown - (d - 1)));
+      if (progress <= 0) continue;
+      ctx.strokeStyle = d === 1 ? rgba(C.amber, 0.95) : rgba(C.amber2, Math.max(0.35, 0.72 - (d - 2) * 0.16));
+      ctx.lineWidth = (d === 1 ? 2.8 : 2.0) / Math.sqrt(k);
+      for (const l of links) {
+        if (sel.wave.get(l.key) !== d) continue;
+        const tx = l.target.px, ty = l.target.py;
+        seg(tx, ty, tx + (l.source.px - tx) * progress, ty + (l.source.py - ty) * progress);
+      }
+    }
+    if (!REDUCED && sel.wave.size) {
+      let drawn = 0;
+      ctx.fillStyle = C.core;
+      const size = 1.9 / Math.sqrt(k);
+      for (const l of links) {
+        const d = sel.wave.get(l.key);
+        if (d === undefined || shown < d) continue;
+        if (++drawn > (lite ? 90 : 500)) break;
+        const phase = ((now / 1500) + (l.source.index * 0.37)) % 1;
+        dot(l.target.px + (l.source.px - l.target.px) * phase, l.target.py + (l.source.py - l.target.py) * phase, size);
+      }
+    }
+  }
+  if (state.violations) {
+    ctx.strokeStyle = rgba(C.red, 0.95); ctx.lineWidth = 2.2 / Math.sqrt(k);
+    ctx.setLineDash([7 / k, 5 / k]); ctx.lineDashOffset = REDUCED ? 0 : -(now / 45) / k;
+    for (const l of links) if (l.bad) seg(l.source.px, l.source.py, l.target.px, l.target.py);
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    ctx.fillStyle = C.red;
+    for (const l of links) {
+      if (!l.bad) continue;
+      const dx = l.target.px - l.source.px, dy = l.target.py - l.source.py, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len, tip = l.target.pr + 2, size = 7 / Math.sqrt(k);
+      const x = l.target.px - ux * tip, y = l.target.py - uy * tip;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - ux * size - uy * size * 0.55, y - uy * size + ux * size * 0.55);
+      ctx.lineTo(x - ux * size + uy * size * 0.55, y - uy * size - ux * size * 0.55);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+}
+
+function drawRings(now, k, sel, shown, elapsed) {
+  if (state.layout !== "graph") return;
+  const root = nodeByKey.get(sel.key);
+  if (!root) return;
+  ctx.setLineDash([4 / k, 7 / k]);
+  ctx.lineWidth = 1.5 / k;
+  for (let d = 1; d <= state.depth; d++) {
+    const progress = Math.max(0, Math.min(1, shown - (d - 1)));
+    if (progress <= 0) break;
+    const radius = sel.rings[d - 1] + (sel.rings[d] - sel.rings[d - 1]) * d3.easeCubicOut(progress);
+    ctx.beginPath(); ctx.arc(root.px, root.py, radius, 0, 6.2832);
+    ctx.strokeStyle = rgba(C.amber, d <= sel.reached ? 0.62 - (d - 1) * 0.12 : 0.2);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  const outer = sel.rings[Math.max(1, sel.reached)];
+  if (!lite) {
+    const glow = ctx.createRadialGradient(root.px, root.py, 0, root.px, root.py, outer);
+    glow.addColorStop(0, rgba(C.amber, 0.30)); glow.addColorStop(0.55, rgba(C.amber2, 0.09)); glow.addColorStop(1, rgba(C.amber2, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(root.px, root.py, outer, 0, 6.2832); ctx.fill();
+  }
+  if (!REDUCED && sel.total) {
+    const phase = (elapsed % 2600) / 2600;
+    ctx.beginPath(); ctx.arc(root.px, root.py, root.pr + phase * (outer - root.pr), 0, 6.2832);
+    ctx.strokeStyle = rgba(C.core, (1 - phase) * 0.5); ctx.lineWidth = 1.6 / k; ctx.stroke();
+  }
+}
+
+function drawNodes(k, sel, shown) {
+  const lw = 1.8 / Math.sqrt(k);
+  const plain = new Map();      // stroke colour -> nodes, to batch canvas calls
+  const faded = new Map();
+  const hot1 = [], hot2 = [], uses = [];
+  let root = null;
+  for (const n of nodes) {
+    if (n.px === undefined) continue;
+    if (sel) {
+      const d = sel.nodeDepth.get(n.key);
+      if (d === 0) { root = n; continue; }
+      if (d !== undefined && shown >= d) { (d === 1 ? hot1 : hot2).push(n); continue; }
+      if (sel.usesNodes.has(n.key)) { uses.push(n); continue; }
+    }
+    const bucket = dimmed(n) ? faded : plain;
+    const color = strokeOf(n);
+    let list = bucket.get(color);
+    if (!list) { list = []; bucket.set(color, list); }
+    list.push(n);
+  }
+  const ring = (list, fill, stroke, width, alpha) => {
+    if (!list.length) return;
+    ctx.globalAlpha = alpha;
+    if (fill) ctx.fillStyle = fill;
+    if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = width; }
+    for (const n of list) {
+      ctx.beginPath(); ctx.arc(n.px, n.py, n.pr, 0, 6.2832);
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+    // closed packages carry an inner ring, so they never read as a single module
+    if (stroke) {
+      ctx.globalAlpha = alpha * 0.45; ctx.lineWidth = width * 0.7;
+      for (const n of list) {
+        if (n.type !== "p") continue;
+        ctx.beginPath(); ctx.arc(n.px, n.py, Math.max(1, n.pr - 3.5), 0, 6.2832); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+  for (const [color, list] of faded) ring(list, tint(color), color, lw, state.focus ? 0.16 : 0.5);
+  for (const [color, list] of plain) ring(list, tint(color), color, lw, 0.95);
+  ring(uses, C.navy, C.ice, lw * 1.15, 1);
+  ring(hot2, C.navy, C.amber2, lw * 1.3, 1);
+  ring(hot1, C.amber, null, 0, 1);
+  if (root) {
+    const halo = ctx.createRadialGradient(root.px, root.py, root.pr * 0.5, root.px, root.py, root.pr * 3 + 22);
+    halo.addColorStop(0, rgba(C.amber, 0.55)); halo.addColorStop(1, rgba(C.amber, 0));
+    ctx.fillStyle = halo;
+    ctx.beginPath(); ctx.arc(root.px, root.py, root.pr * 3 + 22, 0, 6.2832); ctx.fill();
+    ctx.beginPath(); ctx.arc(root.px, root.py, root.pr + 3.5, 0, 6.2832);
+    ctx.fillStyle = C.core; ctx.fill();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.4 / Math.sqrt(k); ctx.stroke();
+  }
+  if (state.hover && state.hover.px !== undefined) {
+    const n = state.hover;
+    ctx.beginPath(); ctx.arc(n.px, n.py, n.pr + 4 / k, 0, 6.2832);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.4 / k; ctx.stroke();
+  }
+  // module count inside a closed package
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  for (const n of nodes) {
+    if (n.type !== "p" || n.pr * k < 11 || n.px === undefined) continue;
+    const d = sel ? sel.nodeDepth.get(n.key) : undefined;
+    ctx.globalAlpha = dimmed(n) ? (state.focus ? 0.25 : 0.55) : 1;
+    ctx.font = `${Math.max(9, Math.min(13, n.pr * 0.62))}px ${MONO}`;
+    ctx.fillStyle = d === 1 && shown >= 1 ? C.navy : d === 0 ? C.navy : C.ice;
+    ctx.fillText(String(n.count), n.px, n.py + 0.5);
+  }
+  ctx.globalAlpha = 1; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
+function calloutBox(sel) {
+  const root = sel && nodeByKey.get(sel.key);
+  if (!root || root.px === undefined) return null;
+  const sx = tf.applyX(root.px), sy = tf.applyY(root.py);
+  const v = viewport();
+  const right = sx + 250 < v.x1 + 20;
+  const down = state.layout === "layers" ? sy < (v.y0 + v.y1) / 2 : sy + 150 < H - 20;
+  const lx = right ? Math.min(sx + 86, W - 226) : Math.max(sx - 86, 226);
+  const ly = sy + (down ? 104 : -104);
+  return { root, sx, sy, right, down, lx, ly, x0: right ? lx - 6 : lx - 214, x1: right ? lx + 214 : lx + 6, y0: ly - 20, y1: ly + 48 };
+}
+function drawLabels(k, sel, shown) {
+  const placed = [];
+  // names on the canvas keep clear of the header and of the panel
+  for (const id of ["head", "panel"]) {
+    const box = document.getElementById(id).getBoundingClientRect();
+    placed.push({ x0: box.left, x1: box.right, y0: box.top, y1: box.bottom });
+  }
+  const callout = calloutBox(sel);
+  if (callout) placed.push(callout);
+  if (state.layout === "layers") {
+    ctx.textAlign = "right";
+    for (const plane of bands.values()) {
+      if (!plane.label) continue;
+      const x = tf.applyX(plane.label[0]) - 12, y = tf.applyY(plane.label[1]) + 4;
+      const core = plane.name === "domain";
+      ctx.font = `12px ${MONO}`;
+      const name = plane.name.toUpperCase().split("").join("\u200a\u200a");
+      ctx.fillStyle = core ? "#6ee7b7" : "rgba(125,211,252,0.95)";
+      ctx.fillText(name, x, y);
+      ctx.font = `11px ${MONO}`;
+      ctx.fillStyle = "rgba(148,163,184,0.9)";
+      ctx.fillText(plural(plane.count, "module"), x, y + 15);
+      placed.push({ x0: x - 120, x1: x, y0: y - 12, y1: y + 18 });
+    }
+    ctx.textAlign = "left";
+  }
+  const tryLabel = (n, color, size) => {
+    const sx = tf.applyX(n.px), sy = tf.applyY(n.py), r = n.pr * k;
+    if (sx < -60 || sx > W + 60 || sy < -30 || sy > H + 30) return;
+    ctx.font = `${size}px ${MONO}`;
+    const text = n.label.length > 34 ? n.label.slice(0, 32) + "…" : n.label;
+    const width = ctx.measureText(text).width;
+    const box = { x0: sx + r + 5, y0: sy - size * 0.7, x1: sx + r + 5 + width, y1: sy + size * 0.5 };
+    for (const p of placed) if (box.x0 < p.x1 + 6 && box.x1 > p.x0 - 6 && box.y0 < p.y1 + 3 && box.y1 > p.y0 - 3) return;
+    placed.push(box);
+    ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(7,11,22,0.88)"; ctx.lineJoin = "round";
+    ctx.strokeText(text, box.x0, sy + size * 0.32);
+    ctx.fillStyle = color; ctx.fillText(text, box.x0, sy + size * 0.32);
+  };
+  if (state.hover && state.hover.px !== undefined) tryLabel(state.hover, "#ffffff", 12);
+  if (sel) {
+    const root = nodeByKey.get(sel.key);
+    if (root && root.px !== undefined && root !== state.hover) tryLabel(root, "#ffffff", 12);
+    const ranked = nodes
+      .filter((n) => { const d = sel.nodeDepth.get(n.key); return d !== undefined && d > 0 && shown >= d; })
+      .sort((a, b) => sel.nodeDepth.get(a.key) - sel.nodeDepth.get(b.key) || b.pr - a.pr);
+    for (const n of ranked.slice(0, 26)) tryLabel(n, sel.nodeDepth.get(n.key) === 1 ? C.core : rgba(C.amber, 0.85), 11);
+  }
+  if (state.layout === "graph") {
+    ctx.font = `10.5px ${MONO}`;
+    for (const label of hullLabels.slice().sort((a, b) => b.size - a.size)) {
+      const sx = tf.applyX(label.x), sy = tf.applyY(label.y) - 5;
+      const width = ctx.measureText(label.text).width;
+      const box = { x0: sx - width / 2, x1: sx + width / 2, y0: sy - 10, y1: sy + 3 };
+      if (placed.some((p) => box.x0 < p.x1 + 8 && box.x1 > p.x0 - 8 && box.y0 < p.y1 + 4 && box.y1 > p.y0 - 4)) continue;
+      placed.push(box);
+      ctx.fillStyle = sel ? "rgba(125,211,252,0.42)" : "rgba(125,211,252,0.7)";
+      ctx.fillText(label.text, box.x0, sy);
+    }
+  }
+  const rest = nodes.filter((n) => n.px !== undefined && !dimmed(n)).sort((a, b) => b.pr - a.pr);
+  let budget = 60;
+  for (const n of rest) {
+    if (budget <= 0) break;
+    const visible = n.type === "p" ? n.pr * k > 8 : n.pr * k > 6.5 || k > 2.1;
+    if (!visible) continue;
+    if (sel && sel.nodeDepth.has(n.key)) continue;
+    tryLabel(n, n.type === "p" ? C.ice : "rgba(226,232,240,0.86)", 11);
+    budget--;
+  }
+}
+
+function drawCallout(k, sel) {
+  const box = calloutBox(sel);
+  if (!box) return;
+  const { root, sx, sy, right, down, lx, ly } = box;
+  const edge = (root.pr + 5) * k * 0.72;
+  ctx.beginPath();
+  ctx.moveTo(sx + (right ? edge : -edge), sy + (down ? edge : -edge));
+  ctx.lineTo(lx + (right ? -8 : 8), ly + (down ? -22 : 14));
+  ctx.strokeStyle = rgba(C.core, 0.75); ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.beginPath();
+  ctx.roundRect(box.x0 - 6, box.y0 - 4, box.x1 - box.x0 + 12, box.y1 - box.y0 + 8, 10);
+  ctx.fillStyle = "rgba(7,11,22,0.80)"; ctx.fill();
+  ctx.strokeStyle = rgba(C.amber, 0.35); ctx.lineWidth = 1; ctx.stroke();
+  ctx.textAlign = right ? "left" : "right";
+  const text = (line, y, font, color) => { ctx.font = font; ctx.fillStyle = color; ctx.fillText(line, lx, y); };
+  text("change here", ly, `16px ${MONO}`, C.core);
+  text(`blast radius: ${plural(state.depth, "hop")}`, ly + 21, `13.5px ${MONO}`, rgba(C.amber, 0.9));
+  text(`${plural(sel.total, "module")} affected (${share(sel.total)})`, ly + 40, `12px ${MONO}`, rgba(C.amber, 0.7));
+  ctx.textAlign = "left";
+}
+
+// ---------- pointer ----------
+function nodeAt(px, py) {
+  const [x, y] = tf.invert([px, py]);
+  let best = null, score = Infinity;
+  for (const n of nodes) {
+    if (n.px === undefined) continue;
+    const reach = n.pr + 5 / tf.k;
+    const d = Math.hypot(n.px - x, n.py - y);
+    if (d <= reach && d - n.pr < score) { best = n; score = d - n.pr; }
+  }
+  return best;
+}
+const zoom = d3.zoom().scaleExtent([0.03, 9])
+  // in the layers view a drag turns the stack, so only the wheel is left to zoom
+  .filter((ev) => (state.layout === "layers" ? ev.type === "wheel" : (!ev.ctrlKey || ev.type === "wheel") && !ev.button))
+  .on("zoom", (ev) => {
+  tf = ev.transform;
+  if (ev.sourceEvent) { autoFit = false; interacted = true; }
+  requestDraw();
+});
+const drag = d3.drag()
+  .container(canvas)
+  .subject((ev) => {
+    const n = state.layout === "layers" ? null : nodeAt(ev.x, ev.y);
+    return n ? { node: n, x: tf.applyX(n.px), y: tf.applyY(n.py) } : null;
+  })
+  .on("start", (ev) => { interacted = true; autoFit = false; if (!ev.active) sim.alphaTarget(0.25).restart(); })
+  .on("drag", (ev) => { const n = ev.subject.node; n.fx = tf.invertX(ev.x); n.fy = tf.invertY(ev.y); })
+  .on("end", (ev) => {
+    if (!ev.active) sim.alphaTarget(0);
+    const n = ev.subject.node;
+    if (!(state.sel && state.sel.key === n.key && state.layout === "graph")) { n.fx = null; n.fy = null; }
+  });
+d3.select(canvas).call(drag).call(zoom).on("dblclick.zoom", null);
+
+let turn = null, skipClick = false;
+canvas.addEventListener("pointerdown", (ev) => {
+  if (state.layout === "layers" && !ev.button) turn = { x: ev.clientX, y: ev.clientY, moved: 0 };
+});
+window.addEventListener("pointermove", (ev) => {
+  if (!turn) return;
+  const dx = ev.clientX - turn.x, dy = ev.clientY - turn.y;
+  turn.x = ev.clientX; turn.y = ev.clientY; turn.moved += Math.abs(dx) + Math.abs(dy);
+  if (turn.moved < 5) return;
+  state.spin = false; interacted = true; autoFit = false;
+  state.yaw -= dx * 0.006;
+  state.pitch = Math.max(0.1, Math.min(1.35, state.pitch + dy * 0.004));
+  requestDraw();
+});
+window.addEventListener("pointerup", () => {
+  if (turn && turn.moved >= 5) { skipClick = true; writeHash(); }
+  turn = null;
+});
+
+const tip = document.getElementById("tip");
+canvas.addEventListener("mousemove", (ev) => {
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if (n !== state.hover) { state.hover = n; canvas.classList.toggle("over", !!n); requestDraw(); }
+  if (!n) { tip.style.display = "none"; return; }
+  tip.replaceChildren();
+  if (n.type === "m") {
+    const m = MODS[n.i];
+    tip.append(m.file, el("small", { text: `${layerName(n.i)} / ${plural(m.in, "dependent")} / ${plural(m.reach, "module")} within ${DATA.depth} hops` }));
+  } else {
+    tip.append(n.pkg === "." ? "(root)" : n.pkg + "/", el("small", { text: `package / ${plural(n.count, "module")} / double-click to open` }));
+  }
+  tip.style.display = "block";
+  const box = tip.getBoundingClientRect();
+  tip.style.left = Math.min(W - box.width - 8, ev.clientX + 14) + "px";
+  tip.style.top = Math.min(H - box.height - 8, ev.clientY + 14) + "px";
+});
+canvas.addEventListener("mouseleave", () => { state.hover = null; tip.style.display = "none"; requestDraw(); });
+canvas.addEventListener("click", (ev) => {
+  if (skipClick) { skipClick = false; return; }
+  interacted = true;
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if (n) select(n.key, true); else if (state.sel) select(null);
+});
+canvas.addEventListener("dblclick", (ev) => {
+  const n = nodeAt(ev.clientX, ev.clientY);
+  if (!n || packages.size < 2) return;
+  interacted = true; autoFit = false;
+  if (n.type === "p") state.expanded.add(n.pkg); else state.expanded.delete(n.pkg);
+  dropSelection();
+  rebuild(); renderPills(); renderPanel(true); writeHash();
+});
+window.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") { state.focus = null; select(null); document.getElementById("hits").classList.remove("on"); }
+  else if (ev.key === "/" && document.activeElement.id !== "search") { ev.preventDefault(); document.getElementById("search").focus(); }
+});
+window.addEventListener("resize", () => { resize(); if (!interacted) fit(0); });
+
+// ---------- actions ----------
+function selectModule(i, quiet) {
+  if (!state.expanded.has(pkgOf[i])) {
+    state.expanded.add(pkgOf[i]);
+    rebuild(); renderPills();
+    for (let t = 0; t < 40; t++) sim.tick();
+  }
+  select("m" + i, quiet);
+}
+function setLayout(layout) {
+  if (state.layout === layout) return;
+  state.layout = layout;
+  const root = state.sel && nodeByKey.get(state.sel.key);
+  if (root) { if (layout === "graph") { root.fx = root.x; root.fy = root.y; } else { root.fx = null; root.fy = null; } }
+  layoutBands(); applyForces();
+  sim.alpha(0.9).restart();
+  state.spin = layout === "layers";
+  autoFit = layout === "layers" || !state.sel; interacted = false;
+  renderPills(); writeHash();
+  if (state.sel) setTimeout(() => { const n = state.sel && nodeByKey.get(state.sel.key); if (n) focusOn(n); }, 900);
+}
+function setAllExpanded(open) {
+  state.expanded = new Set(open ? packages.keys() : []);
+  dropSelection(); autoFit = true; interacted = false;
+  rebuild(); renderPills(); renderPanel(true); writeHash();
+}
+function setDepth(depth) {
+  state.depth = depth;
+  if (state.sel) { state.sel.t0 = performance.now(); projectSelection(); applyForces(); sim.alpha(0.6).restart(); const n = nodeByKey.get(state.sel.key); if (n) focusOn(n); }
+  renderPills(); renderPanel(); writeHash(); requestDraw();
+}
+
+// ---------- pills ----------
+function renderPills() {
+  const seg = (caption, options, current, pick) => el("div", { class: "group", role: "group", "aria-label": caption },
+    el("span", { class: "cap", text: caption }),
+    options.map(([value, label]) => el("button", { type: "button", "aria-pressed": String(current === value), text: label, onclick: () => pick(value) })));
+  const allOpen = state.expanded.size === packages.size;
+  const hits = el("div", { id: "hits" });
+  const search = el("input", { id: "search", type: "search", placeholder: "find a file  /", autocomplete: "off", "aria-label": "Find a file" });
+  search.addEventListener("input", () => {
+    const q = search.value.trim().toLowerCase();
+    hits.replaceChildren();
+    if (q.length < 2) { hits.classList.remove("on"); return; }
+    const found = [];
+    for (let i = 0; i < N && found.length < 12; i++) if (MODS[i].file.toLowerCase().includes(q)) found.push(i);
+    for (const i of found) hits.append(fileRow(i, fmt(MODS[i].in), () => { hits.classList.remove("on"); search.value = ""; }));
+    if (!found.length) hits.append(el("div", { class: "more", text: "no file matches" }));
+    hits.classList.add("on");
+  });
+  search.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && hits.firstChild && hits.firstChild.click) hits.firstChild.click(); });
+  const pills = [
+    seg("view", [["graph", "graph"], ["layers", "layers"]], state.layout, setLayout),
+    seg("colour", [["wire", "wireframe"], ["layers", "layers"], ["packages", "packages"]], state.color, (v) => { state.color = v; state.focus = null; renderPills(); renderPanel(); writeHash(); requestDraw(); }),
+    seg("hops", [1, 2, 3, 4].map((d) => [d, String(d)]), state.depth, setDepth),
+    el("button", { class: DATA.violations.length ? "pill warn" : "pill", type: "button", "aria-pressed": String(state.violations), disabled: DATA.violations.length === 0,
+      text: `${plural(DATA.violations.length, "boundary violation")}`, onclick: () => { state.violations = !state.violations; renderPills(); writeHash(); requestDraw(); } }),
+    packages.size > 1 && (N <= EXPAND_ALL_LIMIT || allOpen)
+      ? el("button", { class: "pill", type: "button", text: allOpen ? "close packages" : "open all packages", onclick: () => setAllExpanded(!allOpen) }) : null,
+    el("button", { class: "pill", type: "button", text: "fit", onclick: () => { autoFit = false; fit(600); } }),
+    el("div", { id: "searchbox" }, search, hits),
+  ];
+  document.getElementById("pills").replaceChildren(...pills.filter(Boolean));
+}
+
+// ---------- panel ----------
+function fileRow(i, count, after) {
+  return el("button", { class: "row", type: "button", title: MODS[i].file, onclick: () => { interacted = true; if (after) after(); selectModule(i); } },
+    el("span", { class: "f" }, el("bdi", { text: MODS[i].file })), el("span", { class: "n", text: count }));
+}
+function listFiles(indexes, countOf, limit) {
+  const out = indexes.slice(0, limit).map((i) => fileRow(i, countOf(i)));
+  if (indexes.length > limit) out.push(el("div", { class: "more", text: `+ ${fmt(indexes.length - limit)} more` }));
+  return out;
+}
+function selectionCard() {
+  const sel = state.sel, node = nodeByKey.get(sel.key);
+  const isModule = node.type === "m";
+  const file = isModule ? MODS[node.i].file : (node.pkg === "." ? "(root)" : node.pkg + "/");
+  const direct = sel.byDepth[1] ? sel.byDepth[1].length : 0;
+  const isTest = (i) => (layerName(i) === "test" ? 1 : 0);
+  const byIn = (a, b) => isTest(a) - isTest(b) || MODS[b].in - MODS[a].in || (MODS[a].file < MODS[b].file ? -1 : 1);
+  const card = el("div", { class: "card" },
+    el("button", { class: "close", type: "button", "aria-label": "Clear selection", text: "esc ×", onclick: () => select(null) }),
+    el("div", { class: "name", text: file }),
+    el("div", { class: "meta", text: isModule ? `${layerName(node.i)} layer / ${MODS[node.i].lang || "source"}` : `package / ${plural(node.count, "module")} / double-click it to open` }),
+    el("div", { class: "stats" },
+      el("div", { class: "stat" }, el("b", { text: fmt(direct) }), el("span", { text: "direct dependents" })),
+      el("div", { class: "stat" }, el("b", { text: `${fmt(sel.total)} (${share(sel.total)})` }), el("span", { text: `within ${plural(state.depth, "hop")}` })),
+      el("div", { class: "stat" }, el("b", { text: fmt(sel.uses.size) }), el("span", { text: "depends on" }))),
+  );
+  if (isModule) {
+    const command = `wingbox impact ${file}${state.depth === 2 ? "" : " " + state.depth}`;
+    const copy = el("button", { type: "button", text: "copy", onclick: () => {
+      const done = () => { copy.textContent = "copied"; setTimeout(() => { copy.textContent = "copy"; }, 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(command).then(done, () => {});
+    } });
+    card.append(el("div", { class: "cmd" }, el("code", { text: command }), copy));
+  }
+  for (let d = 1; d <= state.depth; d++) {
+    const list = (sel.byDepth[d] || []).slice().sort(byIn);
+    if (!list.length) continue;
+    card.append(el("div", { class: "sub", text: `${d === 1 ? "breaks first" : "then"}: hop ${d} (${fmt(list.length)})` }), ...listFiles(list, (i) => (MODS[i].in ? fmt(MODS[i].in) : ""), 14));
+  }
+  if (!sel.total) card.append(el("div", { class: "note", text: "Nothing in the graph depends on this. A change here stays local." }));
+  const uses = [...sel.uses].sort(byIn);
+  if (uses.length) card.append(el("div", { class: "sub dep", text: `depends on (${fmt(uses.length)})` }), ...listFiles(uses, (i) => (MODS[i].in ? fmt(MODS[i].in) : ""), 8));
+  return card;
+}
+function legend() {
+  const rows = [];
+  const row = (key, label, count, color) => el("button", {
+    class: "row" + (state.focus === key ? " on" : ""), type: "button", "aria-pressed": String(state.focus === key),
+    onclick: () => { state.focus = state.focus === key ? null : key; renderPanel(); requestDraw(); },
+  }, el("span", { class: "sw", style: `border-color:${color}` }), el("span", { class: "f" }, el("bdi", { text: label })), el("span", { class: "n", text: fmt(count) }));
+  if (state.color === "packages") {
+    const top = groupRank.slice(0, PACKAGE_COLORS.length);
+    for (const [g, count] of top) rows.push(row("g:" + g, g === "." ? "(root)" : g + "/", count, groupColor.get(g)));
+    const rest = groupRank.slice(PACKAGE_COLORS.length);
+    if (rest.length) rows.push(el("div", { class: "more", text: `+ ${fmt(rest.length)} smaller folders in grey (${fmt(rest.reduce((a, r) => a + r[1], 0))} modules)` }));
+  } else {
+    for (const [name, count] of DATA.layerCounts) {
+      rows.push(row("l:" + LAYERS.indexOf(name), name, count, state.color === "layers" ? LAYER_COLOR[name] : C.sky));
+    }
+  }
+  return rows;
+}
+function matrix() {
+  const present = DATA.layerCounts.map(([name]) => LAYERS.indexOf(name));
+  if (present.length < 2) return null;
+  const counts = new Map();
+  for (const [s, t] of EDGES) {
+    const key = MODS[s].layer + ">" + MODS[t].layer;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const denied = new Map(DATA.rules.map(([from, to, reason]) => [from + ">" + to, reason]));
+  const short = (name) => name.slice(0, 4);
+  const head = el("tr", {}, el("th", { text: "from \\ to" }), present.map((l) => el("th", { title: LAYERS[l], text: short(LAYERS[l]) })));
+  const body = present.map((from) => el("tr", {}, el("th", { text: LAYERS[from] }), present.map((to) => {
+    const count = counts.get(from + ">" + to) || 0;
+    const reason = denied.get(LAYERS[from] + ">" + LAYERS[to]);
+    const cls = count === 0 ? "z" : reason ? "bad" : from === to ? "same" : "";
+    return el("td", { class: cls, title: `${LAYERS[from]} -> ${LAYERS[to]}: ${dependencies(count)}${reason && count ? " / rule broken: " + reason : ""}`, text: count ? fmt(count) : "·" });
+  })));
+  return el("table", { class: "mx" }, el("thead", {}, head), el("tbody", {}, body));
+}
+function renderPanel(toTop) {
+  const panel = document.getElementById("panel");
+  const top = MODS.map((m, i) => i).filter((i) => MODS[i].in > 0 && layerName(i) !== "test")
+    .sort((a, b) => MODS[b].in - MODS[a].in || MODS[b].reach - MODS[a].reach || (MODS[a].file < MODS[b].file ? -1 : 1)).slice(0, 12);
+  const parts = [];
+  if (state.sel) parts.push(el("h2", { text: "Blast radius" }), selectionCard());
+  parts.push(el("h2", { text: "Most depended-on (tests left out)" }),
+    top.length ? top.map((i) => fileRow(i, fmt(MODS[i].in))) : el("div", { class: "note", text: "No module depends on another one." }));
+  parts.push(el("h2", { text: state.color === "packages" ? "Packages" : "Architecture layers" }), legend());
+  const table = matrix();
+  if (table) parts.push(el("h2", { text: "Dependencies between layers" }), table,
+    el("div", { class: "note", text: `Rows depend on columns. A red cell breaks a default layer rule. The rules place ${share(DATA.placed[0] + DATA.placed[1])} of the modules: ${fmt(DATA.placed[0])} by folder, ${fmt(DATA.placed[1])} by a guess from the role of the file.` }));
+  parts.push(el("h2", { text: "Boundary violations" }));
+  if (DATA.violations.length) {
+    for (const [s, t, rule] of DATA.violations.slice(0, 30)) {
+      parts.push(el("button", { class: "row", type: "button", title: `${MODS[s].file} -> ${MODS[t].file}`, onclick: () => { state.violations = true; renderPills(); selectModule(t); } },
+        el("span", { class: "sw", style: `border-color:${C.red}` }),
+        el("span", { class: "f" }, el("bdi", { text: `${base(MODS[s].file)} -> ${base(MODS[t].file)}` }))),
+        el("div", { class: "rule", text: DATA.ruleReasons[rule] }));
+    }
+    if (DATA.violations.length > 30) parts.push(el("div", { class: "more", text: `+ ${fmt(DATA.violations.length - 30)} more: wingbox boundaries all` }));
+  } else parts.push(el("div", { class: "note", text: `None between layers that are set by folders (${share(DATA.placed[0])} of the modules).` }));
+  if (DATA.candidates) parts.push(el("div", { class: "note", text: `${plural(DATA.candidates, "more candidate")} rest on a guessed layer and are not drawn: wingbox boundaries all` }));
+  parts.push(el("div", { class: "foot" },
+    el("div", {}, "table view: ", el("a", { href: "REPORT.md", text: "REPORT.md" })),
+    el("div", { text: `generated ${DATA.generated} by wingbox ${DATA.version}` }),
+    el("div", {}, el("a", { href: "https://github.com/aileron-tech/wingbox", rel: "noopener", text: "github.com/aileron-tech/wingbox" })),
+    el("div", { text: "static parsing: run-time wiring is not on the map" })));
+  const scroll = panel.scrollTop;
+  panel.replaceChildren(...parts.flat());
+  panel.scrollTop = toTop ? 0 : scroll;
+}
+
+// ---------- link state: map.html#select=src/file.ts&view=layers ----------
+function writeHash() {
+  const parts = [];
+  if (state.sel) {
+    const n = nodeByKey.get(state.sel.key);
+    if (n && n.type === "m") parts.push("select=" + encodeURIComponent(MODS[n.i].file));
+  } else if (interacted) parts.push("select=none");
+  if (state.layout !== "graph") parts.push("view=" + state.layout);
+  if (state.layout === "layers" && !state.spin) parts.push("yaw=" + state.yaw.toFixed(2), "pitch=" + state.pitch.toFixed(2));
+  if (state.color !== "wire") parts.push("colour=" + state.color);
+  if (state.depth !== DATA.depth) parts.push("hops=" + state.depth);
+  if (state.violations) parts.push("violations=1");
+  try { history.replaceState(null, "", parts.length ? "#" + parts.join("&") : location.pathname + location.search); } catch (error) { /* file:// may refuse; the map still works */ }
+}
+function readHash() {
+  const out = {};
+  for (const part of location.hash.slice(1).split("&")) {
+    const i = part.indexOf("=");
+    if (i > 0) out[part.slice(0, i)] = decodeURIComponent(part.slice(i + 1));
+  }
+  return out;
+}
+
+// ---------- start ----------
+document.getElementById("title").textContent = DATA.project;
+document.getElementById("lede").textContent =
+  `${plural(N, "module")}, ${dependencies(EDGES.length)}, ${plural(DATA.violations.length, "boundary violation")}`;
+const opts = readHash();
+if (opts.view === "layers") state.layout = "layers";
+if (opts.yaw !== undefined && isFinite(+opts.yaw)) { state.yaw = +opts.yaw; state.spin = false; }
+if (opts.pitch !== undefined && isFinite(+opts.pitch)) state.pitch = Math.max(0.1, Math.min(1.35, +opts.pitch));
+if (["layers", "packages"].includes(opts.colour)) state.color = opts.colour;
+if (+opts.hops >= 1 && +opts.hops <= 4) state.depth = +opts.hops;
+if (opts.violations === "1" && DATA.violations.length) state.violations = true;
+resize();
+rebuild();
+renderPills(); renderPanel(true);
+const wanted = opts.select && opts.select !== "none" ? MODS.findIndex((m) => m.file === opts.select) : -1;
+const first = wanted >= 0 ? wanted
+  : opts.select === "none" ? -1
+  : MODS.reduce((best, m, i) => (m.reach > 0 && layerName(i) !== "test"
+    && (best < 0 || m.reach > MODS[best].reach || (m.reach === MODS[best].reach && m.in > MODS[best].in)) ? i : best), -1);
+if (first >= 0) {
+  setTimeout(() => { if (!interacted || wanted >= 0) selectModule(first); }, REDUCED ? 0 : Math.min(2600, 900 + nodes.length * 2));
+}
+})();
+</script>
+</body>
+</html>

@@ -58,6 +58,7 @@ and backslash escapes. Other regex operators are rejected.
 
 from __future__ import annotations
 
+import functools
 import os
 import re
 import sys
@@ -263,13 +264,18 @@ def tokenize(line: str) -> list[str]:
             depth = 1
             j = i + 1
             while j < len(inner) and depth > 0:
-                if inner[j] == "(":
+                if inner[j] == '"':
+                    # a quoted value may hold brackets: (:methods ")" "]")
+                    j = _end_of_quoted(inner, j)
+                elif inner[j] == "(":
                     depth += 1
                 elif inner[j] == ")":
                     depth -= 1
                 j += 1
             tokens.append(inner[i:j])
             i = j
+        elif ch == ")":
+            i += 1  # a stray closing bracket is skipped; it must never stall the reader
         else:
             j = i
             while j < len(inner) and inner[j] not in (" ", ")"):
@@ -279,11 +285,24 @@ def tokenize(line: str) -> list[str]:
     return tokens
 
 
+def _end_of_quoted(text: str, start: int) -> int:
+    """Index of the quote that closes the quoted value opening at start (or the last index)."""
+    j = start + 1
+    while j < len(text):
+        if text[j] == "\\" and j + 1 < len(text):
+            j += 2
+        elif text[j] == '"':
+            return j
+        else:
+            j += 1
+    return len(text) - 1
+
+
 def parse_sub_list(token: str) -> list[str]:
-    """Parse a (:key a b c) token into ['a', 'b', 'c']."""
+    """Parse a (:key a b c) token into ['a', 'b', 'c']; quoted values keep spaces and brackets."""
     if token.startswith("(") and token.endswith(")"):
-        parts = token[1:-1].split()
-        return [p for p in parts if not p.startswith(":")]
+        parts = tokenize(token)
+        return parts[1:] if parts and parts[0].startswith(":") else parts
     return []
 
 
@@ -328,6 +347,7 @@ _PY_EXTENSIONS = (".py",)
 _RUBY_EXTENSIONS = (".rb", ".rake")
 _RUST_EXTENSIONS = (".rs",)
 _PASCAL_EXTENSIONS = (".pas", ".pp", ".lpr", ".inc")
+_OTHER_EXTENSIONS = (".go", ".java", ".cs")
 
 
 def _module_id_to_file(module_id: str, root: str) -> str:
@@ -341,6 +361,7 @@ def _module_id_to_file(module_id: str, root: str) -> str:
         + _RUBY_EXTENSIONS
         + _RUST_EXTENSIONS
         + _PASCAL_EXTENSIONS
+        + _OTHER_EXTENSIONS
     )
     for ext in source_extensions:
         candidate = base + ext
@@ -633,11 +654,15 @@ class CodeGraph:
 # ---------------------------------------------------------------------------
 
 def _collect_dep_mods(g: CodeGraph, nid: str) -> dict[str, str]:
-    """Outgoing dependency modules (deduped): module -> edge_type."""
+    """Outgoing dependency modules (deduped): module -> edge_type.
+
+    An import is the relation reported for a pair that has one; another
+    relation (data flow, inheritance) is named only when there is no import.
+    """
     seen: dict[str, str] = {}
     for e in g.edges_from.get(nid, []):
         tgt_mod = e.target.split("::")[0]
-        if tgt_mod != nid and tgt_mod not in seen:
+        if tgt_mod != nid and (tgt_mod not in seen or e.etype == "imports"):
             seen[tgt_mod] = e.etype
     return seen
 
@@ -647,7 +672,7 @@ def _collect_rdep_mods(g: CodeGraph, nid: str) -> dict[str, str]:
     seen: dict[str, str] = {}
     for e in g.edges_to.get(nid, []):
         src_mod = e.source.split("::")[0]
-        if src_mod != nid and src_mod not in seen:
+        if src_mod != nid and (src_mod not in seen or e.etype == "imports"):
             seen[src_mod] = e.etype
     return seen
 
@@ -684,6 +709,22 @@ def _walk_rdeps(
 # Layer classifier + boundary rules
 # ---------------------------------------------------------------------------
 
+_TEST_FOLDERS = ("/tests/", "/test/", "/__tests__/", "/e2e/", "/testdata/")
+_TEST_NAME_ENDINGS = (".test", ".spec", "_test", "_spec", ".test-d")
+
+
+def _is_test_path(p: str) -> bool:
+    """True for a module in a test folder or named like a test (module IDs carry no extension)."""
+    name = p.rsplit("/", 1)[-1]
+    return (
+        any(folder in p for folder in _TEST_FOLDERS)
+        or name.startswith("test_")
+        or name.endswith(_TEST_NAME_ENDINGS)
+        or ".test." in name
+        or ".spec." in name
+    )
+
+
 def _classify_layer_fallback(p: str) -> str:
     """Classify a module into an architecture layer from its path.
 
@@ -692,7 +733,7 @@ def _classify_layer_fallback(p: str) -> str:
     /interface/ folders are shared contracts (not api).
     """
     # High-priority overrides (tests, config)
-    if "/tests/" in p or "/test_" in p or ".test." in p or ".spec." in p or "/e2e/" in p:
+    if _is_test_path(p):
         return "test"
     if "/config/" in p or "/env/" in p:
         return "config"
@@ -743,7 +784,7 @@ def _classify_layer_fallback(p: str) -> str:
     if "/fixtures/" in p or "/mocks/" in p or "/__mocks__/" in p or "/factories/" in p:
         return "test"
     # Config / tooling patterns
-    if "/scripts/" in p or "/tools/" in p or "/cli/" in p:
+    if "/scripts/" in p:
         return "config"
     return "other"
 
@@ -897,12 +938,22 @@ def _classify_layer_by_purpose(purpose: str) -> str:
     return best_layer
 
 
+@functools.lru_cache(maxsize=None)
 def _classify_layer(module_path: str, purpose: str = "") -> str:
-    """Classify using path patterns first, fall back to purpose string."""
-    result = _classify_layer_fallback(module_path.lower())
+    """Classify using path patterns first, fall back to purpose string.
+
+    Cached: the role guess compares words by edit distance, and the boundary
+    check asks for the layer of both ends of every edge.
+    """
+    result = _classify_layer_by_path(module_path)
     if result == "other" and purpose:
         result = _classify_layer_by_purpose(purpose)
     return result
+
+
+def _classify_layer_by_path(module_path: str) -> str:
+    """Layer from the folders of a module. The leading slash lets "/tests/" match a top-level folder."""
+    return _classify_layer_fallback("/" + module_path.lower().lstrip("/"))
 
 
 # ---------------------------------------------------------------------------
@@ -986,7 +1037,7 @@ _IMPACT_SOURCE_EXTENSIONS = tuple(
         + _RUBY_EXTENSIONS
         + _RUST_EXTENSIONS
         + _PASCAL_EXTENSIONS
-        + (".cs", ".java", ".go"),
+        + _OTHER_EXTENSIONS,
         key=len,
         reverse=True,
     )
@@ -1043,11 +1094,92 @@ def _impact_file(g: CodeGraph, module_id: str) -> str:
     return path
 
 
+def _graph_layer(g: CodeGraph, module_id: str) -> str:
+    """Layer of a module of this graph.
+
+    A JSX component (.tsx) is UI whatever its folder is called: a Next.js route
+    folder named `models` holds pages, not the domain model.
+    """
+    layer = _classify_layer(module_id, g.module_purpose(module_id))
+    if layer != "test" and g.module_lang(module_id) == "tsx":
+        return "ui"
+    return layer
+
+
+def _layer_is_certain(g: CodeGraph, module_id: str) -> bool:
+    """True when the layer comes from the folders or the file type, not from a guess at the role."""
+    if _classify_layer_by_path(module_id) != "other":
+        return True
+    return g.module_lang(module_id) == "tsx"
+
+
+# Public names used by the report and the map (src/wingbox/overview.py).
+
+def module_layer(g: CodeGraph, module_id: str) -> str:
+    """Architecture layer of a module: ui, api, service, domain, infra, shared, config, test or other."""
+    return _graph_layer(g, module_id)
+
+
+def module_layer_basis(g: CodeGraph, module_id: str) -> str:
+    """Where the layer of a module comes from: "path" (its folders), "role" (a guess from what the
+    file does) or "none" (no rule applies, the layer is "other")."""
+    if _layer_is_certain(g, module_id):
+        return "path"
+    return "role" if module_layer(g, module_id) != "other" else "none"
+
+
+def module_file(g: CodeGraph, module_id: str) -> str:
+    """File of a module relative to the graph root."""
+    return _impact_file(g, module_id)
+
+
+def module_dependencies(g: CodeGraph, module_id: str) -> dict[str, str]:
+    """Modules that module_id depends on: module -> edge type."""
+    return _collect_dep_mods(g, module_id)
+
+
+def module_dependents(g: CodeGraph, module_id: str) -> dict[str, str]:
+    """Modules that depend on module_id: module -> edge type."""
+    return _collect_rdep_mods(g, module_id)
+
+
+def impact_levels(g: CodeGraph, module_id: str, max_depth: int) -> list[list[tuple[str, str]]]:
+    """Dependents of module_id grouped by shortest hop distance."""
+    return _impact_levels(g, module_id, max_depth)
+
+
 def _print_impact_block(title: str, rows: list[tuple[str, str]]) -> None:
     width = max(len(name) for name, _detail in rows)
     print(title)
     for name, detail in rows:
         print(f"  {name:<{width}}   {detail}" if detail else f"  {name}")
+
+
+_FOLDER_MODULE_FILES = ("/index", "/__init__", "/mod")
+
+
+def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]:
+    """Modules named by an impact target.
+
+    A file that shares its name with another one is a module named by its full
+    path (src/tool.py next to src/tool.ts), so the path as given is tried first.
+    An index file is the module of its folder (src/lib/index.ts -> src/lib).
+    """
+    as_given = target.replace(os.sep, "/")
+    if g._root and os.path.isabs(target):
+        relative = os.path.relpath(os.path.realpath(target), g._root)
+        if not relative.startswith(".."):
+            as_given = relative.replace(os.sep, "/")
+    if as_given.startswith("./"):
+        as_given = as_given[2:]
+    if as_given in g.nodes:
+        return [as_given]
+    if pattern in g.nodes:
+        return [pattern]
+    for suffix in _FOLDER_MODULE_FILES:
+        if pattern.endswith(suffix) and pattern[: -len(suffix)] in g.nodes:
+            return [pattern[: -len(suffix)]]
+    return g.resolve_module(pattern)
 
 
 def cmd_impact(g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False) -> None:
@@ -1057,7 +1189,7 @@ def cmd_impact(g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False
     same facts in the compact S-expression form used by agents.
     """
     pattern = _target_to_module_pattern(target, g._root)
-    matches = g.resolve_module(pattern)
+    matches = _impact_target_modules(g, target, pattern)
     if not matches:
         _print_no_match(g, pattern)
         return
@@ -1366,7 +1498,7 @@ def _analyze_sexp(
 
     # Architecture layers
     for t in sorted(import_targets):
-        layer = _classify_layer(t, g.module_purpose(t))
+        layer = _graph_layer(g, t)
         print(f"(layer {nid} {t.split('/')[-1]} :layer {layer})")
 
     # Summary
@@ -1435,6 +1567,44 @@ def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
         print(f"(error search-read-failed {_q(str(error))})")
 
 
+# Well-known deny rules (source layer, target layer, reason).
+BOUNDARY_DENY_RULES: tuple[tuple[str, str, str], ...] = (
+    ("domain", "infra",   "domain imports infrastructure directly"),
+    ("domain", "api",     "domain imports API layer"),
+    ("domain", "ui",      "domain imports UI layer"),
+    ("ui",     "infra",   "UI imports infrastructure directly"),
+    ("service","api",     "service imports API layer (inversion)"),
+    ("infra",  "api",     "infrastructure imports API layer"),
+)
+
+
+def boundary_violations(
+    g: CodeGraph, scope_mods: set[str]
+) -> list[tuple[str, str, str, str, str, str]]:
+    """Dependencies that break a layer rule.
+
+    Each item is (source module, target module, source layer, target layer,
+    edge type, reason), for the import and data-flow edges of scope_mods.
+    """
+    violations: list[tuple[str, str, str, str, str, str]] = []
+    for src_mod in sorted(scope_mods):
+        src_layer = _graph_layer(g, src_mod)
+        for edge in g.edges_from.get(src_mod, []):
+            if edge.etype not in ("imports", "data-flow"):
+                continue
+            tgt_mod = edge.target.split("::")[0]
+            if tgt_mod == src_mod:
+                continue
+            tgt_layer = _graph_layer(g, tgt_mod)
+            if src_layer == tgt_layer:
+                continue
+            for deny_src, deny_tgt, reason in BOUNDARY_DENY_RULES:
+                if src_layer == deny_src and tgt_layer == deny_tgt:
+                    violations.append((src_mod, tgt_mod, src_layer, tgt_layer, edge.etype, reason))
+                    break
+    return violations
+
+
 def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
     """Check boundary violations inferred from architecture layer patterns.
 
@@ -1444,16 +1614,6 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
     - service must not import api
     - infra must not import api
     """
-    # Well-known deny rules (src_layer, tgt_layer, reason)
-    deny_rules = [
-        ("domain", "infra",   "domain imports infrastructure directly"),
-        ("domain", "api",     "domain imports API layer"),
-        ("domain", "ui",      "domain imports UI layer"),
-        ("ui",     "infra",   "UI imports infrastructure directly"),
-        ("service","api",     "service imports API layer (inversion)"),
-        ("infra",  "api",     "infrastructure imports API layer"),
-    ]
-
     if module_id == "all":
         scope_mods = set(g.nodes.keys())
     else:
@@ -1463,39 +1623,29 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
             return
         scope_mods = set(matches)
 
-    violations: list[tuple[str, str, str, str, str, str]] = []
-
-    for src_mod in sorted(scope_mods):
-        src_layer = _classify_layer(src_mod, g.module_purpose(src_mod))
-        for edge in g.edges_from.get(src_mod, []):
-            if edge.etype not in ("imports", "data-flow"):
-                continue
-            tgt_mod = edge.target.split("::")[0]
-            if tgt_mod == src_mod:
-                continue
-            tgt_layer = _classify_layer(tgt_mod, g.module_purpose(tgt_mod))
-            if src_layer == tgt_layer:
-                continue
-            for deny_src, deny_tgt, reason in deny_rules:
-                if src_layer == deny_src and tgt_layer == deny_tgt:
-                    violations.append((src_mod, tgt_mod, src_layer, tgt_layer, edge.etype, reason))
-                    break
+    violations = boundary_violations(g, scope_mods)
 
     if not violations:
         print(f"(boundaries-ok :checked {len(scope_mods)})")
         return
+    # A pair is a violation only when both layers are certain (folders or file type).
+    # A layer guessed from the role of a file makes the pair a candidate to read.
+    certain = 0
     for src, tgt, sl, tl, etype, reason in sorted(violations):
         src_file = g.module_to_file(src)
         tgt_file = g.module_to_file(tgt)
-        print(f"(violation {src} {tgt} :src-layer {sl} :tgt-layer {tl} :via {etype} :lang {g.module_lang(src)} :src-file {_q(src_file)} :tgt-file {_q(tgt_file)} {_q(reason)})")
-    print(f"(boundaries-summary :violations {len(violations)} :checked {len(scope_mods)})")
+        is_certain = _layer_is_certain(g, src) and _layer_is_certain(g, tgt)
+        certain += 1 if is_certain else 0
+        fact = "violation" if is_certain else "violation-candidate"
+        print(f"({fact} {src} {tgt} :src-layer {sl} :tgt-layer {tl} :via {etype} :lang {g.module_lang(src)} :src-file {_q(src_file)} :tgt-file {_q(tgt_file)} {_q(reason)})")
+    print(f"(boundaries-summary :violations {certain} :candidates {len(violations) - certain} :checked {len(scope_mods)})")
 
 
 def cmd_layers(g: CodeGraph) -> None:
     """Show layer classification for all modules, grouped by layer."""
     by_layer: dict[str, list[str]] = {}
     for nid in sorted(g.nodes.keys()):
-        layer = _classify_layer(nid, g.module_purpose(nid))
+        layer = _graph_layer(g, nid)
         by_layer.setdefault(layer, []).append(nid)
 
     for layer_name in sorted(by_layer.keys()):
@@ -2390,7 +2540,7 @@ class _SchemeEval:
             pattern = str(args[0]) if args else ""
             matches = g.resolve_module(pattern)
             if matches:
-                return _classify_layer(matches[0], g.module_purpose(matches[0]))
+                return _graph_layer(g, matches[0])
             return "unknown"
 
         if fn == "violations":
@@ -2402,12 +2552,12 @@ class _SchemeEval:
             ]
             result: set[str] = set()
             for src_mod in scope:
-                sl = _classify_layer(src_mod, g.module_purpose(src_mod))
+                sl = _graph_layer(g, src_mod)
                 for edge in g.edges_from.get(src_mod, []):
                     if edge.etype not in ("imports", "data-flow"):
                         continue
                     tgt_mod = edge.target.split("::")[0]
-                    tl = _classify_layer(tgt_mod, g.module_purpose(tgt_mod))
+                    tl = _graph_layer(g, tgt_mod)
                     if sl != tl and (sl, tl) in deny_rules:
                         result.add(src_mod)
             return result
@@ -2415,7 +2565,7 @@ class _SchemeEval:
         if fn == "layer-of":
             s = self._to_set(args[0])
             target_layer = str(args[1]) if len(args) > 1 else ""
-            return {m for m in s if _classify_layer(m, g.module_purpose(m)) == target_layer}
+            return {m for m in s if _graph_layer(g, m) == target_layer}
 
         if fn == "find-function" or fn == "find_function":
             name = str(args[0]) if args else ""

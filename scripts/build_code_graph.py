@@ -106,7 +106,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
-from typing import Any, Generic, Optional, Sequence, TypeVar
+from typing import Any, Generic, Mapping, Optional, Sequence, TypeVar
 from urllib.parse import quote, unquote
 
 try:
@@ -125,6 +125,7 @@ try:
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
         from .lang.source import file_hash
+        from .lang.typescript.javascript import is_minified_javascript
         from .git_ignore import (
             GitIgnoreUnavailable,
             load_git_ignored_paths,
@@ -145,6 +146,7 @@ try:
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
         from lang.source import file_hash
+        from lang.typescript.javascript import is_minified_javascript
         from git_ignore import (
             GitIgnoreUnavailable,
             load_git_ignored_paths,
@@ -171,7 +173,6 @@ SKIP_DIRS = {
     "dist",
     ".next",
     ".turbo",
-    "bin",
     "build",
     "obj",
     "coverage",
@@ -346,6 +347,12 @@ def discover_files(
                                 for part in relative_parent_parts
                             ):
                                 continue
+                        if (
+                            language is not None
+                            and language.name == "typescript"
+                            and is_minified_javascript(entry.path)
+                        ):
+                            continue
                         if language is not None:
                             results.append((entry.path, language.name, repo))
         except PermissionError as exc:
@@ -630,6 +637,46 @@ def make_node_id(path: str, root: str) -> str:
     return language.normalize_module_id(relative_path)
 
 
+# Extension order in which a module ID is looked up on disk (code_graph_search._module_id_to_file):
+# when several files share one ID, the first in this order keeps it.
+_NODE_ID_EXTENSION_ORDER = (
+    ".ts", ".tsx", ".js", ".jsx", ".py", ".rb", ".rake", ".rs",
+    ".pas", ".pp", ".lpr", ".inc", ".go", ".java", ".cs",
+)
+
+
+def _node_id_owner_rank(relative_path: str, node_id: str) -> tuple[int, int, str]:
+    stem, extension = os.path.splitext(relative_path)
+    order = (
+        _NODE_ID_EXTENSION_ORDER.index(extension)
+        if extension in _NODE_ID_EXTENSION_ORDER
+        else len(_NODE_ID_EXTENSION_ORDER)
+    )
+    return (0 if stem == node_id else 1, order, relative_path)
+
+
+def assign_node_ids(paths: list[str], root: str) -> dict[str, str]:
+    """Give every source file its own module ID.
+
+    The ID is the path without its extension. Files that would share one (x.test.ts
+    next to x.test.tsx, tool.py next to tool.ts, pkg.py next to pkg/index.py) are all
+    kept: the first one keeps the plain ID and each other file is named by its full
+    relative path, extension included.
+    """
+    paths_by_id: dict[str, list[str]] = {}
+    for path in paths:
+        paths_by_id.setdefault(make_node_id(path, root), []).append(path)
+
+    assigned: dict[str, str] = {}
+    for node_id, sharing in paths_by_id.items():
+        relative = {path: os.path.relpath(path, root).replace(os.sep, "/") for path in sharing}
+        ranked = sorted(sharing, key=lambda path: _node_id_owner_rank(relative[path], node_id))
+        assigned[ranked[0]] = node_id
+        for path in ranked[1:]:
+            assigned[path] = relative[path]
+    return assigned
+
+
 # Graph building
 # ---------------------------------------------------------------------------
 
@@ -639,10 +686,10 @@ def _build_node_indexes(
     root: str,
 ) -> Result[tuple[dict[str, str], dict[str, FileResult]], GraphBuildError]:
     """Build collision-free module indexes before any graph facts are emitted."""
+    path_to_id = assign_node_ids([result.path for result in results], root)
     paths_by_id: dict[str, list[str]] = {}
-    for result in results:
-        node_id = make_node_id(result.path, root)
-        relative_path = os.path.relpath(result.path, root).replace(os.sep, "/")
+    for path, node_id in path_to_id.items():
+        relative_path = os.path.relpath(path, root).replace(os.sep, "/")
         paths_by_id.setdefault(node_id, []).append(relative_path)
 
     collisions = tuple(
@@ -653,13 +700,12 @@ def _build_node_indexes(
     if collisions:
         return Err(GraphBuildError(collisions))
 
-    path_to_id: dict[str, str] = {}
     id_to_result: dict[str, FileResult] = {}
-    for result in sorted(results, key=lambda item: make_node_id(item.path, root)):
-        node_id = make_node_id(result.path, root)
-        path_to_id[result.path] = node_id
-        id_to_result[node_id] = result
-    return Ok((path_to_id, id_to_result))
+    ordered_paths: dict[str, str] = {}
+    for result in sorted(results, key=lambda item: path_to_id[item.path]):
+        ordered_paths[result.path] = path_to_id[result.path]
+        id_to_result[path_to_id[result.path]] = result
+    return Ok((ordered_paths, id_to_result))
 
 
 def _imported_name_parts(raw: object) -> Optional[tuple[str, str]]:
@@ -673,13 +719,40 @@ def _imported_name_parts(raw: object) -> Optional[tuple[str, str]]:
     return local_name, module
 
 
+# Languages where a name is visible in a file only through an import or a
+# definition in that file. A base class is never guessed by its name there.
+_IMPORT_SCOPED_LANGUAGES = frozenset({"python", "typescript"})
+
+
+def _wildcard_import_targets(
+    source: FileResult,
+    bound_language: BoundLanguage,
+) -> set[str]:
+    """Modules whose every public name the file imports (``from m import *``)."""
+    targets: set[str] = set()
+    for imported_name in source.imported_names:
+        imported_parts = _imported_name_parts(imported_name)
+        if imported_parts is None or imported_parts[0] != "*":
+            continue
+        target_id = bound_language.resolve_import(imported_parts[1], source.path)
+        if target_id is not None:
+            targets.add(target_id)
+    return targets
+
+
 def _resolve_provider(
     symbol: str,
     source: FileResult,
     bound_language: BoundLanguage,
     provider_candidates: dict[str, set[str]],
+    id_to_result: Mapping[str, FileResult],
 ) -> Optional[str]:
-    """Resolve a provider through an explicit import, otherwise fail closed."""
+    """Resolve a provider through an explicit import, otherwise fail closed.
+
+    Without an import the only provider of that name in the same language is
+    accepted; in an import-scoped language it must also come from a wildcard
+    import of the file.
+    """
     for imported_name in source.imported_names:
         imported_parts = _imported_name_parts(imported_name)
         if imported_parts is None:
@@ -689,7 +762,14 @@ def _resolve_provider(
             continue
         return bound_language.resolve_import(module, source.path)
 
-    candidates = provider_candidates.get(symbol, set())
+    own_language = language_for_result(source.language).name
+    candidates = {
+        candidate
+        for candidate in provider_candidates.get(symbol, set())
+        if language_for_result(id_to_result[candidate].language).name == own_language
+    }
+    if own_language in _IMPORT_SCOPED_LANGUAGES:
+        candidates &= _wildcard_import_targets(source, bound_language)
     if len(candidates) == 1:
         return next(iter(candidates))
     return None
@@ -881,6 +961,7 @@ def build_graph(
                 r,
                 bound_language,
                 provider_candidates,
+                id_to_result,
             )
             if provider_id and provider_id != node_id:
                 calls_api_targets.add(provider_id)
@@ -894,6 +975,7 @@ def build_graph(
                     r,
                     bound_language,
                     provider_candidates,
+                    id_to_result,
                 )
                 if provider_id and provider_id != node_id:
                     calls_api_targets.add(provider_id)
@@ -2200,12 +2282,8 @@ def enrich_with_lsp(
 ) -> tuple[list[dict], list[dict]]:
     """Run language-owned LSP analysis and merge its graph evidence."""
     # Build lookup tables
-    path_to_node_id: dict[str, str] = {}
-    node_id_to_result: dict[str, FileResult] = {}
-    for r in results:
-        nid = make_node_id(r.path, root)
-        path_to_node_id[r.path] = nid
-        node_id_to_result[nid] = r
+    path_to_node_id = assign_node_ids([r.path for r in results], root)
+    node_id_to_result: dict[str, FileResult] = {path_to_node_id[r.path]: r for r in results}
 
     # Discover projects
     projects = discover_projects(root, results, exclusions)

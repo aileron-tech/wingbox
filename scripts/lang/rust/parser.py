@@ -89,17 +89,45 @@ def _use_leaves(node: Node, prefix: tuple[str, ...] = ()) -> list[RustUse]:
     return _use_leaves(argument, prefix) if argument is not None else []
 
 
+def _path_seen_from_file(path: str, inline_depth: int) -> str | None:
+    """Rewrite a `use` path written inside inline modules as the file's own module sees it.
+
+    Inside `mod tests { ... }` the first `super` is the enclosing file, not its parent.
+    Returns None when the path stays inside the file (no dependency on another module).
+    """
+    if inline_depth == 0:
+        return path
+    segments = [segment for segment in path.split("::") if segment]
+    if not segments or segments[0] not in ("self", "super"):
+        return path
+    if segments[0] == "self":
+        return None
+    parents = 0
+    while parents < len(segments) and segments[parents] == "super":
+        parents += 1
+    if parents < inline_depth:
+        return None
+    rest = ["super"] * (parents - inline_depth) + segments[parents:]
+    if not rest:
+        return None
+    return "::".join(rest if rest[0] == "super" else ["self", *rest])
+
+
 def _collect_uses(root: Node) -> list[RustUse]:
     uses: list[RustUse] = []
 
-    def _visit(node: Node) -> None:
+    def _visit(node: Node, inline_depth: int) -> None:
         if node.type == "use_declaration":
-            uses.extend(_use_leaves(node))
+            for leaf in _use_leaves(node):
+                path = _path_seen_from_file(leaf.path, inline_depth)
+                if path is not None:
+                    uses.append(RustUse(path, leaf.alias))
             return
+        is_inline_module = node.type == "mod_item" and node.child_by_field_name("body") is not None
         for child in node.named_children:
-            _visit(child)
+            _visit(child, inline_depth + 1 if is_inline_module else inline_depth)
 
-    _visit(root)
+    _visit(root, 0)
     unique: list[RustUse] = []
     seen: set[tuple[str, str | None]] = set()
     for rust_use in uses:
@@ -108,6 +136,81 @@ def _collect_uses(root: Node) -> list[RustUse]:
             seen.add(key)
             unique.append(rust_use)
     return unique
+
+
+_PATH_SEGMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+_MODULE_SEGMENT = re.compile(r"[a-z_][a-z0-9_]*\Z")
+_STANDARD_ROOTS = frozenset(("std", "core", "alloc"))
+_LOCAL_ROOTS = ("crate", "super", "self")
+# Macro arguments are raw tokens, not parsed paths: matches!(x, crate::a::B::C).
+_PATH_IN_TOKENS = re.compile(r"(?<![A-Za-z0-9_:])(?:crate|super|self)(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)+")
+
+
+def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
+    """Qualified paths written in code without a `use`: crate::a::b::f(), super::x::Y.
+
+    Kept: paths rooted at crate, super or self; paths that start with a module this
+    file imported from its own crate (x86::linker::link() after use crate::backend::x86);
+    and paths that start with any other lower-case name, which is the crate's own name
+    in a binary (app::run()) or a child module. Names imported from other crates are
+    dropped. Generic arguments end the path (crate::a::Foo::<T>::new -> crate::a::Foo).
+    """
+    local_modules: dict[str, str] = {}
+    foreign_names: set[str] = set()
+    for rust_use in uses:
+        segments = [segment for segment in rust_use.path.split("::") if segment]
+        if not segments:
+            continue
+        name = rust_use.alias or segments[-1]
+        if segments[0] in _LOCAL_ROOTS:
+            local_modules.setdefault(name, rust_use.path)
+        else:
+            foreign_names.add(name)
+
+    paths: list[str] = []
+    seen: set[str] = set()
+
+    def _keep(path: str | None) -> None:
+        if path is not None and path not in seen:
+            seen.add(path)
+            paths.append(path)
+
+    def _visit(node: Node, inline_depth: int) -> None:
+        if node.type == "use_declaration":
+            return
+        if node.type == "token_tree":
+            for match in _PATH_IN_TOKENS.finditer(_node_text(node)):
+                segments = [segment.strip() for segment in match.group(0).split("::")]
+                if len(segments) >= 2:
+                    _keep(_path_seen_from_file("::".join(segments), inline_depth))
+            return
+        if node.type in ("scoped_identifier", "scoped_type_identifier"):
+            segments: list[str] = []
+            for segment in _node_text(node).split("::"):
+                segment = segment.strip()
+                if not _PATH_SEGMENT.match(segment):
+                    break
+                segments.append(segment)
+            path: str | None = None
+            if len(segments) >= 2 and segments[0] in _LOCAL_ROOTS:
+                path = _path_seen_from_file("::".join(segments), inline_depth)
+            elif len(segments) >= 2 and segments[0] in local_modules:
+                path = "::".join((local_modules[segments[0]], *segments[1:]))
+            elif (
+                len(segments) >= 2
+                and _MODULE_SEGMENT.match(segments[0])
+                and segments[0] not in _STANDARD_ROOTS
+                and segments[0] not in foreign_names
+            ):
+                path = "::".join(segments)
+            _keep(path)
+            return
+        is_inline_module = node.type == "mod_item" and node.child_by_field_name("body") is not None
+        for child in node.named_children:
+            _visit(child, inline_depth + 1 if is_inline_module else inline_depth)
+
+    _visit(root, 0)
+    return paths
 
 
 def _imported_name(rust_use: RustUse) -> ImportedName | None:
@@ -150,6 +253,9 @@ def _type_name(node: Node | None) -> str:
     name = node.child_by_field_name("name")
     if name is not None:
         return _type_name(name)
+    if node.type == "generic_type":
+        # `From<eyre::Report>` is From: the arguments are not the type.
+        return _type_name(node.child_by_field_name("type"))
     type_identifiers = [
         descendant
         for descendant in _walk_named(node)
@@ -211,6 +317,7 @@ def parse_rust_treesitter(
     root = tree.root_node
     rust_uses = _collect_uses(root)
     imports = [rust_use.path for rust_use in rust_uses]
+    imports.extend(path for path in _collect_inline_paths(root, rust_uses) if path not in imports)
     imported_names = [
         imported_name
         for rust_use in rust_uses
