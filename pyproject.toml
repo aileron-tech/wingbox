@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wingbox"
+version = "0.1.1"
+description = "Code graph and blast radius analysis for AI coding agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Aileron Technologies" }]
+keywords = [
+    "code-graph",
+    "blast-radius",
+    "impact-analysis",
+    "dependency-graph",
+    "code-search",
+    "static-analysis",
+    "tree-sitter",
+    "ai-coding-agents",
+    "claude-code",
+    "codex",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "tree-sitter==0.25.2",
+    "tree-sitter-typescript==0.23.2",
+    "tree-sitter-rust==0.24.2",
+    "tree-sitter-c-sharp==0.23.5",
+    "tree-sitter-java==0.23.5",
+    "tree-sitter-go==0.25.0",
+    "tree-sitter-ruby==0.23.1",
+    "PyYAML==6.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/aileron-tech/wingbox"
+Repository = "https://github.com/aileron-tech/wingbox"
+Changelog = "https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md"
+Issues = "https://github.com/aileron-tech/wingbox/issues"
+
+[project.scripts]
+wingbox = "wingbox.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wingbox"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"scripts" = "wingbox/_scripts"
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "scripts", "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml"]
