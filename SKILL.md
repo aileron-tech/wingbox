@@ -94,6 +94,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `entity <Name>` | Find definitions + references | `entity DrivePath` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
+| `impact <file\|id> [depth] --sexp` | Blast radius of one file: dependents by shortest depth + files to read first | `impact src/billing/invoice.service.ts --sexp` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id>` | Single module with edges | `module operatives.controller` |
 | `boundaries [id\|all]` | Check architecture violations | `boundaries all` |
@@ -108,6 +109,10 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `diff_functions [ref]` | Changed functions in git diff | `diff_functions HEAD~3` |
 | `query '<sexp>'` | Composable Scheme query | `query '(count (boundary "X"))'` |
 | `repl` | Interactive Scheme REPL | `repl` |
+
+`impact` accepts an ordinary file path. Without `--sexp` it prints readable text
+for people; agents pass `--sexp` to get the same facts in the compact
+S-expression form, which is the format every other command uses.
 
 ## Quick Reference: rg Queries
 

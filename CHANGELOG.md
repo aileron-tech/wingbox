@@ -4,6 +4,10 @@
 
 ### Changes
 
+- Added the `impact <file|id> [depth] [--sexp]` command: the modules that
+  depend on a file, grouped by shortest distance, and the files to read first.
+  It accepts an ordinary file path, prints readable text by default and
+  compact S-expression facts with `--sexp`.
 - Renamed the project and the skill from `codespaces` to `wingbox`; the
   repository is now `aileron-tech/wingbox`.
 - Replaced the term "belief map" with "code graph" in the documentation, the
