@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-16 - public benchmark against Graphify
+
+### Changes
+- `benchmarks/graphify/run.sh`: one command installs Wingbox and Graphify from PyPI, fetches seven public repositories at pinned commits, builds both graphs and runs three tests that need no model: Graphify's own token formula, every dependency edge against the import statements, and the impact command of each tool against reference lists.
+- `benchmarks/graphify/tools/`: the references come from Python's `ast` (`py_edges.py`, checked against grimp), an own TypeScript resolver and an own Rust resolver, never from either tool; `agent_test.py` runs the agent trials; `make_report.py` writes the report from the result files.
+- `benchmarks/graphify/gold/`, `benchmarks/graphify/results/`, `benchmarks/graphify/README.md`: the reference lists, the result files of the run on Wingbox 0.2.0 and Graphify 0.9.110, and the report.
+- `README.md`: section "Measured: Wingbox, Graphify and plain search".
+- Tests: REQ-BENCH-001 (the report equals the output of the report script on the committed results), REQ-BENCH-002 (no committed benchmark file names a path of a local machine).
+
+### Motivation
+- Token-reduction figures published for code-graph tools divide the size of a corpus by the size of an answer and check no answer. A reader needs numbers that can be run again: the same repositories, the same questions, reference lists built without either tool.
+
 ## 2026-11-15 - version 0.2.0 and base classes matched by name
 
 ### Changes

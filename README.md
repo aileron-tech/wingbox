@@ -80,6 +80,27 @@ Depth 1
 The text form is for people. Agents add `--sexp` to get the same facts as
 compact S-expressions.
 
+## Measured: Wingbox, Graphify and plain search
+
+Five "which files depend on this file" questions in four public repositories
+(TypeScript, Rust, Python), answered by Claude Code in three setups, 15 trials
+per setup:
+
+| Setup | Answer accuracy (F1) | Tokens per answer | Cost per answer |
+|---|---|---|---|
+| Built-in search only | 0.999 | 59,367 | 0.075 USD |
+| Search plus Wingbox 0.2.0 | 1.000 | 25,598 | 0.016 USD |
+| Search plus Graphify 0.9.110 | 0.997 | 109,071 | 0.095 USD |
+
+Without an agent, `wingbox impact` names the exact list of dependent files in
+5 of the 5 questions; `graphify affected` in 1 of 5. Checked against every
+import statement of FastAPI (1,801 file pairs, the same pairs the import graph
+of grimp gives), Wingbox has no wrong and no missing dependency.
+
+The scripts, the reference lists and every result file are in
+[benchmarks/graphify](benchmarks/graphify/README.md). One command reproduces
+the tests that need no model.
+
 ## Quick start for AI coding agents
 
 Install the skill:
