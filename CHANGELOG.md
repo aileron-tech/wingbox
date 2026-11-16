@@ -20,10 +20,14 @@
   their own table. The builder marks such an import edge `:type-only`.
 - The builder records `import.meta.resolve('<literal>')` as a dependency (a
   worker file loaded at run time).
-- Added `benchmarks/graphify`: Wingbox, Graphify and plain search measured on
-  the same public repositories, with the scripts, the reference lists and the
-  result files. `benchmarks/graphify/run.sh <work dir>` reproduces the tests
-  that need no model. The README shows the summary table.
+- Added `benchmarks/impact`: Wingbox measured on public repositories. One
+  hundred impact questions drawn with a fixed seed and checked against
+  reference lists from independent resolvers, a coding agent with and without
+  Wingbox, every edge against the import statements of the code, build time;
+  with confidence intervals, the scripts and every result file.
+  `Dockerfile.benchmark` reproduces the tests that need no model in a clean
+  container and compares the results with the committed ones. The README shows
+  the summary.
 
 ### Fixes
 

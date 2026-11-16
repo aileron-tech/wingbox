@@ -1,13 +1,13 @@
-# Times the graph build of Wingbox and Graphify on the benchmark corpus, on a
-# clean hosted runner. Started by hand; the result is the artifact
-# build_times.json and the table in the run summary.
+# Times the graph build of Wingbox on the benchmark corpus, on a clean hosted
+# runner. Started by hand; the result is the artifact build_times.json and the
+# table in the run summary.
 name: benchmark-build-time
 
 on:
   workflow_dispatch:
     inputs:
       rounds:
-        description: Runs per tool and corpus
+        description: Runs per corpus
         default: "3"
 
 permissions:
@@ -16,7 +16,7 @@ permissions:
 jobs:
   time:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 60
     env:
       ROUNDS: ${{ inputs.rounds }}
     steps:
@@ -24,9 +24,9 @@ jobs:
       - name: Install uv
         run: pipx install uv
       - name: Environments and corpus at the pinned commits
-        run: RUN_ONLY=corpus benchmarks/graphify/run.sh "$RUNNER_TEMP/bench"
+        run: RUN_ONLY=corpus benchmarks/impact/run.sh "$RUNNER_TEMP/bench"
       - name: Time the builds
-        run: python3 -I benchmarks/graphify/tools/time_builds.py "$RUNNER_TEMP/bench" "$ROUNDS" | tee -a "$GITHUB_STEP_SUMMARY"
+        run: python3 -I benchmarks/impact/tools/time_builds.py "$RUNNER_TEMP/bench" "$ROUNDS" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: build_times

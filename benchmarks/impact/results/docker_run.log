@@ -1,0 +1,56 @@
+# docker build -f Dockerfile.benchmark -t wingbox-benchmark . && docker run --rm wingbox-benchmark
+# 2026-11-16T10:13Z, Docker 29.2.1, image base python:3.12-slim, linux/amd64
+
+== environments
+wingbox 0.2.2
+
+== corpus at pinned commits
+nanoGPT 3adf61e154c3fe3fca428ad6bc3818b27a3b8291
+minGPT 37baab71b9abea1b76ab957409a1cc2fbfba8a26
+micrograd 7bc720e951fe422b8f8814aa5aa1b64121d26b4c
+fastapi 2a1bd230b454a51644c7e2087f525b2dd245edbf
+chrome-devtools-mcp 8ba2ac945ebaf1adb92208c29f3a30e73a920956
+agent-browser 53384771fbafc261ba67608ac806dd5aa70b84f0
+claudes-c-compiler 6f1b99acb2f4ec2414592136c2009fe7713deec3
+immich e5d6eb7be67834f59d90e4b7a86f5dec7ac9af86
+
+== one clean copy of each corpus: plain and for Wingbox
+
+== graphs
+karpathy built
+fastapi built
+chrome-devtools-mcp built
+agent-browser built
+claudes-c-compiler built
+immich-server built
+
+== reference edges, from resolvers that share no code with Wingbox
+files 29 parse errors 0 first-party import names 22 external 84 file pairs 15 followed pairs 15 implied 7
+files 1223 parse errors 0 first-party import names 2845 external 2846 file pairs 1801 followed pairs 2363 implied 637
+{'packages': 4, 'grimp_modules_with_file': 1223, 'reference_py_files': 1223, 'grimp_pairs': 1801, 'reference_pairs_between_covered_files': 1801, 'in_both': 1801, 'grimp_only_explained_as_implied_package_init': 0, 'grimp_only_unexplained': 0, 'reference_only': 0, 'modules_without_file': 19}
+}
+}
+files 707
+rs 122 reached 122 refs 1641 unresolved mods 0
+rs 351 reached 351 refs 4178 unresolved mods 0
+
+== test: edges against the import statements
+immich, server: 3795 dependencies in the code, graph 3795, wrong 0, missing 0
+chrome-devtools-mcp: 901 dependencies in the code, graph 919, wrong 0, missing 1
+agent-browser, Rust sources: 391 dependencies in the code, graph 391, wrong 0, missing 0
+claudes-c-compiler: 1462 dependencies in the code, graph 1462, wrong 0, missing 0
+FastAPI, whole tree: 1801 dependencies in the code, graph 1818, wrong 0, missing 0
+FastAPI, the fastapi/ package: 124 dependencies in the code, graph 130, wrong 0, missing 0
+nanoGPT, minGPT, micrograd: 15 dependencies in the code, graph 15, wrong 0, missing 0
+
+== test: the impact command on the sampled questions
+chrome-devtools-mcp: 127 imported files, 20 drawn, reference sizes 1..170 (median 17), 12 in the agent subset
+immich-server: 410 imported files, 20 drawn, reference sizes 2..378 (median 12), 12 in the agent subset
+agent-browser: 106 imported files, 20 drawn, reference sizes 1..20 (median 10), 12 in the agent subset
+claudes-c-compiler: 346 imported files, 20 drawn, reference sizes 2..146 (median 4), 12 in the agent subset
+fastapi: 177 imported files, 20 drawn, reference sizes 1..503 (median 2), 7 in the agent subset
+fastapi-20 tests/utils.py reference 116 | wingbox 116/0/0
+
+== results
+written /work/out/results
+REPRODUCED: 105 result files are equal to the committed ones (questions, 100 reference lists, command test, edge test, grimp check, commits)
