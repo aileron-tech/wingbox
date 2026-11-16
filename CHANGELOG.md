@@ -4,6 +4,7 @@
 
 ### Changes
 
+- Package version 0.2.2 (0.2.1 plus the layer of a Python `__init__.py`).
 - Package version 0.2.1.
 - `analyze` and `impact` print the complete counts and list at most 200
   dependent files, nearest first; `--all` lists every file. A line
@@ -26,6 +27,9 @@
 
 ### Fixes
 
+- Layers: a Python `__init__.py` is its package. It takes the layer of its
+  folder or, when no folder rule applies, the layer where most modules of the
+  package are; the names it re-exports no longer decide its layer.
 - Layers: a migration or seed file is infrastructure wherever its folder lies;
   under a `schema` folder it used to be domain, which reported migrations that
   import a repository as "domain imports infrastructure".

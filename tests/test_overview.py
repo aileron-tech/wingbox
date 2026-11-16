@@ -322,6 +322,36 @@ class LayerRulesTest(unittest.TestCase):
         }
         self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})
 
+    def test_a_python_package_init_takes_the_layer_of_its_package(self) -> None:
+        """/* REQ-OUT-016: a Python `__init__.py` is its package: it takes the layer of its folder, or, when no folder rule applies, the layer where most modules of the package are; what it re-exports never decides its layer. */"""
+        graph = code_graph_search.CodeGraph()
+        modules = {
+            "engine/__init__": "router",
+            "engine/applications": "general module",
+            "engine/params": "general module",
+            "engine/storage": "repository",
+            "core/__init__": "router",
+            "core/billing": "service",
+            "core/orders": "service",
+            "core/misc": "general module",
+            "shop/services/__init__": "router",
+            "shop/services/checkout": "general module",
+            "tie/__init__": "router",
+            "tie/a": "service",
+            "tie/b": "repository",
+        }
+        for module, purpose in modules.items():
+            graph.nodes[module] = code_graph_search.Node(module, "py", purpose)
+
+        self.assertEqual(
+            {"engine/__init__": "other", "core/__init__": "service", "shop/services/__init__": "service", "tie/__init__": "other"},
+            {module: code_graph_search.module_layer(graph, module) for module in modules if module.endswith("__init__")},
+        )
+        self.assertEqual(
+            ["none", "role", "path"],
+            [code_graph_search.module_layer_basis(graph, module) for module in ("engine/__init__", "core/__init__", "shop/services/__init__")],
+        )
+
     def test_layer_basis_tells_folder_rules_from_role_guesses(self) -> None:
         """/* REQ-OUT-009: a layer taken from the folder must be told apart from one guessed from the file role. */"""
         graph = code_graph_search.CodeGraph()
