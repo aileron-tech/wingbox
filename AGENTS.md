@@ -12,7 +12,10 @@ this file applies to you.
   `scripts/` unchanged as `wingbox/_scripts`.
 - Layout: `scripts/build_code_graph.py` (builder), `scripts/code_graph_search.py`
   (queries), `scripts/build_infra_topology.py`, `scripts/lang/` (parsers),
-  `tests/`, `references/`, `docs/`.
+  `tests/`, `references/`, `docs/`. `src/wingbox/install.py`, `hook.py` and
+  `update.py` are `wingbox install`/`uninstall`, the Claude Code search hook
+  and `wingbox update`; the wheel bundles `SKILL.md` and `references/` as
+  `wingbox/_skill`, the skill that `wingbox install` copies.
 - Supported Python: 3.11, 3.12, 3.13 (the builder imports `tomllib`). macOS and
   Linux.
 
@@ -22,8 +25,9 @@ this file applies to you.
   (`gh pr merge <n> --squash --delete-branch`). `main` is not pushed directly.
 - Write the failing test first, then the implementation. Every test docstring
   carries `/* REQ-<PREFIX>-<n>: <behaviour> */`; take the next free number of
-  the prefix (`CS` search commands, `CLI` the `wingbox` command, `DEPS`, `LANG`,
-  and one prefix per language).
+  the prefix (`CS` search commands, `CLI` the `wingbox` command, `INSTALL`
+  install, uninstall and the search hook, `UPDATE`, `DEPS`, `LANG`, and one
+  prefix per language).
 - Run the tests before each push:
 
   ```bash
@@ -72,8 +76,9 @@ Follow these steps in order when the maintainer asks for a release.
    ```
 
 4. Check the archives before the upload. `tar -tzf` on the sdist and
-   `unzip -l` on the wheel list only `src/`, `scripts/`, `README.md`,
-   `LICENSE`, `CHANGELOG.md`, `pyproject.toml` and the package metadata.
+   `unzip -l` on the wheel list only `src/`, `scripts/`, `SKILL.md`,
+   `references/`, `README.md`, `LICENSE`, `CHANGELOG.md`, `pyproject.toml`
+   and the package metadata.
 5. Upload both files. A version is uploaded to PyPI once and for good; a
    mistake is corrected by the next version.
 

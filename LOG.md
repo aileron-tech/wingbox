@@ -1,5 +1,39 @@
 # Completion Log
 
+## 2026-11-16 - wingbox install, uninstall, the search hook and wingbox update
+
+### Changes
+- `src/wingbox/install.py`: `wingbox install [--global|--project] [--assistant NAME ...] [--dry-run] [--sexp]` and `wingbox uninstall`. For Claude Code, Codex, Gemini CLI, Cursor, GitHub Copilot and the shared `~/.agents/skills` folder it copies the skill (SKILL.md, references/, stamp `.wingbox-version`), writes the always-on block between `<!-- wingbox:begin -->` and `<!-- wingbox:end -->` into CLAUDE.md, AGENTS.md, GEMINI.md or copilot-instructions.md, and for Claude Code merges a PreToolUse hook (matcher `Grep|Glob|Read`, timeout 5 s) into settings.json after a one-time backup `settings.json.wingbox-bak`. Assistants are detected by their folders in the home directory; folders that install itself created are recorded in `~/.wingbox/installed.sexp` and do not count. Uninstall removes stamped skill folders, the blocks, the hook entries and the empty folders install created; a folder still used by another installed assistant, or written by another installer, stays.
+- `src/wingbox/hook.py`: `wingbox hook pre-search` reads the Claude Code hook input on stdin and, when the project has `.wingbox/graph.sexp` or `.code_graph.sexp`, answers with `hookSpecificOutput.additionalContext`: the modules and definitions that match a Grep or Glob pattern with their direct dependents, or for Read the dependents of the file and the `wingbox impact` hint; at most 1,500 characters; always exit 0; nothing without a graph. It reads the graph as text (section offsets, one regular expression for the dependents) instead of the query engine, which takes 17 s to load a graph of 8,000 files.
+- `src/wingbox/update.py`: `wingbox update [--check] [--dry-run] [--sexp]` runs `pipx upgrade wingbox`, `uv tool upgrade wingbox` or `<python> -m pip install --upgrade wingbox` as a subprocess, then reruns `wingbox install` of the new version for every recorded install. pipx or uv is chosen only when it lists wingbox and Wingbox runs from that installer's wingbox environment, so a second copy elsewhere is not upgraded by mistake. Docker, editable and local installs print the command to use instead.
+- `src/wingbox/facts.py`: facts as S-expressions (`--sexp`) and their pretty print, the output of the three commands.
+- `src/wingbox/cli.py`: the new commands; `importlib.metadata` is imported only when the version is needed (it cost about 0.2 s of the hook's start).
+- `pyproject.toml`, `Dockerfile`: the wheel ships SKILL.md and references/ as `wingbox/_skill`.
+- `SKILL.md`: section `/wingbox` (no argument: build when missing or stale, then the report's key findings and the map; `<file>`: `impact <file> 2`; `<command>`: that command), how to run the commands when the skill has no `scripts/`, table of install, uninstall, update and the hook.
+- `README.md`: "Install into your coding assistants" (paths per assistant, block, hook, record, `/wingbox`), "Update", the local-only sentence on `wingbox update`, FAQ on offline use and assistants. `AGENTS.md`: archive contents, layout, prefixes INSTALL and UPDATE.
+- Tests: REQ-INSTALL-001 to REQ-INSTALL-022, REQ-UPDATE-001 to REQ-UPDATE-007.
+
+### Motivation
+- The maintainer asked for `wingbox install` on the scheme of `graphify install`: the skill in every assistant, a block in CLAUDE.md and AGENTS.md, a hook before search, and `/wingbox`; then for `wingbox update` when there is internet.
+
+### Verification
+- Hook schema: Claude Code hooks reference (code.claude.com/docs/en/hooks, read 2026-11-16): PreToolUse input `tool_name`, `tool_input` (Grep `pattern`/`path`/`-i`, Glob `pattern`/`path`, Read `file_path`), `cwd`; output `hookSpecificOutput.hookEventName` and `additionalContext`; exit 0 never blocks, stderr is not shown to the model; strings over 10,000 characters are moved to a file.
+- Destinations from the assistants' documentation, read 2026-11-16: Codex skills `$HOME/.agents/skills`, `~/.codex/AGENTS.md`; Gemini CLI `~/.gemini/skills` (alias `~/.agents/skills`), `~/.gemini/GEMINI.md`; Cursor `~/.cursor/skills` (also reads `.agents`, `.claude`, `.codex`), project AGENTS.md; GitHub Copilot `~/.copilot/skills`, `.github/skills`, `~/.copilot/copilot-instructions.md`, project AGENTS.md.
+
+## 2026-11-16 - `wingbox mcp`: an MCP server on stdio
+
+### Changes
+- `src/wingbox/mcp_server.py` (new): newline-delimited JSON-RPC 2.0 on stdin and stdout, written over the standard library. Protocol revision 2026-07-28 (per-request `_meta`, `server/discover`, `resultType`, `ttlMs`/`cacheScope`, -32022 for an unsupported version) and the `initialize` handshake of 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05, chosen per request. `ping` is answered for handshake-era clients.
+- Tools: `build`, `impact` (text only: the maintainer chose it, the S-expression form doubled the reply), `analyze`, `quick`, `boundary`, `boundaries`, `layers`, `deps`, `rdeps`, `entity`, `find_function`, `find_type`, `find_callers`, `find_calls`, `find_callchain`, `diff_functions`, `query`. Each calls the same function as the `wingbox` command and is validated by the same argument check; answers without their own limit stop at 200 lines unless `all` is true. Left out: `search`, `module`, `flow`, `invariants`, `grep_functions` (overlap with the tools above or with the agent's own search) and `repl`.
+- The loaded graph is kept between calls and reloaded when `.code_graph.sexp` changes: on a library of 1,227 files the first `impact` takes about 1 s, the next calls 5 to 35 ms.
+- File descriptor 1 is pointed at stderr while the server runs and the protocol is written to a duplicate, so a stray print or a child process cannot corrupt the stream.
+- `src/wingbox/cli.py`: `wingbox mcp` dispatches to the new module. `src/wingbox/__main__.py`: `python -m wingbox`.
+- `README.md`: section "Use from an MCP client" with the configuration of Claude Code, Codex, Cursor and Claude Desktop, checked against their documentation on 2026-11-16; FAQ entry on agents. `SKILL.md`: command table row.
+- Tests: REQ-MCP-001 to REQ-MCP-010 (`tests/test_mcp_server.py`), which run `python -m wingbox mcp` as a subprocess.
+
+### Motivation
+- The maintainer asked that `wingbox mcp` start an MCP server. MCP clients that do not load Agent Skills can then use the code graph.
+
 ## 2026-11-16 - README: the earlier repository is named without a link
 
 ### Changes

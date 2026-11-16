@@ -46,6 +46,8 @@ Wingbox is safe to run on code that must not leave the company:
 - **No network.** Building and querying the graph open no network connection.
   Run it with the network switched off to see for yourself:
   `docker run --rm --network none -v "$PWD":/repo wingbox`.
+  Building and querying never use the network; `wingbox update` runs your
+  package installer (pipx, uv or pip) when you ask it to.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
@@ -236,6 +238,14 @@ and blast radius, then list only the boundary files needed for the change.
 Wingbox works with Codex, Claude Code, and other clients that support Agent
 Skills.
 
+Or let the `wingbox` command set up every assistant on the machine (see
+[Install into your coding assistants](#install-into-your-coding-assistants)):
+
+```bash
+pipx install wingbox
+wingbox install
+```
+
 ## Quick start from the command line
 
 Install the `wingbox` command (Python 3.11 or newer, macOS or Linux):
@@ -263,6 +273,77 @@ wingbox quick "file upload"
 query command in [Common code searches](#common-code-searches) is available as
 `wingbox <command>`. The command installs the parsers for all supported
 languages and finds `.code_graph.sexp` in the current directory or its parents.
+
+### Install into your coding assistants
+
+```bash
+wingbox install                    # every assistant whose configuration folder exists
+wingbox install --dry-run          # name every file it would write, change nothing
+wingbox install --assistant codex  # only the named assistants (repeatable)
+wingbox install --project          # into the current repository instead of the home folder
+wingbox uninstall                  # remove exactly what install added
+```
+
+`wingbox install` puts three things in place for each assistant: the
+`wingbox` skill (so `/wingbox` exists), a short always-on block in the
+instructions file the assistant reads in every session, and for Claude Code a
+hook that runs before each search. Running it again changes nothing; after an
+upgrade it refreshes the skill. Assistants are found by their folders in the
+home directory: `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
+`~/.copilot` and `~/.agents`.
+
+| Assistant (`--assistant`) | Skill, global | Skill, `--project` | Always-on block, global | Block, `--project` |
+|---|---|---|---|---|
+| Claude Code (`claude-code`) | `~/.claude/skills/wingbox` | `.claude/skills/wingbox` | `~/.claude/CLAUDE.md` | `CLAUDE.md` |
+| Codex (`codex`) | `~/.agents/skills/wingbox` | `.agents/skills/wingbox` | `~/.codex/AGENTS.md` | `AGENTS.md` |
+| Gemini CLI (`gemini`) | `~/.gemini/skills/wingbox` | `.gemini/skills/wingbox` | `~/.gemini/GEMINI.md` | `GEMINI.md` |
+| Cursor (`cursor`) | `~/.cursor/skills/wingbox` | `.cursor/skills/wingbox` | none (user rules live in the settings) | `AGENTS.md` |
+| GitHub Copilot, CLI and VS Code (`copilot`) | `~/.copilot/skills/wingbox` | `.github/skills/wingbox` | `~/.copilot/copilot-instructions.md` | `AGENTS.md` |
+| Shared Agent Skills folder of `npx skills` (`agents`) | `~/.agents/skills/wingbox` | `.agents/skills/wingbox` | none | `AGENTS.md` |
+
+- **The block** sits between `<!-- wingbox:begin -->` and
+  `<!-- wingbox:end -->`. It tells the agent to run `wingbox quick` or
+  `wingbox analyze` before reading code, `wingbox impact <file>` before
+  changing a file, and `/wingbox` for an overview. Text outside the markers is
+  never touched; a file that links to another one (`CLAUDE.md` to `AGENTS.md`)
+  gets one block.
+- **The Claude Code hook** is a `PreToolUse` entry with the matcher
+  `Grep|Glob|Read` in `~/.claude/settings.json` (`.claude/settings.json` with
+  `--project`) that runs `wingbox hook pre-search`. When the project has a
+  graph, it adds a few lines of context to the search: the modules and
+  definitions that match the pattern with their direct dependents, or for a
+  file its dependents and the hint to run `wingbox impact`. It answers in
+  0.4 to 0.7 s on a graph of 8,000 files, Python start included, never blocks the tool, opens no
+  network connection, and says nothing in a project without a graph. Other
+  settings and hooks are kept; the file is backed up once to
+  `settings.json.wingbox-bak` before the first change.
+- **A skill folder that another installer wrote** (for example
+  `npx skills add`) is left as it is. Install records what it did in
+  `~/.wingbox/installed.sexp`; `wingbox update` and `wingbox uninstall` read
+  it.
+- **`/wingbox`** with no argument builds the graph when it is missing or
+  older than the code and summarizes `wingbox-out/REPORT.md`;
+  `/wingbox <file>` runs `wingbox impact <file> 2`; `/wingbox <command> ...`
+  runs that command. In Codex the skill is called as `$wingbox`.
+
+Every result is a list of facts: `--sexp` prints them as S-expressions such as
+`(install-wrote ~/.claude/skills/wingbox :what skill :assistant (claude-code) :version 0.2.6)`,
+and the default output is the same facts as aligned text.
+
+### Update
+
+```bash
+wingbox update --check    # installed and latest version, nothing installed
+wingbox update --dry-run  # the command it would run
+wingbox update            # upgrade, then refresh what wingbox install put in place
+```
+
+`wingbox update` upgrades with the installer that installed Wingbox: pipx
+(`pipx upgrade wingbox`), uv (`uv tool upgrade wingbox`) or pip of the Python
+environment it runs in. A Docker image or an editable or local install cannot
+update itself; the command says so and prints what to run instead. Wingbox
+itself opens no network connection: only the installer reaches the package
+index, and only when you run `wingbox update`.
 
 ### The report and the map
 
@@ -356,6 +437,90 @@ python3 scripts/code_graph_search.py \
 
 The code graph is written to `.code_graph.sexp`. Wingbox does not modify the
 source files it analyzes.
+
+## Use from an MCP client
+
+`wingbox mcp` runs Wingbox as an MCP (Model Context Protocol) server: the
+client starts the command, sends JSON-RPC requests on its standard input and
+reads the answers on its standard output. The transport is stdio only: no
+port, no network. Logs go to standard error.
+
+```bash
+wingbox mcp                         # serve the current directory
+wingbox mcp --root /path/to/project
+```
+
+The server speaks protocol revision 2026-07-28 (requests with per-request
+`_meta`, `server/discover`) and the `initialize` handshake of revisions
+2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05.
+
+| Tool | What it answers |
+|---|---|
+| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) |
+| `impact` | Blast radius of a file, as text (`target`, `depth`, `all`) |
+| `analyze`, `quick` | Full analysis of a module, or of the first module matching a keyword |
+| `boundary`, `boundaries`, `layers` | Files to read for a change; layer violations; modules by layer |
+| `deps`, `rdeps` | Dependency and reverse dependency trees |
+| `entity`, `find_function`, `find_type` | Where a name is defined and used |
+| `find_callers`, `find_calls`, `find_callchain` | Call graph questions |
+| `diff_functions` | Functions changed since a git ref |
+| `query` | A Scheme query on the graph |
+
+Each tool returns the output of the `wingbox` command of the same name. A
+query tool called before the graph exists answers that `build` must be called
+first. Answers stop at 200 items; `all: true` lists everything. The graph is
+read once and read again when `.code_graph.sexp` changes.
+
+Claude Code, in the project directory:
+
+```bash
+claude mcp add wingbox -- wingbox mcp
+```
+
+`--scope project` writes the server into `.mcp.json` for everyone working on
+the project; `--scope user` makes it available in all your projects.
+
+Codex, in `~/.codex/config.toml` (or `codex mcp add wingbox -- wingbox mcp`):
+
+```toml
+[mcp_servers.wingbox]
+command = "wingbox"
+args = ["mcp"]
+cwd = "/path/to/project"
+```
+
+Cursor, in `.cursor/mcp.json` of the project (or `~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "wingbox": {
+      "command": "wingbox",
+      "args": ["mcp", "--root", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+Claude Desktop, in
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.
+Claude Desktop starts servers in an undefined directory and with a reduced
+`PATH`, so give absolute paths for the command and the project (`which wingbox`
+prints the first):
+
+```json
+{
+  "mcpServers": {
+    "wingbox": {
+      "command": "/absolute/path/to/wingbox",
+      "args": ["mcp", "--root", "/absolute/path/to/project"]
+    }
+  }
+}
+```
+
+Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
+(`"command": "uvx", "args": ["wingbox", "mcp", ...]`).
 
 ## Common code searches
 
@@ -482,7 +647,8 @@ and no usage limit.
 
 ### Can I run it fully offline?
 
-Yes. Building and querying need no network. On a machine with no internet,
+Yes. Building and querying never use the network; `wingbox update` runs your
+package installer (pipx, uv or pip) when you ask it to. On a machine with no internet,
 install from wheels fetched once elsewhere (`pip download wingbox -d wheels`,
 then `pip install --no-index --find-links wheels wingbox`), or run the Docker
 image with `--network none`.
@@ -525,8 +691,11 @@ the functions changed since a git ref.
 
 ### Which AI coding agents does Wingbox work with?
 
-Codex, Claude Code, and other clients that support Agent Skills. The scripts
-can also be run directly from the command line.
+Codex, Claude Code, Gemini CLI, Cursor, GitHub Copilot, and other clients
+that support Agent Skills; `wingbox install` sets up the ones it finds on the
+machine. Any MCP client (Claude Code, Codex, Cursor, Claude Desktop) can also
+use it through `wingbox mcp`; see [Use from an MCP client](#use-from-an-mcp-client).
+The scripts can also be run directly from the command line.
 
 ### How is a code graph different from text search with grep or ripgrep?
 
