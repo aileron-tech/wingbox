@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-16 - where Wingbox comes from
+
+### Changes
+- `README.md`: new section "Where Wingbox comes from" before "Project resources": the paper Theory of Code Space (arXiv:2603.00601) with its code and the author's write-up, the parent paper Theory of Space (arXiv:2602.07055), three dated steps (belief map script in March 2026, `codespaces` in June, Wingbox in November) and a link to wingbox.dev/story.
+
+### Motivation
+- The project started from Theory of Code Space; the README did not say so or credit it. The paper's author is named by the maintainer's decision, as an exception to the rule of `AGENTS.md` against names of people: a citation of a public paper, not a client or a colleague.
+
+### Verification
+- arXiv pages, the post and the toolkit repository read on 2026-11-16; dates of the steps taken from the git history and the first specification of the belief map (2026-03-15). README stays ASCII.
+
 ## 2026-11-16 - version 0.2.4: modules and dependencies a check against two monorepos found missing
 
 ### Changes
