@@ -1,8 +1,8 @@
 # Wingbox in the plugin directories
 
 Material for listing the Wingbox plugin (`plugins/wingbox`) in Anthropic's
-directory (claude.ai, Cowork, Claude Code). The requirements below were read
-on 2026-11-16 from:
+directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
+(ChatGPT and Codex). The requirements below were read on 2026-11-16 from:
 
 - Claude Code: code.claude.com/docs/en/plugins-reference (manifest),
   .../plugins/marketplace-reference, .../plugins/publish,
@@ -10,6 +10,9 @@ on 2026-11-16 from:
   claude.com/docs/plugins/pre-submission-checklist,
   claude.com/docs/plugins/platform-support; the article
   claude.com/resources/articles/build-plugins-for-claude (2026-09-25).
+- OpenAI: developers.openai.com/plugins/build/plugins (Package your plugin),
+  .../plugins/deploy/submission (= .../codex/submit-plugins),
+  .../plugins/deploy/desktop-only, .../plugins/guides/submit-claude-plugin.
 
 ## Listing
 
@@ -18,7 +21,7 @@ on 2026-11-16 from:
 | Name | `wingbox`; display name Wingbox |
 | Publisher | Aileron Technologies |
 | One line (at most 30 characters) | Local code graph, blast radius |
-| Category | `development` in our marketplace entry |
+| Category | Developer Tools (OpenAI); `development` in our Claude marketplace entry |
 | Keywords | code-graph, blast-radius, impact-analysis, dependency-graph, code-search, architecture, local-first, mcp |
 | Homepage | https://wingbox.dev |
 | Repository | https://github.com/aileron-tech/wingbox |
@@ -104,8 +107,74 @@ the plugin needs the Python package and its tree-sitter parsers. Hooks and the
 local MCP server load in Claude Code and Cowork; claude.ai chat loads only the
 skill.
 
+## OpenAI directory (ChatGPT and Codex)
+
+Build the packages (not committed; the build refuses a stale plugin folder):
+
+```bash
+python3 tools/sync_plugin.py --check
+python3 tools/build_openai_plugin.py          # writes dist/, or --out DIR
+```
+
+| Package | Path | Use |
+|---|---|---|
+| Skills only, Desktop only | `dist/wingbox-openai-plugin-<version>.zip` | the public submission |
+| Skills and local MCP server | `dist/wingbox-openai-plugin-<version>-local-mcp.zip` | only after OpenAI allowlists the organization for local MCP submissions |
+
+Both use the Codex layout (`.codex-plugin/plugin.json` at the archive root),
+which `codex plugin add` installs. Neither holds the Claude Code manifest, the
+hook or the launcher: the directory refuses lifecycle hooks, and Codex does
+not need the launcher. Their README.md is
+[openai-package-README.md](openai-package-README.md), which describes only
+what the package holds. `requires_local_executor: true` (top level of the
+Codex manifest, as the desktop-only page says for that layout) marks them
+Desktop only: the skill runs the local `wingbox` command. The local MCP
+package starts `wingbox mcp` from `PATH` without `cwd`, so Codex runs it in
+the session folder; with `cwd` `.` it would serve the plugin folder, and
+Codex 0.169 does not expand `${PLUGIN_ROOT}` in `.mcp.json`.
+
+Submission: https://platform.openai.com/plugins, Upload new or existing
+plugin, Skills only, then the ZIP.
+
+Checks of the submission page applied to the skills-only ZIP on 2026-11-16
+("CLI": run with Codex 0.169.0 in a temporary `CODEX_HOME`, through
+`codex plugin` and `codex app-server`, no model call; "read": checked against
+the page by reading the package; "test": `tests/test_plugins.py`):
+
+| Check | Result | How |
+|---|---|---|
+| Archive root holds `.codex-plugin/plugin.json` and `skills/<name>/SKILL.md` with `name` and `description` front matter | pass | test, CLI (the package installed from a local marketplace; `skills/list` shows `wingbox:wingbox` from the plugin cache) |
+| `name` stable, lowercase, at most 64 characters; `version` set; `description` at most 4000; `author.name` set | pass | test, read |
+| `interface`: `displayName` and `shortDescription` at most 30 characters, `longDescription` at most 4000, `developerName` at most 80, `category`, `capabilities` (at most 20), up to 3 `defaultPrompt` of at most 128 | pass | test; CLI (`plugin/read` returns the interface) |
+| `composerIcon` and `logo`: square PNG, at least 48 px, at most 4096 px, under 5 MiB, inside the package | pass (512 px, 66 KB) | test, read |
+| HTTPS `websiteURL`, `supportURL`, `privacyPolicyURL`, `termsOfServiceURL` | pass; the privacy URL is live since the Claude Code plugin was merged | test, read |
+| No lifecycle hooks, no `apps` / `.app.json`, no `.mcp.json` in the skills-only package | pass | test, CLI (no MCP server after install) |
+| No credentials, `test_credentials` or `reviewer_instructions` in the package | pass | read |
+| No package-manager config (`.npmrc`, `uv.toml`) and no launcher | pass | read |
+| Skill instructions provider-neutral | pass: the skill names Claude Code only where a command concerns it (the hook, CLAUDE.md) | read |
+| Skill finds its files and executables, no undeclared dependency | the skill needs the `wingbox` command, stated in the listing and README (`pipx install wingbox`); Desktop only | read |
+| Local MCP package: server starts and answers | pass: `mcpServerStatus/list` shows wingbox 0.2.7 and its tools, `mcpServer/tool/call impact` answers in the session folder | CLI |
+
+OpenAI's guide recommends the Plugin Creator plugin
+(`prepare-plugin-submission`) before upload. It is a remote ChatGPT plugin:
+it is not in Codex's local cache or `codex plugin list`, its text is not
+published by OpenAI, and it runs on the model, so it was not run; the table
+above applies the submission page instead. To run it: install Plugin Creator
+from the ChatGPT plugin directory and ask it to check the ZIP.
+
+| Requirement | Status |
+|---|---|
+| OpenAI organization owner, or Apps Management Write | maintainer |
+| Individual or business identity verification, developer identity "Aileron Technologies" | maintainer |
+| Listing and package checks | ready (table above) |
+| `requires_local_executor: true` accepted | if the portal answers that the field is not allowed, send the organization ID to OpenAI to confirm submission access |
+| Local MCP submission | maintainer: send the organization ID (platform.openai.com/settings/organization/general) to an OpenAI representative and wait for the allowlist |
+| Five positive and three negative review cases, demo video | only for an MCP review; cases above; video: maintainer |
+
 ## Our own marketplaces (no review)
 
-Claude Code: `.claude-plugin/marketplace.json` (marketplace `aileron-tech`)
-lists `./plugins/wingbox`; installation commands are in the main README,
+- Claude Code: `.claude-plugin/marketplace.json` (marketplace `aileron-tech`).
+- Codex: `.agents/plugins/marketplace.json` (marketplace `aileron-tech`).
+
+Both list `./plugins/wingbox`; installation commands are in the main README,
 section "Install as a plugin".

@@ -253,11 +253,13 @@ MCP clients use `wingbox mcp`: see [Use from an MCP client](#use-from-an-mcp-cli
 
 ## Install as a plugin
 
-This repository is also a plugin marketplace for Claude Code. The plugin, in
-[`plugins/wingbox`](plugins/wingbox), bundles the `wingbox` skill, the MCP
-server `wingbox mcp` and the search hook that `wingbox install` adds. Use
-either the plugin or `wingbox install`, not both (`wingbox uninstall` removes
-what install added).
+This repository is also a plugin marketplace for Claude Code and Codex. The
+plugin, in [`plugins/wingbox`](plugins/wingbox), bundles the `wingbox` skill
+and the MCP server `wingbox mcp`, and in Claude Code the search hook that
+`wingbox install` adds. Use either the plugin or `wingbox install`, not both
+(`wingbox uninstall` removes what install added).
+
+Claude Code:
 
 ```bash
 /plugin install wingbox --marketplace aileron-tech/wingbox
@@ -271,6 +273,16 @@ The plugin runs the installed `wingbox` command; without it, and with `uv`
 installed, it runs `uvx --from wingbox==<version> wingbox`, which downloads the
 pinned version from PyPI on first use. The search hook never downloads and
 stays silent while neither is available.
+
+Codex:
+
+```bash
+codex plugin marketplace add aileron-tech/wingbox
+codex plugin add wingbox@aileron-tech
+```
+
+The Codex plugin runs `wingbox` from your `PATH`, so install the command first
+with `pipx install wingbox`. Codex lists the skill as `wingbox:wingbox`.
 
 The plugin folder holds a copy of `SKILL.md` and `references/`, and the
 version of `pyproject.toml`; `python3 tools/sync_plugin.py` refreshes them and

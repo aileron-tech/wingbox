@@ -11,6 +11,12 @@
   command or, without it, `uvx --from wingbox==<version> wingbox`.
 - `docs/store/` holds the listing, the privacy statement, the icon and
   screenshots for Anthropic's plugin directory.
+- The same plugin for Codex: `codex plugin marketplace add
+  aileron-tech/wingbox`, then `codex plugin add wingbox@aileron-tech`. It
+  bundles the `wingbox` skill and the MCP server `wingbox mcp` from `PATH`.
+- `tools/build_openai_plugin.py` builds the ZIP packages for the OpenAI plugin
+  directory (ChatGPT and Codex): skills only, and skills with the local MCP
+  server; `docs/store/` lists what that directory requires.
 
 ## 0.2.7 - 2026-11-16
 

@@ -1,0 +1,50 @@
+{
+  "name": "wingbox",
+  "version": "0.2.7",
+  "description": "Local code graph and blast radius analysis: module boundaries, dependents, impact of a change and the few files to read first, for Python, TypeScript, Rust, C#, Java, Go and Ruby repositories. Runs on your machine; no code leaves it.",
+  "author": {
+    "name": "Aileron Technologies",
+    "url": "https://wingbox.dev"
+  },
+  "homepage": "https://wingbox.dev",
+  "repository": "https://github.com/aileron-tech/wingbox",
+  "license": "MIT",
+  "keywords": [
+    "code-graph",
+    "blast-radius",
+    "impact-analysis",
+    "dependency-graph",
+    "code-search",
+    "architecture",
+    "local-first",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
+  "interface": {
+    "displayName": "Wingbox",
+    "shortDescription": "Local code graph, blast radius",
+    "longDescription": "Wingbox builds a code graph of the repository you work in and answers from it before the agent reads source files: which modules exist and where their boundaries are, what depends on a file, what a change could break two hops away, which three or four files to read first, and which dependencies cross an architecture layer. It parses Python, TypeScript and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails with tree-sitter, and writes an offline HTML map of the repository. Everything runs on your computer with the open-source wingbox command (MIT, on PyPI): no code, graph or question is sent anywhere. The plugin needs a local shell and the command, installed once with pipx install wingbox.",
+    "developerName": "Aileron Technologies",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Build a code graph",
+      "Impact analysis",
+      "Dependency search",
+      "Architecture boundaries"
+    ],
+    "websiteURL": "https://wingbox.dev",
+    "supportURL": "https://github.com/aileron-tech/wingbox/issues",
+    "privacyPolicyURL": "https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/aileron-tech/wingbox/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Build the code graph of this repository and tell me where to start reading.",
+      "What depends on this file, and what could break if I change it?",
+      "Which modules handle authentication, and which files should I read first?"
+    ],
+    "brandColor": "#0369A1",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png"
+  }
+}

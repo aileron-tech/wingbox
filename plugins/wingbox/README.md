@@ -9,11 +9,11 @@ Project page: https://wingbox.dev. Source: https://github.com/aileron-tech/wingb
 
 ## What the plugin contains
 
-- The `wingbox` skill (`skills/wingbox/`).
-- The MCP server `wingbox mcp` over stdio, 17 tools: build, impact, analyze,
-  quick, deps and the other queries.
-- A search hook: before Grep, Glob and Read it adds the matching modules and
-  their dependents to the context.
+| Part | Claude Code | Codex |
+|---|---|---|
+| The `wingbox` skill (`skills/wingbox/`) | yes | yes |
+| MCP server `wingbox mcp` over stdio (17 tools: build, impact, analyze, ...) | yes | yes |
+| Search hook: before Grep, Glob and Read, adds the matching modules and their dependents to the context | yes | no |
 
 ## Requirements
 
@@ -24,15 +24,16 @@ once:
 pipx install wingbox
 ```
 
-The plugin also works without that step when `uv` is installed: its
-launcher, `scripts/wingbox-run`, runs the installed `wingbox` command first and
-otherwise `uvx --from wingbox==<version> wingbox`, which downloads the pinned
-version from PyPI on first use. The search hook never downloads anything and
-stays silent when `wingbox` is missing.
+In Claude Code the plugin also works without that step when `uv` is
+installed: its launcher, `scripts/wingbox-run`, runs the installed `wingbox`
+command first and otherwise `uvx --from wingbox==<version> wingbox`, which
+downloads the pinned version from PyPI on first use. The search hook never
+downloads anything and stays silent when `wingbox` is missing. In Codex the
+MCP server is `wingbox mcp` from your PATH, so install the command.
 
 ## Install
 
-In Claude Code:
+Claude Code:
 
 ```bash
 /plugin install wingbox --marketplace aileron-tech/wingbox
@@ -40,6 +41,13 @@ In Claude Code:
 
 or `/plugin marketplace add aileron-tech/wingbox` and then
 `/plugin install wingbox@aileron-tech`.
+
+Codex:
+
+```bash
+codex plugin marketplace add aileron-tech/wingbox
+codex plugin add wingbox@aileron-tech
+```
 
 If you already ran `wingbox install`, the skill and the search hook are
 installed twice; run `wingbox uninstall` to keep only the plugin.

@@ -1,5 +1,29 @@
 # Completion Log
 
+## 2026-11-16 - Codex plugin and the OpenAI directory packages
+
+### Changes
+- `plugins/wingbox/.codex-plugin/plugin.json` (new): name, version of pyproject, `skills: ./skills/`, `mcpServers: ./.mcp.json`, `requires_local_executor: true` and the `interface` listing (display name, 30-character subtitle, long description, developer, category Developer Tools, capabilities, four HTTPS URLs, three starter prompts, icon). `plugins/wingbox/.mcp.json` (new): `wingbox mcp` from PATH. The plugin README describes both clients.
+- `.agents/plugins/marketplace.json` (new, added with `git add -f` because a global gitignore of the maintainer's machine ignores `.agents`): marketplace `aileron-tech`, local entry `./plugins/wingbox`, policy AVAILABLE / ON_INSTALL, category Developer Tools.
+- `tools/sync_plugin.py` stamps the version in the Codex manifest too.
+- `tools/build_openai_plugin.py` (new): `dist/wingbox-openai-plugin-<version>.zip` (skills only, Desktop only, for the public submission) and `...-local-mcp.zip` (with `.mcp.json`, for a local MCP submission after allowlisting); Codex layout, fixed timestamps (same files, same bytes), README from `docs/store/openai-package-README.md`; it refuses a stale plugin folder.
+- `docs/store/README.md`: the OpenAI section (build command and paths, the submission checks with their results, what the maintainer does). `README.md`: Codex in "Install as a plugin". Tests: REQ-PLUGIN-011 to REQ-PLUGIN-013, and REQ-PLUGIN-004 covers the Codex manifest.
+
+### Decisions
+- Codex layout `.codex-plugin/plugin.json` + `.mcp.json`, not the portable root `plugin.json` + `mcp.json`: Codex 0.169.0 ignores the portable `mcp.json` (`plugin/read` lists no MCP server).
+- In `.mcp.json`, `wingbox` from PATH without `cwd`. Codex does not expand `${PLUGIN_ROOT}` there, a relative command needs `cwd: "."`, and then `wingbox mcp` serves the plugin cache folder; Codex sends no MCP roots and no project folder in the environment. Without `cwd` the server runs in the session folder. So the Codex plugin needs the installed command; the launcher stays Claude Code only.
+- No `hooks/hooks.json` in the plugin: Codex loads it by default. The Claude Code hook stays inline in `.claude-plugin/plugin.json`. Claude Code also reads `.mcp.json`; its inline server of the same name replaces it (checked: `claude mcp list` shows one server, through the launcher).
+- The OpenAI packages leave out the hook (refused by the directory) and the launcher; their README describes only what they hold.
+
+### Motivation
+- The maintainer asked for plugins for the Claude and the OpenAI stores; this is the second part.
+
+### Verification
+- Codex 0.169.0 in a temporary `CODEX_HOME`, without a model call: `codex plugin marketplace add`, `codex plugin list`, `codex plugin add wingbox@aileron-tech` (installed under `plugins/cache/aileron-tech/wingbox/0.2.7`), `codex mcp list` shows `wingbox wingbox mcp`. Through `codex app-server`: `skills/list` lists `wingbox:wingbox` from the plugin cache; `mcpServerStatus/list` shows server wingbox 0.2.7 and its tools; `thread/start` then `mcpServer/tool/call impact` returned the three dependents of a test file in the session folder.
+- Both ZIPs unpacked into a local marketplace and installed the same way: skills only gives the skill and no MCP server; local MCP gives the skill and the working server.
+- `claude plugin validate --strict` on the plugin folder and the repository still passes with no warning.
+- Tests: the full suite.
+
 ## 2026-11-16 - Plugin for Claude Code and its marketplace
 
 ### Changes

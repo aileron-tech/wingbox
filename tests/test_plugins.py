@@ -1,4 +1,4 @@
-"""The Claude Code plugin under plugins/wingbox and its marketplace."""
+"""The Claude Code and Codex plugins under plugins/wingbox, their marketplaces and the OpenAI packages."""
 import json
 import os
 import re
@@ -10,6 +10,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -72,6 +73,48 @@ class ClaudePluginTest(unittest.TestCase):
         self.assertTrue((REPO / entry["source"] / ".claude-plugin" / "plugin.json").is_file())
 
 
+class CodexPluginTest(unittest.TestCase):
+    def test_manifest(self) -> None:
+        """/* REQ-PLUGIN-011: the Codex manifest `.codex-plugin/plugin.json` must name the plugin wingbox at the version of pyproject.toml, declare ./skills/ and ./.mcp.json, require a local executor, and give the listing fields within the directory limits (display name and subtitle at most 30 characters, at most three starter prompts of 128 characters, square icons that exist); `.mcp.json` must start `wingbox mcp` from PATH so that it runs in the session folder. */"""
+        manifest = load(PLUGIN / ".codex-plugin" / "plugin.json")
+        self.assertEqual(manifest["name"], "wingbox")
+        self.assertEqual(manifest["version"], VERSION)
+        self.assertEqual(manifest["author"]["name"], "Aileron Technologies")
+        self.assertEqual(manifest["skills"], "./skills/")
+        self.assertEqual(manifest["mcpServers"], "./.mcp.json")
+        self.assertIs(manifest["requires_local_executor"], True)
+        interface = manifest["interface"]
+        self.assertLessEqual(len(interface["displayName"]), 30)
+        self.assertLessEqual(len(interface["shortDescription"]), 30)
+        self.assertLessEqual(len(interface["longDescription"]), 4000)
+        self.assertLessEqual(len(interface["developerName"]), 80)
+        self.assertTrue(interface["category"])
+        self.assertLessEqual(len(interface["capabilities"]), 20)
+        self.assertLessEqual(len(interface["defaultPrompt"]), 3)
+        for prompt in interface["defaultPrompt"]:
+            self.assertLessEqual(len(prompt), 128)
+        for key in ("websiteURL", "supportURL", "privacyPolicyURL", "termsOfServiceURL"):
+            self.assertTrue(interface[key].startswith("https://"), key)
+        for key in ("composerIcon", "logo"):
+            width, height = png_size(PLUGIN / interface[key])
+            self.assertEqual(width, height)
+        self.assertFalse((PLUGIN / "hooks" / "hooks.json").exists(), "Codex loads hooks/hooks.json by default")
+        servers = load(PLUGIN / ".mcp.json")["mcpServers"]
+        self.assertEqual(servers, {"wingbox": {"command": "wingbox", "args": ["mcp"]}})
+
+    def test_marketplace(self) -> None:
+        """/* REQ-PLUGIN-012: `.agents/plugins/marketplace.json` must list wingbox from the local path ./plugins/wingbox with an install policy, an authentication policy and a category, so that `codex plugin marketplace add aileron-tech/wingbox` offers it. */"""
+        marketplace = load(REPO / ".agents" / "plugins" / "marketplace.json")
+        self.assertEqual(marketplace["name"], "aileron-tech")
+        (entry,) = marketplace["plugins"]
+        self.assertEqual(entry["name"], "wingbox")
+        self.assertEqual(entry["source"], {"source": "local", "path": "./plugins/wingbox"})
+        self.assertEqual(entry["policy"]["installation"], "AVAILABLE")
+        self.assertIn(entry["policy"]["authentication"], ("ON_INSTALL", "ON_USE"))
+        self.assertTrue(entry["category"])
+        self.assertTrue((REPO / "plugins" / "wingbox" / ".codex-plugin" / "plugin.json").is_file())
+
+
 class SkillCopyTest(unittest.TestCase):
     def test_copy_is_identical(self) -> None:
         """/* REQ-PLUGIN-003: the plugin's skill must be byte for byte SKILL.md and references/ of the repository, and its LICENSE the repository's; `tools/sync_plugin.py --check` must pass on the repository. */"""
@@ -87,7 +130,7 @@ class SkillCopyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_sync_repairs_drift(self) -> None:
-        """/* REQ-PLUGIN-004: after SKILL.md or the version in pyproject.toml changes, `tools/sync_plugin.py --check` must exit 1 and name each stale file, and `tools/sync_plugin.py` must rewrite the skill copy and the version in the manifest and the launcher. */"""
+        """/* REQ-PLUGIN-004: after SKILL.md or the version in pyproject.toml changes, `tools/sync_plugin.py --check` must exit 1 and name each stale file, and `tools/sync_plugin.py` must rewrite the skill copy and the version in both manifests and the launcher. */"""
         with tempfile.TemporaryDirectory() as tmp:
             copy = Path(tmp) / "repo"
             for name in ("SKILL.md", "LICENSE", "pyproject.toml"):
@@ -101,13 +144,14 @@ class SkillCopyTest(unittest.TestCase):
             script = str(copy / "tools" / "sync_plugin.py")
             check = subprocess.run([sys.executable, script, "--check"], capture_output=True, text=True)
             self.assertEqual(check.returncode, 1)
-            for stale in ("skills/wingbox/SKILL.md", ".claude-plugin/plugin.json", "scripts/wingbox-run"):
+            for stale in ("skills/wingbox/SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "scripts/wingbox-run"):
                 self.assertIn(stale, check.stdout)
             subprocess.run([sys.executable, script], check=True, capture_output=True)
             self.assertEqual(subprocess.run([sys.executable, script, "--check"], capture_output=True).returncode, 0)
             plugin = copy / "plugins" / "wingbox"
             self.assertTrue((plugin / "skills" / "wingbox" / "SKILL.md").read_text(encoding="utf-8").endswith("New line.\n"))
             self.assertEqual(load(plugin / ".claude-plugin" / "plugin.json")["version"], "9.8.7")
+            self.assertEqual(load(plugin / ".codex-plugin" / "plugin.json")["version"], "9.8.7")
             self.assertIn("wingbox==9.8.7", (plugin / "scripts" / "wingbox-run").read_text(encoding="utf-8"))
             self.assertTrue(os.access(plugin / "scripts" / "wingbox-run", os.X_OK))
 
@@ -180,6 +224,37 @@ class PluginFolderTest(unittest.TestCase):
         words = re.sub(r"```.*?```", "", (PLUGIN / "README.md").read_text(encoding="utf-8"), flags=re.S).split()
         self.assertGreaterEqual(len(words), 40)
         self.assertTrue((PLUGIN / "LICENSE").is_file())
+
+
+class OpenAIPackageTest(unittest.TestCase):
+    def test_zip_packages(self) -> None:
+        """/* REQ-PLUGIN-013: `tools/build_openai_plugin.py --out DIR` must write the skills-only ZIP wingbox-openai-plugin-<version>.zip (Codex manifest with requires_local_executor and no MCP, skill, icon, the package README of docs/store, LICENSE; no .mcp.json, hooks, .claude-plugin, scripts or bin) and wingbox-openai-plugin-<version>-local-mcp.zip that also holds .mcp.json and declares it. */"""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [sys.executable, str(REPO / "tools" / "build_openai_plugin.py"), "--out", tmp],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            skills_only = Path(tmp) / f"wingbox-openai-plugin-{VERSION}.zip"
+            local_mcp = Path(tmp) / f"wingbox-openai-plugin-{VERSION}-local-mcp.zip"
+            self.assertIn(str(skills_only), result.stdout)
+            with zipfile.ZipFile(skills_only) as archive:
+                names = set(archive.namelist())
+                manifest = json.loads(archive.read(".codex-plugin/plugin.json"))
+                self.assertEqual(archive.read("skills/wingbox/SKILL.md"), (REPO / "SKILL.md").read_bytes())
+                readme = archive.read("README.md")
+            self.assertEqual(readme, (REPO / "docs" / "store" / "openai-package-README.md").read_bytes())
+            self.assertTrue({"README.md", "LICENSE", "assets/icon.png", "skills/wingbox/SKILL.md"} <= names)
+            self.assertFalse([n for n in names if n.startswith((".mcp.json", "hooks", ".claude-plugin", "scripts", "bin/"))])
+            self.assertIs(manifest["requires_local_executor"], True)
+            self.assertNotIn("mcpServers", manifest)
+            self.assertEqual(manifest["version"], VERSION)
+            with zipfile.ZipFile(local_mcp) as archive:
+                names = set(archive.namelist())
+                manifest = json.loads(archive.read(".codex-plugin/plugin.json"))
+            self.assertIn(".mcp.json", names)
+            self.assertEqual(manifest["mcpServers"], "./.mcp.json")
 
 
 if __name__ == "__main__":
