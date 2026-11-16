@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-16 - README: "See it in action" with the layers view
+
+### Changes
+- `README.md`: new section "See it in action" before "What can Wingbox answer?": an animated picture (terminal with `wingbox impact` and a 3D stack of architecture layers), the real output of the command, a recording of `map.html` turning in the layers view and one screenshot of it.
+- `docs/assets/`: `demo-impact.svg` (SMIL animation, its static state is the last frame), `demo-layers.webp`, `map-layers-hub.webp`.
+- The example is the server of the open-source project immich at commit `e5d6eb7`. Every dependency in it was compared with an import resolver written separately from Wingbox: 3,795 on both sides, none extra and none missing; the two radii shown (10 / 30 and 65 / 281) were recounted from that resolver.
+
+### Motivation
+- The README described the commands but did not show the tool working. The pictures show the two things people ask about first: what one command answers, and what the map looks like.
 ## 2026-11-16 - public benchmark against Graphify
 
 ### Changes
