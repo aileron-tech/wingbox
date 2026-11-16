@@ -535,17 +535,6 @@ questions: which modules depend on this one, what a change can break, which
 architecture boundary a dependency crosses, and which few files are worth
 reading first.
 
-### How is Wingbox different from Graphify?
-
-Graphify extracts a knowledge graph from code, documents, papers and images,
-with a model for the non-code part, and supports more languages. Wingbox reads
-code only, with deterministic parsers and no model, and resolves imports the
-way each language does, so that `wingbox impact` gives the exact list of files
-a change reaches. The two tools are measured side by side in
-[benchmarks/graphify](benchmarks/graphify/README.md). Wingbox can be used as a
-Graphify alternative when the question is change impact, dependencies and
-architecture boundaries of code.
-
 ### Does Wingbox replace a compiler or a language server?
 
 No. It is an architecture and impact-analysis tool. Optional LSP enrichment
