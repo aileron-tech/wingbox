@@ -6,7 +6,5 @@ __pycache__/
 *.py[cod]
 .ruff_cache/
 
-# Generated code-graph artifacts (produced by scripts/build_code_graph.py)
-.code_graph.sexp
-.code_graph.uses.sexp
-.code_graph_cache.json
+# What Wingbox writes into a project (the graph, its cache, the report and the map)
+.wingbox/

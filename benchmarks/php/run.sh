@@ -99,7 +99,7 @@ while read -r name url commit tag; do
     ''|'#'*) continue ;;
   esac
   ( cd "bench/wb/$name" && "$WINGBOX_BUILD" build --exclude-dir vendor ) > "bench/log/$name.wingbox_build.log" 2>&1
-  [ -f "bench/wb/$name/.code_graph.sexp" ] || { echo "no graph for $name" >&2; exit 1; }
+  [ -f "bench/wb/$name/.wingbox/index.sexp" ] || { echo "no graph for $name" >&2; exit 1; }
   echo "$name built"
 done < out/commits.txt
 
@@ -110,7 +110,7 @@ while read -r name url commit tag; do
   esac
   "$PY" -I "$T/list_files.py" "bench/plain/$name" "out/$name.files.json"
   php "$T/php_reference.php" "out/$name.files.json" "out/$name.php_refs.json" --root "bench/plain/$name"
-  "$PY" -I "$T/graph_edges.py" "bench/wb/$name" "bench/wb/$name/.code_graph.sexp" "out/$name.files.json" "out/$name.graph.json"
+  "$PY" -I "$T/graph_edges.py" "bench/wb/$name" "bench/wb/$name/.wingbox/index.sexp" "out/$name.files.json" "out/$name.graph.json"
 done < out/commits.txt
 
 step "questions"

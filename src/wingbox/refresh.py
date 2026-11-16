@@ -25,7 +25,7 @@ from wingbox import cli, freshness
 
 def fragments_path(root: str) -> str:
     builder = cli.load_script("build_code_graph")
-    return os.path.join(root, builder.FRESHNESS_DIRECTORY, builder.FRAGMENTS_FILE)
+    return os.path.join(builder.wingbox_directory(root), builder.FRAGMENTS_FILE)
 
 
 def build_arguments(root: str, exclude_dirs: tuple[str, ...]) -> list[str]:
@@ -43,7 +43,9 @@ def run_build(root: str, exclude_dirs: tuple[str, ...]) -> int:
         print(f"[wingbox] refresh: {parsed.error}", file=sys.stderr)
         return 2
     store, snapshot = builder.freshness_files(parsed.value)
-    return int(builder._run_build(dataclasses.replace(parsed.value, fragments_path=store, snapshot_path=snapshot)))
+    return int(builder._run_build(
+        dataclasses.replace(parsed.value, fragments_path=store, snapshot_path=snapshot, keep_published=True)
+    ))
 
 
 def refresh(root: str) -> int:

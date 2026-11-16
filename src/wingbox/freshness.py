@@ -58,16 +58,61 @@ DEFAULT_HOOK_WAIT = 3.0
 DEFAULT_REFRESH_WAIT = 600.0
 DEFAULT_CHECK_INTERVAL = 0.0
 _POLL_SECONDS = 0.05
-_NOT_TRACKED = frozenset((STATE_DIRECTORY, ".git", "wingbox-out"))
+_NOT_TRACKED = frozenset((STATE_DIRECTORY, ".git"))
+
+
+def state_directory(root: str) -> str:
+    """ROOT/.wingbox/: everything Wingbox writes into a project, and the mark of its root."""
+    return os.path.join(root, STATE_DIRECTORY)
 
 
 def graph_path(root: str) -> str:
     """The code graph that `wingbox build` publishes for root; the one place that names it."""
-    return os.path.join(root, ".code_graph.sexp")
+    return os.path.join(state_directory(root), "index.sexp")
 
 
-def state_directory(root: str) -> str:
-    return os.path.join(root, STATE_DIRECTORY)
+def report_path(root: str) -> str:
+    return os.path.join(state_directory(root), "REPORT.md")
+
+
+def map_path(root: str) -> str:
+    return os.path.join(state_directory(root), "map.html")
+
+
+NO_PROJECT = "no .wingbox/ in this folder or its parents: run wingbox build"
+
+
+def searched_graphs(start: str) -> list[str]:
+    """The graph paths find_project looks at from start, nearest first."""
+    folder = os.path.abspath(start)
+    if not os.path.isdir(folder):
+        folder = os.path.dirname(folder)
+    found = []
+    while True:
+        found.append(graph_path(folder))
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            return found
+        folder = parent
+
+
+def find_project(start: str) -> Optional[str]:
+    """The project root: the nearest folder at or above start that holds .wingbox/index.sexp."""
+    for candidate in searched_graphs(start):
+        if os.path.isfile(candidate):
+            return os.path.dirname(os.path.dirname(candidate))
+    return None
+
+
+def no_project_message(start: str) -> str:
+    """What a reader says when find_project(start) finds nothing: the paths it looked at and the options."""
+    searched = searched_graphs(start)
+    shown = searched[:6] + ([f"... {len(searched) - 6} more"] if len(searched) > 6 else [])
+    return (
+        f"{NO_PROJECT}\n"
+        f"  looked for: {', '.join(shown)}\n"
+        "  or point at a graph: --map /path/to/project/.wingbox/index.sexp --root /path/to/project"
+    )
 
 
 def _state_file(root: str, name: str) -> str:
@@ -323,6 +368,7 @@ class Snapshot:
     config_names: frozenset[str]
     config_patterns: tuple[tuple[str, str], ...]  # (prefix, suffix) of names such as tsconfig.*.json
     skip_dirs: frozenset[str]
+    root: str = ""  # the folder the graph was built from
 
 
 def decode_snapshot(raw: object) -> Optional[Snapshot]:
@@ -340,6 +386,7 @@ def decode_snapshot(raw: object) -> Optional[Snapshot]:
             config_names=frozenset(raw.get("config_names", ())),
             config_patterns=tuple((str(pair[0]), str(pair[1])) for pair in raw.get("config_patterns", ())),
             skip_dirs=frozenset(raw.get("skip_dirs", ())),
+            root=str(raw.get("root", "")),
         )
     except (TypeError, ValueError, IndexError):
         return None
@@ -352,6 +399,7 @@ def encode_snapshot(snapshot: Snapshot) -> dict:
         "config_names": sorted(snapshot.config_names),
         "config_patterns": [list(pair) for pair in snapshot.config_patterns],
         "skip_dirs": sorted(snapshot.skip_dirs),
+        "root": snapshot.root,
         "files": {path: list(value) for path, value in sorted(snapshot.files.items())},
         "directories": dict(sorted(snapshot.directories.items())),
     }
@@ -467,27 +515,14 @@ def with_outside_changes(snapshot: Snapshot, changes: OutsideChanges) -> Snapsho
         else:
             directories[path] = seen
     return Snapshot(
-        files, directories, snapshot.extensions, snapshot.config_names, snapshot.config_patterns, snapshot.skip_dirs
+        files, directories, snapshot.extensions, snapshot.config_names, snapshot.config_patterns, snapshot.skip_dirs,
+        snapshot.root,
     )
 
 
 # ---------------------------------------------------------------------------
 # The PostToolUse hook
 # ---------------------------------------------------------------------------
-
-
-def find_root(start: str) -> Optional[str]:
-    """The project root at or above start that holds the published graph; stops at the folder holding .git."""
-    folder = os.path.abspath(start)
-    if not os.path.isdir(folder):
-        folder = os.path.dirname(folder)
-    while True:
-        if os.path.isfile(graph_path(folder)):
-            return folder
-        parent = os.path.dirname(folder)
-        if parent == folder or os.path.exists(os.path.join(folder, ".git")):
-            return None
-        folder = parent
 
 
 def relative_path(root: str, path: str) -> Optional[str]:
@@ -531,7 +566,7 @@ def run_post_edit(stdin_text: str) -> None:
     path = _edited_path(payload)
     if path is None:
         return
-    root = find_root(os.path.dirname(path))
+    root = find_project(os.path.dirname(path))
     if root is None:
         return
     relative = relative_path(root, path)
@@ -567,7 +602,24 @@ class Unmanaged:
     """No graph published at graph_path(root): the caller keeps its own policy (no first build here)."""
 
 
-Freshness = Union[Fresh, Stale, Unmanaged]
+@dataclass(frozen=True)
+class Unconfirmed:
+    """The graph is read as it is and never refreshed: it was not built from this folder (moved or
+    copied .wingbox/, or built without a snapshot), so a refresh could only replace it by a wrong one."""
+
+    reason: str  # moved, no-snapshot
+
+
+Freshness = Union[Fresh, Stale, Unmanaged, Unconfirmed]
+
+
+def built_here(root: str, snapshot: Optional[Snapshot]) -> Optional[Unconfirmed]:
+    """None when the snapshot says the graph was built from root; else why it cannot be refreshed."""
+    if snapshot is None:
+        return Unconfirmed("no-snapshot")
+    if os.path.realpath(snapshot.root) != os.path.realpath(root):
+        return Unconfirmed("moved")
+    return None
 
 
 def _seconds(name: str, default: float) -> float:
@@ -705,14 +757,10 @@ def ensure_graph_fresh(root: str, wait: Optional[float] = None) -> Freshness:
     """
     if not os.path.isfile(graph_path(root)):
         return Unmanaged()
-    if _check_due(root):
-        state = note_outside_changes(root)
-        if state is None:
-            state = read_state(root)
-            if state.readable and not state.dirty:
-                state = State(dirty=True)  # no snapshot: freshness cannot be confirmed without a refresh
-    else:
-        state = read_state(root)
+    elsewhere = built_here(root, read_snapshot(root))
+    if elsewhere is not None:
+        return elsewhere
+    state = (note_outside_changes(root) if _check_due(root) else None) or read_state(root)
     if is_fresh(state):
         return Fresh(False)
     if not auto_refresh_enabled():
@@ -737,8 +785,16 @@ def ensure_graph_fresh(root: str, wait: Optional[float] = None) -> Freshness:
     return _stale(root, "refresh-timeout", after)
 
 
-def stale_line(result: Freshness) -> str:
+def stale_line(result: Freshness, root: str = ".") -> str:
     """The S-expression that tells an agent the graph may miss recent changes; empty when fresh."""
+    if isinstance(result, Unconfirmed):
+        hint = f"rebuild: wingbox build {root}"
+        return f'(wingbox-graph-unconfirmed :reason {result.reason} :hint "{hint}")'
     if not isinstance(result, Stale):
         return ""
     return f"(wingbox-graph-stale :reason {result.reason} :changed-files {result.changed})"
+
+
+def withholds_context(result: Freshness) -> bool:
+    """A graph known to miss changes gives no context; an unconfirmed one is read as it is, with its note."""
+    return isinstance(result, Stale)

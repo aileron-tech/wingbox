@@ -138,7 +138,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                         capture_output=True,
                         text=True,
                     )
-                    map_written = (root / ".code_graph.sexp").is_file()
+                    map_written = (root / ".wingbox/index.sexp").is_file()
 
                 self.assertIsInstance(graph_result, build_code_graph.Ok)
                 self.assertEqual(
@@ -162,7 +162,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                 str(root),
             ]
             subprocess.run(command, check=True, capture_output=True, text=True)
-            cache_path = root / ".code_graph_cache.json"
+            cache_path = root / ".wingbox/cache.json"
 
             cache_path.write_text("[]\n", encoding="utf-8")
             wrong_shape = subprocess.run(
@@ -202,7 +202,8 @@ class IssueOneRegressionTest(unittest.TestCase):
     def test_atomic_write_preserves_prior_file_when_replace_fails(self) -> None:
         """/* REQ-CS-025: interrupted publication must retain the last good file. */"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / ".code_graph.sexp"
+            output_path = Path(tmpdir) / ".wingbox/index.sexp"
+            output_path.parent.mkdir(exist_ok=True)
             output_path.write_text("prior-good\n", encoding="utf-8")
 
             with patch.object(
@@ -217,18 +218,18 @@ class IssueOneRegressionTest(unittest.TestCase):
                     )
 
             preserved_content = output_path.read_text(encoding="utf-8")
-            temporary_files = list(Path(tmpdir).glob(".*.tmp"))
+            temporary_files = list(output_path.parent.glob(".*.tmp"))
 
         self.assertEqual(preserved_content, "prior-good\n")
         self.assertEqual(temporary_files, [])
 
-    def test_explicit_root_and_output_work_from_another_directory(self) -> None:
-        """/* REQ-CS-026: documented builds must target an explicit project root. */"""
+    def test_explicit_root_works_from_another_directory(self) -> None:
+        """/* REQ-CS-026: documented builds must target an explicit project root and write ROOT/.wingbox/index.sexp, whatever the current folder. */"""
         with tempfile.TemporaryDirectory() as target_tmpdir:
             with tempfile.TemporaryDirectory() as caller_tmpdir:
                 root = Path(target_tmpdir)
                 (root / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
-                output_path = root / "custom-map.sexp"
+                output_path = root / ".wingbox" / "index.sexp"
 
                 result = subprocess.run(
                     [
@@ -236,8 +237,6 @@ class IssueOneRegressionTest(unittest.TestCase):
                         str(BUILD_SCRIPT),
                         "--root",
                         str(root),
-                        "--output",
-                        str(output_path),
                     ],
                     cwd=caller_tmpdir,
                     check=True,
@@ -300,7 +299,8 @@ class IssueOneRegressionTest(unittest.TestCase):
             }
         ]
         with tempfile.TemporaryDirectory() as tmpdir:
-            map_path = Path(tmpdir) / ".code_graph.sexp"
+            map_path = Path(tmpdir) / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             build_code_graph.write_sexp(
                 str(map_path),
                 nodes,
@@ -341,7 +341,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                     text=True,
                 )
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            map_exists = (root / ".code_graph.sexp").exists()
+            map_exists = (root / ".wingbox/index.sexp").exists()
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("another build is active", result.stderr)

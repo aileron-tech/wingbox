@@ -54,7 +54,8 @@ def _run(files: dict[str, str], argv: list[str], cargo: bool = False) -> str:
         # A real build (with its cache): the first query that needs positions fills them in.
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             assert builder.main(["--root", str(root)]) == 0
-        map_path = root / ".code_graph.sexp"
+        map_path = root / ".wingbox/index.sexp"
+        map_path.parent.mkdir(exist_ok=True)
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             search.main([*argv, "--map", str(map_path), "--root", str(root)])
@@ -181,7 +182,7 @@ class UsagesCommandTests(unittest.TestCase):
         self.assertNotIn("11:10", output)
 
     def test_use_positions_live_next_to_the_graph_and_a_build_without_changes_reuses_them(self) -> None:
-        """/* REQ-CS-069: `wingbox build` keeps use positions out of .code_graph.sexp: .code_graph.uses.sexp next to it gets them from the first query that needs them (usages, entity --positions) and keeps them; a second build with no changed file does not resolve the uses again and leaves both files as they are. */"""
+        """/* REQ-CS-069: `wingbox build` keeps use positions out of .wingbox/index.sexp: .wingbox/index.uses.sexp next to it gets them from the first query that needs them (usages, entity --positions) and keeps them; a second build with no changed file does not resolve the uses again and leaves both files as they are. */"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative_path, content in PYTHON.items():
@@ -189,37 +190,38 @@ class UsagesCommandTests(unittest.TestCase):
                 (root / relative_path).write_text(content, encoding="utf-8")
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(0, builder.main(["--root", str(root)]))
-            graph = (root / ".code_graph.sexp").read_text(encoding="utf-8")
-            built = (root / ".code_graph.uses.sexp").read_text(encoding="utf-8")
+            graph = (root / ".wingbox/index.sexp").read_text(encoding="utf-8")
+            built = (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8")
             self.assertNotIn("\n(use ", graph)
             self.assertIn(":positions no", built)
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                search.main(["usages", "app/models.py::Invoice", "--map", str(root / ".code_graph.sexp"),
+                search.main(["usages", "app/models.py::Invoice", "--map", str(root / ".wingbox/index.sexp"),
                              "--root", str(root)])
             self.assertIn("8:11   call", output.getvalue())
-            uses = (root / ".code_graph.uses.sexp").read_text(encoding="utf-8")
+            uses = (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8")
             self.assertIn(":positions yes", uses)
             with mock.patch.object(builder, "_resolve_symbol_uses", side_effect=AssertionError("resolved again")), \
                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(0, builder.main(["--root", str(root)]))
-            self.assertEqual(graph, (root / ".code_graph.sexp").read_text(encoding="utf-8"))
-            self.assertEqual(uses, (root / ".code_graph.uses.sexp").read_text(encoding="utf-8"))
+            self.assertEqual(graph, (root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
+            self.assertEqual(uses, (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8"))
 
     def test_a_query_after_a_one_file_change_walks_only_that_file(self) -> None:
-        """/* REQ-CS-070: the use walk of every file is kept in .code_graph.uses-cache.json by content hash: after a build in which one file changed, the next query that needs positions walks that file only, and its answer holds the new use. */"""
+        """/* REQ-CS-070: the use walk of every file is kept in .wingbox/index.uses-cache.json by content hash: after a build in which one file changed, the next query that needs positions walks that file only, and its answer holds the new use. */"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative_path, content in PYTHON.items():
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text(content, encoding="utf-8")
-            map_path = root / ".code_graph.sexp"
+            map_path = root / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(0, builder.main(["--root", str(root)]))
                 first = builder.write_use_positions(str(map_path), str(root))
             self.assertIsInstance(first, builder.Ok)
             self.assertEqual(len(PYTHON), first.value.walked)
-            self.assertTrue((root / ".code_graph.uses-cache.json").is_file())
+            self.assertTrue((root / ".wingbox/index.uses-cache.json").is_file())
             with (root / "app" / "other.py").open("a", encoding="utf-8") as handle:
                 handle.write("\nfrom app.models import Invoice\nvalue = Invoice()\n")
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -240,7 +242,8 @@ class UsagesCommandTests(unittest.TestCase):
             for relative_path, content in PYTHON.items():
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text(content, encoding="utf-8")
-            map_path = root / ".code_graph.sexp"
+            map_path = root / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(0, builder.main(["--root", str(root)]))
                 self.assertIsInstance(builder.write_use_positions(str(map_path), str(root)), builder.Ok)
@@ -252,13 +255,13 @@ class UsagesCommandTests(unittest.TestCase):
                 again = builder.write_use_positions(str(map_path), str(root))
             self.assertIsInstance(again, builder.Ok)
             self.assertEqual((1, 1), (again.value.walked, again.value.resolved))
-            incremental = (root / ".code_graph.uses.sexp").read_text(encoding="utf-8")
-            (root / ".code_graph.uses-cache.json").unlink()
+            incremental = (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8")
+            (root / ".wingbox/index.uses-cache.json").unlink()
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 full = builder.write_use_positions(str(map_path), str(root))
             self.assertIsInstance(full, builder.Ok)
             self.assertEqual(len(PYTHON), full.value.resolved)
-            self.assertEqual(incremental, (root / ".code_graph.uses.sexp").read_text(encoding="utf-8"))
+            self.assertEqual(incremental, (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8"))
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 search.main(["usages", "app/models.py::Invoice", "--map", str(map_path), "--root", str(root)])
@@ -266,19 +269,20 @@ class UsagesCommandTests(unittest.TestCase):
             self.assertIn("app/__init__.py\n  1:21   re-export\n", output.getvalue())
 
     def test_a_full_build_drops_the_walk_cache(self) -> None:
-        """/* REQ-CS-073: `wingbox build --full` removes .code_graph.uses-cache.json, so that after a change of tsconfig, package or Cargo settings the next query walks and resolves every file again. */"""
+        """/* REQ-CS-073: `wingbox build --full` removes .wingbox/index.uses-cache.json, so that after a change of tsconfig, package or Cargo settings the next query walks and resolves every file again. */"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative_path, content in PYTHON.items():
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text(content, encoding="utf-8")
-            map_path = root / ".code_graph.sexp"
+            map_path = root / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(0, builder.main(["--root", str(root)]))
                 self.assertIsInstance(builder.write_use_positions(str(map_path), str(root)), builder.Ok)
-                self.assertTrue((root / ".code_graph.uses-cache.json").is_file())
+                self.assertTrue((root / ".wingbox/index.uses-cache.json").is_file())
                 self.assertEqual(0, builder.main(["--root", str(root), "--full"]))
-                self.assertFalse((root / ".code_graph.uses-cache.json").exists())
+                self.assertFalse((root / ".wingbox/index.uses-cache.json").exists())
                 again = builder.write_use_positions(str(map_path), str(root))
             self.assertIsInstance(again, builder.Ok)
             self.assertEqual((len(PYTHON), len(PYTHON)), (again.value.walked, again.value.resolved))
@@ -290,7 +294,8 @@ class UsagesCommandTests(unittest.TestCase):
             for relative_path, content in PYTHON.items():
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text(content, encoding="utf-8")
-            map_path = root / ".code_graph.sexp"
+            map_path = root / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(0, builder.main(["--root", str(root)]))
             answers = {}

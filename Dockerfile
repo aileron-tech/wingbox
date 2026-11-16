@@ -3,7 +3,7 @@
 #   docker build -t wingbox .
 #   docker run --rm --network none -v "$PWD":/repo wingbox
 #       builds the code graph of the mounted repository and writes
-#       .code_graph.sexp, wingbox-out/REPORT.md and wingbox-out/map.html into it
+#       .wingbox/ (index.sexp, REPORT.md, map.html) into it
 #   docker run --rm --network none -v "$PWD":/repo wingbox impact src/app.ts
 #       any other wingbox command
 #

@@ -28,7 +28,8 @@ def _write_project(root: Path) -> Path:
         source = root / relative
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text("", encoding="utf-8")
-    sexp_path = root / ".code_graph.sexp"
+    sexp_path = root / ".wingbox/index.sexp"
+    sexp_path.parent.mkdir(exist_ok=True)
     sexp_path.write_text(
         textwrap.dedent(
             """
@@ -116,7 +117,8 @@ class OverviewTest(unittest.TestCase):
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
         root = Path(tmpdir.name).resolve()
-        sexp_path = root / ".code_graph.sexp"
+        sexp_path = root / ".wingbox/index.sexp"
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             textwrap.dedent(
                 """
@@ -163,7 +165,8 @@ class OverviewTest(unittest.TestCase):
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
         root = Path(tmpdir.name).resolve()
-        sexp_path = root / ".code_graph.sexp"
+        sexp_path = root / ".wingbox/index.sexp"
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             textwrap.dedent(
                 """
@@ -386,7 +389,7 @@ class ModuleFileTest(unittest.TestCase):
 
 class BuildOutputsTest(unittest.TestCase):
     def test_wingbox_build_writes_the_report_and_the_map(self) -> None:
-        """/* REQ-OUT-006: `wingbox build` must write wingbox-out/REPORT.md and wingbox-out/map.html next to the graph. */"""
+        """/* REQ-OUT-006: `wingbox build` must write .wingbox/REPORT.md and .wingbox/map.html next to the graph. */"""
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
         root = Path(tmpdir.name).resolve()
@@ -402,12 +405,12 @@ class BuildOutputsTest(unittest.TestCase):
             status = cli.main(["build", str(root)])
 
         self.assertEqual(0, status, output.getvalue())
-        report = root / "wingbox-out" / "REPORT.md"
-        page = root / "wingbox-out" / "map.html"
+        report = root / ".wingbox" / "REPORT.md"
+        page = root / ".wingbox" / "map.html"
         self.assertTrue(report.is_file())
         self.assertTrue(page.is_file())
         self.assertIn("# Wingbox report: " + root.name, report.read_text(encoding="utf-8"))
-        self.assertIn("wingbox-out/map.html", output.getvalue())
+        self.assertIn(".wingbox/map.html", output.getvalue())
 
 
 if __name__ == "__main__":

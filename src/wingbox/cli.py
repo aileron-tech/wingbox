@@ -1,7 +1,8 @@
 """Command-line entry point for Wingbox.
 
     wingbox build [PATH] [build options]    Build the code graph of a project (default: current directory)
-                                            and write wingbox-out/REPORT.md and wingbox-out/map.html
+                                            into PATH/.wingbox/: index.sexp, REPORT.md and map.html
+    wingbox open [PATH]                     Open .wingbox/map.html of the project in the browser
     wingbox <command> [arguments]           Query the code graph: impact, quick, analyze, search, ...
     wingbox infra [arguments]               Build the infrastructure topology (Kustomize, Helm, Terraform)
     wingbox install [--global|--project] [--assistant NAME ...] [--dry-run] [--sexp]
@@ -24,12 +25,16 @@ configuration folder exists in the home folder.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
-documented for those scripts. Relative values of --root, --map and --output are
-resolved against the current directory.
+documented for those scripts. Relative values of --root and --map are resolved
+against the current directory.
 
-The code graph (.code_graph.sexp) is the file agents query. REPORT.md and
-map.html say the same thing to a person: the report in text, the map as an
-interactive page that opens in a browser without a network connection.
+Everything Wingbox writes into a project lives in .wingbox/, which also marks
+the project: a command finds the nearest folder at or above the current one
+(or --root) that holds .wingbox/index.sexp. The code graph (.wingbox/index.sexp)
+is the file agents query. REPORT.md and map.html say the same thing to a
+person: the report in text, the map as an interactive page that opens in a
+browser without a network connection. .wingbox/.gitignore keeps the generated
+files out of git; the whole folder can be ignored as well.
 
 Query commands, the MCP tools and the search hook bring the graph up to date
 before they read it: the files changed since the last build (marked by the
@@ -49,10 +54,21 @@ from importlib import import_module
 from types import ModuleType
 from typing import Optional
 
-_PATH_OPTIONS = ("--root", "--map", "--output")
+_PATH_OPTIONS = ("--root", "--map")
 _VALUE_OPTIONS = _PATH_OPTIONS + ("--lsp-timeout", "--exclude-dir")
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIRECTORY = "wingbox-out"
+BUILD_USAGE = """usage: wingbox build [PATH] [--full] [--exclude-dir NAME ...] [--lsp] [--lsp-timeout SECONDS]
+
+Build the code graph of the project at PATH (default: the current folder).
+Everything goes into PATH/.wingbox/: index.sexp (the graph agents query),
+REPORT.md and map.html (for people; `wingbox open` shows the map), the build
+cache and what keeps the graph fresh. A later build parses only the files
+whose content changed.
+
+  --full                 Parse every file again instead of reusing the cache
+  --exclude-dir NAME     Skip every folder with this name (repeatable)
+  --lsp                  Add the edges a language server finds (slower)
+  --lsp-timeout SECONDS  Time limit of one language-server request (default 15)"""
 
 
 @dataclass(frozen=True)
@@ -70,7 +86,7 @@ OutputsResult = OutputsWritten | OutputsFailed
 
 
 def absolutize_path_options(args: list[str], cwd: str) -> list[str]:
-    """Resolve relative --root, --map and --output values against cwd."""
+    """Resolve relative --root and --map values against cwd."""
     resolved: list[str] = []
     index = 0
     while index < len(args):
@@ -160,8 +176,8 @@ def _version() -> str:
 
 
 def write_outputs(root: str, graph_path: str) -> OutputsResult:
-    """Write wingbox-out/REPORT.md and wingbox-out/map.html from a built code graph."""
-    from wingbox import map_page, overview
+    """Write .wingbox/REPORT.md and .wingbox/map.html from a built code graph."""
+    from wingbox import freshness, map_page, overview
 
     search = load_script("code_graph_search")
     graph = search.CodeGraph()
@@ -170,9 +186,9 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
         return OutputsFailed(f"cannot read {graph_path}: {loaded.error}")
     view = overview.build_overview(graph, search, os.path.basename(os.path.normpath(root)) or root)
     generated = date.today().isoformat()
-    directory = os.path.join(root, OUTPUT_DIRECTORY)
-    report = os.path.join(directory, "REPORT.md")
-    page = os.path.join(directory, "map.html")
+    report = freshness.report_path(root)
+    page = freshness.map_path(root)
+    directory = os.path.dirname(page)
     try:
         os.makedirs(directory, exist_ok=True)
         with open(report, "w", encoding="utf-8") as handle:
@@ -190,11 +206,10 @@ def _build(arguments: list[str]) -> int:
     builder = load_script("build_code_graph")
     options = builder.parse_builder_options(arguments)
     if not isinstance(options, builder.Ok):
-        return int(builder.main(arguments))
+        print(f"[wingbox] build: {options.error}\n{BUILD_USAGE}", file=sys.stderr)
+        return 2
     root = options.value.root
-    if options.value.output_path != freshness.graph_path(root):
-        return _build_outputs(builder, int(builder.main(arguments)), options.value)
-    # The graph the hooks and the MCP server keep fresh: the build clears the marks it includes.
+    # The build clears the marks of the hooks it includes.
     generation = freshness.read_state(root).generation
     status = int(builder.main(arguments))
     if status == 0:
@@ -212,7 +227,34 @@ def _build_outputs(builder: ModuleType, status: int, options) -> int:
         return 1
     relative = os.path.relpath(outputs.page, options.root).replace(os.sep, "/")
     print(f"[wingbox] Report  {os.path.relpath(outputs.report, options.root).replace(os.sep, '/')}")
-    print(f"[wingbox] Map     {relative}  (open it in a browser)")
+    print(f"[wingbox] Map     {relative}  (wingbox open shows it in a browser)")
+    return 0
+
+
+def _open_command(rest: list[str], cwd: str) -> int:
+    """`wingbox open [PATH]`: .wingbox/map.html of the project at or above PATH, in the browser."""
+    import webbrowser
+
+    from wingbox import freshness
+
+    if any(argument in ("-h", "--help") for argument in rest):
+        print("usage: wingbox open [PATH]\n\nOpen .wingbox/map.html of the project at or above PATH (default: the "
+              "current folder)\nin the browser; print its path when there is no browser.")
+        return 0
+    start = os.path.normpath(os.path.join(cwd, rest[0])) if rest else cwd
+    root = freshness.find_project(start)
+    if root is None:
+        print(f"[wingbox] {freshness.no_project_message(start)}", file=sys.stderr)
+        return 1
+    page = freshness.map_path(root)
+    if not os.path.isfile(page):
+        print(f"[wingbox] no map in {os.path.dirname(page)}: run wingbox build {root}", file=sys.stderr)
+        return 1
+    try:
+        opened = webbrowser.open("file://" + page)
+    except webbrowser.Error:
+        opened = False
+    print(page if not opened else f"[wingbox] Opened {page}")
     return 0
 
 
@@ -294,7 +336,14 @@ def _update_command(rest: list[str]) -> int:
         refresh=lambda entry: update.refresh_installed(python, package_parent, entry),
     )
     facts = update.update(options, environment)
-    _print_facts(facts, options.sexp)
+    warnings = update.old_layout_warnings(os.getcwd(), installed)
+    if options.sexp:
+        _print_facts(facts + warnings, True)
+    else:
+        _print_facts(facts, False)
+        color = update.use_color(sys.stdout.isatty(), os.environ)
+        for warning in warnings:
+            print(update.warning_text(warning, color))
     return update.exit_status(facts)
 
 
@@ -332,8 +381,11 @@ def _run(argv: Optional[list[str]] = None) -> int:
         return _update_command(rest)
     if command == "build":
         if any(argument in ("-h", "--help") for argument in rest):
-            return int(load_script("build_code_graph").main(rest))
+            print(BUILD_USAGE)
+            return 0
         return _build(build_arguments(rest, cwd))
+    if command == "open":
+        return _open_command(rest, cwd)
     if command == "mcp":
         from wingbox import mcp_server
 
@@ -354,12 +406,12 @@ def _refresh_before_query(args: list[str], cwd: str) -> None:
     from wingbox import freshness
 
     start = args[args.index("--root") + 1] if "--root" in args[:-1] else cwd
-    root = freshness.find_root(start)
+    root = freshness.find_project(start)
     if root is None:
-        return
-    line = freshness.stale_line(freshness.ensure_graph_fresh(root, freshness.refresh_wait()))
+        return  # the query says there is no .wingbox/ and where it looked
+    line = freshness.stale_line(freshness.ensure_graph_fresh(root, freshness.refresh_wait()), root)
     if line:
-        print(f"[wingbox] WARNING: the code graph may miss recent changes {line}", file=sys.stderr)
+        print(f"[wingbox] WARNING: {line}", file=sys.stderr)
 
 
 if __name__ == "__main__":

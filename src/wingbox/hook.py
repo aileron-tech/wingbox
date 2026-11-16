@@ -37,7 +37,6 @@ from wingbox import freshness
 from wingbox.facts import atom
 
 CONTEXT_LIMIT = 1500
-GRAPH_FILES = (os.path.join(".wingbox", "graph.sexp"), ".code_graph.sexp")
 _SHOWN_MODULES = 6
 _SHOWN_DEFINITIONS = 6
 _RANKED_CANDIDATES = 40  # best name matches whose dependents are counted to order the answer
@@ -148,19 +147,9 @@ def read_query(payload: object, cwd: str) -> tuple[Optional[Query], str]:
 # ---------------------------------------------------------------------------
 
 def find_graph(start: str) -> Optional[tuple[str, str]]:
-    """(project root, graph file) at or above start; the search stops at the folder holding .git."""
-    folder = os.path.abspath(start)
-    if not os.path.isdir(folder):
-        folder = os.path.dirname(folder)
-    while True:
-        for name in GRAPH_FILES:
-            candidate = os.path.join(folder, name)
-            if os.path.isfile(candidate):
-                return folder, candidate
-        parent = os.path.dirname(folder)
-        if parent == folder or os.path.exists(os.path.join(folder, ".git")):
-            return None
-        folder = parent
+    """(project root, graph file): the nearest folder at or above start that holds .wingbox/index.sexp."""
+    root = freshness.find_project(start)
+    return None if root is None else (root, freshness.graph_path(root))
 
 
 def _unquote(token: str) -> str:
@@ -409,15 +398,15 @@ def context_for(payload: object, cwd: str) -> str:
     found = find_graph(start)
     if found is None:
         return ""
-    if found[1] == freshness.graph_path(found[0]):
-        stale = freshness.stale_line(freshness.ensure_graph_fresh(found[0], freshness.hook_wait()))
-        if stale:
-            return stale  # the graph misses known changes: no context from it
+    fresh = freshness.ensure_graph_fresh(found[0], freshness.hook_wait())
+    note = freshness.stale_line(fresh, found[0])
+    if freshness.withholds_context(fresh):
+        return note  # the graph misses known changes: no context from it
     graph = load_graph(*found)
     lines = answer_file(graph, query) if isinstance(query, FileQuery) else answer_pattern(graph, query)
     if not lines:
-        return ""
-    return capped([f"(wingbox-graph {atom(_graph_name(graph))})"] + lines)
+        return note
+    return capped([f"(wingbox-graph {atom(_graph_name(graph))})"] + ([note] if note else []) + lines)
 
 
 def hook_output(context: str) -> str:

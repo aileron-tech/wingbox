@@ -44,7 +44,7 @@ def _build(root: Path, *extra: str) -> int:
 
 
 def _published(root: Path) -> dict[str, bytes]:
-    names = (".code_graph.sexp", ".code_graph.uses.sexp", ".code_graph_cache.json", ".wingbox/graph-fragments.json")
+    names = (".wingbox/index.sexp", ".wingbox/index.uses.sexp", ".wingbox/cache.json", ".wingbox/graph-fragments.json")
     return {name: (root / name).read_bytes() for name in names}
 
 
@@ -87,7 +87,7 @@ class PartialUpdateTest(unittest.TestCase):
         )
         result = self.assert_same_as_full_build(["shop/cart.py"])
         self.assertLess(result.redone, result.modules)
-        self.assertIn("(imports", (self.root / ".code_graph.sexp").read_text(encoding="utf-8"))
+        self.assertIn("(imports", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_a_created_module_and_its_importer(self) -> None:
         """/* REQ-FRESH-002: a created module and an edit that imports it must be patched like a full build. */"""
@@ -97,7 +97,7 @@ class PartialUpdateTest(unittest.TestCase):
             encoding="utf-8",
         )
         self.assert_same_as_full_build(["shop/tax.py", "shop/cart.py"])
-        self.assertIn(" tax)", (self.root / ".code_graph.sexp").read_text(encoding="utf-8"))
+        self.assertIn(" tax)", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_a_created_module_that_an_existing_import_was_waiting_for(self) -> None:
         """/* REQ-FRESH-003: creating the module an unchanged file already imports must redo that importer: same graph as a full build. */"""
@@ -110,7 +110,7 @@ class PartialUpdateTest(unittest.TestCase):
         """/* REQ-FRESH-004: deleting a module others import must remove it and its edges like a full build. */"""
         (self.root / "shop/pricing.py").unlink()
         self.assert_same_as_full_build(["shop/pricing.py"])
-        self.assertNotIn("pricing", (self.root / ".code_graph.sexp").read_text(encoding="utf-8"))
+        self.assertNotIn("pricing", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_a_renamed_module_with_and_without_its_importers_fixed(self) -> None:
         """/* REQ-FRESH-005: a rename (old path deleted, new path created), then the importers fixed, must each give the graph of a full build. */"""
@@ -144,26 +144,26 @@ class PartialUpdateTest(unittest.TestCase):
         _write(self.root, {"generated/out.py": "X = 1\n"})
         result = self.update(["generated/out.py"])
         self.assertIsInstance(result, graph_update.Updated)
-        self.assertNotIn("generated", (self.root / ".code_graph.sexp").read_text(encoding="utf-8"))
+        self.assertNotIn("generated", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_a_store_that_does_not_match_the_graph_is_not_used(self) -> None:
         """/* REQ-FRESH-009: when the published graph was built after the fragment store (another key), the update must not apply. */"""
         (self.root / "shop/cart.py").write_text("def pay(items):\n    return 0\n", encoding="utf-8")
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            # a build elsewhere (no fragment store), then published in place of the graph
-            self.assertEqual(builder.main(["--root", str(self.root), "--output", str(self.root / "other.sexp")]), 0)
-        os.replace(self.root / "other.sexp", self.root / ".code_graph.sexp")
-        os.replace(self.root / "other.uses.sexp", self.root / ".code_graph.uses.sexp")
+        self.assertEqual(_build(self.root), 0)
+        store = self.root / ".wingbox" / "graph-fragments.json"
+        header, rest = store.read_text(encoding="utf-8").split("\n", 1)
+        store.write_text(header.replace('"key":"', '"key":"older'), encoding="utf-8")  # a store of an earlier build
+        store.write_text(store.read_text(encoding="utf-8") + "\n" + rest, encoding="utf-8")
         self.assertIsInstance(self.update(["shop/cart.py"]), graph_update.NotApplicable)
 
     def test_files_wingbox_writes_do_not_change_the_cache_fingerprint(self) -> None:
         """/* REQ-FRESH-028: the files Wingbox keeps in .wingbox/ (a refresh log the repository ignores with *.log) must not change the build cache fingerprint, so the next build parses nothing again. */"""
         _write(self.root, {".gitignore": "*.log\n"})
         self.assertEqual(_build(self.root), 0)
-        before = json.loads((self.root / ".code_graph_cache.json").read_text(encoding="utf-8"))["builder_fingerprint"]
-        _write(self.root, {".wingbox/refresh.log": "x\n", "wingbox-out/notes.log": "y\n"})
+        before = json.loads((self.root / ".wingbox/cache.json").read_text(encoding="utf-8"))["builder_fingerprint"]
+        _write(self.root, {".wingbox/refresh.log": "x\n", ".wingbox/notes.log": "y\n"})
         self.assertEqual(_build(self.root), 0)
-        after = json.loads((self.root / ".code_graph_cache.json").read_text(encoding="utf-8"))["builder_fingerprint"]
+        after = json.loads((self.root / ".wingbox/cache.json").read_text(encoding="utf-8"))["builder_fingerprint"]
         self.assertEqual(before, after)
 
     def test_parallel_resolution_gives_the_same_graph(self) -> None:

@@ -49,7 +49,6 @@ META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 
 ANSWER_LINE_LIMIT = 200
 LIST_TTL_MS = 3_600_000
-GRAPH_NAMES = (".code_graph.sexp", "code_graph.sexp")
 BUILD_LOG_TAIL = 15
 MAX_DEPTH = 50
 
@@ -178,17 +177,9 @@ GraphResult = GraphReady | GraphMissing
 
 
 def find_graph(root: str) -> Optional[str]:
-    """The code graph of root: in root or the nearest parent, as `wingbox <command>` finds it."""
-    current = root
-    while True:
-        for name in GRAPH_NAMES:
-            candidate = os.path.join(current, name)
-            if os.path.isfile(candidate):
-                return candidate
-        parent = os.path.dirname(current)
-        if parent == current:
-            return None
-        current = parent
+    """The code graph of root: .wingbox/index.sexp in root or the nearest parent, as `wingbox <command>` finds it."""
+    project = freshness.find_project(root)
+    return None if project is None else freshness.graph_path(project)
 
 
 @dataclass
@@ -204,11 +195,11 @@ class Server:
         return self._search
 
     def graph(self) -> GraphResult:
-        path = find_graph(self.root)
-        if path is None:
-            return GraphMissing(f"No code graph for {self.root}: call the build tool first.")
-        folder = os.path.dirname(path)
-        fresh = freshness.ensure_graph_fresh(folder, freshness.refresh_wait()) if path == freshness.graph_path(folder) else None
+        project = freshness.find_project(self.root)
+        if project is None:
+            return GraphMissing(f"No .wingbox/ in {self.root} or its parents: call the build tool first.")
+        path = freshness.graph_path(project)
+        fresh = freshness.ensure_graph_fresh(project, freshness.refresh_wait())
         try:
             status = os.stat(path)
         except OSError as error:
@@ -217,11 +208,11 @@ class Server:
         if key != self._cache_key:
             search = self.search()
             graph = search.CodeGraph()
-            loaded = graph.load(path, os.path.dirname(path))
+            loaded = graph.load(path, project)
             if isinstance(loaded, search.MapLoadErr):
                 return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the build tool.")
             self._cache_key, self._cache_graph = key, graph
-        return GraphReady(self._cache_graph, path, freshness.stale_line(fresh) if fresh is not None else "")
+        return GraphReady(self._cache_graph, path, freshness.stale_line(fresh, project))
 
 
 def _captured(action: Callable[[], Any]) -> tuple[Any, str, str]:
@@ -257,7 +248,7 @@ def _query(
 
 
 def _run_build(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
-    argv = ["build", server.root]
+    argv = ["build", freshness.find_project(server.root) or server.root]
     if arguments.get("full"):
         argv.append("--full")
     for name in arguments.get("exclude_dirs", []):
@@ -538,7 +529,7 @@ def _modern_version(params: dict[str, Any]) -> Optional[str]:
 
 
 # MCP ToolAnnotations: a human title per tool; every tool only reads the code
-# graph except `build`, which writes .code_graph.sexp, its cache and wingbox-out/
+# graph except `build`, which writes .wingbox/ (the graph, its cache, REPORT.md, map.html)
 # in the repository (never deletes) and gives the same result when repeated.
 TOOL_TITLES = {
     "build": "Build the code graph",

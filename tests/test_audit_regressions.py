@@ -110,7 +110,7 @@ class AuditRegressionTest(unittest.TestCase):
                 text=True,
             )
             graph = code_graph_search.CodeGraph()
-            load_result = graph.load(str(root / ".code_graph.sexp"))
+            load_result = graph.load(str(root / ".wingbox/index.sexp"))
             self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
 
         targets = {edge.target for edge in graph.edges_from["pkg/source"]}
@@ -368,7 +368,8 @@ class AuditRegressionTest(unittest.TestCase):
         """/* REQ-CS-011: source-aware queries must resolve from the map directory. */"""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            map_path = root / ".code_graph.sexp"
+            map_path = root / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             map_path.write_text(
                 "(code-graph :schema 1 :files 0 :nodes 0 :edges 0 "
                 ":violations 0)\n(paths\n)\n",

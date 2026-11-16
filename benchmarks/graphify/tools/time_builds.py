@@ -12,7 +12,7 @@ Graphify: `graphify extract . --code-only` writes the graph; `graphify cluster-o
 --no-viz` is the step the benchmark runs before `graphify affected`. Both are timed separately.
 
 After each build the size of the graph is read from the file the tool wrote (Wingbox: modules
-and import edges of .code_graph.sexp; Graphify: nodes and links of graphify-out/graph.json), so a
+and import edges of .wingbox/index.sexp; Graphify: nodes and links of graphify-out/graph.json), so a
 run that built less than the reference run cannot pass as a fast one.
 
 Writes <work dir>/out/build_times.json and prints a Markdown table.
@@ -47,7 +47,7 @@ def graph_size(tool: str, target: str) -> dict:
     """What the build wrote: the size of the graph, read from the graph file itself."""
     if tool == "wingbox":
         counts = {"modules": 0, "import_edges": 0}
-        with open(os.path.join(target, ".code_graph.sexp"), encoding="utf-8") as handle:
+        with open(os.path.join(target, ".wingbox", "index.sexp"), encoding="utf-8") as handle:
             for line in handle:
                 text = line.lstrip()
                 if text.startswith("(node "):

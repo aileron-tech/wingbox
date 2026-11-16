@@ -61,7 +61,7 @@ installed twice; run `wingbox uninstall` to keep only the plugin.
 Everything runs on your computer. The plugin sends nothing anywhere: the
 skill, the hook and the MCP server run the local `wingbox` command, which
 reads the files of your repository and writes the graph next to them
-(`.code_graph.sexp`, `wingbox-out/`). The MCP server talks over stdio only.
+(`.wingbox/`). The MCP server talks over stdio only.
 The only network access is the one-time download of the package from PyPI
 when you install it, or when uvx fetches it. See
 https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md.

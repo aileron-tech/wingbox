@@ -34,12 +34,12 @@ class WingboxCommandArgumentsTest(unittest.TestCase):
         )
 
     def test_query_path_options_are_resolved_against_the_current_directory(self) -> None:
-        """/* REQ-CLI-003: relative --map, --root and --output values must become absolute paths. */"""
+        """/* REQ-CLI-003: relative --map and --root values must become absolute paths. */"""
         self.assertEqual(
             wingbox_cli.absolutize_path_options(
-                ["impact", "src/app.py", "--map", ".code_graph.sexp", "--root", "."], "/work/project"
+                ["impact", "src/app.py", "--map", ".wingbox/index.sexp", "--root", "."], "/work/project"
             ),
-            ["impact", "src/app.py", "--map", "/work/project/.code_graph.sexp", "--root", "/work/project"],
+            ["impact", "src/app.py", "--map", "/work/project/.wingbox/index.sexp", "--root", "/work/project"],
         )
 
     def test_scripts_directory_falls_back_to_the_checkout(self) -> None:
@@ -68,7 +68,8 @@ class WingboxCommandEndToEndTest(unittest.TestCase):
         with redirect_stdout(build_output):
             build_status = wingbox_cli.main(["build", str(root)])
         self.assertEqual(0, build_status, build_output.getvalue())
-        map_path = root / ".code_graph.sexp"
+        map_path = root / ".wingbox/index.sexp"
+        map_path.parent.mkdir(exist_ok=True)
         self.assertTrue(map_path.is_file())
 
         output = io.StringIO()
