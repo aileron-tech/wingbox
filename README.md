@@ -566,8 +566,7 @@ does, from every file, without a model, and again after every change.
 
 - March 2026: a script that writes the belief map from the syntax tree, first
   as JSON, then as S-expressions, one fact per line, to save agent tokens.
-- June 2026: published as the `codespaces` skill
-  ([diskd-ai/codespaces](https://github.com/diskd-ai/codespaces), archived).
+- June 2026: published as the `codespaces` skill.
 - November 2026: renamed Wingbox; the belief map became the code graph.
 
 The papers do not evaluate Wingbox; the link between them and this tool is
