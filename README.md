@@ -548,6 +548,31 @@ Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on Rai
 Pascal and Lazarus, plus infrastructure relationships from Kustomize, Helm and
 Terraform.
 
+## Where Wingbox comes from
+
+Wingbox grew out of the paper
+[Theory of Code Space: Do Code Agents Understand Software Architecture?](https://arxiv.org/abs/2603.00601)
+by Grigory Sapunov (arXiv:2603.00601, February 2026; [code](https://github.com/che-shr-cat/tocs),
+[the author's write-up](https://gonzoml.substack.com/p/do-code-agents-actually-understand)).
+It asks whether a coding agent that explores a repository under a budget of
+files can build and keep a correct "belief map" of its architecture, and finds
+that this depends on the model and that the map can collapse. The paper itself
+carries over the framework of
+[Theory of Space](https://arxiv.org/abs/2602.07055) (arXiv:2602.07055), which
+measured the same failures in physical space.
+
+Wingbox takes the opposite route: the agent does not build the map, a parser
+does, from every file, without a model, and again after every change.
+
+- March 2026: a script that writes the belief map from the syntax tree, first
+  as JSON, then as S-expressions, one fact per line, to save agent tokens.
+- June 2026: published as the `codespaces` skill
+  ([diskd-ai/codespaces](https://github.com/diskd-ai/codespaces), archived).
+- November 2026: renamed Wingbox; the belief map became the code graph.
+
+The papers do not evaluate Wingbox; the link between them and this tool is
+ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
+
 ## Project resources
 
 - Website: [wingbox.dev](https://wingbox.dev)
