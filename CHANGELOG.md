@@ -4,6 +4,10 @@
 
 ### Changes
 
+- TypeScript names in import and export statements resolve to the defining
+  file through barrels: named, aliased and default imports, `export * from`,
+  `export { X as Y } from`, `export * as ns from` and `export default`, with
+  re-export cycles ending without an answer.
 - The symbol table of a TypeScript file holds every top-level definition:
   abstract classes, generator functions, `var`, `let` without a value,
   `declare` statements and namespaces are entities, and enums list their

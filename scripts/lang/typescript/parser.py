@@ -10,7 +10,7 @@ from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .javascript import is_javascript_file
-from .symbols import module_bindings
+from .symbols import module_bindings, use_sites
 
 
 _TS_LANG = _TsLanguage(_tst.language_typescript())
@@ -520,4 +520,6 @@ def parse_typescript_treesitter(
         exported_names=exported_names,
         import_forms=_ts_import_forms(root),
         bindings=module_bindings(root),
+        # Names in import and export statements; uses in code come with the scoped walk.
+        uses=use_sites(root, frozenset()),
     )

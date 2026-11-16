@@ -191,6 +191,45 @@ class RustSymbolUsageTests(unittest.TestCase):
         self.assertEqual({"src/user"}, _users(edges, "src/other", "link"))
 
 
+class NameResolutionTests(unittest.TestCase):
+    def test_typescript_imports_follow_reexport_chains_to_the_definition(self) -> None:
+        """/* REQ-TS-SYM-001: a named, aliased or default import of S through barrels (`export * from`, `export { X as Y } from`, `export * as ns from`) references S in its defining file; the barrels that name S reference it too; module dependencies (impact) do not change. */"""
+        _nodes, edges = _graph({
+            "src/core/model.ts": "export class Session {}\nexport function open() {}\nexport default function main() {}\n",
+            "src/core/index.ts": "export * from './model';\nexport { open as start } from './model';\nexport * as models from './model';\nexport { default } from './model';\n",
+            "src/index.ts": "export * from './core';\n",
+            "src/app.ts": "import { Session } from './index';\nimport { start as begin } from './core';\nimport run from './core/index';\n",
+            "src/other.ts": "import { Session as S2 } from './core/model';\n",
+        })
+        self.assertEqual({"src/app", "src/other"}, _users(edges, "src/core/model", "Session"))
+        self.assertEqual({"src/core", "src/app"}, _users(edges, "src/core/model", "open"))
+        self.assertEqual({"src/core", "src/app"}, _users(edges, "src/core/model", "main"))
+        self.assertNotIn(("src/app", "src/core/model"), _module_pairs(edges))
+
+    def test_reexport_cycles_end_without_an_answer(self) -> None:
+        """/* REQ-LANG-010: re-export cycles (TypeScript `export *` both ways, Python packages importing each other, Rust `pub use` loops) end the resolution; a name defined nowhere names no file. */"""
+        _nodes, ts_edges = _graph({
+            "a.ts": "export * from './b';\nexport const real = 1;\n",
+            "b.ts": "export * from './a';\n",
+            "c.ts": "import { missing, real } from './b';\n",
+        })
+        self.assertEqual({"c"}, _users(ts_edges, "a", "real"))
+        self.assertFalse(any(edge["target"].endswith("::missing") for edge in ts_edges))
+        _nodes, py_edges = _graph({
+            "p/__init__.py": "from .q import *\n",
+            "p/q.py": "from p import *\nfrom p import nothing\n",
+            "p/user.py": "from p import nothing\n",
+        })
+        self.assertFalse(any(edge["target"].endswith("::nothing") for edge in py_edges))
+        _nodes, rs_edges = _graph({
+            "src/lib.rs": "pub mod a;\npub mod b;\npub mod c;\n",
+            "src/a.rs": "pub use crate::b::*;\n",
+            "src/b.rs": "pub use crate::a::*;\npub use crate::a::Ghost;\n",
+            "src/c.rs": "use crate::b::Ghost;\n",
+        }, cargo=True)
+        self.assertFalse(any(edge["target"].endswith("::Ghost") for edge in rs_edges))
+
+
 def _parsed(relative_path: str, content: str) -> dict:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / relative_path

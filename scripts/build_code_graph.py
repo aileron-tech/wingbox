@@ -856,7 +856,7 @@ def _symbol_usage_edges(
     """
     index = SymbolIndex(
         id_to_result,
-        lambda language, spec, path: bound_languages[language].resolve_import(spec, path),
+        lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
     )
     adjacent = {
         (edge["source"].split("::")[0], edge["target"].split("::")[0])

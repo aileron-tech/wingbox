@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-16 - name resolution to the defining file (step 2 of the symbol index)
+
+### Changes
+- `scripts/lang/symbols.py`: TypeScript, TSX and JavaScript files take part; a TypeScript module has no child modules (`ns.X` is a name, never a file); a binding with module "" names the file itself (`export { k as K }`, `export default k`); a name in the file's scope comes only from bindings with `scope` (a re-export binds nothing locally).
+- `scripts/build_code_graph.py`: the resolver maps a result language (tsx, javascript) to its bound language.
+- `scripts/lang/typescript/parser.py`: use sites of the names in import and export statements.
+- Tests: REQ-TS-SYM-001, REQ-LANG-010 (cycles in TypeScript, Python and Rust).
+
+### Motivation
+- Maintainer, step 2: resolve names to the defining file through named and aliased imports, globs, namespace imports and re-export chains, with cycle protection.
+
+### Verification
+- Refactoring benchmark: TypeScript 40/40, Rust 40/40, Python 20/20 exact, no file outside the lists; impact lists of the five graphify questions unchanged; over the 711 symbols the reference was asked, one file outside its list (TypeScript, already named by 0.2.5: a script that imports `../out/Default/gen/src/...`, which Wingbox maps to the source on purpose and the unbuilt reference does not resolve).
+
 ## 2026-11-16 - symbol table per file (step 1 of the symbol index)
 
 ### Changes

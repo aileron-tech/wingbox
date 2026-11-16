@@ -14,8 +14,11 @@ from typing import Callable, Mapping, Optional, Union
 
 from .interface import FileResult, UsePayload
 
-# Languages whose parsers give bindings and use sites, and how a child module is written.
-_SEPARATORS = {"python": ".", "rust": "::"}
+# Languages whose parsers give bindings and use sites, and how a child module is
+# written; None: a member of a module is never a module of its own (TypeScript).
+_SEPARATORS: dict[str, Optional[str]] = {
+    "python": ".", "rust": "::", "typescript": None, "tsx": None, "javascript": None,
+}
 _MAX_DEPTH = 16
 
 
@@ -46,8 +49,10 @@ class ResolvedUse:
     column: int
 
 
-def _join(language: str, spec: str, name: str) -> str:
+def _join(language: str, spec: str, name: str) -> Optional[str]:
     separator = _SEPARATORS[language]
+    if separator is None:
+        return None
     if separator == "." and spec.endswith("."):
         return spec + name
     return f"{spec}{separator}{name}" if spec else name
@@ -77,18 +82,27 @@ class SymbolIndex:
 
     def child(self, ref: ModuleRef, name: str) -> Optional[ModuleRef]:
         """The child module name of ref (a file of its own), if there is one."""
-        child = ModuleRef(_join(ref.language, ref.spec, name), ref.origin, ref.language)
+        spec = _join(ref.language, ref.spec, name)
+        if spec is None:
+            return None
+        child = ModuleRef(spec, ref.origin, ref.language)
         child_id = self.module_id(child)
         if child_id is not None and child_id != self.module_id(ref):
             return child
         return None
 
-    def _binding_target(self, module: str, local: str, depth: int, seen: frozenset) -> Optional[Target]:
+    def _binding_target(
+        self, module: str, local: str, depth: int, seen: frozenset, in_scope: bool = False,
+    ) -> Optional[Target]:
+        """What local is bound to in module; in_scope: only bindings of the file's own scope."""
         result = self._results[module]
         language = result.language
         for binding in result.bindings:
-            if binding["local"] != local:
+            if binding["local"] != local or (in_scope and not binding["scope"]):
                 continue
+            if not binding["module"]:
+                # export { k as K } or export default k: a name of the file itself.
+                return self.export(module, binding["name"], depth + 1, seen)
             ref = ModuleRef(binding["module"], result.path, language)
             if not binding["name"]:
                 return ref
@@ -107,13 +121,15 @@ class SymbolIndex:
             return bound
         return self._from_globs(module, name, depth, seen)
 
-    def _from_globs(self, module: str, name: str, depth: int, seen: frozenset) -> Optional[Target]:
+    def _from_globs(
+        self, module: str, name: str, depth: int, seen: frozenset, in_scope: bool = False,
+    ) -> Optional[Target]:
         result = self._results[module]
         if result.language == "python" and name.startswith("_"):
             return None
         found: set[Target] = set()
         for binding in result.bindings:
-            if binding["local"] != "*":
+            if binding["local"] != "*" or (in_scope and not binding["scope"]):
                 continue
             target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
             if target is None:
@@ -136,12 +152,12 @@ class SymbolIndex:
         result = self._results[module]
         if name in self._defined[module]:
             return Symbol(module, name)
-        bound = self._binding_target(module, name, 0, frozenset({(module, name)}))
+        bound = self._binding_target(module, name, 0, frozenset({(module, name)}), in_scope=True)
         if bound is not None:
             return bound
         if result.language == "rust" and name in ("crate", "self", "super"):
             return ModuleRef(name, result.path, "rust")
-        glob = self._from_globs(module, name, 0, frozenset({(module, name)}))
+        glob = self._from_globs(module, name, 0, frozenset({(module, name)}), in_scope=True)
         if glob is not None:
             return glob
         if result.language == "rust" and name[:1].islower():
