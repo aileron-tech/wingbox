@@ -743,6 +743,9 @@ def _classify_layer_fallback(p: str) -> str:
     # Interface folders are shared contracts, not api
     if "/interface/" in p or "/interfaces/" in p:
         return "shared"
+    # Migrations and seeds change the database: infrastructure, even under a schema folder
+    if "/migrations/" in p or "/seeds/" in p or "/seeders/" in p:
+        return "infra"
     # Architecture layers
     if "/api/" in p or "/routes/" in p or "/controllers/" in p:
         return "api"
@@ -766,8 +769,6 @@ def _classify_layer_fallback(p: str) -> str:
     if "/adapters/" in p or "/adapter." in p:
         return "infra"
     if "/gateways/" in p or "/gateway." in p:
-        return "infra"
-    if "/migrations/" in p or "/seeds/" in p or "/seeders/" in p:
         return "infra"
     # Domain patterns
     if "/models/" in p or "/schemas/" in p or "/events/" in p or "/commands/" in p or "/queries/" in p:
@@ -952,8 +953,14 @@ def _classify_layer(module_path: str, purpose: str = "") -> str:
 
 
 def _classify_layer_by_path(module_path: str) -> str:
-    """Layer from the folders of a module. The leading slash lets "/tests/" match a top-level folder."""
-    return _classify_layer_fallback("/" + module_path.lower().lstrip("/"))
+    """Layer from the folders of a module. The leading slash lets "/tests/" match a top-level folder.
+
+    A file named like a layer folder (types.ts, models.py) and the index file of
+    such a folder (module ID = the folder) belong to that layer.
+    """
+    path = "/" + module_path.lower().lstrip("/")
+    layer = _classify_layer_fallback(path)
+    return layer if layer != "other" else _classify_layer_fallback(path + "/")
 
 
 # ---------------------------------------------------------------------------
@@ -1148,6 +1155,16 @@ def impact_levels(g: CodeGraph, module_id: str, max_depth: int) -> list[list[tup
     return _impact_levels(g, module_id, max_depth)
 
 
+# By default an answer names at most this many dependent files; --all prints every one.
+_ANSWER_FILE_LIMIT = 200
+_READ_FIRST_LIMIT = 10
+_KEY_ENTITY_REF_LIMIT = 20
+
+
+def _rerun(command: str) -> str:
+    return '"' + command.replace('"', '\\"') + ' --all"'
+
+
 def _print_impact_block(title: str, rows: list[tuple[str, str]]) -> None:
     width = max(len(name) for name, _detail in rows)
     print(title)
@@ -1182,11 +1199,14 @@ def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]
     return g.resolve_module(pattern)
 
 
-def cmd_impact(g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False) -> None:
+def cmd_impact(
+    g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False, show_all: bool = False
+) -> None:
     """Show what depends on a file or module: the blast radius of changing it.
 
     Prints readable text for people by default. With sexp=True it prints the
-    same facts in the compact S-expression form used by agents.
+    same facts in the compact S-expression form used by agents. The counts are
+    always complete; the lists stop at the file limit unless show_all is set.
     """
     pattern = _target_to_module_pattern(target, g._root)
     matches = _impact_target_modules(g, target, pattern)
@@ -1205,17 +1225,31 @@ def cmd_impact(g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False
             [root_file] + [_impact_file(g, module) for module, _edge_type in (levels[0] if levels else [])]
         )
     )
+    read_first_count = len(read_first)
+    if not show_all:
+        read_first = read_first[: _READ_FIRST_LIMIT + 1]
+    # Nearest dependents first: the limit is spent on depth 1 before depth 2.
+    budget = total if show_all else _ANSWER_FILE_LIMIT
+    shown_levels: list[list[tuple[str, str]]] = []
+    for level in levels:
+        shown_levels.append(level[:budget])
+        budget -= len(shown_levels[-1])
+    hidden = total - sum(len(level) for level in shown_levels)
 
     if sexp:
         if others:
             print(f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})")
         print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q(root_file)})")
-        for depth, level in enumerate(levels, start=1):
+        for depth, level in enumerate(shown_levels, start=1):
             for module, edge_type in level:
                 print(f"(impact {root_id} {module} :lang {g.module_lang(module)} :via {edge_type} :depth {depth})")
+        if hidden:
+            print(f"(impact-more {root_id} :hidden {hidden} :rerun {_rerun(f'impact {target} {max_depth}')})")
         print(f"(impact-summary {root_id} :direct {direct} :total {total} :depth {max_depth})")
         for path in read_first:
             print(f"(read-first {_q(path)})")
+        if read_first_count > len(read_first):
+            print(f"(read-first-more :hidden {read_first_count - len(read_first)})")
         return
 
     if others:
@@ -1229,11 +1263,17 @@ def cmd_impact(g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False
     if not levels:
         print("No other module depends on it.")
         return
-    for depth, level in enumerate(levels, start=1):
-        _print_impact_block(f"Depth {depth}", [(_impact_file(g, module), edge_type) for module, edge_type in level])
+    for depth, level in enumerate(shown_levels, start=1):
+        if level:
+            _print_impact_block(f"Depth {depth}", [(_impact_file(g, module), edge_type) for module, edge_type in level])
+            print()
+    if hidden:
+        print(f"  ... {hidden} more {'file' if hidden == 1 else 'files'}: rerun with --all")
         print()
-    files = "file" if len(read_first) == 1 else "files"
-    _print_impact_block(f"Read first ({len(read_first)} {files})", [(path, "") for path in read_first])
+    files = "file" if read_first_count == 1 else "files"
+    _print_impact_block(f"Read first ({read_first_count} {files})", [(path, "") for path in read_first])
+    if read_first_count > len(read_first):
+        print(f"  ... {read_first_count - len(read_first)} more: the other files of Depth 1")
 
 
 def cmd_entity(g: CodeGraph, name: str) -> None:
@@ -1350,7 +1390,7 @@ def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None
     print(f"(boundary-summary {nid} :total {1 + len(import_mods) + len(dependent_mods)} :deps {len(import_mods)} :rdeps {len(dependent_mods)})")
 
 
-def cmd_analyze(g: CodeGraph, module_id: str) -> None:
+def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
     """Full architectural analysis of a module."""
     matches = g.resolve_module(module_id)
     if not matches:
@@ -1363,7 +1403,7 @@ def cmd_analyze(g: CodeGraph, module_id: str) -> None:
         print(f"(error no-node {_q(nid)})")
         return
 
-    target_file = g.module_to_file(nid)
+    target_file = _impact_file(g, nid)
     ents = g.entities.get(nid, [])
     out_edges = g.edges_from.get(nid, [])
     in_edges = g.edges_to.get(nid, [])
@@ -1416,21 +1456,18 @@ def cmd_analyze(g: CodeGraph, module_id: str) -> None:
         if ref_count > 0:
             key_entity_usage.append((et, ref_count, ref_mods))
 
-    # Boundary files
+    # Boundary files: the module and what it imports. The file of a dependent
+    # is on its analyze-dependent line, so each file is named once.
     boundary_files: list[str] = [target_file]
     for t in sorted(import_targets):
-        f = g.module_to_file(t)
-        if f not in boundary_files:
-            boundary_files.append(f)
-    for src in sorted(importers | referencers):
-        f = g.module_to_file(src)
+        f = _impact_file(g, t)
         if f not in boundary_files:
             boundary_files.append(f)
 
     _analyze_sexp(g, nid, node, target_file, ents, import_targets,
                   ref_targets, data_flow_targets, call_targets,
                   importers, referencers, key_entity_usage,
-                  boundary_files)
+                  boundary_files, show_all)
 
 
 def _analyze_sexp(
@@ -1441,7 +1478,9 @@ def _analyze_sexp(
     importers: set[str], referencers: set[str],
     key_entity_usage: list[tuple[EntityFact, int, set[str]]],
     boundary_files: list[str],
+    show_all: bool = False,
 ) -> None:
+    rerun = _rerun(f"analyze {nid}")
     # Module header
     lang = g.module_lang(nid)
     print(f"(analyze {nid} :lang {lang} {_q(node.purpose)} :file {_q(target_file)})")
@@ -1452,7 +1491,7 @@ def _analyze_sexp(
 
     # Imports
     for t in sorted(import_targets):
-        print(f"(analyze-import {nid} {t} :lang {g.module_lang(t)} :file {_q(g.module_to_file(t))})")
+        print(f"(analyze-import {nid} {t} :lang {g.module_lang(t)} :file {_q(_impact_file(g, t))})")
 
     # Data flows
     for t in sorted(data_flow_targets):
@@ -1468,29 +1507,30 @@ def _analyze_sexp(
 
     # Dependents
     all_dependents = importers | referencers
-    for src in sorted(all_dependents):
+    shown_dependents = sorted(all_dependents) if show_all else sorted(all_dependents)[:_ANSWER_FILE_LIMIT]
+    for src in shown_dependents:
         kinds = []
         if src in importers:
             kinds.append("imports")
         if src in referencers:
             kinds.append("refs")
-        print(f"(analyze-dependent {nid} {src} :lang {g.module_lang(src)} :via {' '.join(kinds)} :file {_q(g.module_to_file(src))})")
+        print(f"(analyze-dependent {nid} {src} :lang {g.module_lang(src)} :via {' '.join(kinds)} :file {_q(_impact_file(g, src))})")
+    if len(all_dependents) > len(shown_dependents):
+        print(f"(analyze-more {nid} :dependents {len(all_dependents) - len(shown_dependents)} :rerun {rerun})")
 
     # Dependency tree (depth 2)
     visited: set[str] = {nid}
     _walk_deps(g, nid, visited, 2, 1,
                lambda d, et, tgt, cyc: print(f"(dep {nid} {tgt} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
 
-    # Reverse deps (depth 1)
-    visited_r: set[str] = {nid}
-    _walk_rdeps(g, nid, visited_r, 1, 1,
-                lambda d, et, src, cyc: print(f"(rdep {nid} {src} :lang {g.module_lang(src)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
-
-    # Key entities
+    # Key entities: the count is complete, the modules are a sample unless show_all
     for et, ref_count, ref_mods in key_entity_usage:
         print(f"(key-entity {nid} {et.name} :lang {lang} :kind {et.kind} :line {et.line} :refs {ref_count} :modules {len(ref_mods)})")
-        for rm in sorted(ref_mods):
+        shown_refs = sorted(ref_mods) if show_all else sorted(ref_mods)[:_KEY_ENTITY_REF_LIMIT]
+        for rm in shown_refs:
             print(f"(key-entity-ref {et.name} {rm} :lang {g.module_lang(rm)})")
+        if len(ref_mods) > len(shown_refs):
+            print(f"(key-entity-more {nid} {et.name} :modules {len(ref_mods) - len(shown_refs)} :rerun {rerun})")
 
     # Boundary files
     for f in boundary_files:
@@ -1505,7 +1545,7 @@ def _analyze_sexp(
     print(f"(analyze-summary {nid} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len(data_flow_targets)} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
 
 
-def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str) -> None:
+def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str, show_all: bool = False) -> None:
     """Search for keyword then run analyze for the first match.
 
     Resolution order:
@@ -1516,7 +1556,7 @@ def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str) -> None:
     """
     matches = g.resolve_module(keyword)
     if matches:
-        cmd_analyze(g, matches[0])
+        cmd_analyze(g, matches[0], show_all)
         return
 
     # Fallback: grep the sexp file for the keyword and extract module IDs from lines
@@ -1542,7 +1582,7 @@ def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str) -> None:
         _print_no_match(g, keyword)
         return
 
-    cmd_analyze(g, seen_modules[0])
+    cmd_analyze(g, seen_modules[0], show_all)
 
 
 def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
@@ -1605,6 +1645,14 @@ def boundary_violations(
     return violations
 
 
+def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
+    """True when src_mod imports tgt_mod for types only (the builder marks the edge :type-only)."""
+    return any(
+        edge.etype == "imports" and edge.target.split("::")[0] == tgt_mod and ":type-only" in edge.flags
+        for edge in g.edges_from.get(src_mod, [])
+    )
+
+
 def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
     """Check boundary violations inferred from architecture layer patterns.
 
@@ -1630,15 +1678,23 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
         return
     # A pair is a violation only when both layers are certain (folders or file type).
     # A layer guessed from the role of a file makes the pair a candidate to read.
-    certain = 0
+    # An import of types only is erased at build time: reported apart, not a violation.
+    counts = {"violation": 0, "violation-type-only": 0, "violation-candidate": 0}
     for src, tgt, sl, tl, etype, reason in sorted(violations):
         src_file = g.module_to_file(src)
         tgt_file = g.module_to_file(tgt)
-        is_certain = _layer_is_certain(g, src) and _layer_is_certain(g, tgt)
-        certain += 1 if is_certain else 0
-        fact = "violation" if is_certain else "violation-candidate"
+        if etype == "imports" and is_type_only_import(g, src, tgt):
+            fact = "violation-type-only"
+        elif _layer_is_certain(g, src) and _layer_is_certain(g, tgt):
+            fact = "violation"
+        else:
+            fact = "violation-candidate"
+        counts[fact] += 1
         print(f"({fact} {src} {tgt} :src-layer {sl} :tgt-layer {tl} :via {etype} :lang {g.module_lang(src)} :src-file {_q(src_file)} :tgt-file {_q(tgt_file)} {_q(reason)})")
-    print(f"(boundaries-summary :violations {certain} :candidates {len(violations) - certain} :checked {len(scope_mods)})")
+    print(
+        f"(boundaries-summary :violations {counts['violation']} :type-only {counts['violation-type-only']} "
+        f":candidates {counts['violation-candidate']} :checked {len(scope_mods)})"
+    )
 
 
 def cmd_layers(g: CodeGraph) -> None:
@@ -2849,6 +2905,8 @@ def main(args: Optional[list[str]] = None) -> int:
     if not args or args[0] in ("-h", "--help", "help"):
         print(__doc__)
         return 0
+    show_all = "--all" in args
+    args = [argument for argument in args if argument != "--all"]
 
     command_error = _validate_cli_command(args)
     if command_error is not None:
@@ -2864,13 +2922,13 @@ def main(args: Optional[list[str]] = None) -> int:
 
     cmd = args[0]
     if cmd == "analyze" and len(args) >= 2:
-        cmd_analyze(g, args[1])
+        cmd_analyze(g, args[1], show_all=show_all)
     elif cmd == "boundary" and len(args) >= 2:
         files_only = "--files-only" in args
         module_arg = [a for a in args[1:] if a != "--files-only"][0]
         cmd_boundary(g, module_arg, files_only=files_only)
     elif cmd == "quick" and len(args) >= 2:
-        cmd_quick(g, args[1], sexp_path)
+        cmd_quick(g, args[1], sexp_path, show_all=show_all)
     elif cmd == "module" and len(args) >= 2:
         cmd_module(g, args[1])
     elif cmd == "deps" and len(args) >= 2:
@@ -2882,7 +2940,7 @@ def main(args: Optional[list[str]] = None) -> int:
     elif cmd == "impact" and len(args) >= 2:
         impact_args = [argument for argument in args[1:] if argument != "--sexp"]
         impact_depth = int(impact_args[1]) if len(impact_args) >= 2 else 2
-        cmd_impact(g, impact_args[0], impact_depth, sexp="--sexp" in args)
+        cmd_impact(g, impact_args[0], impact_depth, sexp="--sexp" in args, show_all=show_all)
     elif cmd == "entity" and len(args) >= 2:
         cmd_entity(g, args[1])
     elif cmd == "flow" and len(args) >= 3:

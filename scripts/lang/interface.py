@@ -92,6 +92,8 @@ class FileResult:
     imported_names: list[ImportedNamePayload]
     exported_names: list[str]
     relations: list[SourceRelationPayload] = field(default_factory=list)
+    # TypeScript: specifier -> "type" or "named" when the file imports it for names only
+    import_forms: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

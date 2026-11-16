@@ -545,7 +545,8 @@ function frame(now) {
     if (slowFrames > 40) lite = true;
   }
   const turning = state.layout === "layers" && state.spin && !REDUCED;
-  if (turning && gap < 400) state.yaw += (gap / 1000) * 0.11;
+  // a slow frame still turns the stack; only the step after a pause is capped
+  if (turning) state.yaw += (Math.min(gap, 400) / 1000) * 0.11;
   draw(now);
   if (!REDUCED && (state.sel || state.violations || turning)) requestDraw();
 }
@@ -578,14 +579,14 @@ function fit(duration) {
     .translate((v.x0 + v.x1) / 2, (v.y0 + v.y1) / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2);
   moveTo(next, duration);
 }
-function focusOn(node) {
+function focusOn(node, duration = 750) {
   autoFit = false;
-  if (state.layout === "layers") { fit(750); return; }
+  if (state.layout === "layers") { fit(duration); return; }
   const v = viewport();
   const sel = state.sel;
   const reach = sel ? sel.rings[sel.rings.length - 1] + 110 : 260;
   const k = Math.max(0.12, Math.min(2.2, Math.min(v.x1 - v.x0, v.y1 - v.y0) / (2 * reach)));
-  moveTo(d3.zoomIdentity.translate((v.x0 + v.x1) / 2, (v.y0 + v.y1) / 2).scale(k).translate(-node.x, -node.y), 750);
+  moveTo(d3.zoomIdentity.translate((v.x0 + v.x1) / 2, (v.y0 + v.y1) / 2).scale(k).translate(-node.x, -node.y), duration);
 }
 function moveTo(next, duration) {
   const target = d3.select(canvas);
@@ -664,6 +665,9 @@ function drawPlanes(k) {
   const project = projector();
   const hw = stage.width / 2, hd = stage.depth / 2;
   const planes = [...bands.values()].sort((x, y) => x.h - y.h);     // lowest first, so upper planes lie over it
+  // names sit on the corner farthest to the left, the same corner on every plane so that they keep the order of the stack
+  const left = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([x, z]) => x * Math.cos(state.yaw) - z * Math.sin(state.yaw));
+  const named = left.indexOf(Math.min(...left));
   ctx.lineJoin = "round";
   for (const plane of planes) {
     const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(([x, z]) => project(x, plane.h, z));
@@ -685,10 +689,7 @@ function drawPlanes(k) {
       const from = project(x, plane.h, -hd), to = project(x, plane.h, hd);
       seg(from[0], from[1], to[0], to[1]);
     }
-    // name on the corner that is farthest to the left on screen
-    let anchor = corners[0];
-    for (const corner of corners) if (corner[0] < anchor[0]) anchor = corner;
-    plane.label = [anchor[0], anchor[1]];
+    plane.label = [corners[named][0], corners[named][1]];
   }
 }
 
@@ -928,9 +929,14 @@ function drawLabels(k, sel, shown) {
   if (callout) placed.push(callout);
   if (state.layout === "layers") {
     ctx.textAlign = "right";
-    for (const plane of bands.values()) {
-      if (!plane.label) continue;
-      const x = tf.applyX(plane.label[0]) - 12, y = tf.applyY(plane.label[1]) + 4;
+    // a name and its count take 32 px: push the labels apart down the screen, then centre the column on the corners
+    const rows = [...bands.values()].filter((plane) => plane.label)
+      .map((plane) => ({ plane, want: tf.applyY(plane.label[1]) + 4 })).sort((a, b) => a.want - b.want);
+    let previous = -Infinity, drift = 0;
+    for (const row of rows) { row.y = Math.max(row.want, previous + 32); previous = row.y; drift += row.y - row.want; }
+    drift /= rows.length || 1;
+    for (const { plane, y: spread } of rows) {
+      const x = tf.applyX(plane.label[0]) - 12, y = spread - drift;
       const core = plane.name === "domain";
       ctx.font = `12px ${MONO}`;
       const name = plane.name.toUpperCase().split("").join("\u200a\u200a");
@@ -1100,7 +1106,13 @@ window.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") { state.focus = null; select(null); document.getElementById("hits").classList.remove("on"); }
   else if (ev.key === "/" && document.activeElement.id !== "search") { ev.preventDefault(); document.getElementById("search").focus(); }
 });
-window.addEventListener("resize", () => { resize(); if (!interacted) fit(0); });
+window.addEventListener("resize", () => {
+  resize();
+  if (interacted) return;
+  // keep the framing the page chose: a fit of the whole graph would freeze a blast that is still unfolding
+  const n = !autoFit && state.sel && nodeByKey.get(state.sel.key);
+  if (n) focusOn(n, 0); else fit(0);
+});
 
 // ---------- actions ----------
 function selectModule(i, quiet) {
@@ -1259,7 +1271,7 @@ function renderPanel(toTop) {
   parts.push(el("h2", { text: state.color === "packages" ? "Packages" : "Architecture layers" }), legend());
   const table = matrix();
   if (table) parts.push(el("h2", { text: "Dependencies between layers" }), table,
-    el("div", { class: "note", text: `Rows depend on columns. A red cell breaks a default layer rule. The rules place ${share(DATA.placed[0] + DATA.placed[1])} of the modules: ${fmt(DATA.placed[0])} by folder, ${fmt(DATA.placed[1])} by a guess from the role of the file.` }));
+    el("div", { class: "note", text: `Rows depend on columns. A red cell is a pair of layers that a default rule forbids; a dependency in it is a violation when it imports code, not only types, and both layers are set by folders. The rules place ${share(DATA.placed[0] + DATA.placed[1])} of the modules: ${fmt(DATA.placed[0])} by folder, ${fmt(DATA.placed[1])} by a guess from the role of the file.` }));
   parts.push(el("h2", { text: "Boundary violations" }));
   if (DATA.violations.length) {
     for (const [s, t, rule] of DATA.violations.slice(0, 30)) {
@@ -1270,6 +1282,7 @@ function renderPanel(toTop) {
     }
     if (DATA.violations.length > 30) parts.push(el("div", { class: "more", text: `+ ${fmt(DATA.violations.length - 30)} more: wingbox boundaries all` }));
   } else parts.push(el("div", { class: "note", text: `None between layers that are set by folders (${share(DATA.placed[0])} of the modules).` }));
+  if (DATA.typeOnly) parts.push(el("div", { class: "note", text: `${plural(DATA.typeOnly, "import")} of types only ${DATA.typeOnly === 1 ? "crosses" : "cross"} a boundary and ${DATA.typeOnly === 1 ? "is" : "are"} not counted: wingbox boundaries all` }));
   if (DATA.candidates) parts.push(el("div", { class: "note", text: `${plural(DATA.candidates, "more candidate")} rest on a guessed layer and are not drawn: wingbox boundaries all` }));
   parts.push(el("div", { class: "foot" },
     el("div", {}, "table view: ", el("a", { href: "REPORT.md", text: "REPORT.md" })),

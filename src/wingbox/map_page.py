@@ -50,6 +50,7 @@ def map_data(view: Overview, generated: str, tool_version: str) -> dict[str, obj
         "layerCounts": [[layer, count] for layer, count in view.layers],
         "rules": [list(rule) for rule in view.boundary_rules],
         "candidates": view.violation_candidates,
+        "typeOnly": len({(item.source, item.target) for item in view.type_only_crossings}),
         "placed": [view.placed_by_path, view.placed_by_role, view.unplaced],
         "ruleReasons": reasons,
         "modules": [

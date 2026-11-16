@@ -158,6 +158,53 @@ class OverviewTest(unittest.TestCase):
         self.assertIn("| Boundary violations | 1 |", report)
         self.assertIn("1 more candidate", report)
 
+    def test_type_only_imports_across_layers_are_listed_apart(self) -> None:
+        """/* REQ-OUT-014: an import of types only across layers is not counted as a boundary violation; the report lists it in its own table. */"""
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        root = Path(tmpdir.name).resolve()
+        sexp_path = root / ".code_graph.sexp"
+        sexp_path.write_text(
+            textwrap.dedent(
+                """
+                (code-graph :schema 1 :files 3 :nodes 3 :edges 2 :violations 0)
+                (paths
+                  (src
+                    (dtos
+                      (m0 stats.dto)
+                      (m1 mixed.dto)
+                    )
+                    (repositories
+                      (m2 asset.repository)
+                    )
+                  )
+                )
+                (node m0 ts "general module")
+                (node m1 ts "general module")
+                (node m2 ts "general module")
+                (imports m0 m2 :type-only)
+                (imports m1 m2)
+                """
+            ).strip()
+            + "\n",
+            encoding="utf-8",
+        )
+        graph = code_graph_search.CodeGraph()
+        self.assertIsInstance(graph.load(str(sexp_path), str(root)), code_graph_search.MapLoadOk)
+
+        view = overview.build_overview(graph, code_graph_search, "typed")
+
+        self.assertEqual([("src/dtos/mixed.dto", "src/repositories/asset.repository")], [(v.source, v.target) for v in view.violations])
+        self.assertEqual(
+            [("src/dtos/stats.dto", "src/repositories/asset.repository")],
+            [(v.source, v.target) for v in view.type_only_crossings],
+        )
+        self.assertEqual(0, view.violation_candidates)
+        report = overview.render_report(view, "2026-11-15", "9.9.9")
+        self.assertIn("| Boundary violations | 1 |", report)
+        self.assertIn("1 import of types only crosses a layer boundary", report)
+        self.assertIn("| `src/dtos/stats.dto` (domain) | `src/repositories/asset.repository` (infra) |", report)
+
     def test_report_opens_with_key_findings_in_shares(self) -> None:
         """/* REQ-OUT-011: the report must open with the widest blast radius as a share of the project and the rule coverage. */"""
         report = overview.render_report(self._overview(), "2026-11-15", "9.9.9")
@@ -250,6 +297,27 @@ class LayerRulesTest(unittest.TestCase):
             "api/orders": "api",
             "services/checkout": "service",
             "src/components/Button": "ui",
+            "src/contest/latest": "other",
+        }
+        self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})
+
+    def test_migrations_and_seeds_are_infrastructure_even_under_a_schema_folder(self) -> None:
+        """/* REQ-OUT-013: a migration or seed file is infrastructure wherever its folder lies; a schema folder around it does not make it domain. */"""
+        cases = {
+            "src/schema/migrations/1744910873969-InitialMigration": "infra",
+            "src/schema/seeds/users": "infra",
+            "src/schema/tables/asset.table": "domain",
+            "db/migrations/0001_initial": "infra",
+        }
+        self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})
+
+    def test_a_file_named_like_a_layer_folder_belongs_to_that_layer(self) -> None:
+        """/* REQ-OUT-015: a file named like a layer folder (types.ts, models.py) and the index file of such a folder (controllers/index.ts is the module src/controllers) belong to that layer. */"""
+        cases = {
+            "src/controllers": "api",
+            "src/types": "shared",
+            "app/models": "domain",
+            "pkg/openapi/models": "domain",
             "src/contest/latest": "other",
         }
         self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})

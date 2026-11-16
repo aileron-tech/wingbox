@@ -144,6 +144,19 @@ def _build(arguments: list[str]) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    """Run a command; a reader that closes the pipe (`| head`) ends it quietly."""
+    try:
+        return _run(argv)
+    except BrokenPipeError:
+        # Point stdout at the null device so the interpreter does not report the closed pipe at exit.
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        except (OSError, ValueError):
+            pass
+        return 0
+
+
+def _run(argv: Optional[list[str]] = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in ("-h", "--help", "help"):
         print(__doc__)

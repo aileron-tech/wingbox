@@ -87,17 +87,17 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | Command | Purpose | Example |
 |---|---|---|
 | `search "<pattern>"` | Safe literal/`.*` search on graph | `search "operative.*service"` |
-| `analyze <id>` | Full module analysis (PRIMARY command) | `analyze drive/modules/drive/drive_schema` |
+| `analyze <id> [--all]` | Full module analysis (PRIMARY command); names at most 200 dependents unless `--all` | `analyze drive/modules/drive/drive_schema` |
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
 | `boundary <id> --files-only` | File paths only (compact) | `boundary operatives.service --files-only` |
 | `entity <Name>` | Find definitions + references | `entity DrivePath` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
-| `impact <file\|id> [depth] --sexp` | Blast radius of one file: dependents by shortest depth + files to read first | `impact src/billing/invoice.service.ts --sexp` |
+| `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth + files to read first; lists at most 200 unless `--all`, counts are always complete | `impact src/billing/invoice.service.ts --sexp` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id>` | Single module with edges | `module operatives.controller` |
-| `boundaries [id\|all]` | Check architecture violations | `boundaries all` |
+| `boundaries [id\|all]` | Check architecture violations; type-only imports and guessed layers are reported apart | `boundaries all` |
 | `invariants [id\|all]` | Check naming convention violations | `invariants all` |
 | `layers` | Show all modules by layer | `layers` |
 | `find_function <name>` | Find function/method definitions | `find_function createOrder` |
@@ -240,7 +240,7 @@ python3 scripts/code_graph_search.py analyze billing-service/src/modules/invoice
 
 - **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are internal path-map IDs and must not be used directly. Always `search` first.
 - **Build but never query.** Building the code graph and then never running `search`, `analyze`, or `boundary` provides zero value.
-- **Querying after reading source.** The first source-code read should come from `boundary-file` lines in `analyze` output.
+- **Querying after reading source.** The first source-code read should come from the `boundary-file` lines and the `:file` of the `analyze-dependent` lines in `analyze` output.
 - **Reading `.code_graph.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
 - **Skipping the code graph for cross-module tasks.** Always query the graph to understand boundaries before reading source files.
 - **Reading all files in a directory.** When the boundary shows 2-3 files, read only those.

@@ -146,7 +146,7 @@ class LayerRulesFromRealRepositoriesTest(unittest.TestCase):
         self.assertEqual(1, sum(line.startswith("(violation ") for line in lines), lines)
         self.assertTrue(any(line.startswith("(violation src/domain/order web/components/label ") for line in lines), lines)
         self.assertTrue(any(line.startswith("(violation-candidate src/domain/order pkg/ledger ") for line in lines), lines)
-        self.assertIn("(boundaries-summary :violations 1 :candidates 1 :checked 6)", lines)
+        self.assertIn("(boundaries-summary :violations 1 :type-only 0 :candidates 1 :checked 6)", lines)
 
 
 class ImpactTargetTest(unittest.TestCase):
@@ -358,3 +358,251 @@ class BaseClassByNameTest(unittest.TestCase):
         )
 
         self.assertEqual([("py/star", "py/shapes")], base_edges)
+
+
+class TestPurposeTest(unittest.TestCase):
+    def test_a_name_that_only_begins_with_test_is_not_a_test(self) -> None:
+        """/* REQ-LANG-005: the purpose "test" is given to files in a test folder or named as a test; a file whose name or folder only begins with the letters "test" (test.email.tsx, testclient.py, testimonials/) is not a test. */"""
+        purpose = lambda path: build_code_graph.infer_purpose(path, "", "typescript", [])
+        not_tests = ["src/emails/test.email.tsx", "pkg/testclient.py", "web/testimonials/card.tsx", "src/contest/latest.ts"]
+        tests = [
+            "src/render.test.ts",
+            "src/render.spec.tsx",
+            "tests/render.ts",
+            "src/__tests__/render.ts",
+            "pkg/test_loader.py",
+            "internal/llm/client_test.go",
+            "packages/test-utils/render.ts",
+            "e2e/login.ts",
+        ]
+        self.assertEqual([], [path for path in not_tests if "test" in purpose(path).split("; ")])
+        self.assertEqual([], [path for path in tests if "test" not in purpose(path).split("; ")])
+
+
+class TypeOnlyImportTest(unittest.TestCase):
+    FILES = {
+        "src/repositories/asset.repository.ts": (
+            "export type AssetStats = { total: number };\n"
+            "export interface AssetRow { id: string }\n"
+            "export class AssetRepository {}\n"
+            "export function loadAsset(): void {}\n",
+            "typescript",
+        ),
+        "src/dtos/stats.dto.ts": (
+            "import { AssetStats, AssetRow } from '../repositories/asset.repository';\n"
+            "export class StatsDto { stats?: AssetStats; row?: AssetRow }\n",
+            "typescript",
+        ),
+        "src/dtos/typed.dto.ts": (
+            "import type { AssetRepository } from '../repositories/asset.repository';\n"
+            "import { type AssetRow } from '../repositories/asset.repository';\n"
+            "export class TypedDto { repository?: AssetRepository; row?: AssetRow }\n",
+            "typescript",
+        ),
+        "src/dtos/mixed.dto.ts": (
+            "import { AssetStats, loadAsset } from '../repositories/asset.repository';\n"
+            "export class MixedDto { stats?: AssetStats; load = loadAsset }\n",
+            "typescript",
+        ),
+        "src/dtos/namespace.dto.ts": (
+            "import { AssetStats } from '../repositories/asset.repository';\n"
+            "import * as repository from '../repositories/asset.repository';\n"
+            "export class NamespaceDto { stats?: AssetStats; load = repository.loadAsset }\n",
+            "typescript",
+        ),
+        "src/dtos/effect.dto.ts": (
+            "import '../repositories/asset.repository';\n"
+            "export class EffectDto {}\n",
+            "typescript",
+        ),
+    }
+
+    def _build(self, root: Path) -> build_code_graph.GraphBuildOutput:
+        results = []
+        for relative_path, (content, language) in self.FILES.items():
+            path = _write(root, relative_path, content)
+            results.append(build_code_graph.parse_file((str(path), language, "fixture")))
+        graph_result = build_graph(results, str(root))
+        if not isinstance(graph_result, Ok):
+            self.fail(f"graph build failed: {graph_result.error}")
+        return graph_result.value
+
+    def test_an_import_of_types_only_is_marked_on_the_import_edge(self) -> None:
+        """/* REQ-CS-054: a TypeScript import edge is marked type-only when every import of the target is `import type`, or binds only names that the target defines as a type or an interface; a value name, a namespace import or a side-effect import of the same file makes it a normal import. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            graph = self._build(Path(directory).resolve())
+
+        marked = {
+            edge["source"]: bool(edge.get("type_only"))
+            for edge in graph.edges
+            if edge["type"] == "IMPORTS" and edge["target"] == "src/repositories/asset.repository"
+        }
+        self.assertEqual(
+            {
+                "src/dtos/effect.dto": False,
+                "src/dtos/mixed.dto": False,
+                "src/dtos/namespace.dto": False,
+                "src/dtos/stats.dto": True,
+                "src/dtos/typed.dto": True,
+            },
+            marked,
+        )
+
+    def test_boundaries_prints_type_only_imports_apart_from_violations(self) -> None:
+        """/* REQ-CS-055: `boundaries` must print an import of types only across layers as (violation-type-only ...) and count it as :type-only in the summary, not as a violation. */"""
+        import io
+        from contextlib import redirect_stdout
+
+        from scripts import code_graph_search
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sexp_path = root / ".code_graph.sexp"
+            sexp_path.write_text(
+                "(code-graph :schema 1 :files 3 :nodes 3 :edges 2 :violations 0)\n"
+                "(paths\n  (src\n    (dtos\n      (m0 stats.dto)\n      (m1 mixed.dto)\n    )\n"
+                "    (repositories\n      (m2 asset.repository)\n    )\n  )\n)\n"
+                '(node m0 ts "general module")\n(node m1 ts "general module")\n(node m2 ts "general module")\n'
+                "(imports m0 m2 :type-only)\n(imports m1 m2)\n",
+                encoding="utf-8",
+            )
+            graph = code_graph_search.CodeGraph()
+            self.assertIsInstance(graph.load(str(sexp_path), str(root)), code_graph_search.MapLoadOk)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code_graph_search.cmd_boundaries(graph, "all")
+            lines = output.getvalue().splitlines()
+
+        self.assertTrue(any(line.startswith("(violation src/dtos/mixed.dto src/repositories/asset.repository ") for line in lines), lines)
+        self.assertTrue(
+            any(line.startswith("(violation-type-only src/dtos/stats.dto src/repositories/asset.repository ") for line in lines), lines
+        )
+        self.assertIn("(boundaries-summary :violations 1 :type-only 1 :candidates 0 :checked 3)", lines)
+
+
+class AnswerSizeTest(unittest.TestCase):
+    def _hub(self, root: Path, dependents: int):
+        from scripts import code_graph_search
+
+        _write(root, "src/hub.ts", "")
+        _write(root, "src/base.ts", "")
+        names = [f"u{index:03d}" for index in range(dependents)]
+        for name in names:
+            _write(root, f"src/users/{name}.ts", "")
+        leaves = "".join(f"      (m{index + 2} {name})\n" for index, name in enumerate(names))
+        nodes = "".join(f'(node m{index} ts "general module")\n' for index in range(dependents + 2))
+        edges = "(imports m0 m1)\n" + "".join(f"(imports m{index + 2} m0)\n(refs m{index + 2} m0::Hub)\n" for index in range(dependents))
+        sexp_path = root / ".code_graph.sexp"
+        sexp_path.write_text(
+            f"(code-graph :schema 1 :files {dependents + 2} :nodes {dependents + 2} :edges {dependents + 1} :violations 0)\n"
+            "(paths\n  (src\n    (m0 hub)\n    (m1 base)\n    (users\n" + leaves + "    )\n  )\n)\n"
+            + nodes + "(cls m0 Hub 1)\n" + edges,
+            encoding="utf-8",
+        )
+        graph = code_graph_search.CodeGraph()
+        self.assertIsInstance(graph.load(str(sexp_path), str(root)), code_graph_search.MapLoadOk)
+        return code_graph_search, graph
+
+    def _lines(self, call) -> list[str]:
+        import io
+        from contextlib import redirect_stdout
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            call()
+        return output.getvalue().splitlines()
+
+    def test_analyze_names_each_dependent_once_with_a_path_from_the_root(self) -> None:
+        """/* REQ-CS-056: `analyze` must name each dependent file on one line only and print paths relative to the repository root. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            search, graph = self._hub(root, 3)
+            lines = self._lines(lambda: search.cmd_analyze(graph, "src/hub"))
+
+        text = "\n".join(lines)
+        self.assertNotIn(str(root), text)
+        self.assertEqual(1, sum("src/users/u001" in line and not line.startswith(("(key-entity-ref", "(refs")) for line in lines), lines)
+        self.assertIn("(analyze-dependent src/hub src/users/u001 :lang ts :via imports refs :file src/users/u001.ts)", lines)
+        self.assertIn("(analyze-import src/hub src/base :lang ts :file src/base.ts)", lines)
+        self.assertEqual(
+            ["(boundary-file src/hub src/hub.ts)", "(boundary-file src/hub src/base.ts)"],
+            [line for line in lines if line.startswith("(boundary-file")],
+        )
+        self.assertFalse(any(line.startswith("(rdep ") for line in lines), lines)
+        self.assertIn("(analyze-summary src/hub :entities 1 :imports 1 :dataflows 0 :refs 0 :dependents 3 :boundary-files 2)", lines)
+
+    def test_analyze_and_impact_stop_at_the_file_limit_and_say_how_to_get_the_rest(self) -> None:
+        """/* REQ-CS-057: `analyze` and `impact` must print the counts and at most 200 dependent files, then one line that gives the number left out and names --all; with --all they print every file. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            search, graph = self._hub(root, 205)
+            analyze = self._lines(lambda: search.cmd_analyze(graph, "src/hub"))
+            analyze_all = self._lines(lambda: search.cmd_analyze(graph, "src/hub", show_all=True))
+            impact = self._lines(lambda: search.cmd_impact(graph, "src/hub.ts", 2))
+            impact_all = self._lines(lambda: search.cmd_impact(graph, "src/hub.ts", 2, show_all=True))
+            impact_sexp = self._lines(lambda: search.cmd_impact(graph, "src/hub.ts", 2, sexp=True))
+
+        self.assertEqual(200, sum(line.startswith("(analyze-dependent") for line in analyze))
+        self.assertIn('(analyze-more src/hub :dependents 5 :rerun "analyze src/hub --all")', analyze)
+        self.assertEqual(20, sum(line.startswith("(key-entity-ref") for line in analyze))
+        self.assertIn('(key-entity-more src/hub Hub :modules 185 :rerun "analyze src/hub --all")', analyze)
+        self.assertTrue(any(":dependents 205 " in line for line in analyze if line.startswith("(analyze-summary")), analyze[-1])
+        self.assertEqual(205, sum(line.startswith("(analyze-dependent") for line in analyze_all))
+        self.assertEqual(205, sum(line.startswith("(key-entity-ref") for line in analyze_all))
+        self.assertFalse(any("-more " in line for line in analyze_all))
+
+        self.assertEqual(200, sum(line.startswith("  src/users/") and "imports" in line for line in impact))
+        self.assertIn("  ... 5 more files: rerun with --all", impact)
+        self.assertIn("  direct dependents   205", impact)
+        self.assertEqual(205, sum(line.startswith("  src/users/") and "imports" in line for line in impact_all))
+        self.assertFalse(any("rerun with --all" in line for line in impact_all))
+        self.assertEqual(200, sum(line.startswith("(impact src/hub ") for line in impact_sexp))
+        self.assertIn('(impact-more src/hub :hidden 5 :rerun "impact src/hub.ts 2 --all")', impact_sexp)
+        self.assertIn("(impact-summary src/hub :direct 205 :total 205 :depth 2)", impact_sexp)
+        self.assertEqual(11, sum(line.startswith("(read-first ") for line in impact_sexp))
+        self.assertIn("(read-first-more :hidden 195)", impact_sexp)
+
+
+class PurposeLocationTest(unittest.TestCase):
+    def test_folders_above_the_repository_do_not_change_the_purpose(self) -> None:
+        """/* REQ-LANG-006: the purpose of a file is inferred from its path inside the repository; folders above the repository root (app, test, domain) must not change it. */"""
+        files = {
+            "src/billing/invoice.py": "class Invoice:\n    pass\n",
+            "src/billing/total.py": "def total(items):\n    return sum(items)\n",
+        }
+        purposes = []
+        with tempfile.TemporaryDirectory() as directory:
+            for parent in ("neutral", "app/domain/test/services"):
+                root = Path(directory).resolve() / parent / "checkout"
+                found = {}
+                for relative_path, content in files.items():
+                    path = _write(root, relative_path, content)
+                    found[relative_path] = build_code_graph.parse_file((str(path), "python", "fixture", str(root))).purpose
+                purposes.append(found)
+
+        self.assertEqual(purposes[0], purposes[1])
+
+    def test_a_class_named_like_an_api_is_not_called_an_api_client(self) -> None:
+        """/* REQ-LANG-007: a class whose name ends in API (FastAPI, OpenAPI) says nothing about client or server; the module must not get the purpose "API client" from it. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            path = _write(root, "web/applications.py", "class FastAPI:\n    pass\n")
+            purpose = build_code_graph.parse_file((str(path), "python", "fixture", str(root))).purpose
+
+        self.assertNotIn("API client", purpose)
+
+
+class RuntimeModuleReferenceTest(unittest.TestCase):
+    def test_import_meta_resolve_of_a_literal_is_a_dependency(self) -> None:
+        """/* REQ-TS-RT-001: `import.meta.resolve('<literal>')` names a module loaded at run time (a worker file) and must be recorded as a dependency of the file. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            _write(root, "src/worker.ts", "export const ready = true;\n")
+            path = _write(
+                root,
+                "src/manager.ts",
+                "export function start(): string {\n  return import.meta.resolve('./worker.js');\n}\n",
+            )
+            result = build_code_graph.parse_file((str(path), "typescript", "fixture", str(root)))
+
+        self.assertEqual(["./worker.js"], result.imports)
