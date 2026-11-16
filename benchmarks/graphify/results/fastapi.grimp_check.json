@@ -1,0 +1,37 @@
+{
+ "packages": [
+  "fastapi",
+  "tests",
+  "docs_src",
+  "scripts"
+ ],
+ "grimp_modules_with_file": 1223,
+ "reference_py_files": 1223,
+ "grimp_pairs": 1801,
+ "reference_pairs_between_covered_files": 1801,
+ "in_both": 1801,
+ "grimp_only_explained_as_implied_package_init": [],
+ "grimp_only_unexplained": [],
+ "reference_only": [],
+ "modules_without_file": [
+  "docs_src",
+  "docs_src.opentelemetry",
+  "scripts",
+  "scripts.playwright",
+  "scripts.playwright.cookie_param_models",
+  "scripts.playwright.header_param_models",
+  "scripts.playwright.json_base64_bytes",
+  "scripts.playwright.query_param_models",
+  "scripts.playwright.request_form_models",
+  "scripts.playwright.separate_openapi_schemas",
+  "scripts.playwright.sql_databases",
+  "scripts.tests",
+  "scripts.tests.test_translation_fixer",
+  "scripts.tests.test_translation_fixer.test_code_blocks",
+  "scripts.tests.test_translation_fixer.test_code_includes",
+  "scripts.tests.test_translation_fixer.test_complex_doc",
+  "scripts.tests.test_translation_fixer.test_header_permalinks",
+  "scripts.tests.test_translation_fixer.test_html_links",
+  "scripts.tests.test_translation_fixer.test_markdown_links"
+ ]
+}

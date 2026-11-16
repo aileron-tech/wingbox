@@ -22,6 +22,9 @@ keywords = [
     "ai-coding-agents",
     "claude-code",
     "codex",
+    "graphify",
+    "graphify-alternative",
+    "knowledge-graph",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

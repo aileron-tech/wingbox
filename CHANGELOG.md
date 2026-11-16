@@ -5,6 +5,9 @@
 ### Changes
 
 - Package version 0.2.3. The package page shows the current README.
+- `benchmarks/graphify` is back, next to `benchmarks/impact`: Wingbox and
+  Graphify measured on the same public repositories, with the scripts and the
+  result files. The README has a section and a FAQ entry on the two tools.
 - Package version 0.2.2 (0.2.1 plus the layer of a Python `__init__.py`).
 - Package version 0.2.1.
 - `analyze` and `impact` print the complete counts and list at most 200

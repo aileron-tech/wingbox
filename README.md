@@ -163,6 +163,27 @@ docker build -f Dockerfile.benchmark -t wingbox-benchmark .
 docker run --rm wingbox-benchmark
 ```
 
+## Wingbox and Graphify on the same tests
+
+[Graphify](https://github.com/Graphify-Labs/graphify) builds a knowledge graph
+of a codebase, documents and images for coding agents. Wingbox is narrower: a
+deterministic graph of the code alone, built without a model, and exact lists
+of what depends on a file. Both were run on the same public repositories
+(Wingbox 0.2.0, Graphify 0.9.110, no model on either side):
+
+| Test | Wingbox | Graphify |
+|---|---|---|
+| Exact list of dependent files, five questions (`wingbox impact`, `graphify affected`) | 5 of 5 | 1 of 5 |
+| Dependencies against the 1,801 import pairs of FastAPI | 0 wrong, 0 missing | 22 wrong, 32 missing |
+| Tokens a coding agent spends per answer (built-in search alone: 59,367) | 25,598 | 109,071 |
+| Graph of FastAPI on a hosted runner | 2.2 s | 17.9 s |
+
+`graphify affected` follows calls and references as well as imports, so it
+answers a wider question than "who imports this file"; the report gives its
+figures restricted to imports too. The scripts, the reference lists, every
+result file and the token formula Graphify publishes are in
+[benchmarks/graphify](benchmarks/graphify/README.md).
+
 ## Quick start for AI coding agents
 
 Install the skill:
@@ -432,6 +453,17 @@ Text search finds lines that match a pattern. A code graph answers structural
 questions: which modules depend on this one, what a change can break, which
 architecture boundary a dependency crosses, and which few files are worth
 reading first.
+
+### How is Wingbox different from Graphify?
+
+Graphify extracts a knowledge graph from code, documents, papers and images,
+with a model for the non-code part, and supports more languages. Wingbox reads
+code only, with deterministic parsers and no model, and resolves imports the
+way each language does, so that `wingbox impact` gives the exact list of files
+a change reaches. The two tools are measured side by side in
+[benchmarks/graphify](benchmarks/graphify/README.md). Wingbox can be used as a
+Graphify alternative when the question is change impact, dependencies and
+architecture boundaries of code.
 
 ### Does Wingbox replace a compiler or a language server?
 
