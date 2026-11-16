@@ -488,3 +488,12 @@
 
 ### Verification
 - REQ-UPDATE-008; full suite on 3.11 and 3.12; `choose_method` on that machine now returns `pipx upgrade wingbox`.
+
+## 2026-11-16 - Release 0.2.7
+
+### Changes
+- Version 0.2.7: the README of main reaches the PyPI page (install with `pipx install wingbox && wingbox install`), and `wingbox update` picks pipx when `pipx list` exits 1. The map-request workflow pins the released version.
+
+### Motivation
+- The maintainer saw the PyPI page still showing the 0.2.5-era install line and chose a release now, with init and usages to follow as 0.3.0.
+
