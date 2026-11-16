@@ -164,8 +164,13 @@ def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
         name = rust_use.alias or segments[-1]
         if segments[0] in _LOCAL_ROOTS:
             local_modules.setdefault(name, rust_use.path)
-        else:
+        elif segments[0] in _STANDARD_ROOTS:
             foreign_names.add(name)
+        else:
+            # A name taken from another crate: bridge::start::run() after use other::bridge is
+            # other::bridge::start::run(); the resolver finds it when other is a crate of the
+            # workspace and finds nothing for a crate from a registry.
+            local_modules.setdefault(name, rust_use.path)
 
     paths: list[str] = []
     seen: set[str] = set()

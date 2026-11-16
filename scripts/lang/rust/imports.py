@@ -146,11 +146,26 @@ def _logical_module_directory(source_path: str) -> str:
     return os.path.splitext(source_path)[0]
 
 
+# Folders whose subfolders Cargo builds as crates of their own: tests/<name>/main.rs and the like.
+_SEPARATE_CRATE_FOLDERS = ("tests", "benches", "examples")
+
+
+def _separate_crate_directory(source_path: str, owner: RustPackage) -> str | None:
+    """Root folder of the test, bench or example crate a file belongs to, if any."""
+    relative = os.path.relpath(source_path, owner.directory).split(os.sep)
+    if len(relative) >= 3 and relative[0] in _SEPARATE_CRATE_FOLDERS:
+        return os.path.join(owner.directory, relative[0], relative[1])
+    return None
+
+
 def _crate_source_directory(
     source_path: str,
     owner: RustPackage | None,
 ) -> str:
     if owner is not None:
+        separate = _separate_crate_directory(source_path, owner)
+        if separate is not None:
+            return separate
         return os.path.join(owner.directory, "src")
 
     source = Path(source_path)
@@ -231,9 +246,15 @@ class BoundRustLanguage:
 
         if first == "crate":
             source_directory = _crate_source_directory(absolute_source, owner)
-            fallbacks = (
-                _package_entrypoints(owner) if owner is not None else (absolute_source,)
+            separate = (
+                _separate_crate_directory(absolute_source, owner) if owner is not None else None
             )
+            if separate is not None:
+                fallbacks = (os.path.join(separate, "main.rs"),)
+            elif owner is not None:
+                fallbacks = _package_entrypoints(owner)
+            else:
+                fallbacks = (absolute_source,)
             module_target = _resolve_from_directory(
                 source_directory,
                 segments[1:],
