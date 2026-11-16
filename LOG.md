@@ -805,3 +805,11 @@
 ### Motivation
 - The maintainer: "давай выпускай".
 
+## 2026-11-17 - Release 0.5.0
+
+### Changes
+- Version 0.5.0: everything in `.wingbox/` (index.sexp, caches, REPORT.md, map.html), `.wingbox/` as the project marker, no refresh into another folder (a copied graph was overwritten in 0.4.0), `--output` removed, `wingbox open`, `wingbox update` warns about old files; no compatibility with the old layout. The map-request workflow builds with 0.5.0.
+
+### Motivation
+- Errors seen in a real session on 0.4.0; maintainer: ".code_graph.sexp -> .wingbox/index.sexp", "все файлы должны быть в каталоге .wingbox", "ничего удалять не надо", "никаких совместимостей", "выпускай сразу версию потом".
+
