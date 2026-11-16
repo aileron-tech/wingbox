@@ -1,0 +1,23 @@
+name: Map my repository
+description: Ask for a live 3D map and a Wingbox report of a public GitHub repository.
+title: "Map: "
+labels: ["map request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The graph is built with the released Wingbox on a GitHub runner. The code of the repository is read, never run.
+        After a check against the code, the map and the report are published on https://wingbox.dev/examples and linked in this issue.
+  - type: input
+    id: repository
+    attributes:
+      label: Repository
+      description: A public GitHub repository.
+      placeholder: https://github.com/owner/name
+    validations:
+      required: true
+  - type: textarea
+    id: note
+    attributes:
+      label: Anything to know (optional)
+      description: The part of the repository you care about, or a file to open the map on.

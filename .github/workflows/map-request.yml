@@ -1,0 +1,103 @@
+# Builds the Wingbox map and report of a public GitHub repository asked for in an issue
+# (template "Map my repository", label "map request"), or by hand with workflow_dispatch.
+# The result is an artifact of the run and a comment on the issue; nothing is published
+# automatically. The requested code is cloned and parsed, never executed. The issue body
+# reaches the shell only through an environment variable and is matched against a pattern.
+name: map-request
+
+on:
+  issues:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: "Public GitHub repository, e.g. https://github.com/owner/name"
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: map-request-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  map:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.issue.labels.*.name, 'map request') &&
+       (github.event.action == 'opened' || github.event.label.name == 'map request'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SELF: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+      REQUEST: ${{ github.event.issue.body || inputs.repository }}
+      MAX_KB: "400000"
+      WINGBOX_VERSION: "0.2.6"   # the released version the maps are built with; bump on release
+    steps:
+      - name: Read and check the requested repository
+        id: req
+        run: |
+          set -euo pipefail
+          say() { if [ -n "${ISSUE:-}" ]; then gh issue comment "$ISSUE" -R "$SELF" --body "$1"; fi; echo "$1"; }
+          url=$(printf '%s\n' "$REQUEST" | grep -Eo 'https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+' | head -1 || true)
+          name=${url#https://github.com/}; name=${name%.git}
+          if ! printf '%s' "$name" | grep -Eq '^[A-Za-z0-9-]{1,39}/[A-Za-z0-9_.-]{1,100}$'; then
+            say "No link to a public GitHub repository was found in the request. Please give it as https://github.com/owner/name."
+            exit 1
+          fi
+          if ! info=$(gh api "repos/$name" --jq '[.private, .size, .full_name] | @tsv' 2>/dev/null); then
+            say "The repository $name was not found on GitHub, or it is not public."
+            exit 1
+          fi
+          read -r private size full <<< "$info"
+          if [ "$private" != "false" ]; then say "The repository $full is not public."; exit 1; fi
+          if [ "$size" -gt "$MAX_KB" ]; then say "The repository $full is too large for an automatic build; it will be looked at by hand."; exit 1; fi
+          echo "name=$full" >> "$GITHUB_OUTPUT"
+
+      - name: Clone (shallow, no submodules, no LFS content)
+        env:
+          NAME: ${{ steps.req.outputs.name }}
+          GIT_LFS_SKIP_SMUDGE: "1"
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --no-tags "https://github.com/$NAME.git" target
+          git -C target rev-parse HEAD > commit.txt
+
+      - name: Install Wingbox from PyPI
+        run: |
+          pipx install "wingbox==$WINGBOX_VERSION"
+          wingbox --version | tee version.txt
+
+      - name: Build the graph, the report and the map
+        working-directory: target
+        run: timeout 20m wingbox build . 2>&1 | tail -20
+
+      - name: Collect
+        env:
+          NAME: ${{ steps.req.outputs.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp target/wingbox-out/REPORT.md target/wingbox-out/map.html out/
+          printf 'repository %s\ncommit %s\n%s\n' "$NAME" "$(cat commit.txt)" "$(cat version.txt)" > out/source.txt
+          cat out/source.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wingbox-map-${{ github.event.issue.number || github.run_id }}
+          path: out/
+          retention-days: 30
+
+      - name: Tell the issue
+        if: github.event_name == 'issues'
+        env:
+          NAME: ${{ steps.req.outputs.name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh issue comment "$ISSUE" -R "$SELF" --body "The map of $NAME is built ($(cat version.txt), commit $(cut -c1-7 commit.txt)). It is checked against the code before it goes to https://wingbox.dev/examples; the link will be posted here. The raw report and map are in the artifact of $RUN_URL."
+          gh issue edit "$ISSUE" -R "$SELF" --add-label "map built"
