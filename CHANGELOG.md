@@ -4,6 +4,10 @@
 
 ### Changes
 
+- TypeScript use sites in code count: names, `ns.S` after `import * as ns`,
+  qualified types, JSX elements, shorthand properties and `export { k }`; a
+  parameter, local variable, catch parameter or type parameter of the same name
+  shadows the import and is not a use.
 - TypeScript names in import and export statements resolve to the defining
   file through barrels: named, aliased and default imports, `export * from`,
   `export { X as Y } from`, `export * as ns from` and `export default`, with

@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-16 - use sites through scopes (step 3 of the symbol index)
+
+### Changes
+- `scripts/lang/typescript/parser.py`: use sites of every name the file binds at module level (its declarations and in-scope imports), from the scoped walk of `scripts/lang/typescript/symbols.py`: identifiers, member chains (`ns.S`, `Enum.A`), qualified types, JSX element names, shorthand properties and local `export { k }`. Parameters, variables, catch parameters, type parameters and declarations inside a function shadow a module-level name for the whole function. Python and Rust have had their scoped walks since the first change of this branch.
+- Tests: REQ-TS-SYM-002, REQ-TS-SYM-003.
+
+### Motivation
+- Maintainer, step 3: every identifier and qualified path resolved through scopes; a local binding with the same name shadows the import.
+
+### Verification
+- Refactoring benchmark: TypeScript 40/40, Rust 40/40, Python 20/20 exact, no file outside the lists; impact unchanged; the 711-symbol check gives the same single pre-existing TypeScript file. New refs edges: immich-server 5,890 -> 5,914, chrome-devtools-mcp 1,364 -> 1,397; a sample read against the source was right each time (generator functions newly in the symbol table, `export { ConfigSmtpDto as SystemConfigSmtpDto }`, `export type {TestScenario}` re-exported from another file).
+
 ## 2026-11-16 - name resolution to the defining file (step 2 of the symbol index)
 
 ### Changes

@@ -230,6 +230,35 @@ class NameResolutionTests(unittest.TestCase):
         self.assertFalse(any(edge["target"].endswith("::Ghost") for edge in rs_edges))
 
 
+class UseSiteTests(unittest.TestCase):
+    def test_typescript_namespace_members_and_shadowing(self) -> None:
+        """/* REQ-TS-SYM-002: `ns.S` after `import * as ns`, `<ns.Comp />` and `ns.Enum.Member` are uses of S, Comp and Enum; a parameter or local variable named like the namespace shadows it and its members are not uses. */"""
+        _nodes, edges = _graph({
+            "src/a.ts": "export const config = {};\nexport class Store {}\nexport function helper() {}\nexport enum Mode { A }\n",
+            "src/b.ts": "import * as a from './a';\nexport function run() { return a.helper(); }\n",
+            "src/c.ts": "import * as a from './a';\nexport function f(a: { config: number }) { return a.config; }\n"
+                        "export const g = () => { const a = { Mode: 1 }; return a.Mode; };\n",
+            "src/d.tsx": "import * as a from './a';\nexport const V = () => <a.Store />;\nexport const m = a.Mode.A;\n",
+            "src/e.ts": "import * as a from './a';\nexport function h({ a }: { a: { helper: () => void } }) { a.helper(); }\n"
+                        "export function k() { try { } catch (a) { a.config; } }\n",
+        })
+        self.assertEqual({"src/b"}, _users(edges, "src/a", "helper"))
+        self.assertEqual(set(), _users(edges, "src/a", "config"))
+        self.assertEqual({"src/d"}, _users(edges, "src/a", "Store"))
+        self.assertEqual({"src/d"}, _users(edges, "src/a", "Mode"))
+
+    def test_typescript_local_names_shadow_imported_names(self) -> None:
+        """/* REQ-TS-SYM-003: a TypeScript file that imports S is a user of S (the import names it); a file whose only S is its own declaration, parameter or type parameter is not. */"""
+        _nodes, edges = _graph({
+            "src/model.ts": "export class Session {}\nexport type Id = string;\n",
+            "src/user.ts": "import { Session } from './model';\nexport function run(s: Session) { return s; }\n",
+            "src/own.ts": "class Session {}\nexport function f<Id>(x: Id): Session { return new Session(); }\n",
+            "src/param.ts": "export function g(Session: number) { return Session; }\n",
+        })
+        self.assertEqual({"src/user"}, _users(edges, "src/model", "Session"))
+        self.assertEqual(set(), _users(edges, "src/model", "Id"))
+
+
 def _parsed(relative_path: str, content: str) -> dict:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / relative_path
