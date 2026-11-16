@@ -51,6 +51,20 @@ class BenchmarkReportTest(unittest.TestCase):
         self.assertEqual(rows[0]["extract_to_build_wall_ratio"], 13.3)
         self.assertIn("| demo | 12 | 3.0 | 40.0 | 6.0 | 13.3x |", module.table(rows))
 
+    def test_build_time_summary_refuses_rounds_that_built_different_graphs(self) -> None:
+        """/* REQ-BENCH-004: the build-time summary must stop when one tool built graphs of different size for the same corpus. */"""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("time_builds", BENCHMARK / "tools" / "time_builds.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        run = {"corpus": "demo", "source_files": 12, "tool": "wingbox", "step": "build", "wall_s": 1.0, "cpu_s": 1.0}
+        same = [dict(run, round=1, graph={"modules": 12, "import_edges": 20}), dict(run, round=2, graph={"modules": 12, "import_edges": 20})]
+        self.assertEqual(module.summarise(same)[0]["wingbox_graph"], {"modules": 12, "import_edges": 20})
+        different = [same[0], dict(run, round=2, graph={"modules": 12, "import_edges": 19})]
+        with self.assertRaises(SystemExit):
+            module.summarise(different)
+
 
 if __name__ == "__main__":
     unittest.main()
