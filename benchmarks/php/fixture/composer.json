@@ -1,0 +1,15 @@
+{
+  "name": "acme/demo",
+  "description": "Synthetic Laravel project for the Wingbox PHP benchmark",
+  "autoload": {
+    "psr-4": {
+      "App\\": "app/",
+      "Acme\\": "modules/Acme/src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "App\\Tests\\": "tests/"
+    }
+  }
+}

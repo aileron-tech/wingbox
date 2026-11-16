@@ -30,7 +30,9 @@ def file_hash(path: str) -> str:
 
 def detect_naming(filename: str) -> str:
     stem = Path(filename).stem
-    for suffix in (".test", ".spec", ".e2e", ".stories", ".d"):
+    # A Blade template keeps ".blade" in its stem (home.blade.php); the name
+    # that decides the convention is the one before it.
+    for suffix in (".test", ".spec", ".e2e", ".stories", ".blade", ".d"):
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
     if SNAKE_CASE_RE.match(stem):

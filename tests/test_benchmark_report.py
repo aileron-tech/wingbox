@@ -9,6 +9,7 @@ from pathlib import Path
 
 BENCHMARK = Path(__file__).resolve().parents[1] / "benchmarks" / "impact"
 COMPARISON = Path(__file__).resolve().parents[1] / "benchmarks" / "graphify"
+PHP_BENCHMARK = Path(__file__).resolve().parents[1] / "benchmarks" / "php"
 LOCAL_PATH = re.compile(r'(?:^|["\s:=])/(?:Users|home|private|tmp|var)/')
 
 
@@ -102,6 +103,28 @@ class BenchmarkReportTest(unittest.TestCase):
         self.assertTrue(without["exact"] and without["exact_strict"])
         outside = module.score({"a.py", "c.py"}, gold, "x.py")
         self.assertEqual((outside["right"], outside["not_on_list"], outside["missing"], outside["exact"]), (1, 1, 1, False))
+
+    def test_php_report_and_results_name_no_local_path(self) -> None:
+        """/* REQ-BENCH-009: benchmarks/php/README.md must equal what its make_report.py writes from benchmarks/php/results, and every committed result file must contain no absolute path of a local machine. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            written = Path(directory) / "README.md"
+            subprocess.run(
+                [sys.executable, "-I", str(PHP_BENCHMARK / "make_report.py"), str(PHP_BENCHMARK / "results"), str(written)],
+                check=True,
+                capture_output=True,
+            )
+            self.assertEqual(written.read_text(encoding="utf-8"), (PHP_BENCHMARK / "README.md").read_text(encoding="utf-8"))
+        offenders = []
+        for path in sorted(PHP_BENCHMARK.rglob("*")):
+            if path.name.startswith("Dockerfile"):
+                # A container image names /var/lib/apt and the like; that is not a
+                # path of the machine that ran the benchmark.
+                continue
+            if path.is_file() and path.suffix in {".json", ".txt", ".md", ".py", ".sh", ".log", ".php"}:
+                for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                    if LOCAL_PATH.search(line):
+                        offenders.append(f"{path.relative_to(PHP_BENCHMARK.parent)}:{number}")
+        self.assertEqual(offenders, [])
 
     def test_a_rust_path_accepts_the_modules_it_passes_through(self) -> None:
         """/* REQ-BENCH-007: for a Rust path crate::a::b the file of module a must be accepted for the file that wrote the path, and not required. */"""

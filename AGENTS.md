@@ -14,8 +14,17 @@ this file applies to you.
   (queries), `scripts/build_infra_topology.py`, `scripts/lang/` (parsers),
   `tests/`, `references/`, `docs/`. `src/wingbox/install.py`, `hook.py` and
   `update.py` are `wingbox install`/`uninstall`, the Claude Code search hook
-  and `wingbox update`; the wheel bundles `SKILL.md` and `references/` as
-  `wingbox/_skill`, the skill that `wingbox install` copies.
+  and `wingbox update`; `mcp_server.py` is `wingbox mcp`, the local stdio MCP
+  server; `overview.py` and `map_page.py` write `REPORT.md` and `map.html`.
+  The wheel bundles `SKILL.md` and `references/` as `wingbox/_skill`, the
+  skill that `wingbox install` copies.
+- Plugins: `plugins/wingbox` is the folder Claude Code and Codex install
+  (manifests, a copy of the skill, the `scripts/wingbox-run` launcher);
+  `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`
+  list it. `tools/sync_plugin.py` keeps the copy in step with the repository;
+  `tools/build_openai_plugin.py` builds the OpenAI directory ZIPs from it
+  (listing texts in `docs/store/`). `benchmarks/` holds the reproducible
+  impact and build-time benchmarks.
 - Supported Python: 3.11, 3.12, 3.13 (the builder imports `tomllib`). macOS and
   Linux.
 
@@ -26,8 +35,10 @@ this file applies to you.
 - Write the failing test first, then the implementation. Every test docstring
   carries `/* REQ-<PREFIX>-<n>: <behaviour> */`; take the next free number of
   the prefix (`CS` search commands, `CLI` the `wingbox` command, `INSTALL`
-  install, uninstall and the search hook, `UPDATE`, `DEPS`, `LANG`, and one
-  prefix per language).
+  install, uninstall and the search hook, `UPDATE`, `MCP` the MCP server,
+  `PLUGIN` the plugins and their tools, `OUT` the report and the map page,
+  `BENCH` the benchmarks, `SEC` the local-only guarantees, `DEPS`, `LANG`,
+  and one prefix per language).
 - Run the tests before each push:
 
   ```bash
@@ -50,6 +61,11 @@ this file applies to you.
   maintainer before writing its code.
 - `scripts/` stays loadable by path: the tests import the scripts with
   `importlib` from `scripts/`, and the skill calls them by path.
+- After a change to `SKILL.md`, `references/` or the version, run
+  `python3 tools/sync_plugin.py`: a test keeps the plugin's copy of the skill
+  byte for byte identical, and `--check` exits 1 while anything is stale. The
+  launcher pins the commit of the newest `vX.Y.Z` tag, so run it again once
+  the release tag exists.
 - ASCII only. `.gitignore` changes only when the name of a generated file
   changes.
 - A user-facing change updates `README.md` and `SKILL.md` (command tables),
@@ -63,13 +79,16 @@ Follow these steps in order when the maintainer asks for a release.
 1. Choose X.Y.Z: patch for fixes and documentation, minor for a new command.
    Set `version` in `pyproject.toml`, rename `## Unreleased` in `CHANGELOG.md`
    to `## X.Y.Z - YYYY-MM-DD` (one heading per version), add the entry to
-   `LOG.md`; pull request, squash merge.
+   `LOG.md`, bump `WINGBOX_VERSION` in `.github/workflows/map-request.yml`,
+   run `python3 tools/sync_plugin.py`; pull request, squash merge.
 2. Create the GitHub release; the tag equals the version in `pyproject.toml`:
 
    ```bash
    gh release create vX.Y.Z --target main --title "Wingbox X.Y.Z" -F notes.md
    ```
 
+   Then run `python3 tools/sync_plugin.py` again so the launcher pins the new
+   tag's commit, and merge that through a pull request.
 3. On `main` at the tagged commit, build outside the repository:
 
    ```bash

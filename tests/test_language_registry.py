@@ -15,6 +15,7 @@ from scripts.lang.csharp import CSHARP_LANGUAGE
 from scripts.lang.go import GO_LANGUAGE
 from scripts.lang.java import JAVA_LANGUAGE
 from scripts.lang.pascal import PASCAL_LANGUAGE
+from scripts.lang.php import PHP_LANGUAGE
 from scripts.lang.python import PYTHON_LANGUAGE
 from scripts.lang.rust import RUST_LANGUAGE
 from scripts.lang.ruby import RUBY_LANGUAGE
@@ -33,6 +34,8 @@ class LanguageRegistryTests(unittest.TestCase):
         self.assertIs(GO_LANGUAGE, language_for_file("main.go"))
         self.assertIs(RUBY_LANGUAGE, language_for_file("model.rb"))
         self.assertIs(RUBY_LANGUAGE, language_for_file("tasks.rake"))
+        self.assertIs(PHP_LANGUAGE, language_for_file("model.php"))
+        self.assertIs(PHP_LANGUAGE, language_for_file("view.blade.php"))
         self.assertIs(PASCAL_LANGUAGE, language_for_file("worker.pas"))
         self.assertIs(PASCAL_LANGUAGE, language_for_file("worker.pp"))
         self.assertIs(PASCAL_LANGUAGE, language_for_file("app.lpr"))
@@ -107,6 +110,10 @@ class LanguageRegistryTests(unittest.TestCase):
                 "package worker\n\nfunc Execute() bool { return true }\n",
                 encoding="utf-8",
             )
+            (target / "Worker.php").write_text(
+                "<?php\nnamespace App;\nfinal class Worker {}\n",
+                encoding="utf-8",
+            )
             (target / "pascal_worker.pas").write_text(
                 "unit pascal_worker; interface procedure Execute; implementation procedure Execute; begin end; end.\n",
                 encoding="utf-8",
@@ -128,7 +135,7 @@ class LanguageRegistryTests(unittest.TestCase):
 
             self.assertEqual(0, completed.returncode, completed.stderr)
             self.assertIn(
-                "Found 7 source files (1 py, 1 ts, 1 rs, 1 cs, 1 java, 1 go, 0 rb, 1 pas)",
+                "Found 8 source files (1 py, 1 ts, 1 rs, 1 cs, 1 java, 1 go, 0 rb, 1 php, 1 pas)",
                 completed.stdout,
             )
             self.assertTrue((target / ".code_graph.sexp").is_file())

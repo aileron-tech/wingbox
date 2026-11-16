@@ -1,9 +1,10 @@
 # S-expression Output Notation
 
 Every output line is a self-contained fact. Each fact that references a module
-carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
+carries a compact `:lang` value such as `py`, `ts`, `rs`, `php`, `blade`,
+or `rb`.
 
-**Module ID**: relative path from workspace root, no extension, no `/index`. Example: `drive/modules/drive_db/api/drive_db_api.ts` -> `drive/modules/drive_db/api/drive_db_api`.
+**Module ID**: relative path from workspace root, no extension, no `/index`. Example: `drive/modules/drive_db/api/drive_db_api.ts` -> `drive/modules/drive_db/api/drive_db_api`. A Blade template drops `.blade.php` (`resources/views/layouts/app.blade.php` -> `resources/views/layouts/app`).
 
 ## Raw Graph Facts (in .code_graph.sexp)
 
@@ -15,7 +16,7 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (ifc <mod> <name> <line> :eid <uuid> (:methods m1 m2))
 (typ <mod> <name> <line> :eid <uuid>)
 (enm <mod> <name> <line> :eid <uuid>)
-(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec] [:lsp])
+(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:lsp])
 (calls-api <src> <tgt> :via-ifc [:lsp])
 (data-flow <src> <tgt> [:validated])
 (refs <src> <tgt>::<Entity> [:callback] [:lsp])
@@ -268,6 +269,8 @@ nearest first, and `read-first` names the file and its first 10 direct dependent
 | `java` | Java | PascalCase types | `DriveService` |
 | `go` | Go | PascalCase exports, camelCase locals | `DrivePath`, `loadPath` |
 | `rb` | Ruby/Rails | snake_case files, CamelCase constants | `order_payment`, `OrderPayment` |
+| `php` | PHP/Laravel | PascalCase classes, camelCase methods | `App\Models\User`, `loadUser` |
+| `blade` | Blade templates | kebab-case files, dot-separated view references | `users.show`, `components.alert` |
 
 ## Architecture Layers
 

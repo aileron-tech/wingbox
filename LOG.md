@@ -1,5 +1,27 @@
 # Completion Log
 
+## 2026-11-16 - PHP 8 and Laravel (Blade, Livewire) language support
+
+### Changes
+- `scripts/lang/php/` (new): one `php` adapter with two result languages. `parser.py` reads PHP 8 with tree-sitter (classes, interfaces, traits, enums, methods, attributes, `use` aliases and grouped uses, `extends`/`implements`/trait use, Eloquent associations, `event(new X)`, `dispatch(new X)`, `X::dispatch()`, `view()`), `blade.py` scans `@extends`, `@include*`, `@component`, `@each`, `<x-*>` and `<livewire:*>`/`@livewire(...)`, and `imports.py` with `psr4.py` binds PSR-4 classes, views and Livewire aliases to files.
+- `psr4.py` merges `autoload.psr-4` and `autoload-dev.psr-4` from every `composer.json`, the root one and the nested module ones, longest prefix first. View namespaces come from `loadViewsFrom`/`View::addNamespace` and the module `resources/views` convention; Livewire aliases from `Livewire::component()` and flat and dotted conventions.
+- Wiring: `PHP_LANGUAGE` after Ruby, `.blade.php` before `.php` in the node-ID and search extension lists, `index.blade.php` as a folder index, `BUILDER_CONFIG_VERSION` `2026-11-16-php`, PHP/Blade purpose rules and layer patterns, PHPUnit/Pest test-file names, `.blade` stripped by `detect_naming`.
+- `requirements/php.txt` (`tree-sitter==0.25.2`, `tree-sitter-php==0.24.1`) and the package dependency; README and SKILL.md document the install line, the language, and the PSR-4, Blade, Livewire and Eloquent edges; `references/sexp-notation.md` gains the `php` and `blade` `:lang` values and the new relation flags.
+
+### Decisions
+- Conservative resolution: an unresolved or ambiguous class name, alias, view or Livewire component creates no edge. When several files declare one fully qualified name, PSR-4 decides only if exactly one of those files is the file Composer would autoload; otherwise the name stays unlinked.
+- Layers: `app/Models` domain; controllers, middleware and requests under `app/Http` api; `app/Livewire` and `resources/views` ui; `app/Jobs`, `app/Listeners` and `app/Policies` service; `app/Events` domain; tests test.
+- Blade is scanned rather than parsed with a grammar (none is on PyPI); the scanner skips `{{-- ... --}}` comments and `@verbatim` blocks.
+- Nothing boots Laravel, runs Composer or opens a network connection: the graph comes from source text and `composer.json`.
+
+### Motivation
+- The maintainer asked for TALL stack support (Tailwind, Alpine, Laravel, Livewire). Laravel code names classes through Composer, layouts through Blade and components through Livewire, so an import-only graph would miss most dependencies of a feature.
+- IDE-helper finding: `_ide_helper_models.php` repeats model declarations from `app/Models`, which made every repeated class name ambiguous in a first index. Resolving duplicates through the PSR-4 file that Composer would load keeps the real model and lets the stub shadow nothing; that rule is now the documented default for any duplicate declaration.
+
+### Verification
+- A Laravel-shaped fixture built in-process: controller to model, job, event, `view()` and namespaced `admin::nav`; Blade to layout, include, component and Livewire; Livewire class to its template; `Livewire::component()` registration and a dotted alias.
+- `python3 tools/sync_plugin.py` then `--check` exit 0; `tests.test_plugins` and `tests.test_install` pass.
+
 ## 2026-11-16 - the use index at the cost of a build without it
 
 ### Changes

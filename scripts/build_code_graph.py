@@ -200,7 +200,7 @@ OUTPUT_FILE = ".code_graph.sexp"
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
 CACHE_SCHEMA_VERSION = 2
 MAP_SCHEMA_VERSION = 1
-BUILDER_CONFIG_VERSION = "2026-08-08-ruby"
+BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
 # Default timeout for LSP requests (seconds)
 LSP_REQUEST_TIMEOUT = 15.0
@@ -653,7 +653,7 @@ def make_node_id(path: str, root: str) -> str:
 # when several files share one ID, the first in this order keeps it.
 _NODE_ID_EXTENSION_ORDER = (
     ".ts", ".tsx", ".js", ".jsx", ".py", ".rb", ".rake", ".rs",
-    ".pas", ".pp", ".lpr", ".inc", ".go", ".java", ".cs",
+    ".blade.php", ".php", ".pas", ".pp", ".lpr", ".inc", ".go", ".java", ".cs",
 )
 
 

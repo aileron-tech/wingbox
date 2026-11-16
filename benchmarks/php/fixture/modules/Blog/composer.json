@@ -1,0 +1,13 @@
+{
+  "name": "acme/blog",
+  "autoload": {
+    "psr-4": {
+      "Acme\\Blog\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Acme\\Blog\\Tests\\": "tests/"
+    }
+  }
+}

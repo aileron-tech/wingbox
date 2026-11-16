@@ -8,7 +8,8 @@ description: >
   on each other; before a refactor, a cross-package change or any non-trivial
   edit; and when exploring an unfamiliar codebase. Builds and queries architecture-aware code search,
   dependency graphs, call flows, module boundaries and architecture violations
-  for Python, TypeScript, TSX, Rust, C#, Java, Go, Ruby, and Ruby on Rails.
+  for Python, TypeScript, TSX, Rust, C#, Java, Go, Ruby, Ruby on Rails, PHP,
+  Laravel, Blade, Livewire and Eloquent.
 ---
 
 # Wingbox -- Code Graph Architecture Discovery
@@ -87,6 +88,7 @@ has the wrong version and prints the exact per-language command to run, such as:
 python3 -m pip install -r "$SKILL_ROOT/requirements/typescript.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/csharp.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/ruby.txt"
+python3 -m pip install -r "$SKILL_ROOT/requirements/php.txt"
 ```
 
 Install only the requirement files named by the builder, then rerun it.
@@ -203,7 +205,8 @@ Key patterns:
 
 **`:lang` values**: `py` = Python (snake_case), `ts` = TypeScript
 (camelCase), `tsx` = TSX (PascalCase), `rs` = Rust (snake_case), `cs` = C#,
-`java` = Java, `go` = Go, and `rb` = Ruby/Rails.
+`java` = Java, `go` = Go, `rb` = Ruby/Rails, `php` = PHP/Laravel (PascalCase),
+and `blade` = Blade templates.
 
 ## Scheme Query Language
 
@@ -354,6 +357,17 @@ references. It never boots Rails. Reopened or otherwise ambiguous constants and
 polymorphic associations remain unlinked instead of producing guessed edges.
 Rails relation flags are preserved as `:association`, `:concern`, `:callback`,
 `:job`, `:mailer`, or `:spec` in the generated map.
+
+PHP 8 indexing discovers `.php` files and `.blade.php` templates. It resolves
+classes through the `autoload.psr-4` and `autoload-dev.psr-4` prefixes of every
+`composer.json` in the repository, longest prefix first, and follows `use`
+aliases, inheritance, traits, Blade `@extends`/`@include*`/`@component`/`@each`
+directives, `<x-*>` components, Livewire aliases and registrations, Eloquent
+associations, events and jobs. `view()` references resolve through
+`resources/views` and through view namespaces registered with `loadViewsFrom`
+or `View::addNamespace`. It never boots Laravel. Unresolved or ambiguous class,
+view and component names remain unlinked, and a duplicate class declaration
+such as an IDE-helper stub does not shadow the PSR-4 file.
 
 Pascal indexing discovers `.pas`, `.pp`, `.lpr`, and `.inc` files. It extracts
 units, programs, `uses`/`contains`/`requires` clauses, include directives,
