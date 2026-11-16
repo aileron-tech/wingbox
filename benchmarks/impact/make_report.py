@@ -217,27 +217,24 @@ add("| `results/` | the questions, the reference lists (`gold/`), every row of t
 add("")
 if os.path.exists(os.path.join(R, "context_ratio.json")):
     ctx = load("context_ratio.json")
-    rows = ctx["repos"]
-    low = min(rows, key=lambda r: r["ratio"])
-    high = max(rows, key=lambda r: r["ratio"])
-    names = {"immich-server": "immich server"}
-    complete = all(r["complete_answers"] == r["questions"] for r in rows)
-    graphify = [r for r in rows if r.get("graphify")]
+    rows = sorted(ctx["repos"], key=lambda r: -r["ratio"])
     add("")
     add("## Context size (the `graphify benchmark` measure)")
     add("")
-    add("`tools/context_ratio.py` divides the estimated tokens of each repository's source by the average size of the impact answers above, "
-        "the same kind of number as `graphify benchmark` (\"Nx fewer tokens per query\"). Results in `results/context_ratio.json`: "
-        f"an impact answer is {low['ratio']:,}x ({names.get(low['repo'], low['repo'])}) to {high['ratio']:,}x ({names.get(high['repo'], high['repo'])}) smaller than the source"
-        + (", and all 100 answers are complete. " if complete else ". ")
-        + f"On the three repositories where Graphify 0.9.110 was run (`graphify benchmark`, same commits, its own corpus estimate), Graphify reports "
-        + ", ".join(f"{r['graphify']['ratio']}x" for r in graphify[:-1]) + f" and {graphify[-1]['graphify']['ratio']}x; "
-        + "Wingbox's answers on that same corpus estimate give "
-        + ", ".join(f"{r['graphify']['wingbox_ratio_on_graphify_corpus']:,}x" for r in graphify[:-1])
-        + f" and {graphify[-1]['graphify']['wingbox_ratio_on_graphify_corpus']:,}x. "
-        "The two tools answer different questions (Graphify: five fixed questions per repository, not graded; Wingbox: the impact of 20 files per repository, "
-        "each checked against the import statements), so this compares answer size, not quality.")
+    add("`graphify benchmark` reports \"Nx fewer tokens per query\": its estimate of the corpus tokens divided by the average size of its answers. "
+        "`tools/context_ratio.py` divides the same corpus estimate, taken from `graphify benchmark` 0.9.110 on the same commits "
+        "(`results/graphify_benchmark.json`, code-only graphs), by the average size of the Wingbox impact answers above. "
+        "Results in `results/context_ratio.json`:")
     add("")
-    add("    python3 tools/context_ratio.py <folder with the checkouts> [graphify.json]")
+    add("| Repository | Corpus (Graphify's estimate) | Wingbox | Graphify | Wingbox answers complete |")
+    add("|---|---|---|---|---|")
+    for r in rows:
+        add(f"| {r['repo']} | {r['graphify_corpus_tokens']:,} | {r['ratio']:,}x | {r['graphify_ratio']:,}x | {r['complete_answers']} of {r['questions']} |")
+    add("")
+    add("The two tools answer different questions: Graphify five fixed questions per repository, not graded; Wingbox the impact of 20 files per repository, "
+        "each answer checked against the import statements. So this compares answer size on one corpus count, not answer quality. "
+        "The script also keeps an independent corpus estimate (characters / 4 over the source files, without vendored bundles and minified files) for reference.")
+    add("")
+    add("    python3 tools/context_ratio.py <folder with the checkouts> results/graphify_benchmark.json")
 open(out_path, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 print("written", out_path, len(lines), "lines")
