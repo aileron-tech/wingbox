@@ -106,7 +106,7 @@ layers:
 |---|---|
 | ![The Wingbox map of the immich server in the layers view, turning slowly, with the 30 modules reached by a change to src/dtos/asset.dto.ts highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/demo-layers.webp) | ![Layers view of the Wingbox map with src/services/base.service.ts selected: 65 direct dependents, 281 modules within two hops](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/map-layers-hub.webp) |
 
-More pictures and a short walk-through: [aileron-tech.fr/wingbox](https://aileron-tech.fr/wingbox).
+Benchmarks with charts, a sample report and the live map: [wingbox.dev](https://wingbox.dev).
 
 ## What can Wingbox answer?
 

@@ -50,7 +50,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/aileron-tech/wingbox"
+Homepage = "https://wingbox.dev"
 Repository = "https://github.com/aileron-tech/wingbox"
 Changelog = "https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md"
 Issues = "https://github.com/aileron-tech/wingbox/issues"
