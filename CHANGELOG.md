@@ -4,6 +4,11 @@
 
 ### Changes
 
+- The symbol table of a TypeScript file holds every top-level definition:
+  abstract classes, generator functions, `var`, `let` without a value,
+  `declare` statements and namespaces are entities, and enums list their
+  members. Every Python, TypeScript and Rust file records its import bindings
+  and what it re-exports (`pub use`, `export ... from`, package imports).
 - `entity S` names every file that uses S in Python and Rust, as the language
   tooling's find usages does. Python: public module-level variables, constants
   and type aliases are entities, `m.S` after `from pkg import m` or `import

@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-16 - symbol table per file (step 1 of the symbol index)
+
+### Changes
+- `scripts/lang/interface.py`: `BindingPayload.scope` tells a binding in the file's scope from a re-export that binds nothing locally (TypeScript `export ... from`); module "" names the file itself.
+- `scripts/lang/typescript/parser.py`: entities for `abstract class`, `function*`, `var`, `let`/`const` without a value, `declare` statements (unwrapped) and namespaces (kind `module`); enum members listed as the enum's methods. An abstract class has no bases in its entity, so interface edges and module dependencies stay as they were.
+- `scripts/lang/typescript/symbols.py` (new): bindings of named, aliased, default, namespace and `import x = require()` imports, and of `export { X as Y } from`, `export * from`, `export * as ns from`, `export default <name>`.
+- Tests: REQ-LANG-008, REQ-LANG-009.
+
+### Motivation
+- Maintainer: build the full symbol index on the tree-sitter and `ast` walk Wingbox already does; step 1 is a symbol table per file with every top-level definition and what the file re-exports.
+
+### Verification
+- Refactoring benchmark: TypeScript 40/40 exact, Rust 40/40, Python 20/20 (resolution unchanged for Python and Rust); suite on 3.12 and 3.11.
+
 ## 2026-11-16 - entity S: every file that uses S in Python and Rust
 
 ### Changes

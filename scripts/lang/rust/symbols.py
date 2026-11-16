@@ -231,12 +231,12 @@ def use_bindings_and_sites(
             names = [name for name, _line, _col in segments]
             if glob:
                 if names and not stays_inside:
-                    bindings.append({"local": "*", "module": "::".join(names), "name": "*", "export": exported})
+                    bindings.append({"local": "*", "module": "::".join(names), "name": "*", "export": exported, "scope": True})
                 continue
             add_use(segments)
             if len(names) >= 2 and not stays_inside:
                 bindings.append({"local": alias or names[-1], "module": "::".join(names[:-1]),
-                                 "name": names[-1], "export": exported})
+                                 "name": names[-1], "export": exported, "scope": True})
 
     def visit_tokens(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
         children = node.children

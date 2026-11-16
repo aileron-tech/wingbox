@@ -96,15 +96,15 @@ def module_bindings(tree: ast.Module) -> list[BindingPayload]:
         if isinstance(statement, ast.Import):
             for alias in statement.names:
                 if alias.asname:
-                    bindings.append({"local": alias.asname, "module": alias.name, "name": "", "export": True})
+                    bindings.append({"local": alias.asname, "module": alias.name, "name": "", "export": True, "scope": True})
                 else:
                     first = alias.name.split(".")[0]
-                    bindings.append({"local": first, "module": first, "name": "", "export": True})
+                    bindings.append({"local": first, "module": first, "name": "", "export": True, "scope": True})
         elif isinstance(statement, ast.ImportFrom):
             module = "." * statement.level + (statement.module or "")
             for alias in statement.names:
                 bindings.append({"local": alias.asname or alias.name, "module": module,
-                                 "name": alias.name, "export": True})
+                                 "name": alias.name, "export": True, "scope": True})
     return bindings
 
 

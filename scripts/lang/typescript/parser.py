@@ -10,6 +10,7 @@ from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .javascript import is_javascript_file
+from .symbols import module_bindings
 
 
 _TS_LANG = _TsLanguage(_tst.language_typescript())
@@ -306,6 +307,12 @@ def parse_typescript_treesitter(
                     continue
                 target = child
                 break
+        if target.type == "ambient_declaration":
+            # declare const x: T; declare function f(); declare class C {}
+            target = next((child for child in target.named_children), target)
+        elif target.type == "expression_statement" and target.named_children \
+                and target.named_children[0].type == "internal_module":
+            target = target.named_children[0]
 
         # -- Imports --
         if node.type == "import_statement":
@@ -364,6 +371,32 @@ def parse_typescript_treesitter(
             ))
             exported_names.append(name)
 
+        # -- Abstract class: an entity like a class; its heritage stays out of the
+        # interface edges so that module dependencies do not change.
+        elif target.type == "abstract_class_declaration":
+            name_node = target.child_by_field_name("name")
+            if not name_node:
+                continue
+            name = _node_text(name_node)
+            entities.append(Entity(
+                name=name, kind="class", line=target.start_point[0] + 1,
+                methods=_ts_get_methods(target),
+                decorators=_ts_get_decorators(node if is_export else target), bases=[],
+            ))
+            exported_names.append(name)
+
+        # -- Namespace --
+        elif target.type == "internal_module":
+            name_node = target.child_by_field_name("name")
+            if not name_node or name_node.type != "identifier":
+                continue
+            name = _node_text(name_node)
+            entities.append(Entity(
+                name=name, kind="module", line=target.start_point[0] + 1,
+                methods=[], decorators=[], bases=[],
+            ))
+            exported_names.append(name)
+
         # -- Interface --
         elif target.type == "interface_declaration":
             name_node = target.child_by_field_name("name")
@@ -392,21 +425,27 @@ def parse_typescript_treesitter(
             ))
             exported_names.append(name)
 
-        # -- Enum --
+        # -- Enum (its members are listed as methods, as Rust variants) --
         elif target.type == "enum_declaration":
             name_node = target.child_by_field_name("name")
             if not name_node:
                 continue
             name = _node_text(name_node)
             line = target.start_point[0] + 1
+            body = target.child_by_field_name("body")
+            members = [
+                _node_text(member.child_by_field_name("name") if member.type == "enum_assignment" else member)
+                for member in (body.named_children if body is not None else [])
+                if member.type in ("property_identifier", "enum_assignment")
+            ]
             entities.append(Entity(
                 name=name, kind="enum", line=line,
-                methods=[], decorators=[], bases=[],
+                methods=[member for member in members if member], decorators=[], bases=[],
             ))
             exported_names.append(name)
 
         # -- Function --
-        elif target.type == "function_declaration":
+        elif target.type in ("function_declaration", "generator_function_declaration", "function_signature"):
             name_node = target.child_by_field_name("name")
             if not name_node:
                 continue
@@ -420,7 +459,7 @@ def parse_typescript_treesitter(
             exported_names.append(name)
 
         # -- Lexical declaration (const/let) --
-        elif target.type == "lexical_declaration":
+        elif target.type in ("lexical_declaration", "variable_declaration"):
             for declarator in target.children:
                 if declarator.type != "variable_declarator":
                     continue
@@ -431,6 +470,12 @@ def parse_typescript_treesitter(
                 line = declarator.start_point[0] + 1
                 value = declarator.child_by_field_name("value")
                 if not value:
+                    # let x; declare const x: T;
+                    entities.append(Entity(
+                        name=name, kind="function", line=line,
+                        methods=[], decorators=[], bases=[],
+                    ))
+                    exported_names.append(name)
                     continue
                 # Object literal: extract keys as methods
                 if value.type == "object":
@@ -474,4 +519,5 @@ def parse_typescript_treesitter(
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
         import_forms=_ts_import_forms(root),
+        bindings=module_bindings(root),
     )

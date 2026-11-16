@@ -191,5 +191,82 @@ class RustSymbolUsageTests(unittest.TestCase):
         self.assertEqual({"src/user"}, _users(edges, "src/other", "link"))
 
 
+def _parsed(relative_path: str, content: str) -> dict:
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        language = detect_source_language(path.name)
+        assert language is not None, relative_path
+        result = parse_file((str(path), language, "repo"))
+    return {
+        "entities": {entity["name"]: entity for entity in result.entities},
+        "bindings": [(b["local"], b["module"], b["name"], b["export"], b["scope"]) for b in result.bindings],
+    }
+
+
+class SymbolTableTests(unittest.TestCase):
+    def test_typescript_symbol_table_lists_every_top_level_definition_and_reexport(self) -> None:
+        """/* REQ-LANG-008: the symbol table of a TypeScript file holds every top-level definition (abstract classes, generators, var and let without a value, declare, namespaces, enums with their members) and its bindings: named, aliased, default and namespace imports in scope, `export { X as Y } from`, `export * from`, `export * as ns from` and `export default` for importers only. */"""
+        table = _parsed("src/mod.ts", (
+            "import D, * as ns from './a';\n"
+            "import { X as Y, Z } from './b';\n"
+            "export { P as Q, R } from './c';\n"
+            "export * from './d';\n"
+            "export * as nsx from './e';\n"
+            "export abstract class Base {}\n"
+            "export function* gen() {}\n"
+            "var counter = 1;\n"
+            "export let later;\n"
+            "export declare const declared: number;\n"
+            "namespace Space { export const inner = 1; }\n"
+            "export enum Color { Red, Green = 2 }\n"
+            "export default function main() {}\n"
+        ))
+        entities = table["entities"]
+        for name, kind in (("Base", "class"), ("gen", "function"), ("counter", "function"), ("later", "function"),
+                           ("declared", "function"), ("Space", "module"), ("Color", "enum"), ("main", "function")):
+            self.assertEqual(kind, entities[name]["kind"], name)
+        self.assertNotIn("inner", entities)
+        self.assertEqual(["Red", "Green"], entities["Color"].get("methods"))
+        self.assertEqual([
+            ("D", "./a", "default", False, True),
+            ("ns", "./a", "", False, True),
+            ("Y", "./b", "X", False, True),
+            ("Z", "./b", "Z", False, True),
+            ("Q", "./c", "P", True, False),
+            ("R", "./c", "R", True, False),
+            ("*", "./d", "*", True, False),
+            ("nsx", "./e", "", True, False),
+            ("default", "", "main", True, False),
+        ], table["bindings"])
+
+    def test_python_and_rust_symbol_tables_list_definitions_and_reexports(self) -> None:
+        """/* REQ-LANG-009: the symbol table of a Python file holds its module-level imports as bindings importers see (a package re-export), and that of a Rust file its items (enums with their variants) and its `use` bindings, `pub use` marked as re-exports. */"""
+        python = _parsed("pkg/__init__.py", "import os.path\nimport json as j\nfrom .impl import run as start\nfrom .impl import *\n")
+        self.assertEqual([
+            ("os", "os", "", True, True),
+            ("j", "json", "", True, True),
+            ("start", ".impl", "run", True, True),
+            ("*", ".impl", "*", True, True),
+        ], python["bindings"])
+        rust = _parsed("src/lib.rs", (
+            "mod net;\n"
+            "pub use net::{Reach as Route, host};\n"
+            "use crate::model::*;\n"
+            "pub enum Status { Ready, Done }\n"
+            "pub trait Runner {}\n"
+            "pub static LIMIT: u32 = 3;\n"
+        ))
+        self.assertEqual(["Ready", "Done"], rust["entities"]["Status"].get("methods"))
+        for name in ("Runner", "LIMIT", "Status"):
+            self.assertIn(name, rust["entities"])
+        self.assertEqual([
+            ("Route", "net", "Reach", True, True),
+            ("host", "net", "host", True, True),
+            ("*", "crate::model", "*", False, True),
+        ], rust["bindings"])
+
+
 if __name__ == "__main__":
     unittest.main()
