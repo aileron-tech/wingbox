@@ -53,15 +53,16 @@ this file applies to you.
 - ASCII only. `.gitignore` changes only when the name of a generated file
   changes.
 - A user-facing change updates `README.md` and `SKILL.md` (command tables),
-  `CHANGELOG.md` (dated heading, `### Changes` before `### Fixes`) and `LOG.md`
-  (what changed and why).
+  `CHANGELOG.md` (under `## Unreleased`, `### Changes` before `### Fixes`)
+  and `LOG.md` (what changed and why).
 
 ## 3. Publishing a version
 
 Follow these steps in order when the maintainer asks for a release.
 
 1. Choose X.Y.Z: patch for fixes and documentation, minor for a new command.
-   Set `version` in `pyproject.toml`, add the entry to `CHANGELOG.md` and to
+   Set `version` in `pyproject.toml`, rename `## Unreleased` in `CHANGELOG.md`
+   to `## X.Y.Z - YYYY-MM-DD` (one heading per version), add the entry to
    `LOG.md`; pull request, squash merge.
 2. Create the GitHub release; the tag equals the version in `pyproject.toml`:
 
