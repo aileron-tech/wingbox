@@ -150,6 +150,6 @@
 <text x="307" y="444" text-anchor="middle" font-family="GeistMono NF, Menlo, monospace" font-size="18" fill="#bae6fd">blast radius</text>
 <rect x="402.8" y="418" width="197" height="40" rx="20" fill="#0f2242" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
 <text x="501" y="444" text-anchor="middle" font-family="GeistMono NF, Menlo, monospace" font-size="18" fill="#bae6fd">impact analysis</text>
-<text x="72" y="528" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="22" fill="#94a3b8">Works with Claude Code and Codex. Runs locally.</text>
+<text x="72" y="528" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="22" fill="#94a3b8">Claude Code, Codex, Cursor, MCP. Runs locally.</text>
 <text x="72" y="572" font-family="Menlo, Monaco, monospace" font-size="20" fill="#7dd3fc">github.com/aileron-tech/wingbox</text>
 </svg>
