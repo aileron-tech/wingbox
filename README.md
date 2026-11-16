@@ -327,7 +327,7 @@ home directory: `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
   runs that command. In Codex the skill is called as `$wingbox`.
 
 Every result is a list of facts: `--sexp` prints them as S-expressions such as
-`(install-wrote ~/.claude/skills/wingbox :what skill :assistant (claude-code) :version 0.2.5)`,
+`(install-wrote ~/.claude/skills/wingbox :what skill :assistant (claude-code) :version 0.2.6)`,
 and the default output is the same facts as aligned text.
 
 ### Update
@@ -437,6 +437,90 @@ python3 scripts/code_graph_search.py \
 
 The code graph is written to `.code_graph.sexp`. Wingbox does not modify the
 source files it analyzes.
+
+## Use from an MCP client
+
+`wingbox mcp` runs Wingbox as an MCP (Model Context Protocol) server: the
+client starts the command, sends JSON-RPC requests on its standard input and
+reads the answers on its standard output. The transport is stdio only: no
+port, no network. Logs go to standard error.
+
+```bash
+wingbox mcp                         # serve the current directory
+wingbox mcp --root /path/to/project
+```
+
+The server speaks protocol revision 2026-07-28 (requests with per-request
+`_meta`, `server/discover`) and the `initialize` handshake of revisions
+2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05.
+
+| Tool | What it answers |
+|---|---|
+| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) |
+| `impact` | Blast radius of a file, as text (`target`, `depth`, `all`) |
+| `analyze`, `quick` | Full analysis of a module, or of the first module matching a keyword |
+| `boundary`, `boundaries`, `layers` | Files to read for a change; layer violations; modules by layer |
+| `deps`, `rdeps` | Dependency and reverse dependency trees |
+| `entity`, `find_function`, `find_type` | Where a name is defined and used |
+| `find_callers`, `find_calls`, `find_callchain` | Call graph questions |
+| `diff_functions` | Functions changed since a git ref |
+| `query` | A Scheme query on the graph |
+
+Each tool returns the output of the `wingbox` command of the same name. A
+query tool called before the graph exists answers that `build` must be called
+first. Answers stop at 200 items; `all: true` lists everything. The graph is
+read once and read again when `.code_graph.sexp` changes.
+
+Claude Code, in the project directory:
+
+```bash
+claude mcp add wingbox -- wingbox mcp
+```
+
+`--scope project` writes the server into `.mcp.json` for everyone working on
+the project; `--scope user` makes it available in all your projects.
+
+Codex, in `~/.codex/config.toml` (or `codex mcp add wingbox -- wingbox mcp`):
+
+```toml
+[mcp_servers.wingbox]
+command = "wingbox"
+args = ["mcp"]
+cwd = "/path/to/project"
+```
+
+Cursor, in `.cursor/mcp.json` of the project (or `~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "wingbox": {
+      "command": "wingbox",
+      "args": ["mcp", "--root", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+Claude Desktop, in
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.
+Claude Desktop starts servers in an undefined directory and with a reduced
+`PATH`, so give absolute paths for the command and the project (`which wingbox`
+prints the first):
+
+```json
+{
+  "mcpServers": {
+    "wingbox": {
+      "command": "/absolute/path/to/wingbox",
+      "args": ["mcp", "--root", "/absolute/path/to/project"]
+    }
+  }
+}
+```
+
+Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
+(`"command": "uvx", "args": ["wingbox", "mcp", ...]`).
 
 ## Common code searches
 
@@ -609,7 +693,9 @@ the functions changed since a git ref.
 
 Codex, Claude Code, Gemini CLI, Cursor, GitHub Copilot, and other clients
 that support Agent Skills; `wingbox install` sets up the ones it finds on the
-machine. The scripts can also be run directly from the command line.
+machine. Any MCP client (Claude Code, Codex, Cursor, Claude Desktop) can also
+use it through `wingbox mcp`; see [Use from an MCP client](#use-from-an-mcp-client).
+The scripts can also be run directly from the command line.
 
 ### How is a code graph different from text search with grep or ripgrep?
 

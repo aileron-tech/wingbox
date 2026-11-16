@@ -13,6 +13,7 @@
                                             Upgrade with the installer that installed Wingbox (pipx, uv
                                             or pip), then refresh what install put in place
     wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
+    wingbox mcp [--root DIR]                Run the MCP server on stdio for an MCP client (default: current directory)
     wingbox --version
 
 Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
@@ -309,6 +310,10 @@ def _run(argv: Optional[list[str]] = None) -> int:
         if any(argument in ("-h", "--help") for argument in rest):
             return int(load_script("build_code_graph").main(rest))
         return _build(build_arguments(rest, cwd))
+    if command == "mcp":
+        from wingbox import mcp_server
+
+        return mcp_server.main(rest, cwd)
     if command == "infra":
         sys.argv = ["wingbox infra"] + absolutize_path_options(rest, cwd)
         load_script("build_infra_topology").main()
