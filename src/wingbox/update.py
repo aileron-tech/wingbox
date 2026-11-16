@@ -130,10 +130,10 @@ def choose_method(origin: Origin, python: str, prefix: str, run: Runner) -> Unio
         if origin.editable:
             return CannotUpdate("editable-install", f"git -C {origin.location} pull")
         return CannotUpdate("local-install", f"{python} -m pip install --upgrade {origin.location}")
+    # pipx exits 1 when any other package has a missing interpreter, yet still lists wingbox: trust the listing.
     pipx = run(("pipx", "list", "--short"))
     if (
-        pipx.status == 0
-        and _lists_wingbox(pipx.output)
+        _lists_wingbox(pipx.output)
         and _runs_from(prefix, run, ("pipx", "environment", "--value", "PIPX_LOCAL_VENVS"))
     ):
         return Method("pipx", ("pipx", "upgrade", PACKAGE), ("pipx", "runpip", PACKAGE, "index", "versions", PACKAGE))

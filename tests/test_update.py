@@ -97,6 +97,20 @@ class MethodDetectionTest(unittest.TestCase):
         assert isinstance(method, update.Method)
         self.assertEqual("pip", method.name)
 
+    def test_pipx_is_chosen_when_another_pipx_package_is_broken(self) -> None:
+        """/* REQ-UPDATE-008: `wingbox update` must choose pipx when `pipx list --short` names wingbox but exits 1 because another package has a missing interpreter, as pipx does. */"""
+        stubs = StubInstallers(self)
+        stubs.add(
+            "pipx",
+            'if [ "$1" = list ]; then echo "poetry 1.8.3"; echo "wingbox 0.2.5"; '
+            'echo "   package pipenv has invalid interpreter /usr/bin/python3.9"; '
+            'echo "One or more packages have a missing python interpreter." >&2; exit 1; fi\n'
+            'if [ "$1" = environment ]; then echo "${0%/*}/../venvs"; exit 0; fi',
+        )
+        method = update.choose_method(update.FromIndex(), "/envs/w/bin/python", stubs.pipx_env, update.run_installer)
+        assert isinstance(method, update.Method)
+        self.assertEqual(("pipx", ("pipx", "upgrade", "wingbox")), (method.name, method.upgrade))
+
     def test_docker_and_source_installs_say_what_to_run_instead(self) -> None:
         """/* REQ-UPDATE-002: in a Docker image or an editable or local install, `wingbox update` must change nothing, exit 1 and name the command to use instead. */"""
         stubs = StubInstallers(self)
