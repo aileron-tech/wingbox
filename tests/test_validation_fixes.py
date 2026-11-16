@@ -479,6 +479,33 @@ class TypeOnlyImportTest(unittest.TestCase):
         )
         self.assertIn("(boundaries-summary :violations 1 :type-only 1 :candidates 0 :checked 3)", lines)
 
+    def test_the_summary_counts_file_pairs_not_lines(self) -> None:
+        """/* REQ-CS-058: `boundaries-summary` must count pairs of files, as the report does; a pair that is printed once per relation (imports and data-flow) counts once. */"""
+        import io
+        from contextlib import redirect_stdout
+
+        from scripts import code_graph_search
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sexp_path = root / ".code_graph.sexp"
+            sexp_path.write_text(
+                "(code-graph :schema 1 :files 2 :nodes 2 :edges 2 :violations 0)\n"
+                "(paths\n  (src\n    (domain\n      (m0 order)\n    )\n    (repositories\n      (m1 order.repository)\n    )\n  )\n)\n"
+                '(node m0 ts "general module")\n(node m1 ts "general module")\n'
+                "(imports m0 m1)\n(data-flow m0 m1)\n",
+                encoding="utf-8",
+            )
+            graph = code_graph_search.CodeGraph()
+            self.assertIsInstance(graph.load(str(sexp_path), str(root)), code_graph_search.MapLoadOk)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code_graph_search.cmd_boundaries(graph, "all")
+            lines = output.getvalue().splitlines()
+
+        self.assertEqual(2, sum(line.startswith("(violation ") for line in lines), lines)
+        self.assertIn("(boundaries-summary :violations 1 :type-only 0 :candidates 0 :checked 2)", lines)
+
 
 class AnswerSizeTest(unittest.TestCase):
     def _hub(self, root: Path, dependents: int):

@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-16 - version 0.2.3: pair counts in the boundaries summary, build time
+
+### Changes
+- `pyproject.toml`: version 0.2.3; the package page takes the README of this version.
+- `scripts/code_graph_search.py` (`cmd_boundaries`): the summary counts pairs of files per kind; the lines stay one per relation.
+- `scripts/build_code_graph.py` (`_imports_types_only`): returns at once for a file without import forms, so only TypeScript files pay for the check.
+- Test: REQ-CS-058.
+- Measured on a Python library of 1,227 files, same machine, full build: 0.2.0 7.4 to 7.9 s, 0.2.2 9.4 to 9.5 s, this version 7.7 to 8.5 s.
+
+### Motivation
+- The summary of `boundaries` said 4 candidates where the report said 2 for the same repository. A timing on a hosted runner showed the build of a Python library slower in 0.2.2 than in 0.2.0.
 ## 2026-11-16 - README demo pictures rebuilt from 0.2.2
 
 ### Changes

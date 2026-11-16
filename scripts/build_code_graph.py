@@ -797,6 +797,8 @@ def _imports_types_only(
     type or an interface of target.
     """
     forms = source.import_forms
+    if not forms:
+        return False
     specifiers = {
         specifier
         for specifier in source.imports
