@@ -312,6 +312,11 @@ source files it analyzes.
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |
 
+`analyze` and `impact` always print the complete counts and list at most 200
+dependent files, nearest first; add `--all` for every file. `boundaries` reports
+an import of TypeScript types only apart from the violations: the compiler
+erases it, but a change of the type still reaches the importing file.
+
 Pass the same `--map` and `--root` options shown in the quick start when the map
 is outside the current directory.
 

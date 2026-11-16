@@ -1,5 +1,24 @@
 # Completion Log
 
+## 2026-11-16 - version 0.2.1: answer size, type-only imports, layer rules, map view
+
+### Changes
+- `pyproject.toml`: version 0.2.1.
+- `scripts/code_graph_search.py` (`cmd_analyze`, `cmd_impact`, `cmd_quick`, `main`): the lists stop at 200 dependent files (`_ANSWER_FILE_LIMIT`), nearest first, and a `*-more` line gives the number left out; `--all` lists every file; the counts are always complete. `analyze` names a dependent once (no `rdep` lines, `boundary-file` holds the module and its imports) and prints paths relative to the repository root.
+- `scripts/lang/typescript/parser.py` (`_ts_import_forms`), `scripts/lang/interface.py` (`FileResult.import_forms`), `scripts/build_code_graph.py` (`_imports_types_only`): an import edge is marked `:type-only` when every import of the target is `import type` or binds only names that the target defines as a type or an interface. `cmd_boundaries` prints such a crossing as `violation-type-only`; `src/wingbox/overview.py` lists it in its own table of the report and keeps it out of the violation count.
+- `scripts/lang/typescript/parser.py`: `import.meta.resolve('<literal>')` is a dependency.
+- `scripts/code_graph_search.py` (`_classify_layer_fallback`, `_classify_layer_by_path`): migrations and seeds are infrastructure before the schema rule; a file named like a layer folder and the index file of such a folder take that layer.
+- `scripts/lang/purpose.py`: `_is_test_file` replaces the rule that matched any path containing `/test`; the purpose is inferred from the path inside the repository (`scan_root`, set by `parse_file`); the suffix rule that turned a class named `...API` into an "API client" is removed. `CACHE_SCHEMA_VERSION` is 2, so old caches are rebuilt.
+- `src/wingbox/cli.py`: a closed output pipe ends the command with status 0.
+- `pyproject.toml`: the paths of the source archive are anchored at the root, so `benchmarks/graphify/README.md` is no longer packed as a second `README.md`.
+- `src/wingbox/overview.py`: the summary row is named "Functions, constants, classes and types".
+- `src/wingbox/assets/map_template.html`: a resize before the first interaction keeps the framing of the selected file instead of fitting the whole graph while the blast radius is still unfolding; the layer names use the same corner on every plane and are kept 32 px apart; the layers turn on slow frames too, so they keep turning while a file is selected; the note under the layer matrix and the violations list name the imports of types only.
+- Tests: REQ-CS-054 to REQ-CS-057, REQ-OUT-013 to REQ-OUT-015, REQ-LANG-005 to REQ-LANG-007, REQ-TS-RT-001, REQ-CLI-007.
+- Verified on open-source repositories: a TypeScript server of 707 modules keeps its 3,795 import edges, its boundary violations go from 8 to 0 with 6 type-only imports listed apart (every marked edge checked against the source text), its domain layer from 237 to 134 modules; on a Python library of 1,223 files the import edges are unchanged (1,818), the `analyze` answer for the file with 650 direct dependents goes from about 55,000 to about 8,800 tokens, and the five questions of `benchmarks/graphify` keep their exact answers.
+
+### Motivation
+- A check of version 0.2.0 against the source of a TypeScript server showed migrations counted as domain, an email template counted as a test, and boundary violations that were imports of a type only. The benchmark showed that the answer for a hub file had no upper bound and named every dependent three times with an absolute path.
+
 ## 2026-11-16 - benchmark: build time results (test E)
 
 ### Changes

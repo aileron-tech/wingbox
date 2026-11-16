@@ -61,6 +61,7 @@ class Overview:
     placed_by_path: int         # modules whose layer comes from their folders
     placed_by_role: int         # modules whose layer is a guess from the file role
     unplaced: int               # modules no layer rule applies to
+    type_only_crossings: tuple[ViolationInfo, ...] = ()   # imports of types only across a layer boundary
 
 
 def _layer_rank(layer: str) -> int:
@@ -128,15 +129,28 @@ def build_overview(graph: Any, search: Any, project: str) -> Overview:
     )
     basis = {module.id: module.layer_basis for module in modules}
     rule_breaks = sorted(set(search.boundary_violations(graph, known)))
-    # A rule break counts only when both layers come from folders. A layer guessed from the
+    # A rule break counts only when both layers come from folders or the file type. A layer guessed from the
     # role of a file is too weak a ground to call a dependency a violation.
-    violations = tuple(
+    # An import of types only is erased at build time: listed apart, never a violation.
+    type_only_pairs = {
+        (source, target)
+        for source, target, _, _, kind, _ in rule_breaks
+        if kind == "imports" and search.is_type_only_import(graph, source, target)
+    }
+    infos = tuple(
         ViolationInfo(
             source=source, target=target, source_layer=source_layer,
             target_layer=target_layer, kind=kind, reason=reason,
         )
         for source, target, source_layer, target_layer, kind, reason in rule_breaks
-        if basis.get(source) == "path" and basis.get(target) == "path"
+    )
+    type_only_crossings = tuple(
+        item for item in infos if item.kind == "imports" and (item.source, item.target) in type_only_pairs
+    )
+    violations = tuple(
+        item
+        for item in infos
+        if item not in type_only_crossings and basis.get(item.source) == "path" and basis.get(item.target) == "path"
     )
     layer_counts = _count([module.layer for module in modules])
     language_counts = _count([module.lang or "unknown" for module in modules])
@@ -149,8 +163,11 @@ def build_overview(graph: Any, search: Any, project: str) -> Overview:
         languages=tuple(sorted(language_counts.items(), key=lambda item: (-item[1], item[0]))),
         entity_count=sum(len(entities) for entities in graph.entities.values()),
         boundary_rules=tuple(search.BOUNDARY_DENY_RULES),
-        violation_candidates=len({(item[0], item[1]) for item in rule_breaks})
-        - len({(item.source, item.target) for item in violations}),
+        violation_candidates=len(
+            {(item.source, item.target) for item in infos if item not in type_only_crossings}
+            - {(item.source, item.target) for item in violations}
+        ),
+        type_only_crossings=type_only_crossings,
         placed_by_path=sum(1 for module in modules if module.layer_basis == "path"),
         placed_by_role=sum(1 for module in modules if module.layer_basis == "role"),
         unplaced=sum(1 for module in modules if module.layer_basis == "none"),
@@ -252,7 +269,7 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         "|---|---|",
         f"| Modules | {_number(module_count)} |",
         f"| Dependencies between modules | {_number(len(view.edges))} |",
-        f"| Functions, classes and types | {_number(view.entity_count)} |",
+        f"| Functions, constants, classes and types | {_number(view.entity_count)} |",
         "| Languages | " + ", ".join(f"{lang} {_number(count)}" for lang, count in view.languages) + " |",
         f"| Boundary violations | {_number(len(view.violations))} |",
         "",
@@ -289,7 +306,7 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
     if view.violations:
         lines += [
             "Dependencies that cross an architecture boundary in the wrong direction, by the default "
-            "layer rules. Only pairs where both layers come from folders are listed; layers are inferred "
+            "layer rules. Only pairs where both layers come from folders or from the file type (a `.tsx` component is UI) are listed; layers are inferred "
             "from paths and file roles, so read each line before acting on it.",
             "",
             "| From | To | Rule broken |",
@@ -317,6 +334,25 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
             f"{_plural(view.violation_candidates, 'more candidate')} where a layer is only guessed from "
             "the role of a file: `wingbox boundaries all` lists them.",
         ]
+
+    if view.type_only_crossings:
+        count = len(view.type_only_crossings)
+        lines += [
+            "",
+            f"{_plural(count, 'import')} of types only "
+            f"{'crosses' if count == 1 else 'cross'} a layer boundary. The compiler erases such an import, "
+            "so it is not counted as a violation; a change of the type still reaches the importing file.",
+            "",
+            "| From | To |",
+            "|---|---|",
+        ]
+        lines += [
+            f"| {_code(files.get(item.source, item.source))} ({item.source_layer}) "
+            f"| {_code(files.get(item.target, item.target))} ({item.target_layer}) |"
+            for item in view.type_only_crossings[:_TOP_VIOLATIONS]
+        ]
+        if count > _TOP_VIOLATIONS:
+            lines += ["", f"Showing {_TOP_VIOLATIONS} of {_number(count)}. Full list: `wingbox boundaries all`."]
 
     lines += ["", "## Where to start reading", ""]
     if starts:

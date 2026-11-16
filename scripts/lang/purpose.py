@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import re
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 
 from .interface import Entity, EntityPayload
@@ -32,6 +35,50 @@ def _fuzzy_suffix_match(name: str, suffix: str, max_dist: int = 1) -> bool:
     return _levenshtein(tail.lower(), suffix.lower()) <= max_dist
 
 
+_TEST_FOLDER_NAMES = frozenset({"test", "tests", "__tests__", "e2e", "testdata"})
+_TEST_FOLDER_PREFIXES = ("test-", "test_", "tests-", "tests_")
+_TEST_STEM_ENDINGS = (".test", ".spec", "_test", "_spec", ".test-d")
+
+
+def _is_test_file(rel: str) -> bool:
+    """True for a file in a test folder or named as a test.
+
+    A name that only begins with the letters "test" (test.email.tsx,
+    testclient.py, a testimonials folder) is not a test.
+    """
+    *folders, name = rel.split("/")
+    stem = name.rsplit(".", 1)[0]
+    return (
+        any(folder in _TEST_FOLDER_NAMES or folder.startswith(_TEST_FOLDER_PREFIXES) for folder in folders)
+        or name.startswith("test_")
+        or stem.endswith(_TEST_STEM_ENDINGS)
+    )
+
+
+# Root of the scan while a file is parsed: the purpose is inferred from the path
+# inside the repository, never from the folders above it.
+_SCAN_ROOT: ContextVar[str] = ContextVar("wingbox_scan_root", default="")
+
+
+@contextmanager
+def scan_root(root: str) -> Iterator[None]:
+    """Infer purposes from paths relative to root for the duration of the block."""
+    token = _SCAN_ROOT.set(os.path.abspath(root) if root else "")
+    try:
+        yield
+    finally:
+        _SCAN_ROOT.reset(token)
+
+
+def _path_in_repository(path: str) -> str:
+    root = _SCAN_ROOT.get()
+    if root and os.path.isabs(path):
+        relative = os.path.relpath(path, root)
+        if not relative.startswith(".."):
+            path = relative
+    return "/" + path.replace(os.sep, "/").lstrip("/")
+
+
 def infer_purpose(
     path: str,
     content: str,
@@ -40,7 +87,7 @@ def infer_purpose(
 ) -> str:
     """Infer architectural purpose from path, content, and entity names."""
     parts = []
-    rel = path.lower()
+    rel = _path_in_repository(path).lower()
 
     # Path-based heuristics
     if language == "ruby" and "/app/models/" in rel:
@@ -71,7 +118,7 @@ def infer_purpose(
         parts.append("page/route")
     elif "/migrations/" in rel:
         parts.append("database migration")
-    elif "/test" in rel or ".test." in rel or ".spec." in rel:
+    elif _is_test_file(rel):
         parts.append("test")
     elif "/config" in rel:
         parts.append("configuration")
@@ -165,8 +212,6 @@ def infer_purpose(
         # SDK / API
         ("Sdk", "SDK", "sdk"),
         ("SDK", "SDK", "sdk"),
-        ("Api", "API client", "api client"),
-        ("API", "API client", "api client"),
     ]
 
     if entities:

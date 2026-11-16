@@ -155,12 +155,39 @@ def _ts_get_obj_keys(node) -> list[str]:  # type: ignore[no-untyped-def]
     return keys
 
 
-def _ts_dependency_specifiers(root) -> list[str]:  # type: ignore[no-untyped-def]
-    """Extract static and literal runtime dependencies in source order."""
-    dependencies: list[str] = []
-    seen: set[str] = set()
+def _ts_import_statement_form(node) -> str:  # type: ignore[no-untyped-def]
+    """Form of one import statement: "type", "named" or "value".
 
-    def _append_literal(node) -> None:  # type: ignore[no-untyped-def]
+    "type": `import type ...`, or named imports that all carry `type`.
+    "named": only named imports, at least one without `type`.
+    "value": a default, namespace or side-effect import.
+    """
+    clause = next((child for child in node.children if child.type == "import_clause"), None)
+    if clause is None:
+        return "value"
+    if any(child.type == "type" for child in node.children):
+        return "type"
+    if any(child.type in ("identifier", "namespace_import") for child in clause.children):
+        return "value"
+    specifiers = [
+        specifier
+        for child in clause.children
+        if child.type == "named_imports"
+        for specifier in child.children
+        if specifier.type == "import_specifier"
+    ]
+    if not specifiers:
+        return "value"
+    if all(any(part.type == "type" for part in specifier.children) for specifier in specifiers):
+        return "type"
+    return "named"
+
+
+def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
+    """Every static and literal runtime dependency in source order, with the form of its statement."""
+    occurrences: list[tuple[str, str]] = []
+
+    def _append_literal(node, form: str) -> None:  # type: ignore[no-untyped-def]
         if node is None or not node.text:
             return
         if node.type == "string":
@@ -174,13 +201,13 @@ def _ts_dependency_specifiers(root) -> list[str]:  # type: ignore[no-untyped-def
             specifier = node.text.decode("utf-8").strip("`")
         else:
             return
-        if specifier and specifier not in seen:
-            seen.add(specifier)
-            dependencies.append(specifier)
+        if specifier:
+            occurrences.append((specifier, form))
 
     def _visit(node) -> None:  # type: ignore[no-untyped-def]
         if node.type in ("import_statement", "export_statement"):
             source = node.child_by_field_name("source")
+            form = _ts_import_statement_form(node) if node.type == "import_statement" else "value"
             if source is None and node.type == "import_statement":
                 import_require = next(
                     (
@@ -192,7 +219,8 @@ def _ts_dependency_specifiers(root) -> list[str]:  # type: ignore[no-untyped-def
                 )
                 if import_require is not None:
                     source = import_require.child_by_field_name("source")
-            _append_literal(source)
+                    form = "value"
+            _append_literal(source, form)
         elif node.type == "call_expression":
             function = node.child_by_field_name("function")
             function_name = (
@@ -200,17 +228,39 @@ def _ts_dependency_specifiers(root) -> list[str]:  # type: ignore[no-untyped-def
                 if function is not None and function.text
                 else ""
             )
-            if function_name in ("import", "require"):
+            if function_name in ("import", "require", "import.meta.resolve"):
                 arguments = node.child_by_field_name("arguments")
                 if arguments is not None:
                     first_argument = next(iter(arguments.named_children), None)
-                    _append_literal(first_argument)
+                    _append_literal(first_argument, "value")
 
         for child in node.named_children:
             _visit(child)
 
     _visit(root)
-    return dependencies
+    return occurrences
+
+
+def _ts_dependency_specifiers(root) -> list[str]:  # type: ignore[no-untyped-def]
+    """Extract static and literal runtime dependencies in source order."""
+    return list(dict.fromkeys(specifier for specifier, _ in _ts_dependency_occurrences(root)))
+
+
+def _ts_import_forms(root) -> dict[str, str]:  # type: ignore[no-untyped-def]
+    """Specifiers that this file imports for names only, never as a value.
+
+    "type" when every statement that names the specifier is a type import,
+    "named" when every statement binds only named imports; a specifier with a
+    default, namespace, side-effect, re-export or runtime import is left out.
+    """
+    forms: dict[str, set[str]] = {}
+    for specifier, form in _ts_dependency_occurrences(root):
+        forms.setdefault(specifier, set()).add(form)
+    return {
+        specifier: "type" if seen == {"type"} else "named"
+        for specifier, seen in forms.items()
+        if "value" not in seen
+    }
 
 
 def parse_typescript_treesitter(
@@ -411,4 +461,5 @@ def parse_typescript_treesitter(
         entities=[e.to_dict() for e in entities],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
+        import_forms=_ts_import_forms(root),
     )

@@ -90,5 +90,24 @@ class WingboxCommandEndToEndTest(unittest.TestCase):
             self.assertIn(expected, output.getvalue())
 
 
+class ClosedPipeTest(unittest.TestCase):
+    def test_a_reader_that_closes_the_pipe_ends_the_command_quietly(self) -> None:
+        """/* REQ-CLI-007: when the reader of the output closes the pipe (`wingbox analyze x | head`), the command must end with status 0 and no traceback. */"""
+
+        class _Script:
+            @staticmethod
+            def main(_arguments: list[str]) -> int:
+                raise BrokenPipeError()
+
+        original = wingbox_cli.load_script
+        wingbox_cli.load_script = lambda _name: _Script
+        try:
+            status = wingbox_cli.main(["analyze", "src/app"])
+        finally:
+            wingbox_cli.load_script = original
+
+        self.assertEqual(0, status)
+
+
 if __name__ == "__main__":
     unittest.main()

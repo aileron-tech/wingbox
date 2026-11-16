@@ -4,10 +4,47 @@
 
 ### Changes
 
+- Package version 0.2.1.
+- `analyze` and `impact` print the complete counts and list at most 200
+  dependent files, nearest first; `--all` lists every file. A line
+  `analyze-more`, `key-entity-more`, `impact-more` or `read-first-more` gives
+  the number left out. On a file with 650 direct dependents the `analyze`
+  answer went from about 55,000 tokens to about 8,800.
+- `analyze` names each dependent file once, on its `analyze-dependent` line:
+  the `rdep` lines are gone and `boundary-file` names the module and the files
+  it imports. Paths in `analyze` are relative to the repository root.
+- `boundaries` prints a TypeScript import of types only across layers as
+  `(violation-type-only ...)` and counts it as `:type-only` in
+  `boundaries-summary`, not as a violation; the report lists these imports in
+  their own table. The builder marks such an import edge `:type-only`.
+- The builder records `import.meta.resolve('<literal>')` as a dependency (a
+  worker file loaded at run time).
 - Added `benchmarks/graphify`: Wingbox, Graphify and plain search measured on
   the same public repositories, with the scripts, the reference lists and the
   result files. `benchmarks/graphify/run.sh <work dir>` reproduces the tests
   that need no model. The README shows the summary table.
+
+### Fixes
+
+- Layers: a migration or seed file is infrastructure wherever its folder lies;
+  under a `schema` folder it used to be domain, which reported migrations that
+  import a repository as "domain imports infrastructure".
+- Layers: a file whose name or folder only begins with the letters "test"
+  (`test.email.tsx`, `testclient.py`, `testimonials/`) is no longer a test.
+- Layers: a file named like a layer folder (`types.ts`, `models.py`) and the
+  index file of such a folder (`controllers/index.ts`) belong to that layer.
+- The purpose of a file is inferred from its path inside the repository;
+  folders above the repository root (`/app/`, `/test/`) no longer change it.
+- A class whose name ends in `API` (`FastAPI`, `OpenAPI`) no longer makes its
+  module an "API client" in the infrastructure layer.
+- `wingbox <command> | head` ends quietly when the reader closes the pipe.
+- The map keeps the selected file in view when the window is resized right
+  after it opens with `#select=<file>`; the names of the layers no longer
+  overlap in the layers view; the layers keep turning while a file is selected.
+- The report says that a boundary violation is listed when both layers come
+  from folders or from the file type.
+- The report names the count of definitions "Functions, constants, classes and
+  types": module-level constants are recorded and counted with the functions.
 
 ## 2026-11-15
 

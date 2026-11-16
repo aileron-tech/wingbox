@@ -121,7 +121,7 @@ try:
             language_for_name,
             language_for_result,
         )
-        from .lang.purpose import infer_purpose
+        from .lang.purpose import infer_purpose, scan_root
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
         from .lang.source import file_hash
@@ -142,7 +142,7 @@ try:
             language_for_name,
             language_for_result,
         )
-        from lang.purpose import infer_purpose
+        from lang.purpose import infer_purpose, scan_root
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
         from lang.source import file_hash
@@ -194,7 +194,8 @@ DEFAULT_DISCOVERY_EXCLUSIONS = DiscoveryExclusions(
 
 CACHE_FILE = ".code_graph_cache.json"
 OUTPUT_FILE = ".code_graph.sexp"
-CACHE_SCHEMA_VERSION = 1
+# 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
+CACHE_SCHEMA_VERSION = 2
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-08-08-ruby"
 
@@ -294,12 +295,14 @@ def find_entity_column(content: str, entity_name: str, line_1based: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-def parse_file(args: tuple[str, str, str]) -> FileResult:
-    path, language_name, repo = args
+def parse_file(args: tuple[str, ...]) -> FileResult:
+    """Parse one file: (path, language, repository name[, scan root])."""
+    path, language_name, repo, *rest = args
     mtime = os.path.getmtime(path)
     with open(path, "r", encoding="utf-8", errors="replace") as source_file:
         content = source_file.read()
-    return language_for_name(language_name).parse(path, content, repo, mtime)
+    with scan_root(rest[0] if rest else ""):
+        return language_for_name(language_name).parse(path, content, repo, mtime)
 
 
 # ---------------------------------------------------------------------------
@@ -605,6 +608,9 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
         if not isinstance(raw_result.get(field_name), list):
             return Err(f"cache result field {field_name} must be a list")
 
+    if not isinstance(raw_result.get("import_forms", {}), dict):
+        return Err("cache result field import_forms must be an object")
+
     try:
         return Ok(FileResult(**raw_result))
     except TypeError as error:
@@ -775,6 +781,37 @@ def _resolve_provider(
     return None
 
 
+_TYPE_ENTITY_KINDS = frozenset({"interface", "type"})
+
+
+def _imports_types_only(
+    source: FileResult,
+    target_id: str,
+    target: FileResult,
+    bound_language: BoundLanguage,
+) -> bool:
+    """True when source imports target for types only (TypeScript erases such an import).
+
+    Every specifier of source that resolves to target must be imported for
+    names only; a name of a statement that is not `import type` must be a
+    type or an interface of target.
+    """
+    forms = source.import_forms
+    specifiers = {
+        specifier
+        for specifier in source.imports
+        if bound_language.resolve_import(specifier, source.path) == target_id
+    }
+    if not specifiers or any(specifier not in forms for specifier in specifiers):
+        return False
+    type_names = {entity["name"] for entity in target.entities if entity["kind"] in _TYPE_ENTITY_KINDS}
+    return all(
+        _resolve_target_entity(target.entities, name["original"], name["local"]) in type_names
+        for name in source.imported_names
+        if name["module"] in specifiers and forms[name["module"]] == "named"
+    )
+
+
 def _resolve_target_entity(
     entities: Sequence[EntityPayload],
     original_name: str,
@@ -861,7 +898,7 @@ def build_graph(
             "NestJS wiring module",
             "NestJS injectable",
         ):
-            enhanced = infer_purpose(r.path, "", r.language, r.entities)
+            enhanced = infer_purpose(rel_path, "", r.language, r.entities)
             if enhanced not in (
                 "general module",
                 "NestJS wiring module",
@@ -888,7 +925,8 @@ def build_graph(
         # Resolve all module dependencies before emission so relationship
         # metadata is merged onto one deterministic import edge.
         resolved_imports: dict[str, set[str]] = {}
-        for target_id in bound_language.resolve_additional_imports(r):
+        additional_targets = set(bound_language.resolve_additional_imports(r))
+        for target_id in sorted(additional_targets):
             if target_id != node_id:
                 resolved_imports.setdefault(target_id, set())
         for imp in r.imports:
@@ -942,15 +980,21 @@ def build_graph(
             seen_edges.add(edge_key)
             target_r = id_to_result.get(target_id)
             via_base = bool(target_r and target_r.exports_abstract)
-            edges.append(
-                {
-                    "source": node_id,
-                    "target": target_id,
-                    "type": "IMPORTS",
-                    "via_base": via_base,
-                    "relations": sorted(relations),
-                }
-            )
+            edge: dict[str, Any] = {
+                "source": node_id,
+                "target": target_id,
+                "type": "IMPORTS",
+                "via_base": via_base,
+                "relations": sorted(relations),
+            }
+            if (
+                target_r is not None
+                and not relations
+                and target_id not in additional_targets
+                and _imports_types_only(r, target_id, target_r, bound_language)
+            ):
+                edge["type_only"] = True
+            edges.append(edge)
 
         # -- CALLS_API edges (implements/extends + entity :bases) --
         # Source 1: FileResult.implements + extends (from heritage clauses)
@@ -2617,6 +2661,8 @@ def render_sexp(
 
         if etype == "IMPORTS":
             flags = " :via-base" if edge.get("via_base") else ""
+            if edge.get("type_only"):
+                flags += " :type-only"
             relation_flags = "".join(
                 f" :{relation}" for relation in sorted(edge.get("relations", []))
             )
@@ -2806,6 +2852,7 @@ def _serialize_file_result(result: FileResult) -> dict:
             "imported_names": result.imported_names,
             "exported_names": result.exported_names,
             "relations": result.relations,
+            "import_forms": result.import_forms,
         },
     }
 
@@ -2860,7 +2907,7 @@ def _run_build(options: BuilderOptions) -> int:
         if options.full_rebuild
         else load_cache(root, active_language_names, exclusions)
     )
-    to_parse: list[tuple[str, str, str]] = []
+    to_parse: list[tuple[str, ...]] = []
     cached_results: list[FileResult] = []
 
     for path, lang, repo in files:
@@ -2874,7 +2921,7 @@ def _run_build(options: BuilderOptions) -> int:
                 f"[code-graph] WARNING: rebuilding invalid cache entry for {path}: {cached_result.error}",
                 file=sys.stderr,
             )
-        to_parse.append((path, lang, repo))
+        to_parse.append((path, lang, repo, root))
 
     print(
         f"[code-graph] Parsing {len(to_parse)} changed files ({len(cached_results)} cached)"

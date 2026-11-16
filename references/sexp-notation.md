@@ -41,14 +41,21 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (analyze-dataflow <mod> <tgt> :lang py :validated)
 (refs <src> <tgt>::<Entity>)
 (analyze-dependent <mod> <src> :lang tsx :via imports refs :file <path>)
+(analyze-more <mod> :dependents 298 :rerun "analyze <mod> --all")
 (dep <root> <tgt> :lang py :via imports :depth 1)
-(rdep <root> <src> :lang tsx :via imports :depth 1)
 (key-entity <mod> <Name> :lang py :kind cls :line 32 :refs 7 :modules 4)
 (key-entity-ref <Name> <ref-mod> :lang ts)
+(key-entity-more <mod> <Name> :modules 185 :rerun "analyze <mod> --all")
 (boundary-file <mod> <file-path>)
 (layer <mod> <dep-name> :layer domain)
-(analyze-summary <mod> :entities 31 :imports 1 :dataflows 0 :refs 1 :dependents 50 :boundary-files 52)
+(analyze-summary <mod> :entities 31 :imports 1 :dataflows 0 :refs 1 :dependents 50 :boundary-files 2)
 ```
+
+Paths are relative to the repository root. Each dependent file is named once, on
+its `analyze-dependent` line; `boundary-file` names the module and the files it
+imports. The counts in `key-entity` and `analyze-summary` are always complete.
+Without `--all` the answer names at most 200 dependents and 20 modules per key
+entity; an `analyze-more` or `key-entity-more` line gives the number left out.
 
 ## entity Output
 
@@ -79,9 +86,31 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 
 ```scheme
 (violation <src> <tgt> :src-layer domain :tgt-layer api :via imports :lang ts "<reason>")
-(boundaries-summary :violations 2 :checked 3587)
+(violation-type-only <src> <tgt> :src-layer domain :tgt-layer infra :via imports :lang ts "<reason>")
+(violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts "<reason>")
+(boundaries-summary :violations 2 :type-only 6 :candidates 7 :checked 3587)
 (boundaries-ok :checked 3587)
 ```
+
+`violation`: both layers come from folders or the file type. `violation-type-only`:
+a TypeScript import of types or interfaces only (`import type`, or every imported
+name is a type or an interface of the target); the compiler erases it, so it is
+not counted as a violation, but a change of the type still reaches the importer.
+`violation-candidate`: a layer is only guessed from the role of a file.
+
+## impact Output (`--sexp`)
+
+```scheme
+(impact-root <mod> :lang ts :file <path>)
+(impact <root> <src> :lang ts :via imports :depth 1)
+(impact-more <root> :hidden 549 :rerun "impact <file> 2 --all")
+(impact-summary <root> :direct 650 :total 749 :depth 2)
+(read-first <path>)
+(read-first-more :hidden 640)
+```
+
+The counts are complete. Without `--all` at most 200 dependents are listed,
+nearest first, and `read-first` names the file and its first 10 direct dependents.
 
 ## invariants Output
 
