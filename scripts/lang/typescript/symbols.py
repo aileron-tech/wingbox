@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Iterator
 
-from tree_sitter import Node
+from tree_sitter import Language, Node, Query, QueryCursor
 
 from ..interface import BindingPayload, UsePayload
 
@@ -78,37 +78,6 @@ def _type_parameter_names(node: Node) -> set[str]:
         return set()
     return {_text(parameter.child_by_field_name("name")) for parameter in parameters.named_children
             if parameter.child_by_field_name("name") is not None}
-
-
-def _body_names(node: Node) -> set[str]:
-    """Names declared anywhere in a function body, nested functions excluded."""
-    names: set[str] = set()
-
-    def visit(current: Node) -> None:
-        kind = current.type
-        if kind == "variable_declarator":
-            names.update(pattern_names(current.child_by_field_name("name")))
-        elif kind in ("function_declaration", "generator_function_declaration", "class_declaration",
-                      "abstract_class_declaration", "enum_declaration", "interface_declaration",
-                      "type_alias_declaration"):
-            name = current.child_by_field_name("name")
-            if name is not None:
-                names.add(_text(name))
-        elif kind == "catch_clause":
-            names.update(pattern_names(current.child_by_field_name("parameter")))
-        elif kind in ("for_in_statement",):
-            names.update(pattern_names(current.child_by_field_name("left")))
-        elif kind == "import_statement":
-            return
-        if kind in _FUNCTION_NODES or kind in ("class_declaration", "class", "abstract_class_declaration"):
-            return
-        for child in current.named_children:
-            visit(child)
-
-    body = node.child_by_field_name("body")
-    if body is not None:
-        visit(body)
-    return names
 
 
 def module_bindings(root: Node) -> list[BindingPayload]:
@@ -278,51 +247,233 @@ def _use_kind(node: Node) -> str:
     return ""
 
 
-def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
-    """Use sites of names the file binds at module level (declarations and imports)."""
-    uses: list[UsePayload] = []
-    types_stack: list[dict[str, tuple[str, ...] | None]] = []
-    class_stack: list[str] = []
+_BLOCK_DECLARATIONS = frozenset({
+    "function_declaration", "generator_function_declaration", "class_declaration", "abstract_class_declaration",
+    "enum_declaration", "interface_declaration", "type_alias_declaration",
+})
+_MEMBER_CHAINS = frozenset({"member_expression", "nested_type_identifier", "nested_identifier"})
 
-    def local_type(name: str, scopes: tuple[frozenset[str], ...]) -> tuple[str, ...] | None:
-        for types in reversed(types_stack):
-            if name in types:
-                return types[name]
+
+def _function_names(node: Node) -> set[str]:
+    """Names a function binds for its whole body: parameters, type parameters, `var` declarations."""
+    parameters = node.child_by_field_name("parameter")
+    names = {_text(parameters)} if parameters is not None and parameters.type == "identifier" else \
+        _parameter_names(node) | _type_parameter_names(node)
+
+    def visit(current: Node) -> None:
+        if current.type == "variable_declaration":
+            for declarator in current.named_children:
+                if declarator.type == "variable_declarator":
+                    names.update(pattern_names(declarator.child_by_field_name("name")))
+        if current.type in _FUNCTION_NODES:
+            return
+        for child in current.named_children:
+            visit(child)
+
+    body = node.child_by_field_name("body")
+    if body is not None:
+        visit(body)
+    return names
+
+
+def _block_names(node: Node) -> set[str]:
+    """Names a block binds for itself only: let, const, classes, functions and types declared in it;
+    the let or const of a for loop; the parameter of a catch clause."""
+    names: set[str] = set()
+    if node.type == "catch_clause":
+        names.update(pattern_names(node.child_by_field_name("parameter")))
+        return names
+    if node.type in ("for_statement", "for_in_statement"):
+        for field in ("initializer", "left"):
+            declaration = node.child_by_field_name(field)
+            if declaration is not None and declaration.type == "lexical_declaration":
+                for declarator in declaration.named_children:
+                    if declarator.type == "variable_declarator":
+                        names.update(pattern_names(declarator.child_by_field_name("name")))
+            elif declaration is not None and field == "left" and node.child_by_field_name("kind") is not None:
+                names.update(pattern_names(declaration))
+        return names
+    for child in node.named_children:
+        target = child.child_by_field_name("declaration") if child.type == "export_statement" else child
+        if target is None:
+            continue
+        if target.type == "lexical_declaration":
+            for declarator in target.named_children:
+                if declarator.type == "variable_declarator":
+                    names.update(pattern_names(declarator.child_by_field_name("name")))
+        elif target.type in _BLOCK_DECLARATIONS:
+            name = target.child_by_field_name("name")
+            if name is not None:
+                names.add(_text(name))
+    return names
+
+
+_SCOPE_KINDS = {
+    **{kind: "function" for kind in _FUNCTION_NODES},
+    "statement_block": "block", "for_statement": "block", "for_in_statement": "block",
+    "catch_clause": "block", "class_body": "block", "switch_body": "block",
+}
+_TYPE_PARAMETER_OWNERS = frozenset({
+    "class_declaration", "class", "abstract_class_declaration", "interface_declaration", "type_alias_declaration",
+})
+_PATTERN_PARTS = frozenset({
+    "object_pattern", "array_pattern", "pair_pattern", "assignment_pattern", "object_assignment_pattern",
+    "rest_pattern",
+})
+_CLASS_NODES = frozenset({"class_declaration", "abstract_class_declaration", "class"})
+_LITERAL_RECEIVERS = frozenset({"string", "template_string", "array", "object", "number", "regex"})
+_NAME_QUERY = "[(identifier) (type_identifier) (shorthand_property_identifier)] @name"
+_CALL_QUERY = (
+    "(call_expression function: (member_expression object: (_) @receiver property: (property_identifier) @method))"
+)
+_QUERIES: dict[int, tuple[Query, Query]] = {}
+
+
+def _queries(language: Language) -> tuple[Query, Query]:
+    key = id(language)
+    if key not in _QUERIES:
+        _QUERIES[key] = (Query(language, _NAME_QUERY), Query(language, _CALL_QUERY))
+    return _QUERIES[key]
+
+
+class _ScopeNames:
+    """Names bound by scopes (functions, blocks), read only for scopes around a module-level name."""
+
+    def __init__(self) -> None:
+        self._names: dict[int, frozenset[str]] = {}
+        self._types: dict[int, dict[str, tuple[str, ...] | None]] = {}
+
+    def names(self, node: Node, kind: str) -> frozenset[str]:
+        if node.id not in self._names:
+            if kind == "function":
+                found = _function_names(node) if node.type not in _TYPE_PARAMETER_OWNERS else _type_parameter_names(node)
+            else:
+                found = _block_names(node)
+            self._names[node.id] = frozenset(found)
+        return self._names[node.id]
+
+    def scopes_of(self, node: Node) -> list[tuple[Node, str]]:
+        """The scopes around node, innermost first."""
+        found: list[tuple[Node, str]] = []
+        current = node.parent
+        while current is not None:
+            kind = _SCOPE_KINDS.get(current.type)
+            if kind is None and current.type in _TYPE_PARAMETER_OWNERS and \
+                    current.child_by_field_name("type_parameters") is not None:
+                kind = "function"
+            if kind is not None:
+                found.append((current, kind))
+            current = current.parent
+        return found
+
+    def is_bound(self, node: Node, name: str) -> bool:
+        return any(name in self.names(scope, kind) for scope, kind in self.scopes_of(node))
+
+    def local_type(self, node: Node, name: str) -> tuple[str, ...] | None:
+        """The class of a local name at node when it is in sight (an annotation, `new C()`)."""
+        for scope, kind in self.scopes_of(node):
+            if kind != "function" or scope.type not in _FUNCTION_NODES:
+                continue
+            if scope.id not in self._types:
+                self._types[scope.id] = _local_types(scope)
+            if name in self._types[scope.id]:
+                return self._types[scope.id][name]
         return None
 
-    def method_call(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
-        """recv.m(...): a use of Class.m when the receiver's class is in sight (this, an
-        annotation, `new C()`); module-level names and namespaces are paths, not calls."""
-        function = node.child_by_field_name("function")
-        if function is None or function.type != "member_expression":
-            return
-        receiver = function.child_by_field_name("object")
-        member = function.child_by_field_name("property")
-        if receiver is None or member is None or member.type != "property_identifier":
-            return
-        if receiver.type in ("string", "template_string", "array", "object", "number", "regex"):
-            return
-        head = receiver
-        while head.type == "member_expression" and head.child_by_field_name("object") is not None:
-            head = head.child_by_field_name("object")
-        shadowed = any(_text(head) in scope for scope in scopes)
-        if head.type == "identifier" and not shadowed and _text(head) in wanted:
-            return
-        written: tuple[str, ...] | None = None
-        if receiver.type == "this" and class_stack and class_stack[-1]:
-            written = (class_stack[-1],)
-        elif receiver.type == "identifier" and shadowed:
-            written = local_type(_text(receiver), scopes)
-        start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
-        path = list(written) if written is not None else []
-        uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
-                     "member": _text(member), "kind": "call"})
 
-    def add(
-        segments: list[Segment], scopes: tuple[frozenset[str], ...], module: str = "", kind: str = "",
-    ) -> None:
-        if not module and (segments[0][0] not in wanted or any(segments[0][0] in scope for scope in scopes)):
-            return
+def _is_binding(node: Node) -> bool:
+    """True when node is a name a declaration binds: a variable, a parameter, a catch parameter."""
+    current = node
+    parent = current.parent
+    while parent is not None and parent.type in _PATTERN_PARTS:
+        if parent.type in ("assignment_pattern", "object_assignment_pattern") and \
+                parent.child_by_field_name("left") != current:
+            return False  # a default value is an expression
+        if parent.type == "pair_pattern" and parent.child_by_field_name("value") != current:
+            return False
+        current, parent = parent, parent.parent
+    if parent is None:
+        return False
+    field = {
+        "variable_declarator": "name", "required_parameter": "pattern", "optional_parameter": "pattern",
+        "catch_clause": "parameter", "for_in_statement": "left", "arrow_function": "parameter",
+    }.get(parent.type)
+    return field is not None and parent.child_by_field_name(field) == current
+
+
+def _outside_statements(node: Node) -> bool:
+    """False for a name inside an import statement or an export clause (read on their own)."""
+    current = node.parent
+    while current is not None:
+        if current.type in ("import_statement", "export_clause"):
+            return False
+        if current.type in ("statement_block", "program"):
+            return True
+        current = current.parent
+    return True
+
+
+def _chain_from_head(node: Node) -> tuple[Node, list[Segment]] | None:
+    """For a name heading a member chain (ns.S, a.b.C, ns.Type), the outermost chain node and its
+    segments; (node, [name]) for a plain name; None when node is not the head of its chain."""
+    parent = node.parent
+    if parent is not None and parent.type in _MEMBER_CHAINS:
+        owner = parent.child_by_field_name("object") or parent.child_by_field_name("module") or (
+            parent.named_children[0] if parent.named_children else None)
+        if owner != node:
+            return None
+    segments = [_segment(node)]
+    top = node
+    while top.parent is not None and top.parent.type in _MEMBER_CHAINS:
+        chain = top.parent
+        owner = chain.child_by_field_name("object") or chain.child_by_field_name("module") or (
+            chain.named_children[0] if chain.named_children else None)
+        if owner != top:
+            break
+        name = chain.child_by_field_name("property") or chain.child_by_field_name("name") or (
+            chain.named_children[-1] if chain.named_children else None)
+        if name is None or name.type not in ("property_identifier", "type_identifier", "identifier"):
+            break
+        segments.append(_segment(name))
+        top = chain
+    return top, segments
+
+
+def _enclosing_class(node: Node) -> str:
+    """The class `this` names at node: a class declared at module level; "" otherwise."""
+    current = node.parent
+    while current is not None:
+        if current.type in _CLASS_NODES:
+            holder = current.parent
+            if current.type != "class" and holder is not None and (
+                    holder.type == "program" or (holder.type == "export_statement" and holder.parent is not None
+                                                 and holder.parent.type == "program")):
+                return _text(current.child_by_field_name("name"))
+            return ""
+        current = current.parent
+    return ""
+
+
+def use_sites(
+    root: Node,
+    wanted: frozenset[str],
+    language: Language | None = None,
+    full: bool = True,
+    namespaces: frozenset[str] = frozenset(),
+) -> list[UsePayload]:
+    """Use sites of names the file binds at module level (declarations and imports).
+
+    A query finds the names and the method calls in C; only names the module binds get more work:
+    their scopes (a parameter, variable, catch parameter or type parameter of the same name, or a
+    let/const/class of an enclosing block, shadows them), their member chain, their kind.
+    full=False keeps the uses that can name another file (a build needs no more): import and
+    export statements and chains headed by a namespace import (namespaces).
+    """
+    uses: list[UsePayload] = []
+    wanted_bytes = frozenset(name.encode("utf-8") for name in wanted)
+    scopes = _ScopeNames()
+
+    def add(segments: list[Segment], module: str = "", kind: str = "") -> None:
         use: UsePayload = {"path": [name for name, _line, _col in segments],
                            "at": [[line, col] for _name, line, col in segments]}
         if module:
@@ -331,146 +482,73 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
             use["kind"] = kind
         uses.append(use)
 
-    def member_chain(node: Node) -> list[Segment] | None:
-        if node.type == "identifier":
-            return [_segment(node)]
-        if node.type in ("member_expression", "nested_identifier", "nested_type_identifier"):
-            owner = node.child_by_field_name("object") or node.child_by_field_name("module") or (
-                node.named_children[0] if node.named_children else None)
-            name = node.child_by_field_name("property") or node.child_by_field_name("name") or (
-                node.named_children[-1] if node.named_children else None)
-            head = member_chain(owner) if owner is not None else None
-            if head is None or name is None or name.type not in (
-                    "property_identifier", "type_identifier", "identifier"):
-                return None
-            return [*head, _segment(name)]
-        return None
-
-    def visit_import(node: Node) -> None:
-        module = _specifier(node)
-        clause = next((child for child in node.named_children if child.type == "import_clause"), None)
-        if clause is None or not module:
-            return
-        for part in clause.named_children:
-            if part.type == "identifier":
-                add([("default", *_segment(part)[1:])], (), module, "import")
-            elif part.type == "named_imports":
-                for specifier in part.named_children:
-                    name = specifier.child_by_field_name("name") if specifier.type == "import_specifier" else None
-                    if name is not None:
-                        add([_segment(name)], (), module, "import")
-
-    def visit_pattern(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
-        """Default values and computed keys of a pattern hold uses; its names do not."""
-        if node.type in ("identifier", "shorthand_property_identifier_pattern"):
-            return
-        if node.type in ("assignment_pattern", "object_assignment_pattern"):
-            visit_pattern(node.child_by_field_name("left"), scopes)
-            right = node.child_by_field_name("right")
-            if right is not None:
-                visit(right, scopes)
-            return
-        if node.type == "pair_pattern":
-            key = node.child_by_field_name("key")
-            if key is not None and key.type == "computed_property_name":
-                visit(key, scopes)
-            value = node.child_by_field_name("value")
-            if value is not None:
-                visit_pattern(value, scopes)
-            return
-        for child in node.named_children:
-            visit_pattern(child, scopes)
-
-    def visit(node: Node | None, scopes: tuple[frozenset[str], ...]) -> None:
-        if node is None:
-            return
-        kind = node.type
-        if kind in _SKIPPED:
-            if kind == "import_statement":
-                visit_import(node)
-            elif kind == "template_string":
-                for child in node.named_children:
-                    if child.type == "template_substitution":
-                        visit(child, scopes)
-            return
-        if kind == "export_statement":
+    for node in root.named_children:
+        if node.type == "import_statement":
+            module = _specifier(node)
+            clause = next((child for child in node.named_children if child.type == "import_clause"), None)
+            if clause is None or not module:
+                continue
+            for part in clause.named_children:
+                if part.type == "identifier":
+                    add([("default", *_segment(part)[1:])], module, "import")
+                elif part.type == "named_imports":
+                    for specifier in part.named_children:
+                        name = specifier.child_by_field_name("name") if specifier.type == "import_specifier" else None
+                        if name is not None:
+                            add([_segment(name)], module, "import")
+        elif node.type == "export_statement":
             module = _specifier(node)
             clause = next((child for child in node.named_children if child.type == "export_clause"), None)
-            if clause is not None:
-                for specifier in clause.named_children:
-                    name = specifier.child_by_field_name("name") if specifier.type == "export_specifier" else None
-                    if name is not None:
-                        add([_segment(name)], scopes, module, "re-export")
-                return
-            if module:
-                return
-        if kind in ("member_expression", "nested_type_identifier", "nested_identifier"):
-            chain = member_chain(node)
-            if chain is not None:
-                add(chain, scopes, kind=_use_kind(node))
-                return
-        if kind in ("identifier", "type_identifier", "shorthand_property_identifier"):
-            parent = node.parent
-            if parent is not None and parent.type in _DECLARATION_NAMES and parent.child_by_field_name("name") == node:
-                return
-            if parent is not None and parent.type in ("labeled_statement", "break_statement", "continue_statement"):
-                return
-            add([_segment(node)], scopes, kind=_use_kind(node))
-            return
-        if kind == "variable_declarator":
-            visit_pattern(node.child_by_field_name("name"), scopes)
-            visit(node.child_by_field_name("type"), scopes)
-            visit(node.child_by_field_name("value"), scopes)
-            return
-        if kind in ("required_parameter", "optional_parameter"):
-            pattern = node.child_by_field_name("pattern")
-            for child in node.named_children:
-                if child == pattern:
-                    visit_pattern(child, scopes)
-                else:
-                    visit(child, scopes)
-            return
-        if kind == "catch_clause":
-            visit(node.child_by_field_name("type"), scopes)
-            visit(node.child_by_field_name("body"), scopes)
-            return
-        if kind == "call_expression":
-            method_call(node, scopes)
-        inner = scopes
-        pushed_types = pushed_class = False
-        if kind in _FUNCTION_NODES:
-            types_stack.append(_local_types(node))
-            pushed_types = True
-            parameters = node.child_by_field_name("parameter")
-            if parameters is not None and parameters.type == "identifier":
-                inner = (*scopes, frozenset({_text(parameters)} | _body_names(node)))
-            else:
-                inner = (*scopes, frozenset(_parameter_names(node) | _type_parameter_names(node) | _body_names(node)))
-            if parameters is not None and parameters.type == "identifier":
-                visit(node.child_by_field_name("body"), inner)
-                types_stack.pop()
-                return
-        elif kind in ("class_declaration", "class", "abstract_class_declaration", "interface_declaration",
-                      "type_alias_declaration"):
-            names = _type_parameter_names(node)
-            if names:
-                inner = (*scopes, frozenset(names))
-            if kind != "interface_declaration" and kind != "type_alias_declaration":
-                # `this` names a class declared at module level; other classes are not in the table.
-                name = node.child_by_field_name("name")
-                class_stack.append(_text(name) if name is not None and not scopes and kind != "class" else "")
-                pushed_class = True
-        elif kind in ("statement_block", "for_statement", "for_in_statement") and scopes:
-            pass
-        for child in node.named_children:
-            visit(child, inner)
-        if pushed_types:
-            types_stack.pop()
-        if pushed_class:
-            class_stack.pop()
-
-    for child in root.named_children:
-        visit(child, ())
+            for specifier in clause.named_children if clause is not None else []:
+                name = specifier.child_by_field_name("name") if specifier.type == "export_specifier" else None
+                if name is not None and (module or (name.text in wanted_bytes and not scopes.is_bound(name, _text(name)))):
+                    add([_segment(name)], module, "re-export")
+    if not full:
+        wanted_bytes = frozenset(name.encode("utf-8") for name in namespaces)
+    if language is None or not wanted_bytes:
+        return uses
+    name_query, call_query = _queries(language)
+    for node in QueryCursor(name_query).captures(root).get("name", []):
+        if node.text not in wanted_bytes:
+            continue
+        parent = node.parent
+        if parent is not None and parent.type in _DECLARATION_NAMES and parent.child_by_field_name("name") == node:
+            continue
+        if parent is not None and parent.type in ("labeled_statement", "break_statement", "continue_statement"):
+            continue
+        if _is_binding(node) or not _outside_statements(node):
+            continue
+        name = _text(node)
+        if scopes.is_bound(node, name):
+            continue
+        chain = _chain_from_head(node)
+        if chain is not None and (full or len(chain[1]) > 1):
+            top, segments = chain
+            add(segments, kind=_use_kind(top))
+    if not full:
+        return uses
+    for _pattern, match in QueryCursor(call_query).matches(root):
+        receiver, member = match["receiver"][0], match["method"][0]
+        if receiver.type in _LITERAL_RECEIVERS:
+            continue
+        head = receiver
+        while head.type in _MEMBER_CHAINS:
+            owner = head.child_by_field_name("object") or head.child_by_field_name("module")
+            if owner is None:
+                break
+            head = owner
+        if head.type == "identifier" and head.text in wanted_bytes and not scopes.is_bound(head, _text(head)):
+            continue  # a module-level name or namespace: a path, not a method call
+        written: tuple[str, ...] | None = None
+        if receiver.type == "this":
+            owner_class = _enclosing_class(receiver)
+            written = (owner_class,) if owner_class else None
+        elif receiver.type == "identifier":
+            written = scopes.local_type(receiver, _text(receiver))
+        start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
+        path = list(written) if written is not None else []
+        uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
+                     "member": _text(member), "kind": "call"})
     return uses
 
 

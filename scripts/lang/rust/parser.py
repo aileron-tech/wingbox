@@ -7,7 +7,7 @@ import tree_sitter_rust as _tsr
 from tree_sitter import Language as _RustTreeSitterLanguage
 from tree_sitter import Node, Parser as _RustParser
 
-from ..interface import Entity, FileResult, ImportedName
+from ..interface import Entity, FileResult, ImportedName, UsePayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .symbols import use_bindings_and_sites
@@ -316,6 +316,16 @@ def _entity_from_item(node: Node, decorators: list[str]) -> Entity | None:
     )
 
 
+def rust_use_positions(path: str, content: str) -> list[UsePayload]:
+    """Every use site of the file (names, paths, method calls), for `usages` and `entity --positions`.
+
+    A build keeps only the uses that can name another file; this is the full list, computed
+    when a query first needs positions.
+    """
+    root = _RustParser(_RUST_LANGUAGE).parse(content.encode("utf-8")).root_node
+    return use_bindings_and_sites(root, _path_seen_from_file, full=True)[1]
+
+
 def parse_rust_treesitter(
     path: str,
     content: str,
@@ -378,7 +388,7 @@ def parse_rust_treesitter(
             imports.append(module_import)
 
     entity_payloads = [entity.to_dict() for entity in entities]
-    bindings, use_sites = use_bindings_and_sites(root, _path_seen_from_file)
+    bindings, use_sites = use_bindings_and_sites(root, _path_seen_from_file, full=False)
     return FileResult(
         path=path,
         language="rust",

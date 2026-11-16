@@ -6,7 +6,7 @@ import tree_sitter_typescript as _tst
 from tree_sitter import Language as _TsLanguage
 from tree_sitter import Node, Parser as _TsParser
 
-from ..interface import Entity, FileResult, ImportedName
+from ..interface import BindingPayload, Entity, FileResult, ImportedName, UsePayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .javascript import is_javascript_file
@@ -276,6 +276,28 @@ def _ts_import_forms(root) -> dict[str, str]:  # type: ignore[no-untyped-def]
     }
 
 
+def _use_sites(root: Node, bindings: list[BindingPayload], language: _TsLanguage, full: bool) -> list[UsePayload]:
+    in_scope = [binding for binding in bindings if binding["scope"] and binding["local"] != "*"]
+    return use_sites(
+        root,
+        module_names(root) | {binding["local"] for binding in in_scope},
+        language,
+        full,
+        frozenset(binding["local"] for binding in in_scope if not binding["name"]),
+    )
+
+
+def typescript_use_positions(path: str, content: str) -> list[UsePayload]:
+    """Every use site of the file (names, chains, method calls), for `usages` and `entity --positions`.
+
+    A build keeps only the uses that can name another file; this is the full list, computed
+    when a query first needs positions.
+    """
+    language = _TSX_LANG if path.endswith(".tsx") or is_javascript_file(path) else _TS_LANG
+    root = _TsParser(language).parse(content.encode("utf-8")).root_node
+    return _use_sites(root, module_bindings(root), language, full=True)
+
+
 def parse_typescript_treesitter(
     path: str, content: str, repo: str, mtime: float,
 ) -> FileResult:
@@ -521,7 +543,5 @@ def parse_typescript_treesitter(
         exported_names=exported_names,
         import_forms=_ts_import_forms(root),
         bindings=bindings,
-        uses=use_sites(root, module_names(root) | {
-            binding["local"] for binding in bindings if binding["scope"] and binding["local"] != "*"
-        }),
+        uses=_use_sites(root, bindings, lang, full=False),
     )

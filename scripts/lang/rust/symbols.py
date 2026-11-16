@@ -299,11 +299,18 @@ def _seen_from_file(segments: list[Segment], inline_depth: int,
 def use_bindings_and_sites(
     root: Node,
     rewrite: Callable[[str, int], str | None],
+    full: bool = True,
 ) -> tuple[list[BindingPayload], list[UsePayload]]:
-    """Module-level `use` bindings and every use site of a name or a path in the file."""
+    """Module-level `use` bindings and every use site of a name or a path in the file.
+
+    full=False keeps the uses that can name another file (a build needs no more): `use`
+    declarations, qualified paths, and bare names only in a file with a glob import.
+    """
     bindings: list[BindingPayload] = []
     uses: list[UsePayload] = []
     _top_items, nested_items = item_names(root)
+    # Bare names matter for a build only where a glob import may provide them.
+    bare_names = full or b"::*" in (root.text or b"")
 
     def add_use(segments: list[Segment], kind: str = "") -> None:
         if segments and segments[-1][0] not in ("self", "super", "crate"):
@@ -354,7 +361,8 @@ def use_bindings_and_sites(
             index += 1
             if previous in ("$", ".", "::") or following in ("!", ":"):
                 continue
-            consider(path, scopes)
+            if len(path) > 1 or bare_names:
+                consider(path, scopes)
 
     def consider(path: list[Segment], scopes: tuple[frozenset[str], ...], kind: str = "") -> None:
         head = path[0][0]
@@ -390,7 +398,7 @@ def use_bindings_and_sites(
 
     def visit(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
         kind = node.type
-        if kind == "call_expression":
+        if kind == "call_expression" and full:
             method_call(node, scopes)
         if kind == "impl_item":
             implemented = _type_path(node.child_by_field_name("type"), None)
@@ -402,7 +410,7 @@ def use_bindings_and_sites(
             visit_children(node, scopes, inline_depth)
             impl_stack.pop()
             return
-        if kind == "function_item":
+        if kind == "function_item" and full:
             types_stack.append(_local_types(node, impl_stack[-1] if impl_stack else None))
             visit_children(node, scopes, inline_depth)
             types_stack.pop()
@@ -429,6 +437,8 @@ def use_bindings_and_sites(
                     consider(segments, scopes, _use_kind(node))
                 return
         if kind in ("identifier", "type_identifier"):
+            if not bare_names:
+                return
             parent = node.parent
             if parent is not None and parent.type in ("lifetime", "label"):
                 return
@@ -443,7 +453,9 @@ def use_bindings_and_sites(
             consider([_segment(node)], scopes, _use_kind(node))
             return
         inner_scopes = scopes
-        if kind in ("function_item", "closure_expression"):
+        if not bare_names:
+            pass  # without bare names only paths are read; their heads are modules, not locals
+        elif kind in ("function_item", "closure_expression"):
             inner_scopes = (*scopes, frozenset(_scope_names(node) | _generic_names(node)))
         elif kind in ("impl_item", "trait_item", "struct_item", "enum_item", "union_item", "type_item"):
             generics = _generic_names(node)
@@ -469,7 +481,7 @@ def use_bindings_and_sites(
             visit(node, scopes, inline_depth)
             return
         if node.type in ("identifier", "type_identifier"):
-            if not _is_binding_name(_text(node)):
+            if bare_names and not _is_binding_name(_text(node)):
                 consider([_segment(node)], scopes)
             return
         for child in node.named_children:

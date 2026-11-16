@@ -65,6 +65,7 @@ from __future__ import annotations
 
 import collections
 import functools
+import hashlib
 import os
 import re
 import sys
@@ -385,7 +386,23 @@ def _module_id_to_file(module_id: str, root: str) -> str:
 # ---------------------------------------------------------------------------
 
 # Facts kept unparsed at load and read when a query needs them.
-_LAZY_FACTS = ("(use ", "(unresolved-call ")
+_LAZY_FACTS = ("(use ", "(unresolved-call ", "(unresolved ", "(var ")
+
+
+def _load_builder():
+    """scripts/build_code_graph.py (it fills use positions), imported by name from this folder as
+    `wingbox build` does, so that its worker processes can import it too."""
+    import importlib
+
+    directory = os.path.dirname(os.path.abspath(__file__))
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    return importlib.import_module("build_code_graph")
+
+
+def _uses_path(map_path: str) -> str:
+    """The use-position file next to a code graph (build_code_graph.uses_path)."""
+    return (map_path[: -len(".sexp")] if map_path.endswith(".sexp") else map_path) + ".uses.sexp"
 _USE_POSITION = re.compile(r"(\d+):(\d+)([a-z]?)")
 _USE_KINDS = {"i": "import", "r": "re-export", "c": "call", "t": "type", "e": "extends", "": "reference"}
 UseSite = tuple[str, int, int, str]  # module, line, column, kind of use
@@ -406,7 +423,12 @@ class CodeGraph:
         self._symbol_lines: list[str] = []  # use facts, parsed on first access (most queries never need them)
         self._uses_by_target: Optional[dict[str, list[UseSite]]] = None
         self._unresolved_by_member: Optional[dict[str, list[tuple[str, int, int]]]] = None
-        self.unresolved_method_calls: dict[str, int] = {}  # module -> method calls without a visible receiver type
+        self._unresolved_counts: Optional[dict[str, int]] = None
+        self._variables: Optional[dict[str, list[EntityFact]]] = None
+        self._uses_header = ""
+        self._use_pairs: Optional[dict[str, set[str]]] = None
+        self._uses_file_read = False
+        self._map_path = ""
         self.pmap: dict[str, str] = {}
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self._root: str = ""
@@ -423,7 +445,12 @@ class CodeGraph:
         self._symbol_lines = []
         self._uses_by_target = None
         self._unresolved_by_member = None
-        self.unresolved_method_calls = {}
+        self._unresolved_counts = None
+        self._variables = None
+        self._uses_header = ""
+        self._use_pairs = None
+        self._uses_file_read = False
+        self._map_path = path
         self.pmap = {}
         self.package_layers = {}
         self._root = os.path.abspath(
@@ -580,9 +607,6 @@ class CodeGraph:
                         ent_name = part.split("::", 1)[1]
                         self.edges_by_entity_name.setdefault(ent_name, []).append(edge)
 
-            elif kind == "unresolved" and len(tokens) >= 4 and tokens[2] == ":method-calls" and tokens[3].isdigit():
-                self.unresolved_method_calls[_resolve(tokens[1])] = int(tokens[3])
-
             elif kind == "violation" and len(tokens) >= 5:
                 source = _resolve(tokens[2])
                 target = _resolve(tokens[3])
@@ -596,13 +620,117 @@ class CodeGraph:
             )
         return MapLoadOk()
 
+    def _use_lines(self) -> list[str]:
+        """The use facts: those of the graph file and those of the use file next to it
+        (.code_graph.uses.sexp), read on first need and only when it belongs to this graph."""
+        if not self._uses_file_read:
+            self._uses_file_read = True
+            path = _uses_path(self._map_path)
+            try:
+                with open(path, "r", encoding="utf-8") as uses_file:
+                    lines = uses_file.read().splitlines()
+                with open(self._map_path, "r", encoding="utf-8") as graph_file:
+                    digest = hashlib.sha256(graph_file.read().encode("utf-8")).hexdigest()[:16]
+            except FileNotFoundError:
+                return self._symbol_lines
+            except OSError as error:
+                print(f"(warning uses-unreadable {_q(path)} {_q(str(error))})", file=sys.stderr)
+                return self._symbol_lines
+            header = next((line for line in lines if line.startswith("(code-graph-uses ")), "")
+            self._uses_header = header
+            if f":graph {digest})" not in header:
+                print(f"(warning uses-stale {_q(path)} :rerun \"wingbox build\")", file=sys.stderr)
+                return self._symbol_lines
+            self._symbol_lines.extend(line for line in lines if line.startswith(_LAZY_FACTS))
+        return self._symbol_lines
+
+    def _positions(self) -> list[str]:
+        """The use facts with positions. A build writes the use file without them; the first query
+        that needs them has the builder fill them in (build_code_graph.write_use_positions)."""
+        lines = self._use_lines()
+        header = self._uses_header
+        if header and ":positions no" in header:
+            builder = _load_builder()
+            written = builder.write_use_positions(self._map_path, self._root)
+            if isinstance(written, builder.Err):
+                print(f"(warning positions-unavailable {_q(written.error)} :rerun \"wingbox build\")", file=sys.stderr)
+                return lines
+            self._symbol_lines = []
+            self._uses_file_read = False
+            lines = self._use_lines()
+        return lines
+
+    @property
+    def use_pairs(self) -> dict[str, set[str]]:
+        """module::name -> modules that use it, from the use lines (no positions needed)."""
+        if self._use_pairs is None:
+            found: dict[str, set[str]] = {}
+            for line in self._use_lines():
+                if line.startswith("(use "):
+                    parts = line.rstrip(")").split(" ", 3)
+                    module, _, name = parts[2].partition("::")
+                    found.setdefault(f"{self.pmap.get(module, module)}::{name}", set()).add(
+                        self.pmap.get(parts[1], parts[1]))
+            self._use_pairs = found
+        return self._use_pairs
+
+    @property
+    def variables_by_name(self) -> dict[str, list[EntityFact]]:
+        """Module-level variables (Python), from the (var <module> <name> <line>) facts of the use file."""
+        if self._variables is None:
+            found: dict[str, list[EntityFact]] = {}
+            for line in self._use_lines():
+                if line.startswith("(var "):
+                    parts = line.strip().strip("()").split()
+                    if len(parts) == 4 and parts[3].isdigit():
+                        module = self.pmap.get(parts[1], parts[1])
+                        found.setdefault(parts[2], []).append(EntityFact(module, parts[2], "var", int(parts[3]), [], [], []))
+            self._variables = found
+        return self._variables
+
+    def definitions_named(self, name: str) -> list[EntityFact]:
+        """Entities of the graph and module-level variables named name."""
+        return [*self.entity_by_name.get(name, []), *self.variables_by_name.get(name, [])]
+
+    @property
+    def unresolved_method_calls(self) -> dict[str, int]:
+        """module -> method calls without a visible receiver type, from (unresolved <module> :method-calls N)."""
+        if self._unresolved_counts is None:
+            found: dict[str, int] = {}
+            for line in self._positions():
+                tokens = line.strip().strip("()").split()
+                if len(tokens) == 4 and tokens[0] == "unresolved" and tokens[3].isdigit():
+                    found[self.pmap.get(tokens[1], tokens[1])] = int(tokens[3])
+            self._unresolved_counts = found
+        return self._unresolved_counts
+
+    def uses_named(self, name: str) -> dict[str, list[UseSite]]:
+        """module::name (and module::name.method) -> its use sites, read only from the use lines
+        that mention name (a query about one symbol does not parse the whole use file)."""
+        marker = f"::{name}"
+        found: dict[str, list[UseSite]] = {}
+        for line in self._positions():
+            if not line.startswith("(use ") or marker not in line:
+                continue
+            parts = line.rstrip(")").split(" ")
+            module, _, target_name = parts[2].partition("::")
+            if target_name != name and not target_name.startswith(name + "."):
+                continue
+            sites = found.setdefault(f"{self.pmap.get(module, module)}::{target_name}", [])
+            source = self.pmap.get(parts[1], parts[1])
+            for position in parts[3:]:
+                match = _USE_POSITION.fullmatch(position)
+                if match:
+                    sites.append((source, int(match.group(1)), int(match.group(2)), _USE_KINDS.get(match.group(3), "reference")))
+        return found
+
     @property
     def uses_by_target(self) -> dict[str, list[UseSite]]:
         """module::name -> (module, line, column, kind) of every use,
         from (use <module> <target> <line>:<col>[<kind letter>] ...)."""
         if self._uses_by_target is None:
             found: dict[str, list[UseSite]] = {}
-            for line in self._symbol_lines:
+            for line in self._positions():
                 tokens = tokenize(line)
                 if len(tokens) < 4 or tokens[0] != "use":
                     continue
@@ -622,7 +750,7 @@ class CodeGraph:
         """method name -> (module, line, column) of the calls of it that no receiver type resolves."""
         if self._unresolved_by_member is None:
             found: dict[str, list[tuple[str, int, int]]] = {}
-            for line in self._symbol_lines:
+            for line in self._positions():
                 tokens = tokenize(line)
                 if len(tokens) < 4 or tokens[0] != "unresolved-call":
                     continue
@@ -1381,15 +1509,13 @@ def cmd_impact(
 
 def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
     # Always try exact match first, then safe-pattern fallback.
-    definitions: list[EntityFact] = []
-    if name in g.entity_by_name:
-        definitions = g.entity_by_name[name]
-    else:
+    definitions: list[EntityFact] = g.definitions_named(name)
+    if not definitions:
         parsed_pattern = parse_search_pattern(name)
         if isinstance(parsed_pattern, SearchPatternErr):
             _print_invalid_pattern(name, parsed_pattern.error)
             return
-        for ename, ents in g.entity_by_name.items():
+        for ename, ents in [*g.entity_by_name.items(), *g.variables_by_name.items()]:
             if search_pattern_matches(parsed_pattern.value, ename):
                 definitions.extend(ents)
 
@@ -1410,6 +1536,14 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
 
     for defn in definitions:
         print(f"(entity-def {defn.kind} {defn.module} {defn.name} {defn.line} :lang {g.module_lang(defn.module)} :file {_q(g.module_to_file(defn.module))})")
+    # Modules that reach a definition only through a re-export: in the use file, not in the graph.
+    referencing = {(e.source.split("::")[0], e.target) for e in unique_refs}
+    for defn in definitions:
+        target = f"{defn.module}::{defn.name}"
+        for source in g.use_pairs.get(target, set()):
+            if source != defn.module and (source, target) not in referencing:
+                referencing.add((source, target))
+                unique_refs.append(Edge("refs", source, target, [":reexport"]))
     for e in sorted(unique_refs, key=lambda x: (x.etype, x.source)):
         print(_edge_sexp(e))
     if positions:
@@ -1418,7 +1552,8 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
         wanted = {f"{defn.module}::{defn.name}" for defn in definitions}
         sites = sorted(
             (_impact_file(g, source), line, column, source, target)
-            for target, found in g.uses_by_target.items()
+            for target, found in [item for defn_name in {d.name for d in definitions}
+                                  for item in g.uses_named(defn_name).items()]
             if target in wanted or target.rsplit(".", 1)[0] in wanted
             for source, line, column, _kind in found
         )
@@ -1426,7 +1561,8 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
             print(f"(use {source} {line} {column} {target} :file {_q(file_path)})")
 
 
-_KIND_WORDS = {"cls": "class", "fn": "function", "ifc": "interface", "typ": "type", "enm": "enum", "mod": "module"}
+_KIND_WORDS = {"cls": "class", "fn": "function", "ifc": "interface", "typ": "type", "enm": "enum", "mod": "module",
+               "var": "variable"}
 _USAGES_LIMIT = 200
 
 
@@ -1446,10 +1582,21 @@ def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact
     file_part, separator, symbol = target.rpartition("::")
     owner = symbol.split(".", 1)[0]
     if not separator:
-        return symbol, list(g.entity_by_name.get(owner, []))
+        return symbol, g.definitions_named(owner)
     pattern = _target_to_module_pattern(file_part, g._root)
-    modules = _impact_target_modules(g, file_part, pattern)
-    return symbol, [entity for module in modules[:1] for entity in g.entities.get(module, []) if entity.name == owner]
+    modules = _impact_target_modules(g, file_part, pattern)[:1]
+    found = [entity for module in modules for entity in g.definitions_named(owner) if entity.module == module]
+    if found or not modules:
+        return symbol, found
+    # The file only re-exports the name (a package __init__.py, a barrel): follow the re-export.
+    return symbol, [
+        entity
+        for target, sites in g.uses_named(owner).items()
+        if target.endswith(f"::{owner}")
+        and any(source == modules[0] and kind == "re-export" for source, _line, _column, kind in sites)
+        for entity in g.definitions_named(owner)
+        if entity.module == target.rsplit("::", 1)[0]
+    ]
 
 
 def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[Usage], int]:
@@ -1457,7 +1604,7 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
     target = f"{definition.module}::{symbol}"
     found = [
         Usage(_impact_file(g, source), source, line, column, kind)
-        for source, line, column, kind in g.uses_by_target.get(target, [])
+        for source, line, column, kind in g.uses_named(symbol.split(".", 1)[0]).get(target, [])
     ]
     unresolved = 0
     if "." in symbol:

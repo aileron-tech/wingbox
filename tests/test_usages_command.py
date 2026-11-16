@@ -10,7 +10,10 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from scripts.build_code_graph import Ok, build_graph, detect_source_language, parse_file, render_sexp
+from unittest import mock
+
+import scripts.build_code_graph as builder
+from scripts.build_code_graph import Ok, build_graph, detect_source_language, parse_file, write_sexp
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "code_graph_search.py"
 _SPEC = importlib.util.spec_from_file_location("code_graph_search_for_usages", SCRIPT)
@@ -44,19 +47,14 @@ def _run(files: dict[str, str], argv: list[str], cargo: bool = False) -> str:
         root = Path(directory)
         if cargo:
             (root / "Cargo.toml").write_text('[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
-        results = []
         for relative_path, content in files.items():
             path = root / relative_path
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-            language = detect_source_language(path.name)
-            assert language is not None
-            results.append(parse_file((str(path), language, root.name)))
-        graph = build_graph(results, str(root))
-        assert isinstance(graph, Ok)
+        # A real build (with its cache): the first query that needs positions fills them in.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            assert builder.main(["--root", str(root)]) == 0
         map_path = root / ".code_graph.sexp"
-        map_path.write_text(render_sexp(graph.value.nodes, graph.value.edges, str(root), "syntax", len(results)),
-                            encoding="utf-8")
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             search.main([*argv, "--map", str(map_path), "--root", str(root)])
@@ -145,6 +143,68 @@ class UsagesCommandTests(unittest.TestCase):
             "src/run.rs": "use crate::shot::Lens;\nstruct Wide;\nimpl Lens for Wide {}\n",
         }, ["usages", "src/shot.rs::Lens"], cargo=True)
         self.assertIn("src/run.rs\n  1:18   import\n  3:6   extends\n", lens)
+
+    def test_a_file_that_re_exports_the_name_leads_to_its_definition(self) -> None:
+        """/* REQ-CS-068: `usages <file>::<Name>` where the file only re-exports Name (a package __init__.py, a TypeScript barrel) answers for the definition the re-export leads to. */"""
+        self.assertEqual(
+            _run(PYTHON, ["usages", "app/__init__.py::Invoice"]),
+            _run(PYTHON, ["usages", "app/models.py::Invoice"]),
+        )
+        ts_files = {
+            "src/model.ts": "export class Store {}\n",
+            "src/index.ts": "export { Store } from './model';\n",
+            "src/app.ts": "import { Store } from './index';\nexport const s = new Store();\n",
+        }
+        self.assertIn("Usages of Store (class, src/model.ts:1)", _run(ts_files, ["usages", "src/index.ts::Store"]))
+
+    def test_typescript_block_scoped_names_shadow_only_their_block(self) -> None:
+        """/* REQ-TS-SYM-004: a TypeScript `const` or `let` in a block shadows an imported name only inside that block; the same name elsewhere in the function is a use. A `var` shadows it in the whole function. */"""
+        output = _run({
+            "src/a.ts": "export const limit = 3;\n",
+            "src/b.ts": (
+                "import { limit } from './a';\n"
+                "export function f(c: boolean) {\n"
+                "  if (c) {\n"
+                "    const limit = 1;\n"
+                "    return limit;\n"
+                "  }\n"
+                "  return limit;\n"
+                "}\n"
+                "export function g() {\n"
+                "  if (true) { var limit = 2; }\n"
+                "  return limit;\n"
+                "}\n"
+            ),
+        }, ["usages", "src/a.ts::limit"])
+        self.assertIn("src/b.ts\n  1:10   import\n  7:10   reference\n", output)
+        self.assertNotIn("5:12", output)
+        self.assertNotIn("11:10", output)
+
+    def test_use_positions_live_next_to_the_graph_and_a_build_without_changes_reuses_them(self) -> None:
+        """/* REQ-CS-069: `wingbox build` keeps use positions out of .code_graph.sexp: .code_graph.uses.sexp next to it gets them from the first query that needs them (usages, entity --positions) and keeps them; a second build with no changed file does not resolve the uses again and leaves both files as they are. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path, content in PYTHON.items():
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text(content, encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+            graph = (root / ".code_graph.sexp").read_text(encoding="utf-8")
+            built = (root / ".code_graph.uses.sexp").read_text(encoding="utf-8")
+            self.assertNotIn("\n(use ", graph)
+            self.assertIn(":positions no", built)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                search.main(["usages", "app/models.py::Invoice", "--map", str(root / ".code_graph.sexp"),
+                             "--root", str(root)])
+            self.assertIn("8:11   call", output.getvalue())
+            uses = (root / ".code_graph.uses.sexp").read_text(encoding="utf-8")
+            self.assertIn(":positions yes", uses)
+            with mock.patch.object(builder, "_resolve_symbol_uses", side_effect=AssertionError("resolved again")), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+            self.assertEqual(graph, (root / ".code_graph.sexp").read_text(encoding="utf-8"))
+            self.assertEqual(uses, (root / ".code_graph.uses.sexp").read_text(encoding="utf-8"))
 
     def test_the_answer_stops_at_200_uses_unless_all(self) -> None:
         """/* REQ-CS-067: `usages` lists at most 200 uses and says how many it left out; --all lists every one. */"""

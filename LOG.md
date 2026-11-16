@@ -1,5 +1,24 @@
 # Completion Log
 
+## 2026-11-16 - the use index at the cost of a build without it
+
+### Changes
+- Measured first (wall and CPU, 3 rounds, variants interleaved so that each round sees the same load, load average beside each build), then profiled. The cost was in three places: the TypeScript use walk (half the parse time: every node visited in Python), a build that resolved every use again with no change, and positions and re-export refs in `.code_graph.sexp` (2.3x on immich-server).
+- `scripts/lang/*/symbols.py`, `parser.py`: two levels of use extraction. A build keeps only the uses that can name another file (import and export statements, chains and paths headed by an imported module or namespace, names a glob import may provide); `python_use_positions`, `typescript_use_positions`, `rust_use_positions` give the full list. The TypeScript walk is a tree-sitter query (names and method calls found in C); only names the module binds get scope work, and scopes are read lazily from the ancestors: a `let`, `const` or class shadows an import only in its block, a `var` in its function.
+- `scripts/build_code_graph.py`: `.code_graph.uses.sexp` next to the graph holds what only entity and usages read: `var` definitions (Python module-level variables, kind `variable`), the (file, definition) pairs, and after the first query that needs them every use position (`write_use_positions`: the full walk in parallel from the build cache, then resolution). `:reexport` refs and variables leave `.code_graph.sexp`. A build whose inputs (each file's content hash, the builder, the mode) match the use file's key takes the refs edges from it and resolves nothing.
+- `scripts/lang/symbols.py`: lookups that start afresh are memoised; `scripts/lang/*/imports.py`: `resolve_import` answers each (specifier, file) pair once per build (immich-server asked 91,191 times for 707 files; 0.2.6 did the same).
+- `scripts/code_graph_search.py`: the loader reads the use file only when a query needs it, ignores it with a warning when it does not belong to the graph, has the builder fill positions on first need, and answers `usages` from the lines that mention the name. `usages <file>::X` follows a file that only re-exports X to the definition.
+- Tests: REQ-CS-068, REQ-CS-069, REQ-TS-SYM-004.
+
+### Motivation
+- Maintainer: the price of usages is too high (graph about 2x, build 1.5 to 2.2x slower); build time and the main graph within about 10 to 15 % of 0.2.6, usages still 100/100, impact unchanged; also the two open gaps (TS block scope, re-exporting file as the target).
+
+### Verification
+- Interleaved, medians of 3, load 13 to 30 (`perf2.py`): immich-server cold 6.64 s wall / 25.9 s CPU (0.2.6) -> 4.79 / 25.6 (branch before: 10.29 / 39.6), warm 4.65 / 4.53 -> 2.55 / 2.51 (6.29 / 6.22); fastapi cold 24.95 / 42.0 -> 11.71 / 42.0 (30.62 / 63.7), warm 14.55 / 14.20 -> 6.51 / 6.41 (18.09 / 17.62).
+- `.code_graph.sexp`: immich-server 612,199 -> 628,101 bytes (+2.6 %), fastapi 542,272 -> 553,527 (+2.1 %); the branch before had 1,381,206 and 955,943. `.code_graph.uses.sexp` after the build: 198,512 and 91,971 bytes.
+- First `usages` query (fills positions): immich-server 6.4 s wall, fastapi 5.2 s; the next one 1.2 s and 0.5 s.
+- Refactoring benchmark: entity 40/40, 40/40, 20/20 exact; usages files 100/100, positions as before (Python 234/234, Rust 587/587, TypeScript 741 of 741 plus the 106 `new C()` sites); impact lists unchanged; 711-symbol check unchanged. Suite on 3.12 and 3.11.
+
 ## 2026-11-16 - TypeScript imports with a Vite query suffix
 
 ### Changes

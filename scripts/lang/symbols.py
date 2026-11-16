@@ -80,6 +80,37 @@ class SymbolIndex:
             module: {entity["name"]: entity for entity in result.entities}
             for module, result in id_to_result.items()
         }
+        # Lookups that start afresh (no re-export chain in progress) depend only on the index:
+        # memoised, as one file names the same few imports many times.
+        self._heads: dict[tuple[str, str], Optional[Target]] = {}
+        self._members: dict[tuple[ModuleRef, str], Optional[Target]] = {}
+        self._owners: dict[tuple[str, str, str], Optional[Symbol]] = {}
+        # What a module exports, memoised when no re-export cycle cut the answer short
+        # (barrels of `export *` are walked once, not once per import through them).
+        self._exports: dict[tuple[str, str], Optional[Target]] = {}
+        self._cuts = 0
+        self._by_local: dict[str, dict[str, list]] = {}
+        self._glob_targets: dict[str, list[tuple[str, bool]]] = {}
+
+    def _bindings_named(self, module: str, local: str) -> list:
+        if module not in self._by_local:
+            index: dict[str, list] = {}
+            for binding in self._results[module].bindings:
+                index.setdefault(binding["local"], []).append(binding)
+            self._by_local[module] = index
+        return self._by_local[module].get(local, [])
+
+    def _globs_of(self, module: str) -> list[tuple[str, bool]]:
+        """The modules a module glob-imports or re-exports with `*`, and whether in its own scope."""
+        if module not in self._glob_targets:
+            result = self._results[module]
+            found: list[tuple[str, bool]] = []
+            for binding in self._bindings_named(module, "*"):
+                target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
+                if target is not None:
+                    found.append((target, binding["scope"]))
+            self._glob_targets[module] = found
+        return self._glob_targets[module]
 
     def module_id(self, ref: ModuleRef) -> Optional[str]:
         key = (ref.language, ref.spec, ref.origin)
@@ -104,8 +135,8 @@ class SymbolIndex:
         """What local is bound to in module; in_scope: only bindings of the file's own scope."""
         result = self._results[module]
         language = result.language
-        for binding in result.bindings:
-            if binding["local"] != local or (in_scope and not binding["scope"]):
+        for binding in self._bindings_named(module, local):
+            if in_scope and not binding["scope"]:
                 continue
             if not binding["module"]:
                 # export { k as K } or export default k: a name of the file itself.
@@ -118,15 +149,26 @@ class SymbolIndex:
 
     def export(self, module: str, name: str, depth: int = 0, seen: frozenset = frozenset()) -> Optional[Target]:
         """What name means to an importer of module: its definition, or what a re-export names."""
-        if (module, name) in seen or depth > _MAX_DEPTH or module not in self._results:
+        key = (module, name)
+        if key in self._exports:
+            return self._exports[key]
+        if module not in self._results:
             return None
-        seen = seen | {(module, name)}
+        if key in seen or depth > _MAX_DEPTH:
+            self._cuts += 1
+            return None
+        cuts = self._cuts
+        seen = seen | {key}
+        found: Optional[Target]
         if name in self._defined[module]:
-            return Symbol(module, name)
-        bound = self._binding_target(module, name, depth, seen)
-        if bound is not None:
-            return bound
-        return self._from_globs(module, name, depth, seen)
+            found = Symbol(module, name)
+        else:
+            found = self._binding_target(module, name, depth, seen)
+            if found is None:
+                found = self._from_globs(module, name, depth, seen)
+        if self._cuts == cuts:
+            self._exports[key] = found
+        return found
 
     def _from_globs(
         self, module: str, name: str, depth: int, seen: frozenset, in_scope: bool = False,
@@ -135,11 +177,8 @@ class SymbolIndex:
         if result.language == "python" and name.startswith("_"):
             return None
         found: set[Target] = set()
-        for binding in result.bindings:
-            if binding["local"] != "*" or (in_scope and not binding["scope"]):
-                continue
-            target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
-            if target is None:
+        for target, scope in self._globs_of(module):
+            if in_scope and not scope:
                 continue
             resolved = self.export(target, name, depth + 1, seen)
             if resolved is not None:
@@ -156,6 +195,18 @@ class SymbolIndex:
 
     def _head(self, module: str, name: str) -> Optional[Target]:
         """A name in the scope of a file: its own definition, an import binding, a glob import."""
+        key = (module, name)
+        if key not in self._heads:
+            self._heads[key] = self._find_head(module, name)
+        return self._heads[key]
+
+    def _top_member(self, ref: ModuleRef, name: str) -> Optional[Target]:
+        key = (ref, name)
+        if key not in self._members:
+            self._members[key] = self.member(ref, name)
+        return self._members[key]
+
+    def _find_head(self, module: str, name: str) -> Optional[Target]:
         result = self._results[module]
         if name in self._defined[module]:
             return Symbol(module, name)
@@ -176,6 +227,14 @@ class SymbolIndex:
 
     def _member_owner(self, module: str, name: str, member: str, depth: int = 0) -> Optional[Symbol]:
         """The class that defines member: name itself or, through its bases, an ancestor."""
+        if depth == 0:
+            key = (module, name, member)
+            if key not in self._owners:
+                self._owners[key] = self._find_member_owner(module, name, member, 0)
+            return self._owners[key]
+        return self._find_member_owner(module, name, member, depth)
+
+    def _find_member_owner(self, module: str, name: str, member: str, depth: int) -> Optional[Symbol]:
         entity = self._entities.get(module, {}).get(name)
         if entity is None or depth > _MAX_DEPTH or entity["kind"] not in _MEMBER_KINDS:
             return None
@@ -196,7 +255,7 @@ class SymbolIndex:
         for segment in path[1:]:
             if not isinstance(current, ModuleRef):
                 return current if isinstance(current, Symbol) else None
-            current = self.member(current, segment)
+            current = self._top_member(current, segment)
         return current
 
     def resolve_member(self, module: str, use: UsePayload) -> Optional[ResolvedUse]:
@@ -231,7 +290,7 @@ class SymbolIndex:
         index = start - 1
         while isinstance(current, ModuleRef) and index + 1 < len(path):
             index += 1
-            current = self.member(current, path[index])
+            current = self._top_member(current, path[index])
         if isinstance(current, Symbol) and index >= 0:
             line, column = at[index]
             # The kind belongs to the last segment: Foo in Foo::new() is a plain reference.

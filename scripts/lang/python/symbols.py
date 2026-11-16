@@ -64,10 +64,10 @@ def _dunder_all(tree: ast.Module) -> frozenset[str]:
 
 
 def module_variables(tree: ast.Module, defined: frozenset[str]) -> list[Entity]:
-    """Module-level names bound by assignment, public or listed in __all__, as function entities.
+    """Module-level names bound by assignment, public or listed in __all__, as variable entities.
 
-    Kind "function" as TypeScript consts and Rust const/static items: one entity
-    kind for every named value that is not a class.
+    The graph keeps them apart from classes and functions: the use file next to it holds
+    them (`var` facts), which entity and usages read.
     """
     exported = _dunder_all(tree)
     seen = set(defined)
@@ -84,7 +84,7 @@ def module_variables(tree: ast.Module, defined: frozenset[str]) -> list[Entity]:
             if name.id in seen or (name.id.startswith("_") and name.id not in exported):
                 continue
             seen.add(name.id)
-            variables.append(Entity(name=name.id, kind="function", line=name.lineno,
+            variables.append(Entity(name=name.id, kind="variable", line=name.lineno,
                                     methods=[], decorators=[], bases=[]))
     return variables
 
@@ -214,10 +214,17 @@ class _Scope:
 
 
 class _UseCollector(ast.NodeVisitor):
-    def __init__(self, wanted: frozenset[str], any_name: bool, is_package: bool = False) -> None:
+    def __init__(
+        self, wanted: frozenset[str], any_name: bool, is_package: bool = False,
+        full: bool = True, imported: frozenset[str] = frozenset(),
+    ) -> None:
         self.wanted = wanted
         self.any_name = any_name
         self.is_package = is_package
+        # full=False: only the uses that can name another file (a build needs no more): import
+        # statements, chains headed by an imported name, names a glob import may provide.
+        self.full = full
+        self.imported = imported
         self.scopes: tuple[_Scope, ...] = ()
         self.uses: list[UsePayload] = []
         self.kind = ""  # how the expression being visited is used: call, type, extends; "" any other way
@@ -317,7 +324,7 @@ class _UseCollector(ast.NodeVisitor):
         literal receiver has a type of the language, not of the repository.
         """
         function = node.func
-        if isinstance(function, ast.Attribute) and not isinstance(function.value, _LITERALS):
+        if self.full and isinstance(function, ast.Attribute) and not isinstance(function.value, _LITERALS):
             receiver = function.value
             head = receiver
             while isinstance(head, ast.Attribute):
@@ -360,7 +367,7 @@ class _UseCollector(ast.NodeVisitor):
         if not isinstance(current, ast.Name):
             self._visit_as(current, "")
             return
-        if self._shadowed(current.id) or not (self.any_name or current.id in self.wanted):
+        if self._shadowed(current.id) or not self._wanted(current.id):
             return
         path, at = [current.id], [[current.lineno, current.col_offset + 1]]
         for attribute in reversed(chain):
@@ -374,20 +381,29 @@ class _UseCollector(ast.NodeVisitor):
         # Binding a name (x = ..., del x) defines or rebinds it; it is not a use of another definition.
         if not isinstance(node.ctx, ast.Load):
             return
-        if self._shadowed(node.id) or not (self.any_name or node.id in self.wanted):
+        if self._shadowed(node.id) or not self._wanted(node.id, bare=True):
             return
         self._add({"path": [node.id], "at": [[node.lineno, node.col_offset + 1]]})
+
+    def _wanted(self, name: str, bare: bool = False) -> bool:
+        if self.full:
+            return self.any_name or name in self.wanted
+        if bare:
+            return self.any_name and name not in self.wanted
+        return name in self.imported or (self.any_name and name not in self.wanted)
 
 
 def use_sites(
     tree: ast.Module, module_names: frozenset[str], has_glob: bool, is_package: bool = False,
+    full: bool = True, imported: frozenset[str] = frozenset(),
 ) -> list[UsePayload]:
     """Names and attribute chains that refer to a module-level name of the file.
 
     module_names: names the module binds (definitions and imports); with a glob
-    import every free name may come from it.
+    import every free name may come from it. full=False keeps only the uses that
+    can name another file; imported: the names import statements bind.
     """
-    collector = _UseCollector(module_names, has_glob, is_package)
+    collector = _UseCollector(module_names, has_glob, is_package, full, imported)
     collector.visit(tree)
     return collector.uses
 

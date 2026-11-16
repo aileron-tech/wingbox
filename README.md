@@ -336,7 +336,10 @@ in several files lists the candidates. Kinds: `import`, `re-export`, `call`,
 `type`, `extends` (extends or implements), `reference`. For a method, calls
 whose receiver type is not in sight are listed as `unresolved-call`, never
 guessed. At most 200 uses unless `--all`; `--sexp` prints the same answer as
-`usage` facts. Python, TypeScript, JavaScript and Rust have use positions; in
+`usage` facts. The build records which files use each definition; the first
+`usages` after a change also reads every use position (a parallel pass over the
+files, about as long as a build) and keeps them for the next calls. Python,
+TypeScript, JavaScript and Rust have use positions; in
 other languages `usages` names the files that reference the symbol.
 
 `wingbox build [PATH]` accepts the builder options described below, and every
@@ -417,11 +420,12 @@ index, and only when you run `wingbox update`.
 
 ### The report and the map
 
-`wingbox build` writes three things into the project:
+`wingbox build` writes four things into the project:
 
 | File | For whom | What it is |
 |---|---|---|
 | `.code_graph.sexp` | AI coding agents | The code graph in a compact form that the query commands read |
+| `.code_graph.uses.sexp` | AI coding agents | Module-level variables and the files that use each definition; `usages` adds every use position on its first call |
 | `wingbox-out/REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
 | `wingbox-out/map.html` | People | An interactive map of the code graph: one file, opens in a browser, works without a network connection |
 

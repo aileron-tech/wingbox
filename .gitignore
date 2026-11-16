@@ -8,4 +8,5 @@ __pycache__/
 
 # Generated code-graph artifacts (produced by scripts/build_code_graph.py)
 .code_graph.sexp
+.code_graph.uses.sexp
 .code_graph_cache.json

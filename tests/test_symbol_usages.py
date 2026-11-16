@@ -53,7 +53,7 @@ def _entities(nodes: list[dict], module: str) -> dict[str, dict]:
 
 class PythonSymbolUsageTests(unittest.TestCase):
     def test_module_level_variables_are_entities(self) -> None:
-        """/* REQ-PY-001: public module-level names bound by assignment (plain, annotated, Final, TypeAlias, tuple targets) or listed in __all__ are entities of kind function; private names and bare annotations are not. */"""
+        """/* REQ-PY-001: public module-level names bound by assignment (plain, annotated, Final, TypeAlias, tuple targets) or listed in __all__ are entities of kind variable; private names and bare annotations are not. */"""
         nodes, _edges = _graph({
             "app/config.py": (
                 "from typing import Final, TypeAlias\n"
@@ -74,9 +74,10 @@ class PythonSymbolUsageTests(unittest.TestCase):
             ),
         })
         entities = _entities(nodes, "app/config")
-        for name in ("app", "ROUTE_COUNT", "LIMIT", "Pair", "first", "second", "_exported", "flag", "make"):
+        for name in ("app", "ROUTE_COUNT", "LIMIT", "Pair", "first", "second", "_exported", "flag"):
             self.assertIn(name, entities)
-            self.assertEqual("function", entities[name]["kind"])
+            self.assertEqual("variable", entities[name]["kind"])
+        self.assertEqual("function", entities["make"]["kind"])
         for name in ("_private", "declared", "local", "__all__"):
             self.assertNotIn(name, entities)
         self.assertEqual(3, entities["app"]["line"])
@@ -221,8 +222,13 @@ class RustMatchGuardTests(unittest.TestCase):
                 "}\n"
             ),
         }, cargo=True)
-        emit = next(node for node in nodes if node["id"] == "src/emit")
-        self.assertIn((4, 14), {(line, column) for line, column, *_rest in emit.get("uses", [])})
+        del nodes
+        listed = _entity_output({
+            "src/lib.rs": "pub mod types;\npub mod emit;\n",
+            "src/types.rs": "pub fn is_wide(t: u8) -> bool { t > 8 }\n",
+            "src/emit.rs": "use crate::types::is_wide;\nfn size(t: u8) -> u8 {\n    match t {\n        _ if is_wide(t) => 16,\n        _ => 8,\n    }\n}\n",
+        }, "is_wide", positions=True, cargo=True)
+        self.assertIn("(use src/emit 4 14 src/types::is_wide :file src/emit.rs)", listed)
 
 
 class NameResolutionTests(unittest.TestCase):
@@ -299,7 +305,7 @@ def _entity_output(files: dict[str, str], name: str, positions: bool, cargo: boo
     import importlib.util
     import io
 
-    from scripts.build_code_graph import render_sexp
+    import scripts.build_code_graph as builder
 
     spec = importlib.util.spec_from_file_location(
         "code_graph_search_for_uses", Path(__file__).resolve().parents[1] / "scripts" / "code_graph_search.py")
@@ -311,33 +317,29 @@ def _entity_output(files: dict[str, str], name: str, positions: bool, cargo: boo
         root = Path(directory)
         if cargo:
             (root / "Cargo.toml").write_text('[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
-        results = []
         for relative_path, content in files.items():
             path = root / relative_path
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-            language = detect_source_language(path.name)
-            assert language is not None
-            results.append(parse_file((str(path), language, root.name)))
-        graph = build_graph(results, str(root))
-        assert isinstance(graph, Ok)
+        # A real build (with its cache): the first query that needs positions fills them in.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            assert builder.main(["--root", str(root)]) == 0
         map_path = root / ".code_graph.sexp"
-        map_path.write_text(render_sexp(graph.value.nodes, graph.value.edges, str(root), "syntax", len(results)),
-                            encoding="utf-8")
         loaded = search.CodeGraph()
         loaded.load(str(map_path), str(root))
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             search.cmd_entity(loaded, name, positions=positions)
         return output.getvalue() + "".join(
-            "; graph " + line + "\n" for line in map_path.read_text(encoding="utf-8").splitlines()
+            "; graph " + line + "\n"
+            for line in map_path.with_name(".code_graph.uses.sexp").read_text(encoding="utf-8").splitlines()
             if line.startswith("(use ")
         )
 
 
 class UsePositionTests(unittest.TestCase):
     def test_entity_positions_list_every_use_with_line_and_column(self) -> None:
-        """/* REQ-CS-060: the graph stores the resolved uses of each file as (use <file-module> <defining-module>::<S> <line>:<col> ...), one line per file and definition, a letter after a position giving its kind (i import); `entity S --positions` prints every use of S with its file, line and column (both 1-based), and without the flag only the definitions and refs lines. */"""
+        """/* REQ-CS-060: the use file next to the graph stores the resolved uses of each file as (use <file-module> <defining-module>::<S> <line>:<col> ...), one line per file and definition, a letter after a position giving its kind (i import); `entity S --positions` prints every use of S with its file, line and column (both 1-based), and without the flag only the definitions and refs lines. */"""
         files = {
             "app/__init__.py": "",
             "app/config.py": "LIMIT = 3\n",
@@ -345,12 +347,12 @@ class UsePositionTests(unittest.TestCase):
         }
         plain = _entity_output(files, "LIMIT", positions=False)
         self.assertNotIn("\n(use ", "\n" + plain)
-        self.assertRegex(plain, r"; graph \(use \S+ \S+::LIMIT 1:24i 5:12 5:27\)")
         listed = _entity_output(files, "LIMIT", positions=True)
+        self.assertRegex(listed, r"; graph \(use \S+ \S+::LIMIT 1:24i 5:12 5:27\)")
         self.assertIn("(use app/main 1 24 app/config::LIMIT :file app/main.py)", listed)
         self.assertIn("(use app/main 5 12 app/config::LIMIT :file app/main.py)", listed)
         self.assertIn("(use app/main 5 27 app/config::LIMIT :file app/main.py)", listed)
-        self.assertEqual(3, listed.count("\n(use ") + listed.startswith("(use "))
+        self.assertEqual(3, (listed.count("\n(use ") + listed.startswith("(use ")))
 
     def test_positions_for_typescript_and_rust_uses(self) -> None:
         """/* REQ-CS-061: TypeScript and Rust uses carry positions too: an import specifier, a type annotation, a `use` path segment and a call through a module path. */"""
@@ -377,7 +379,7 @@ class MethodCallTests(unittest.TestCase):
         import importlib.util
         import io
 
-        from scripts.build_code_graph import render_sexp
+        import scripts.build_code_graph as builder
 
         spec = importlib.util.spec_from_file_location(
             "code_graph_search_for_methods", Path(__file__).resolve().parents[1] / "scripts" / "code_graph_search.py")
@@ -389,27 +391,22 @@ class MethodCallTests(unittest.TestCase):
             root = Path(directory)
             if cargo:
                 (root / "Cargo.toml").write_text('[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
-            results = []
             for relative_path, content in files.items():
                 path = root / relative_path
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(content, encoding="utf-8")
-                language = detect_source_language(path.name)
-                assert language is not None
-                results.append(parse_file((str(path), language, root.name)))
-            graph = build_graph(results, str(root))
-            assert isinstance(graph, Ok)
+            # A real build (with its cache): the first query that needs positions fills them in.
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                assert builder.main(["--root", str(root)]) == 0
             map_path = root / ".code_graph.sexp"
-            map_path.write_text(render_sexp(graph.value.nodes, graph.value.edges, str(root), "syntax", len(results)),
-                                encoding="utf-8")
             loaded = search.CodeGraph()
             loaded.load(str(map_path), str(root))
-        uses = {
-            (source, str(line), str(column), target)
-            for target, sites in loaded.uses_by_target.items()
-            for source, line, column, *_kind in sites
-        }
-        return uses, dict(loaded.unresolved_method_calls)
+            uses = {
+                (source, str(line), str(column), target)
+                for target, sites in loaded.uses_by_target.items()
+                for source, line, column, *_kind in sites
+            }
+            return uses, dict(loaded.unresolved_method_calls)
 
     def test_python_method_calls_resolve_only_with_a_visible_receiver_type(self) -> None:
         """/* REQ-LANG-011: a Python method call resolves to Class.method when the receiver's class is in sight (self in a method, a parameter or variable annotated with the class, a variable assigned from the constructor, an inherited method of a base class); any other receiver is counted as unresolved, never guessed, and makes no refs edge. */"""

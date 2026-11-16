@@ -5,7 +5,8 @@
 ### Changes
 
 - `wingbox usages <symbol>` lists every place that uses one function, class,
-  type or constant, through re-exports and aliases: grouped by file, with
+  type or constant, through re-exports and aliases (`usages pkg/__init__.py::X`
+  answers for the definition the package re-exports): grouped by file, with
   `line:column` and the kind of use (import, re-export, call, type, extends,
   reference). The symbol is `Name`, `<file>::Name` or `<file>::Class.method`;
   a name defined in several files lists the candidates; for a method, calls
@@ -17,16 +18,26 @@
   `new C(...)` sites more, which SCIP files under the constructor.
 - A method call is a use of `Class.method` when the receiver's class is in
   sight (`self`/`this`, an annotation, a constructor, a base class); every
-  other method call is counted as unresolved in the graph, never guessed. On
+  other method call is counted as unresolved, never guessed. On
   the five benchmark repositories 2 to 12 % of method calls resolve.
 - `entity S --positions` lists every place that names S, with its file, line
-  and column, as an editor's find usages does. The graph stores the use sites
-  as `(use <module> <defining-module>::<S> <line>:<col> ...)`; on immich-server
-  the graph grows from 614 KB to 1,087 KB, on fastapi from 537 KB to 867 KB.
+  and column, as an editor's find usages does.
+- The use index costs a build almost nothing: `wingbox build` reads only the
+  uses that can name another file and writes them, with module-level
+  variables, to `.code_graph.uses.sexp` next to the graph; the first `usages`
+  or `entity --positions` fills in every use position (a parallel pass over
+  the files, from the build cache) and keeps them until a file changes. A
+  build without changed files does not resolve uses again. `.code_graph.sexp`
+  stays within 3 % of 0.2.6 on immich-server and fastapi.
+- `wingbox build` resolves each import of a file once (0.2.6 resolved the
+  same import up to dozens of times): a build without changed files takes
+  2.6 s instead of 4.7 s on immich-server and 6.5 s instead of 14.6 s on
+  fastapi, a full build 4.8 s instead of 6.6 s and 11.7 s instead of 25.0 s.
 - TypeScript use sites in code count: names, `ns.S` after `import * as ns`,
   qualified types, JSX elements, shorthand properties and `export { k }`; a
   parameter, local variable, catch parameter or type parameter of the same name
-  shadows the import and is not a use.
+  shadows the import and is not a use; a `let`, `const` or class shadows it
+  only in its block.
 - TypeScript names in import and export statements resolve to the defining
   file through barrels: named, aliased and default imports, `export * from`,
   `export { X as Y } from`, `export * as ns from` and `export default`, with
