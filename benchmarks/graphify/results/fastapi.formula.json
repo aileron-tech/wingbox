@@ -1,0 +1,205 @@
+{
+ "corpus": {
+  "code_files": 1223,
+  "words": 321676,
+  "tokens": 428901
+ },
+ "graphify": {
+  "default_questions": {
+   "corpus_tokens": 428901,
+   "corpus_words": 321676,
+   "nodes": 12897,
+   "edges": 26001,
+   "avg_query_tokens": 1369,
+   "reduction_ratio": 313.3,
+   "per_question": [
+    {
+     "question": "how does authentication work",
+     "query_tokens": 1622,
+     "reduction": 264.4
+    },
+    {
+     "question": "what is the main entry point",
+     "query_tokens": 1608,
+     "reduction": 266.7
+    },
+    {
+     "question": "how are errors handled",
+     "query_tokens": 1620,
+     "reduction": 264.8
+    },
+    {
+     "question": "what connects the data layer to the api",
+     "query_tokens": 1634,
+     "reduction": 262.5
+    },
+    {
+     "question": "what are the core abstractions",
+     "query_tokens": 362,
+     "reduction": 1184.8
+    }
+   ]
+  },
+  "published_questions": {
+   "corpus_tokens": 428901,
+   "corpus_words": 321676,
+   "nodes": 12897,
+   "edges": 26001,
+   "avg_query_tokens": 1208,
+   "reduction_ratio": 355.1,
+   "per_question": [
+    {
+     "question": "how does FlashAttention improve memory efficiency",
+     "query_tokens": 1644,
+     "reduction": 260.9
+    },
+    {
+     "question": "what are the core abstractions",
+     "query_tokens": 362,
+     "reduction": 1184.8
+    },
+    {
+     "question": "how are errors handled",
+     "query_tokens": 1620,
+     "reduction": 264.8
+    }
+   ]
+  }
+ },
+ "wingbox": {
+  "analyze_every_module": {
+   "queries": 1223,
+   "mean_tokens": 624,
+   "median_tokens": 476,
+   "max_tokens": 55131,
+   "reduction_by_mean": 687.5,
+   "reduction_by_max": 7.8
+  },
+  "impact_every_file": {
+   "queries": 1223,
+   "mean_tokens": 261,
+   "median_tokens": 71,
+   "max_tokens": 27622,
+   "reduction_by_mean": 1645.1,
+   "reduction_by_max": 15.5
+  },
+  "whole_graph_file_tokens": 134343,
+  "modules_without_analyze_answer": [],
+  "default_questions": {
+   "answered": 5,
+   "of": 5,
+   "per_question": [
+    {
+     "question": "how does authentication work",
+     "terms": [
+      {
+       "term": "authentication",
+       "tokens": 107
+      }
+     ],
+     "answer_tokens": 107
+    },
+    {
+     "question": "what is the main entry point",
+     "terms": [
+      {
+       "term": "main",
+       "tokens": 474
+      },
+      {
+       "term": "entry",
+       "tokens": 92
+      },
+      {
+       "term": "point",
+       "tokens": 455
+      }
+     ],
+     "answer_tokens": 1021
+    },
+    {
+     "question": "how are errors handled",
+     "terms": [
+      {
+       "term": "errors",
+       "tokens": 539
+      },
+      {
+       "term": "handled",
+       "tokens": 967
+      }
+     ],
+     "answer_tokens": 1506
+    },
+    {
+     "question": "what connects the data layer to the api",
+     "terms": [
+      {
+       "term": "data",
+       "tokens": 813
+      },
+      {
+       "term": "api",
+       "tokens": 888
+      }
+     ],
+     "answer_tokens": 1701
+    },
+    {
+     "question": "what are the core abstractions",
+     "terms": [
+      {
+       "term": "core",
+       "tokens": 1054
+      }
+     ],
+     "answer_tokens": 1054
+    }
+   ],
+   "mean_tokens": 1078,
+   "reduction": 397.9
+  },
+  "published_questions": {
+   "answered": 3,
+   "of": 5,
+   "per_question": [
+    {
+     "question": "how does FlashAttention improve memory efficiency",
+     "terms": [
+      {
+       "term": "memory",
+       "tokens": 80
+      }
+     ],
+     "answer_tokens": 80
+    },
+    {
+     "question": "what are the core abstractions",
+     "terms": [
+      {
+       "term": "core",
+       "tokens": 1054
+      }
+     ],
+     "answer_tokens": 1054
+    },
+    {
+     "question": "how are errors handled",
+     "terms": [
+      {
+       "term": "errors",
+       "tokens": 539
+      },
+      {
+       "term": "handled",
+       "tokens": 967
+      }
+     ],
+     "answer_tokens": 1506
+    }
+   ],
+   "mean_tokens": 880,
+   "reduction": 487.4
+  }
+ }
+}

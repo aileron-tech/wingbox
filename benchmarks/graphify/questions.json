@@ -1,0 +1,7 @@
+[
+ {"id": "Q1", "repo": "chrome-devtools-mcp", "file": "src/collectors/PageCollector.ts", "language": "typescript"},
+ {"id": "Q2", "repo": "agent-browser", "file": "cli/src/validation.rs", "language": "rust"},
+ {"id": "Q3", "repo": "claudes-c-compiler", "file": "src/backend/elf/constants.rs", "language": "rust"},
+ {"id": "Q4", "repo": "fastapi", "file": "fastapi/openapi/models.py", "language": "python"},
+ {"id": "Q5", "repo": "fastapi", "file": "fastapi/sse.py", "language": "python"}
+]

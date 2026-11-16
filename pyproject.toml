@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wingbox"
-version = "0.2.2"
+version = "0.2.3"
 description = "Code graph and blast radius analysis for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,12 @@ keywords = [
     "ai-coding-agents",
     "claude-code",
     "codex",
+    "offline",
+    "local-first",
+    "air-gapped",
+    "graphify",
+    "graphify-alternative",
+    "knowledge-graph",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -4,6 +4,13 @@
 
 ### Changes
 
+- Package version 0.2.3. The package page shows the current README.
+- The README states what makes Wingbox usable inside a security perimeter:
+  no network, no model, no telemetry, code read and never run, an offline
+  install. Two tests keep it true (REQ-SEC-001, REQ-SEC-002).
+- `benchmarks/graphify` is back, next to `benchmarks/impact`: Wingbox and
+  Graphify measured on the same public repositories, with the scripts and the
+  result files. The README has a section and a FAQ entry on the two tools.
 - Package version 0.2.2 (0.2.1 plus the layer of a Python `__init__.py`).
 - Package version 0.2.1.
 - `analyze` and `impact` print the complete counts and list at most 200
@@ -31,6 +38,12 @@
 
 ### Fixes
 
+- `boundaries-summary` counts pairs of files, as the report does; a pair
+  printed once per relation (imports and data-flow) used to count twice.
+- The graph of a repository without TypeScript builds as fast as in 0.2.0
+  again: 0.2.1 resolved every import a second time while looking for imports
+  of types only (a Python library of 1,227 files: 9.4 s, now 7.7 s on the same
+  machine; 0.2.0: 7.4 s).
 - Layers: a Python `__init__.py` is its package. It takes the layer of its
   folder or, when no folder rule applies, the layer where most modules of the
   package are; the names it re-exports no longer decide its layer.

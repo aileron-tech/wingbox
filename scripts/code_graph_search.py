@@ -1714,7 +1714,8 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
     # A pair is a violation only when both layers are certain (folders or file type).
     # A layer guessed from the role of a file makes the pair a candidate to read.
     # An import of types only is erased at build time: reported apart, not a violation.
-    counts = {"violation": 0, "violation-type-only": 0, "violation-candidate": 0}
+    # The summary counts pairs of files; a pair is printed once per relation.
+    pairs: dict[str, set[tuple[str, str]]] = {"violation": set(), "violation-type-only": set(), "violation-candidate": set()}
     for src, tgt, sl, tl, etype, reason in sorted(violations):
         src_file = g.module_to_file(src)
         tgt_file = g.module_to_file(tgt)
@@ -1724,11 +1725,11 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
             fact = "violation"
         else:
             fact = "violation-candidate"
-        counts[fact] += 1
+        pairs[fact].add((src, tgt))
         print(f"({fact} {src} {tgt} :src-layer {sl} :tgt-layer {tl} :via {etype} :lang {g.module_lang(src)} :src-file {_q(src_file)} :tgt-file {_q(tgt_file)} {_q(reason)})")
     print(
-        f"(boundaries-summary :violations {counts['violation']} :type-only {counts['violation-type-only']} "
-        f":candidates {counts['violation-candidate']} :checked {len(scope_mods)})"
+        f"(boundaries-summary :violations {len(pairs['violation'])} :type-only {len(pairs['violation-type-only'])} "
+        f":candidates {len(pairs['violation-candidate'])} :checked {len(scope_mods)})"
     )
 
 

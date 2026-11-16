@@ -8,6 +8,9 @@
 > It works as an agent skill in Claude Code and Codex and supports Python,
 > TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus.
 >
+> **Runs fully locally:** no network access, no model, no telemetry. It can be
+> used inside a security perimeter and on a machine with no internet.
+>
 > **Install the agent skill:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
 > **Install the command:** `pipx install wingbox` | [PyPI](https://pypi.org/project/wingbox/)
@@ -30,6 +33,31 @@ analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 Everything runs on your machine. The code graph is built by deterministic
 static parsing: no LLM call, no embeddings, no vector database, and no network
 access to build or query it.
+
+## Runs fully locally, inside your security perimeter
+
+Wingbox is safe to run on code that must not leave the company:
+
+- **No network.** Building and querying the graph open no network connection.
+  Run it with the network switched off to see for yourself:
+  `docker run --rm --network none -v "$PWD":/repo wingbox`.
+- **No model, no account, no key, no telemetry.** Nothing is sent to a model
+  or to a service, and nothing is collected about its use.
+- **Your code is read, never run.** Wingbox parses source files with its own
+  parsers and calls `git` for the ignore rules; it does not execute the code,
+  the tests or the build of the repository. The `--lsp` option, off by
+  default, starts a language server that is installed on the machine.
+- **The results stay in the repository folder:** `.code_graph.sexp`,
+  `wingbox-out/REPORT.md` and `wingbox-out/map.html`. The map is one HTML
+  file that loads nothing from outside and opens offline.
+- **Works on a machine with no internet.** Fetch the package and its pinned
+  dependencies once (`pip download wingbox -d wheels`), carry the folder
+  inside, and install with `pip install --no-index --find-links wheels wingbox`.
+- **Deterministic and open.** The same code gives the same graph; the source
+  is MIT licensed and small enough to review.
+
+Two tests of the repository keep this true: the package imports no module
+that opens network connections, and the map page loads no outside resource.
 
 ## See it in action
 
@@ -162,6 +190,27 @@ container and compares every result with the committed one:
 docker build -f Dockerfile.benchmark -t wingbox-benchmark .
 docker run --rm wingbox-benchmark
 ```
+
+## Wingbox and Graphify on the same tests
+
+[Graphify](https://github.com/Graphify-Labs/graphify) builds a knowledge graph
+of a codebase, documents and images for coding agents. Wingbox is narrower: a
+deterministic graph of the code alone, built without a model, and exact lists
+of what depends on a file. Both were run on the same public repositories
+(Wingbox 0.2.0, Graphify 0.9.110, no model on either side):
+
+| Test | Wingbox | Graphify |
+|---|---|---|
+| Exact list of dependent files, five questions (`wingbox impact`, `graphify affected`) | 5 of 5 | 1 of 5 |
+| Dependencies against the 1,801 import pairs of FastAPI | 0 wrong, 0 missing | 22 wrong, 32 missing |
+| Tokens a coding agent spends per answer (built-in search alone: 59,367) | 25,598 | 109,071 |
+| Graph of FastAPI on a hosted runner | 2.2 s | 17.9 s |
+
+`graphify affected` follows calls and references as well as imports, so it
+answers a wider question than "who imports this file"; the report gives its
+figures restricted to imports too. The scripts, the reference lists, every
+result file and the token formula Graphify publishes are in
+[benchmarks/graphify](benchmarks/graphify/README.md).
 
 ## Quick start for AI coding agents
 
@@ -432,6 +481,17 @@ Text search finds lines that match a pattern. A code graph answers structural
 questions: which modules depend on this one, what a change can break, which
 architecture boundary a dependency crosses, and which few files are worth
 reading first.
+
+### How is Wingbox different from Graphify?
+
+Graphify extracts a knowledge graph from code, documents, papers and images,
+with a model for the non-code part, and supports more languages. Wingbox reads
+code only, with deterministic parsers and no model, and resolves imports the
+way each language does, so that `wingbox impact` gives the exact list of files
+a change reaches. The two tools are measured side by side in
+[benchmarks/graphify](benchmarks/graphify/README.md). Wingbox can be used as a
+Graphify alternative when the question is change impact, dependencies and
+architecture boundaries of code.
 
 ### Does Wingbox replace a compiler or a language server?
 

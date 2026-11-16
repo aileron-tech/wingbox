@@ -1,0 +1,22 @@
+{
+ "label": "fastapi: wingbox",
+ "scope": "(whole tree)",
+ "reference_pairs": 1801,
+ "tool_edges": 1818,
+ "strict": {
+  "right": 1818,
+  "of_them_implied_package_init": 17,
+  "precision": 1.0,
+  "recall": 1.0
+ },
+ "either": {
+  "right": 1818,
+  "precision": 1.0,
+  "found": 1801,
+  "recall": 1.0
+ },
+ "tool_edges_not_in_code": [],
+ "tool_edges_wrong_strict": [],
+ "code_pairs_missing_strict": [],
+ "code_pairs_missing_either": []
+}

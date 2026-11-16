@@ -1,0 +1,80 @@
+{
+ "label": "fastapi/: graphify modules",
+ "scope": "fastapi/",
+ "reference_pairs": 124,
+ "tool_edges": 122,
+ "strict": {
+  "right": 122,
+  "of_them_implied_package_init": 5,
+  "precision": 1.0,
+  "recall": 0.9435
+ },
+ "either": {
+  "right": 122,
+  "precision": 1.0,
+  "found": 117,
+  "recall": 0.9435
+ },
+ "tool_edges_not_in_code": [],
+ "tool_edges_wrong_strict": [],
+ "code_pairs_missing_strict": [
+  [
+   "fastapi/__init__.py",
+   "fastapi/param_functions.py"
+  ],
+  [
+   "fastapi/__init__.py",
+   "fastapi/routing.py"
+  ],
+  [
+   "fastapi/_compat/__init__.py",
+   "fastapi/_compat/v2.py"
+  ],
+  [
+   "fastapi/applications.py",
+   "fastapi/telemetry/_runtime.py"
+  ],
+  [
+   "fastapi/datastructures.py",
+   "fastapi/_compat/v2.py"
+  ],
+  [
+   "fastapi/utils.py",
+   "fastapi/__init__.py"
+  ],
+  [
+   "fastapi/utils.py",
+   "fastapi/routing.py"
+  ]
+ ],
+ "code_pairs_missing_either": [
+  [
+   "fastapi/__init__.py",
+   "fastapi/param_functions.py"
+  ],
+  [
+   "fastapi/__init__.py",
+   "fastapi/routing.py"
+  ],
+  [
+   "fastapi/_compat/__init__.py",
+   "fastapi/_compat/v2.py"
+  ],
+  [
+   "fastapi/applications.py",
+   "fastapi/telemetry/_runtime.py"
+  ],
+  [
+   "fastapi/datastructures.py",
+   "fastapi/_compat/v2.py"
+  ],
+  [
+   "fastapi/utils.py",
+   "fastapi/__init__.py"
+  ],
+  [
+   "fastapi/utils.py",
+   "fastapi/routing.py"
+  ]
+ ]
+}
