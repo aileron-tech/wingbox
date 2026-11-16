@@ -43,10 +43,18 @@ match the graph is ignored with a warning).
 definition in another file it uses, from the uses that can name another file
 (import and export statements, qualified paths, names a glob import may
 provide). That keeps the build as fast as without the use index. The first
-query that needs positions has the builder walk every file of a language with
-a use index again, from the build cache, and rewrite the file with positions:
-every use, also inside its own file. A build without changed files keeps the
-file as it is, positions included.
+query that needs positions has the builder fill them in from the build cache
+and rewrite the file with positions: every use, also inside its own file. A
+build without changed files keeps the file as it is, positions included.
+
+`.code_graph.uses-cache.json`, next to it, keeps per file the content hash,
+the full use walk and the resolved uses, with a digest of the surface of the
+repository (every path, and the definitions and bindings of the files with a
+use index) and the import lookups. Filling positions walks again only the
+files whose content changed, and while the surface is the same resolves only
+those; a changed surface (a definition, an import or a file added or removed)
+resolves every file again. A change in tsconfig, package or Cargo settings
+alone is not part of the surface: rebuild with `--full` after one.
 
 The letter after a position is the kind of use: `i` import, `r` re-export, `c`
 call, `t` type, `e` extends or implements, none for any other reference.

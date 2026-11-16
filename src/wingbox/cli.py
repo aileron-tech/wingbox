@@ -13,6 +13,8 @@
                                             Upgrade with the installer that installed Wingbox (pipx, uv
                                             or pip), then refresh what install put in place
     wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
+    wingbox hook dirty                      The Claude Code PostToolUse hook on Edit and Write: marks the
+                                            changed file so the graph is refreshed before its next use
     wingbox mcp [--root DIR]                Run the MCP server on stdio for an MCP client (default: current directory)
     wingbox --version
 
@@ -28,6 +30,12 @@ resolved against the current directory.
 The code graph (.code_graph.sexp) is the file agents query. REPORT.md and
 map.html say the same thing to a person: the report in text, the map as an
 interactive page that opens in a browser without a network connection.
+
+Query commands, the MCP tools and the search hook bring the graph up to date
+before they read it: the files changed since the last build (marked by the
+hooks, or found by comparing sizes and times with the last build's snapshot)
+are patched in, or an incremental build runs. WINGBOX_AUTO_REFRESH=0 turns
+this off; a stale graph is then reported as such.
 """
 from __future__ import annotations
 
@@ -177,17 +185,33 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
 
 
 def _build(arguments: list[str]) -> int:
+    from wingbox import freshness
+
     builder = load_script("build_code_graph")
-    status = int(builder.main(arguments))
     options = builder.parse_builder_options(arguments)
-    if status != 0 or not isinstance(options, builder.Ok):
+    if not isinstance(options, builder.Ok):
+        return int(builder.main(arguments))
+    root = options.value.root
+    if options.value.output_path != freshness.graph_path(root):
+        return _build_outputs(builder, int(builder.main(arguments)), options.value)
+    # The graph the hooks and the MCP server keep fresh: the build clears the marks it includes.
+    generation = freshness.read_state(root).generation
+    status = int(builder.main(arguments))
+    if status == 0:
+        excluded = tuple(sorted(options.value.skip_directories - frozenset(builder.SKIP_DIRS)))
+        freshness.record_build(root, generation, excluded)
+    return _build_outputs(builder, status, options.value)
+
+
+def _build_outputs(builder: ModuleType, status: int, options) -> int:
+    if status != 0:
         return status
-    outputs = write_outputs(options.value.root, options.value.output_path)
+    outputs = write_outputs(options.root, options.output_path)
     if isinstance(outputs, OutputsFailed):
         print(f"[wingbox] ERROR: report and map not written: {outputs.error}", file=sys.stderr)
         return 1
-    relative = os.path.relpath(outputs.page, options.value.root).replace(os.sep, "/")
-    print(f"[wingbox] Report  {os.path.relpath(outputs.report, options.value.root).replace(os.sep, '/')}")
+    relative = os.path.relpath(outputs.page, options.root).replace(os.sep, "/")
+    print(f"[wingbox] Report  {os.path.relpath(outputs.report, options.root).replace(os.sep, '/')}")
     print(f"[wingbox] Map     {relative}  (open it in a browser)")
     return 0
 
@@ -318,7 +342,24 @@ def _run(argv: Optional[list[str]] = None) -> int:
         sys.argv = ["wingbox infra"] + absolutize_path_options(rest, cwd)
         load_script("build_infra_topology").main()
         return 0
-    return int(load_script("code_graph_search").main(absolutize_path_options(args, cwd)))
+    query = absolutize_path_options(args, cwd)
+    _refresh_before_query(query, cwd)
+    return int(load_script("code_graph_search").main(query))
+
+
+def _refresh_before_query(args: list[str], cwd: str) -> None:
+    """Bring the graph a query reads up to date (WINGBOX_AUTO_REFRESH=0: only say it is stale)."""
+    if "--map" in args or args[0] in ("-h", "--help", "help"):
+        return
+    from wingbox import freshness
+
+    start = args[args.index("--root") + 1] if "--root" in args[:-1] else cwd
+    root = freshness.find_root(start)
+    if root is None:
+        return
+    line = freshness.stale_line(freshness.ensure_graph_fresh(root, freshness.refresh_wait()))
+    if line:
+        print(f"[wingbox] WARNING: the code graph may miss recent changes {line}", file=sys.stderr)
 
 
 if __name__ == "__main__":

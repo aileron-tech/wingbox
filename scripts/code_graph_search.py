@@ -435,7 +435,9 @@ class CodeGraph:
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self._root: str = ""
 
-    def load(self, path: str, root: Optional[str] = None) -> MapLoadResult:
+    def load(self, path: str, root: Optional[str] = None, focus: Optional[str] = None) -> MapLoadResult:
+        """Read a code graph. With focus (a name), only the entity and edge facts that mention it are
+        read, besides the paths and the nodes: what a question about that one name needs."""
         self.nodes = {}
         self.entities = {}
         self.entity_by_name = {}
@@ -473,6 +475,8 @@ class CodeGraph:
         path_stack: list[str] = []
 
         for line in map_lines:
+            if found_paths and not in_paths:
+                break  # header, def lines and paths come first; nothing after them is needed here
             stripped = line.strip()
             if not stripped or stripped.startswith(";") or stripped.startswith(_LAZY_FACTS):
                 continue
@@ -553,6 +557,8 @@ class CodeGraph:
         for line in map_lines:
             if line.startswith(_LAZY_FACTS):
                 self._symbol_lines.append(line)
+                continue
+            if focus is not None and focus not in line and not line.startswith(("(node ", "(code-graph")):
                 continue
             tokens = tokenize(line)
             if not tokens:
@@ -3295,6 +3301,18 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
     return None
 
 
+def _load_focus(args: list[str]) -> Optional[str]:
+    """The one name a command asks about, when it reads nothing else of the graph: usages, and
+    entity with a literal name (a pattern may match any name, so it reads everything)."""
+    if len(args) < 2 or args[0] not in ("usages", "entity"):
+        return None
+    target = [argument for argument in args[1:] if not argument.startswith("--")][:1]
+    if not target or ".*" in target[0]:
+        return None
+    name = target[0].rpartition("::")[2].split(".", 1)[0]
+    return name or None
+
+
 def main(args: Optional[list[str]] = None) -> int:
     raw_args = list(sys.argv[1:] if args is None else args)
     args, explicit_map, explicit_root, option_error = _extract_query_paths(raw_args)
@@ -3314,7 +3332,7 @@ def main(args: Optional[list[str]] = None) -> int:
 
     sexp_path = explicit_map or find_sexp_file()
     g = CodeGraph()
-    load_result = g.load(sexp_path, explicit_root)
+    load_result = g.load(sexp_path, explicit_root, focus=_load_focus(args))
     if isinstance(load_result, MapLoadErr):
         print(f"(error invalid-map {_q(load_result.error)})")
         return 1

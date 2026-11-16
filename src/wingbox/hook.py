@@ -12,7 +12,14 @@ hookSpecificOutput.additionalContext names, in S-expressions:
 The context is capped at CONTEXT_LIMIT characters. Without a graph, or for a
 pattern that names nothing in it, the hook prints nothing. It never blocks the
 tool: it always exits 0, and an error goes to stderr, which Claude Code does
-not show to the model for exit code 0. No network, no subprocess.
+not show to the model for exit code 0. No network.
+
+Before it reads the graph, the hook brings it up to date
+(freshness.ensure_graph_fresh): it may start a refresh of the graph in a
+detached process and wait for it up to WINGBOX_HOOK_WAIT seconds. When the
+graph still misses known changes it says so, `(wingbox-graph-stale ...)`, and
+gives no context from it. `wingbox hook dirty` (PostToolUse on Edit and Write)
+marks the edited file.
 
 The graph is read as text with regular expressions, not with the query
 engine, so that a graph of 8,000 files is answered in a fraction of a second.
@@ -26,6 +33,7 @@ import sys
 from dataclasses import dataclass
 from typing import Optional, Union
 
+from wingbox import freshness
 from wingbox.facts import atom
 
 CONTEXT_LIMIT = 1500
@@ -401,6 +409,10 @@ def context_for(payload: object, cwd: str) -> str:
     found = find_graph(start)
     if found is None:
         return ""
+    if found[1] == freshness.graph_path(found[0]):
+        stale = freshness.stale_line(freshness.ensure_graph_fresh(found[0], freshness.hook_wait()))
+        if stale:
+            return stale  # the graph misses known changes: no context from it
     graph = load_graph(*found)
     lines = answer_file(graph, query) if isinstance(query, FileQuery) else answer_pattern(graph, query)
     if not lines:
@@ -425,9 +437,15 @@ def run_pre_search(stdin_text: str, cwd: str) -> str:
 
 
 def main(args: list[str]) -> int:
-    """Entry point of `wingbox hook pre-search`: always exit 0 so the tool call is never blocked."""
+    """Entry point of `wingbox hook pre-search` and `wingbox hook dirty`: always exit 0 so the tool call is never blocked."""
+    if args[:1] == ["dirty"]:
+        try:
+            freshness.run_post_edit(sys.stdin.read())
+        except Exception as error:  # the hook must never block or break the tool call
+            print(f"[wingbox] hook dirty: {type(error).__name__}: {error}", file=sys.stderr)
+        return 0
     if args[:1] != ["pre-search"]:
-        print("usage: wingbox hook pre-search  (reads the Claude Code hook input on stdin)", file=sys.stderr)
+        print("usage: wingbox hook pre-search|dirty  (reads the Claude Code hook input on stdin)", file=sys.stderr)
         return 0
     try:
         output = run_pre_search(sys.stdin.read(), os.getcwd())

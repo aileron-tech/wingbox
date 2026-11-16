@@ -81,7 +81,7 @@ class GlobalInstallTest(InstallTestCase):
             self.assertIn("wingbox impact <file>", text)
         settings = json.loads((self.home / ".claude" / "settings.json").read_text())
         self.assertEqual(
-            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 5}]}],
+            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 10}]}],
             settings["hooks"]["PreToolUse"],
         )
         self.assertFalse((self.home / ".gemini").exists())
@@ -90,6 +90,34 @@ class GlobalInstallTest(InstallTestCase):
         [entry] = install.read_record((self.home / ".wingbox" / "installed.sexp").read_text())
         self.assertEqual(("global", str(self.home), ("claude-code", "codex")), (entry.scope, entry.root, entry.assistants))
         self.assertIn(str(self.home / ".agents"), entry.folders)
+
+    def test_install_adds_the_edit_hook_and_reinstall_upgrades_an_old_install_without_duplicates(self) -> None:
+        """/* REQ-FRESH-011: install must add one PostToolUse group on Edit|Write|MultiEdit running `<same program> hook dirty`; installing over a settings file from an older install (search hook only, timeout 5) must leave exactly one Wingbox group per event, and uninstall must remove both. */"""
+        settings_path = self.home / ".claude" / "settings.json"
+        settings_path.write_text(json.dumps({"hooks": {
+            "PreToolUse": [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 5}]}],
+            "PostToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]}],
+        }}) + "\n")
+        self.run_command("install")
+        self.run_command("install")
+        hooks = json.loads(settings_path.read_text())["hooks"]
+        self.assertEqual(
+            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 10}]}],
+            hooks["PreToolUse"],
+        )
+        self.assertEqual(
+            [
+                {"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]},
+                {"matcher": "Edit|Write|MultiEdit", "hooks": [
+                    {"type": "command", "command": "/opt/tools/bin/wingbox hook dirty", "timeout": 5}
+                ]},
+            ],
+            hooks["PostToolUse"],
+        )
+        self.run_command("uninstall")
+        remaining = json.loads(settings_path.read_text()).get("hooks", {})
+        self.assertNotIn("PreToolUse", remaining)
+        self.assertEqual([{"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]}], remaining["PostToolUse"])
 
     def test_second_install_changes_nothing(self) -> None:
         """/* REQ-INSTALL-002: a second `wingbox install` must change no file and report every target as kept and unchanged. */"""

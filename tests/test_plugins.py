@@ -71,6 +71,16 @@ class ClaudePluginTest(unittest.TestCase):
         for path in re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\\ ]+)", json.dumps(manifest)):
             self.assertTrue((PLUGIN / path).is_file(), path)
 
+    def test_edit_hook(self) -> None:
+        """/* REQ-FRESH-012: the Claude Code manifest must carry one PostToolUse hook on Edit|Write|MultiEdit that runs the launcher with `hook dirty` through `sh`, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
+        manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
+        (group,) = manifest["hooks"]["PostToolUse"]
+        self.assertEqual(group["matcher"], "Edit|Write|MultiEdit")
+        (hook,) = group["hooks"]
+        self.assertEqual(hook["command"], 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run" hook dirty')
+        (search,) = manifest["hooks"]["PreToolUse"]
+        self.assertEqual(search["hooks"][0]["timeout"], 10)
+
     def test_marketplace(self) -> None:
         """/* REQ-PLUGIN-002: `.claude-plugin/marketplace.json` at the repository root must list the plugin wingbox from ./plugins/wingbox, so that `/plugin marketplace add aileron-tech/wingbox` then `/plugin install wingbox@aileron-tech` installs it. */"""
         marketplace = load(REPO / ".claude-plugin" / "marketplace.json")

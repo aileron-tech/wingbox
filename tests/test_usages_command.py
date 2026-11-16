@@ -206,6 +206,105 @@ class UsagesCommandTests(unittest.TestCase):
             self.assertEqual(graph, (root / ".code_graph.sexp").read_text(encoding="utf-8"))
             self.assertEqual(uses, (root / ".code_graph.uses.sexp").read_text(encoding="utf-8"))
 
+    def test_a_query_after_a_one_file_change_walks_only_that_file(self) -> None:
+        """/* REQ-CS-070: the use walk of every file is kept in .code_graph.uses-cache.json by content hash: after a build in which one file changed, the next query that needs positions walks that file only, and its answer holds the new use. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path, content in PYTHON.items():
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text(content, encoding="utf-8")
+            map_path = root / ".code_graph.sexp"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+                first = builder.write_use_positions(str(map_path), str(root))
+            self.assertIsInstance(first, builder.Ok)
+            self.assertEqual(len(PYTHON), first.value.walked)
+            self.assertTrue((root / ".code_graph.uses-cache.json").is_file())
+            with (root / "app" / "other.py").open("a", encoding="utf-8") as handle:
+                handle.write("\nfrom app.models import Invoice\nvalue = Invoice()\n")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+                second = builder.write_use_positions(str(map_path), str(root))
+            self.assertIsInstance(second, builder.Ok)
+            self.assertEqual((1, len(PYTHON) - 1), (second.value.walked, second.value.reused))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                search.main(["usages", "app/models.py::Invoice", "--map", str(map_path), "--root", str(root)])
+            self.assertIn("app/other.py\n  4:24   import\n  5:9   call\n", output.getvalue())
+            self.assertIn("app/billing.py\n  1:17   import\n", output.getvalue())
+
+    def test_a_change_inside_a_function_resolves_only_that_file(self) -> None:
+        """/* REQ-CS-072: when no definition, import or file was added or removed (the same surface), a query after a change inside one file resolves that file only and reuses the resolved uses of the others; the use file is the same as one filled from nothing, and the answer holds the new use. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path, content in PYTHON.items():
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text(content, encoding="utf-8")
+            map_path = root / ".code_graph.sexp"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+                self.assertIsInstance(builder.write_use_positions(str(map_path), str(root)), builder.Ok)
+            billing = root / "app" / "billing.py"
+            billing.write_text(billing.read_text(encoding="utf-8").replace(
+                "    return inv.total()\n", "    extra = Invoice()\n    return inv.total()\n"), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+                again = builder.write_use_positions(str(map_path), str(root))
+            self.assertIsInstance(again, builder.Ok)
+            self.assertEqual((1, 1), (again.value.walked, again.value.resolved))
+            incremental = (root / ".code_graph.uses.sexp").read_text(encoding="utf-8")
+            (root / ".code_graph.uses-cache.json").unlink()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                full = builder.write_use_positions(str(map_path), str(root))
+            self.assertIsInstance(full, builder.Ok)
+            self.assertEqual(len(PYTHON), full.value.resolved)
+            self.assertEqual(incremental, (root / ".code_graph.uses.sexp").read_text(encoding="utf-8"))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                search.main(["usages", "app/models.py::Invoice", "--map", str(map_path), "--root", str(root)])
+            self.assertIn("  9:13   call\n", output.getvalue())
+            self.assertIn("app/__init__.py\n  1:21   re-export\n", output.getvalue())
+
+    def test_a_full_build_drops_the_walk_cache(self) -> None:
+        """/* REQ-CS-073: `wingbox build --full` removes .code_graph.uses-cache.json, so that after a change of tsconfig, package or Cargo settings the next query walks and resolves every file again. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path, content in PYTHON.items():
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text(content, encoding="utf-8")
+            map_path = root / ".code_graph.sexp"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+                self.assertIsInstance(builder.write_use_positions(str(map_path), str(root)), builder.Ok)
+                self.assertTrue((root / ".code_graph.uses-cache.json").is_file())
+                self.assertEqual(0, builder.main(["--root", str(root), "--full"]))
+                self.assertFalse((root / ".code_graph.uses-cache.json").exists())
+                again = builder.write_use_positions(str(map_path), str(root))
+            self.assertIsInstance(again, builder.Ok)
+            self.assertEqual((len(PYTHON), len(PYTHON)), (again.value.walked, again.value.resolved))
+
+    def test_a_query_loads_only_the_facts_of_its_name(self) -> None:
+        """/* REQ-CS-071: `usages` and `entity` load from the graph the paths, the nodes and only the entity and edge facts that name the symbol asked; their answers equal those of a full load. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path, content in PYTHON.items():
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text(content, encoding="utf-8")
+            map_path = root / ".code_graph.sexp"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(0, builder.main(["--root", str(root)]))
+            answers = {}
+            for focus in (None, "Invoice"):
+                graph = search.CodeGraph()
+                self.assertIsInstance(graph.load(str(map_path), str(root), focus=focus), search.MapLoadOk)
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    search.cmd_usages(graph, "app/models.py::Invoice")
+                    search.cmd_entity(graph, "Invoice")
+                answers[focus] = (output.getvalue(), sum(len(found) for found in graph.entities.values()))
+            self.assertEqual(answers[None][0], answers["Invoice"][0])
+            self.assertLess(answers["Invoice"][1], answers[None][1])
+
     def test_the_answer_stops_at_200_uses_unless_all(self) -> None:
         """/* REQ-CS-067: `usages` lists at most 200 uses and says how many it left out; --all lists every one. */"""
         files = {"lib/core.py": "def f(): ...\n", "lib/__init__.py": ""}
