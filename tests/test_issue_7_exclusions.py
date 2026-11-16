@@ -157,8 +157,8 @@ class IssueSevenExclusionTests(unittest.TestCase):
             [project.config_file for project in projects],
         )
 
-    def test_gitignore_excludes_tracked_source_and_configuration(self) -> None:
-        """/* REQ-CS-036: Repository ignore rules apply even to tracked snapshot paths. */"""
+    def test_gitignore_excludes_untracked_source_and_configuration(self) -> None:
+        """/* REQ-CS-036: Repository ignore rules exclude untracked paths, like git; a tracked path stays in the graph even when an ignore pattern matches it (REQ-CS-059). */"""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             subprocess.run(("git", "init", "-q"), cwd=root, check=True)
@@ -168,7 +168,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                 "review-bundles/\n",
                 encoding="utf-8",
             )
-            subprocess.run(("git", "add", "-f", "."), cwd=root, check=True)
+            subprocess.run(("git", "add", ".gitignore", "live"), cwd=root, check=True)
 
             ignored_result = load_git_ignored_paths(
                 str(root),
@@ -210,6 +210,34 @@ class IssueSevenExclusionTests(unittest.TestCase):
             [project.config_file for project in projects],
         )
 
+    def test_a_tracked_file_under_an_ignored_name_stays_in_the_graph(self) -> None:
+        """/* REQ-CS-059: a file that git tracks is part of the repository even when an ignore pattern matches its folder (a pattern "core" for core dumps and a tracked src/core/ folder); untracked files under that folder stay out. */"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            subprocess.run(("git", "init", "-q"), cwd=root, check=True)
+            (root / ".gitignore").write_text("core\n", encoding="utf-8")
+            tracked = root / "src" / "core" / "auth.ts"
+            untracked = root / "src" / "core" / "scratch.ts"
+            tracked.parent.mkdir(parents=True)
+            tracked.write_text("export const auth = 1;\n", encoding="utf-8")
+            untracked.write_text("export const scratch = 1;\n", encoding="utf-8")
+            (root / "src" / "app.ts").write_text('import { auth } from "./core/auth";\nexport const app = auth;\n', encoding="utf-8")
+            subprocess.run(("git", "add", ".gitignore", "src/app.ts"), cwd=root, check=True)
+            subprocess.run(("git", "add", "-f", "src/core/auth.ts"), cwd=root, check=True)
+
+            ignored_result = load_git_ignored_paths(str(root), frozenset(build_code_graph.SKIP_DIRS))
+            if not isinstance(ignored_result, GitIgnoreLoaded):
+                self.fail(ignored_result.reason)
+            exclusions = DiscoveryExclusions(
+                directory_names=frozenset(build_code_graph.SKIP_DIRS),
+                paths=ignored_result.paths,
+            )
+            discovered = {os.path.realpath(path) for path, _, _ in build_code_graph.discover_files(str(root), exclusions)}
+
+        self.assertIn(os.path.realpath(tracked), discovered)
+        self.assertNotIn(os.path.realpath(untracked), discovered)
+        self.assertIn(os.path.realpath(root / "src" / "app.ts"), discovered)
+
     def test_ignore_policy_changes_invalidate_cache_provenance(self) -> None:
         """/* REQ-CS-037: Ignore policy changes cannot reuse incompatible parse cache. */"""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -221,7 +249,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
             snapshot.write_text("STALE = True\n", encoding="utf-8")
             ignore_path = root / ".gitignore"
             ignore_path.write_text("review-bundles/\n", encoding="utf-8")
-            subprocess.run(("git", "add", "-f", "."), cwd=root, check=True)
+            subprocess.run(("git", "add", ".gitignore", "live.py"), cwd=root, check=True)
             command = (
                 sys.executable,
                 str(BUILD_SCRIPT),

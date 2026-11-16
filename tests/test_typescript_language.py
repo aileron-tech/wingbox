@@ -768,6 +768,82 @@ class TypeScriptResolverTests(unittest.TestCase):
             import_edges,
         )
 
+    def test_mts_and_cts_files_are_modules_named_by_mjs_and_cjs_imports(self) -> None:
+        """/* REQ-TS-JS-006: .mts and .cts files are TypeScript modules (declaration files .d.mts and .d.cts are not); an import of ./x.mjs or ./x.cjs names x.mts or x.cts when it exists, as TypeScript resolves it. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            sources = {
+                "scripts/build.mts": 'import { shard } from "./shard.mjs";\nimport { legacy } from "./legacy.cjs";\nimport { core } from "../src/core";\nexport const run = [shard, legacy, core];\n',
+                "scripts/shard.mts": "export const shard = 1;\n",
+                "scripts/legacy.cts": "export const legacy = 1;\n",
+                "scripts/types.d.mts": "export declare const typed: number;\n",
+                "src/core.ts": "export const core = 1;\n",
+            }
+            for relative_path, content in sources.items():
+                self._write(root, relative_path, content)
+            discovered = sorted(
+                Path(item[0]).resolve().relative_to(root).as_posix() for item in discover_files(str(root))
+            )
+            results = [self._parse(root, relative_path, content) for relative_path, content in sources.items() if not relative_path.endswith(".d.mts")]
+            import_edges = self._import_edges(results, root)
+
+        self.assertEqual(["scripts/build.mts", "scripts/legacy.cts", "scripts/shard.mts", "src/core.ts"], discovered)
+        self.assertEqual(
+            {
+                ("scripts/build.mts", "scripts/shard.mts"),
+                ("scripts/build.mts", "scripts/legacy.cts"),
+                ("scripts/build.mts", "src/core"),
+            },
+            import_edges,
+        )
+
+    def test_module_mocks_and_commented_dynamic_imports_are_dependencies(self) -> None:
+        """/* REQ-TS-RT-002: a test that mocks a module (vi.mock, vi.doMock, vi.importActual, vi.importMock, jest.mock, jest.doMock, jest.requireActual, jest.requireMock with a literal) depends on it, and import() or require() whose literal follows a comment names the module. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            results = [
+                self._parse(
+                    root,
+                    "src/app.test.ts",
+                    "\n".join(
+                        (
+                            'vi.mock("./clients/llm", () => ({ call: vi.fn() }));',
+                            'vi.doMock("./clients/mcp");',
+                            'const real = await vi.importActual<typeof import("./models/user")>("./models/user");',
+                            'jest.mock("./queue");',
+                            'const actual = jest.requireActual("./cache");',
+                            "export async function load() {",
+                            "  const { default: Provider } = await import(",
+                            "    // runtime-gated model",
+                            '    "./models/provider"',
+                            "  );",
+                            "  return [Provider, real, actual];",
+                            "}",
+                            "",
+                        )
+                    ),
+                ),
+                self._parse(root, "src/clients/llm.ts", "export const call = 1;\n"),
+                self._parse(root, "src/clients/mcp.ts", "export const mcp = 1;\n"),
+                self._parse(root, "src/models/user.ts", "export const user = 1;\n"),
+                self._parse(root, "src/models/provider.ts", "export default class Provider {}\n"),
+                self._parse(root, "src/queue.ts", "export const queue = 1;\n"),
+                self._parse(root, "src/cache.ts", "export const cache = 1;\n"),
+            ]
+            import_edges = self._import_edges(results, root)
+
+        self.assertEqual(
+            {
+                ("src/app.test", "src/clients/llm"),
+                ("src/app.test", "src/clients/mcp"),
+                ("src/app.test", "src/models/user"),
+                ("src/app.test", "src/models/provider"),
+                ("src/app.test", "src/queue"),
+                ("src/app.test", "src/cache"),
+            },
+            import_edges,
+        )
+
     def test_generated_javascript_is_not_a_module(self) -> None:
         """/* REQ-TS-JS-005: Minified files (.min.js or a line over 5,000 characters), bundles (bundle in the name) and JavaScript under node_modules, dist, build or vendor are not discovered; written JavaScript next to them is. */"""
         with tempfile.TemporaryDirectory() as directory:

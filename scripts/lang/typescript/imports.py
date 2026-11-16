@@ -262,10 +262,12 @@ def _typescript_resolution_candidates(resolved: str) -> tuple[str, ...]:
                 stem + "/index.ts",
                 stem + "/index.tsx",
             )
-    for suffix in (".mjs", ".cjs"):
+    for suffix, typescript_suffix in ((".mjs", ".mts"), (".cjs", ".cts")):
         if resolved.endswith(suffix):
+            # TypeScript reads ./x.mjs as x.mts and ./x.cjs as x.cts when that file exists.
             stem = resolved[: -len(suffix)]
             return (
+                stem + typescript_suffix,
                 resolved,
                 stem + ".ts",
                 stem + ".tsx",
