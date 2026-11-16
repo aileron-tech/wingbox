@@ -709,3 +709,11 @@
 ### Motivation
 - The maintainer saw the PyPI page still showing the 0.2.5-era install line and chose a release now, with init and usages to follow as 0.3.0.
 
+## 2026-11-16 - Release 0.3.0
+
+### Changes
+- Version 0.3.0: `wingbox usages` (every use of a symbol with position and kind), faster builds (each import resolved once), the plugins and their purpose wording, MCP tool annotations, SECURITY.md. The map-request workflow builds with 0.3.0.
+
+### Motivation
+- The maintainer asked when usages ships and chose to release it now, the architecture commands (init, place, align, learn) following as 0.4.0 after an independent check of learn.
+

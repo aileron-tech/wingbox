@@ -17,6 +17,13 @@ REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins" / "wingbox"
 LAUNCHER = PLUGIN / "scripts" / "wingbox-run"
 VERSION = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+# The plugin follows the latest release tag (tools/sync_plugin.py), which lags pyproject.toml
+# between a version bump and its tag.
+_spec = __import__("importlib.util").util.spec_from_file_location("sync_plugin", REPO / "tools" / "sync_plugin.py")
+_sync = __import__("importlib.util").util.module_from_spec(_spec)
+sys.modules["sync_plugin"] = _sync
+_spec.loader.exec_module(_sync)
+PLUGIN_VERSION = _sync.latest_release(REPO)[0]
 PIN = re.compile(r"git\+https://github\.com/aileron-tech/wingbox@([0-9a-f]{40})")
 SKILL_SOURCES = ["SKILL.md"] + sorted(f"references/{p.name}" for p in (REPO / "references").iterdir() if p.is_file())
 
@@ -42,7 +49,7 @@ class ClaudePluginTest(unittest.TestCase):
         """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs the launcher with `hook pre-search`, and an MCP server that runs the launcher with `mcp`, both through `sh`, every path under ${CLAUDE_PLUGIN_ROOT} existing in the plugin. */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
-        self.assertEqual(manifest["version"], VERSION)
+        self.assertEqual(manifest["version"], PLUGIN_VERSION)
         self.assertEqual(manifest["author"]["name"], "Aileron Technologies")
         self.assertEqual(manifest["license"], "MIT")
         self.assertEqual(manifest["homepage"], "https://wingbox.dev")
@@ -80,7 +87,7 @@ class CodexPluginTest(unittest.TestCase):
         """/* REQ-PLUGIN-011: the Codex manifest `.codex-plugin/plugin.json` must name the plugin wingbox at the version of pyproject.toml, declare ./skills/ and ./codex.mcp.json (not .mcp.json, which the Claude plugin directory reads as a second, shadowed server), require a local executor, and give the listing fields within the directory limits (display name and subtitle at most 30 characters, at most three starter prompts of 128 characters, square icons that exist); `codex.mcp.json` must start `wingbox mcp` from PATH so that it runs in the session folder. */"""
         manifest = load(PLUGIN / ".codex-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
-        self.assertEqual(manifest["version"], VERSION)
+        self.assertEqual(manifest["version"], PLUGIN_VERSION)
         self.assertEqual(manifest["author"]["name"], "Aileron Technologies")
         self.assertEqual(manifest["skills"], "./skills/")
         self.assertEqual(manifest["mcpServers"], "./codex.mcp.json")
@@ -309,8 +316,8 @@ class OpenAIPackageTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            skills_only = Path(tmp) / f"wingbox-openai-plugin-{VERSION}.zip"
-            local_mcp = Path(tmp) / f"wingbox-openai-plugin-{VERSION}-local-mcp.zip"
+            skills_only = Path(tmp) / f"wingbox-openai-plugin-{PLUGIN_VERSION}.zip"
+            local_mcp = Path(tmp) / f"wingbox-openai-plugin-{PLUGIN_VERSION}-local-mcp.zip"
             self.assertIn(str(skills_only), result.stdout)
             with zipfile.ZipFile(skills_only) as archive:
                 names = set(archive.namelist())
@@ -322,7 +329,7 @@ class OpenAIPackageTest(unittest.TestCase):
             self.assertFalse([n for n in names if n.startswith((".mcp.json", "hooks", ".claude-plugin", "scripts", "bin/"))])
             self.assertIs(manifest["requires_local_executor"], True)
             self.assertNotIn("mcpServers", manifest)
-            self.assertEqual(manifest["version"], VERSION)
+            self.assertEqual(manifest["version"], PLUGIN_VERSION)
             with zipfile.ZipFile(local_mcp) as archive:
                 names = set(archive.namelist())
                 manifest = json.loads(archive.read(".codex-plugin/plugin.json"))

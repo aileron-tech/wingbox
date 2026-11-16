@@ -87,7 +87,7 @@ def main(args: list[str]) -> int:
             print(f"stale {sync_plugin.PLUGIN_PATH / path}", file=sys.stderr)
         print("run: python3 tools/sync_plugin.py", file=sys.stderr)
         return 1
-    version = sync_plugin.project_version(REPO)
+    version = sync_plugin.latest_release(REPO)[0]   # the release the plugin pins
     for suffix, with_mcp in (("", False), ("-local-mcp", True)):
         path = build(PLUGIN, out / f"wingbox-openai-plugin-{version}{suffix}.zip", with_mcp)
         print(path)
