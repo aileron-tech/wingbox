@@ -2,6 +2,11 @@
 
 ## 2026-11-16
 
+### Fixes
+
+- `wingbox update` chooses pipx when `pipx list` exits 1 because some other
+  pipx package has a missing interpreter; it chose pip before.
+
 ### Changes
 
 - `wingbox install` sets up Claude Code, Codex, Gemini CLI, Cursor, GitHub

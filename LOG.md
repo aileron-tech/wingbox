@@ -477,3 +477,14 @@
 
 ### Motivation
 - Session-log review showed that agents usually used `search` and `analyze` after activation, but often queried too late and did not discover shortcut or boundary commands.
+
+## 2026-11-16 - `wingbox update` and a broken pipx neighbour
+
+### Changes
+- `src/wingbox/update.py`: pipx is chosen when `pipx list --short` names wingbox, whatever its exit status.
+
+### Motivation
+- On the maintainer's machine `pipx list --short` exits 1 (another package has a missing interpreter) while listing wingbox 0.2.6, so `update --check` reported pip.
+
+### Verification
+- REQ-UPDATE-008; full suite on 3.11 and 3.12; `choose_method` on that machine now returns `pipx upgrade wingbox`.
