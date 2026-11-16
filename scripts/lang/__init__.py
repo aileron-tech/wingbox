@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .csharp import CSHARP_LANGUAGE
+from .dart import DART_LANGUAGE
 from .go import GO_LANGUAGE
 from .interface import (
     BoundLanguage,
@@ -34,6 +35,7 @@ LANGUAGES: tuple[Language, ...] = (
     RUBY_LANGUAGE,
     PHP_LANGUAGE,
     PASCAL_LANGUAGE,
+    DART_LANGUAGE,
 )
 
 

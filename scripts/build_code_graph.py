@@ -26,6 +26,9 @@ Parsers
   Rails/Zeitwerk constants, mixins, associations, jobs, mailers, and specs.
 - **Pascal**: dependency-free structural parser. Handles Free Pascal/Lazarus
   units, programs, uses/includes, types, inheritance, methods, and routines.
+- **Dart**: tree-sitter (``tree-sitter-dart``). Handles lib/ packages found
+  through pubspec.yaml, classes, mixins, enums, extensions, members,
+  inheritance, imports/exports, and part/part of libraries.
 
 Modes
 -----

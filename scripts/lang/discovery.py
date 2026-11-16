@@ -21,6 +21,12 @@ def is_excluded_path(
 
 _DOTNET_MARKERS = (".cs", ".csproj", ".fsproj", ".vbproj", ".sln")
 
+# Dart and Flutter tool output, excluded by basename in every repository.
+# `.dart_tool` holds the package config, kernel snapshots and generated
+# sources of `dart pub get` and `dart build`; Flutter writes its compiled
+# output to `build`, which is a SKIP_DIRS name like `vendor` or `dist`.
+DART_OUTPUT_DIRECTORIES = frozenset({".dart_tool"})
+
 
 def _is_dotnet_output_directory(parent: str, name: str) -> bool:
     """True for `bin` next to .NET sources or project files: the compiler's output folder.
@@ -57,6 +63,7 @@ def is_excluded_directory(
     """Apply basename and repository-ignore policy before descending."""
     return (
         (name in exclusions.directory_names and not _is_published_view_directory(parent, name))
+        or name in DART_OUTPUT_DIRECTORIES
         or _is_dotnet_output_directory(parent, name)
         or is_excluded_path(exclusions, os.path.join(parent, name))
     )

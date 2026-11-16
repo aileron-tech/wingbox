@@ -37,8 +37,10 @@ this file applies to you.
   the prefix (`CS` search commands, `CLI` the `wingbox` command, `INSTALL`
   install, uninstall and the search hook, `UPDATE`, `MCP` the MCP server,
   `PLUGIN` the plugins and their tools, `OUT` the report and the map page,
-  `BENCH` the benchmarks, `SEC` the local-only guarantees, `DEPS`, `LANG`,
-  and one prefix per language).
+  `BENCH` the benchmarks, `SEC` the local-only guarantees, `DARTACC` and
+  `DARTLAYER` the Dart acceptance harness and the Flutter purpose and layer
+  rules, `DEPS`, `LANG`, and one prefix per language such as `DART`, `GO` or
+  `RUBY`).
 - Run the tests before each push:
 
   ```bash

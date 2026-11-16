@@ -355,7 +355,7 @@ _RUBY_EXTENSIONS = (".rb", ".rake")
 _RUST_EXTENSIONS = (".rs",)
 _PHP_EXTENSIONS = (".blade.php", ".php")
 _PASCAL_EXTENSIONS = (".pas", ".pp", ".lpr", ".inc")
-_OTHER_EXTENSIONS = (".go", ".java", ".cs")
+_OTHER_EXTENSIONS = (".go", ".java", ".cs", ".dart")
 
 
 def _module_id_to_file(module_id: str, root: str) -> str:
@@ -910,7 +910,7 @@ def _walk_rdeps(
 # Layer classifier + boundary rules
 # ---------------------------------------------------------------------------
 
-_TEST_FOLDERS = ("/tests/", "/test/", "/__tests__/", "/e2e/", "/testdata/")
+_TEST_FOLDERS = ("/tests/", "/test/", "/__tests__/", "/e2e/", "/testdata/", "/integration_test/")
 _TEST_NAME_ENDINGS = (".test", ".spec", "_test", "_spec", ".test-d")
 
 
@@ -926,13 +926,48 @@ def _is_test_path(p: str) -> bool:
     )
 
 
+def _classify_dart_layer_by_path(p: str) -> str:
+    """Layer of a Dart module from Flutter folder conventions.
+
+    `lib/` is the package source root, not the shared library folder of a JS
+    project, so a Dart module that matches no convention is left to its
+    purpose. Feature folders name the layer; test folders win over all of them.
+    A leading slash lets "/test/" match a top-level folder.
+    """
+    path = "/" + p.lower().lstrip("/")
+    if _is_test_path(path):
+        return "test"
+    if "/lib/features/" in path:
+        if "/presentation/" in path:
+            return "ui"
+        if "/domain/" in path:
+            return "domain"
+        if "/data/" in path:
+            return "infra"
+        if any(folder in path for folder in ("/bloc/", "/cubit/", "/state/", "/application/")):
+            return "service"
+    if "/config/" in path or "/env/" in path:
+        return "config"
+    if "/lib/core/" in path:
+        return "shared"
+    name = path.rsplit("/", 1)[-1]
+    if "/lib/features/" in path and name.endswith(("_bloc", "_cubit", "_state", "_event")):
+        return "service"
+    return "other"
+
+
 def _classify_layer_fallback(p: str) -> str:
     """Classify a module into an architecture layer from its path.
 
     Order matters: test/config checked first (override other patterns).
     NestJS conventions: guards/controllers are api, .module files are config,
-    /interface/ folders are shared contracts (not api).
+    /interface/ folders are shared contracts (not api). Flutter's feature
+    folders (presentation, domain, data) and lib/core are recognised too.
     """
+    # Flutter conventions are specific enough to be safe for every language.
+    dart_layer = _classify_dart_layer_by_path(p)
+    if dart_layer != "other":
+        return dart_layer
     # High-priority overrides (tests, config)
     if _is_test_path(p):
         return "test"
@@ -1061,6 +1096,7 @@ _PURPOSE_TO_LAYER: dict[str, str] = {
     "NestJS wiring module": "config",
     "NestJS injectable": "config",
     "configuration": "config",
+    "application entry point": "config",
     "application bootstrap": "config",
     "module entry point": "config",
     # UI layer
@@ -1344,10 +1380,23 @@ def _graph_layer(g: CodeGraph, module_id: str) -> str:
 
     A JSX component (.tsx) is UI whatever its folder is called: a Next.js route
     folder named `models` holds pages, not the domain model. A Python
-    __init__.py is its package and takes the layer of the package.
+    __init__.py is its package and takes the layer of the package. A Dart
+    module takes the Flutter folder rules, then its purpose: a Dart lib/ is a
+    source root, so the generic lib/ rule would otherwise call every feature
+    file shared.
     """
     if _is_package_init(g, module_id):
         return _package_layer(g, module_id)
+    if g.module_lang(module_id) == "dart":
+        layer = _classify_dart_layer_by_path(module_id)
+        if layer != "other":
+            return layer
+        purpose = g.module_purpose(module_id)
+        # A Dart state store is application state. The shared purpose map keeps
+        # it at "other" because a JS store may be a UI concern.
+        if purpose.lower() == "state store":
+            return "service"
+        return _classify_layer_by_purpose(purpose)
     layer = _classify_layer(module_id, g.module_purpose(module_id))
     if layer != "test" and g.module_lang(module_id) == "tsx":
         return "ui"
@@ -1356,6 +1405,8 @@ def _graph_layer(g: CodeGraph, module_id: str) -> str:
 
 def _layer_is_certain(g: CodeGraph, module_id: str) -> bool:
     """True when the layer comes from the folders or the file type, not from a guess at the role."""
+    if g.module_lang(module_id) == "dart":
+        return _classify_dart_layer_by_path(module_id) != "other"
     if _classify_layer_by_path(module_id) != "other":
         return True
     return g.module_lang(module_id) == "tsx"

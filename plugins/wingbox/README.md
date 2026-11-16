@@ -6,8 +6,8 @@ files: what a change will break, across packages (blast radius); who uses a
 file, function or type; where a feature is implemented; where module and
 package boundaries are; and which few files to read first, before a refactor
 or a cross-package change. It parses Python, TypeScript and TSX, Rust, C#,
-Java, Go, Ruby and Ruby on Rails, and writes an offline HTML map of the
-repository.
+Java, Go, Ruby and Ruby on Rails, PHP and Laravel, Dart and Flutter, and
+writes an offline HTML map of the repository.
 Project page: https://wingbox.dev. Source: https://github.com/aileron-tech/wingbox.
 
 ## What the plugin contains

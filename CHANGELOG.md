@@ -6,6 +6,16 @@
 
 - PHP 8 and Laravel: a `php` adapter for `.php` and `.blade.php` files with
   Composer PSR-4 classes, Blade, Livewire, Eloquent, events and jobs.
+- Dart and Flutter: a `dart` adapter for `.dart` files with a tree-sitter Dart
+  grammar. `package:<name>/...` imports of a package a `pubspec.yaml` in the
+  repository declares resolve to its `lib/...` files, the nearest pubspec
+  first, and relative imports resolve to the neighbouring file; `dart:` core
+  libraries and third-party pub packages are external and create no edge.
+  `import`, `export` and `part`/`part of` make the edges, and a missing
+  generated part (`*.g.dart`, `*.freezed.dart`) is skipped instead of breaking
+  the build. `.dart_tool/` and Flutter's `build/` output are not indexed.
+  Flutter needs nothing special: widgets are ordinary classes. Runtime wiring
+  (`get_it`, `go_router`, `retrofit`) is not visible to static analysis.
 
 ## 0.3.0 - 2026-11-16
 

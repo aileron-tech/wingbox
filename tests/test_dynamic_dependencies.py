@@ -112,9 +112,45 @@ class DynamicDependencyTests(unittest.TestCase):
             self.assertIn("tree-sitter-ruby==0.23.1", completed.stderr)
             self.assertIn("requirements/ruby.txt", completed.stderr)
             self.assertNotIn("tree-sitter-java", completed.stderr)
+            self.assertNotIn("tree-sitter-dart", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
             self.assertFalse((target / ".code_graph.sexp").exists())
             self.assertFalse((target / ".code_graph_cache.json").exists())
+
+    def test_detected_dart_language_asks_only_for_its_own_parser(self) -> None:
+        """/* REQ-DEPS-006: A detected Dart project names the Dart parser install command alone, proving Dart stays optional for other builds. */"""
+        repository_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            (target / "main.dart").write_text(
+                "void main() {}\n",
+                encoding="utf-8",
+            )
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-S",
+                    "-B",
+                    str(repository_root / "scripts" / "build_code_graph.py"),
+                    "--root",
+                    str(target),
+                ],
+                cwd=repository_root,
+                capture_output=True,
+                check=False,
+                env=self._without_pythonpath(),
+                text=True,
+            )
+
+            self.assertEqual(2, completed.returncode)
+            self.assertIn("Dart: tree-sitter==0.25.2", completed.stderr)
+            self.assertIn("tree-sitter-dart==0.1.0", completed.stderr)
+            self.assertIn("requirements/dart.txt", completed.stderr)
+            self.assertNotIn("requirements/python.txt", completed.stderr)
+            self.assertNotIn("requirements/typescript.txt", completed.stderr)
+            self.assertNotIn("Traceback", completed.stderr)
+            self.assertFalse((target / ".code_graph.sexp").exists())
 
     def test_pascal_only_build_needs_no_parser_packages(self) -> None:
         """/* REQ-DEPS-005: Pascal indexing remains dependency-free when optional parser packages are absent. */"""
@@ -153,6 +189,10 @@ class DynamicDependencyTests(unittest.TestCase):
         dependency_languages = [
             language for language in LANGUAGES if language.dependencies
         ]
+        self.assertIn(
+            "dart",
+            [language.name for language in dependency_languages],
+        )
 
         for language in dependency_languages:
             requirements_path = (
