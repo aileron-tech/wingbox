@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-16 - version 0.2.5: Rust paths through other crates and test crates
+
+### Changes
+- `pyproject.toml`: version 0.2.5.
+- `scripts/lang/rust/parser.py` (`_collect_inline_paths`): a name imported from a crate other than std, core and alloc expands an inline path to its full path; the resolver finds the file when the crate belongs to the workspace and nothing otherwise.
+- `scripts/lang/rust/imports.py` (`_separate_crate_directory`): `tests/<name>/`, `benches/<name>/` and `examples/<name>/` are crate roots for `crate::` paths, with `<name>/main.rs` as the fallback entry.
+- Tests: REQ-RUST-013, REQ-RUST-014.
+- Verified against the independent Rust resolver of `benchmarks/impact` with its acceptance rules: a compiler of 351 files stays exact (1,462 dependencies); a browser CLI keeps its two known edges to a trait re-exported by a parent module; a platform monorepo of 145 Rust files goes from 14 missing dependencies and one wrong edge (a test file linked to `src/harness.rs`) to none missing; its 29 edges that the resolver lacks are uses of other workspace crates, each named in the source.
+
+### Motivation
+- The check of a public monorepo before publishing its report found Rust dependencies through `use other_crate::module` and `crate::` paths in integration test folders missing, and one edge to a module of the main crate that the test did not use.
 ## 2026-11-16 - where Wingbox comes from
 
 ### Changes

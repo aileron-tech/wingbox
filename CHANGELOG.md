@@ -4,6 +4,7 @@
 
 ### Changes
 
+- Package version 0.2.5.
 - Package version 0.2.4.
 - `.mts` and `.cts` files are TypeScript modules; an import of `./x.mjs` or
   `./x.cjs` names `x.mts` or `x.cts` when it exists, as TypeScript reads it.
@@ -49,6 +50,13 @@
 
 ### Fixes
 
+- Rust: after `use other_crate::{bridge}` a path `bridge::start::run()` names
+  the module file in the other crate of the workspace; it used to stop at
+  `bridge`.
+- Rust: a file under `tests/<name>/`, `benches/<name>/` or `examples/<name>/`
+  belongs to the crate rooted at that folder, as Cargo builds it, so
+  `crate::harness` there names `tests/<name>/harness.rs`; it used to name a
+  module of `src/` with the same name.
 - A file that git tracks stays in the graph even when an ignore pattern
   matches its folder, as git itself reads the rules: a pattern `core` meant for
   core dumps hid tracked `core/` source folders.

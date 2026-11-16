@@ -326,6 +326,40 @@ pub fn execute() {}
         self.assertIn(("src/main", "src/lib"), edges)
         self.assertIn(("src/bin/tool", "src/lib"), edges)
 
+    def test_paths_through_a_module_imported_from_another_crate_are_dependencies(self) -> None:
+        """/* REQ-RUST-013: after `use other_crate::{bridge}` a path bridge::start::run() names the module file of other_crate, as rustc reads it. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            edges = self._module_edges(
+                Path(directory),
+                {
+                    "src/lib.rs": "pub mod bridge;\n",
+                    "src/bridge/mod.rs": "pub mod start;\npub mod stop;\n",
+                    "src/bridge/start.rs": "pub fn run() {}\n",
+                    "src/bridge/stop.rs": "pub fn run() {}\n",
+                    "src/main.rs": "use app::{bridge};\nuse std::process;\nfn main() { bridge::start::run(); bridge::stop::run(); process::exit(0); }\n",
+                },
+            )
+
+        self.assertIn(("src/main", "src/bridge/start"), edges)
+        self.assertIn(("src/main", "src/bridge/stop"), edges)
+
+    def test_crate_paths_in_an_integration_test_folder_resolve_inside_that_test_crate(self) -> None:
+        """/* REQ-RUST-014: tests/<name>/main.rs is the root of its own test crate (as Cargo builds it): crate::harness in a file of that folder names tests/<name>/harness.rs, not a module of src/. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            edges = self._module_edges(
+                Path(directory),
+                {
+                    "src/lib.rs": "pub mod harness;\n",
+                    "src/harness.rs": "pub fn real() {}\n",
+                    "tests/integration/main.rs": "mod harness;\nmod sign_in;\n",
+                    "tests/integration/harness.rs": "pub fn start() {}\n",
+                    "tests/integration/sign_in.rs": "use crate::harness::start;\nfn t() { start(); }\n",
+                },
+            )
+
+        self.assertIn(("tests/integration/sign_in", "tests/integration/harness"), edges)
+        self.assertNotIn(("tests/integration/sign_in", "src/harness"), edges)
+
     def test_paths_inside_macro_arguments_are_dependencies(self) -> None:
         """/* REQ-RUST-011: A crate-rooted path inside macro arguments (matches!(x, crate::a::B::C), vec![crate::a::f(); n]) is a dependency. */"""
         with tempfile.TemporaryDirectory() as directory:
