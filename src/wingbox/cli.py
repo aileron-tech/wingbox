@@ -4,7 +4,20 @@
                                             and write wingbox-out/REPORT.md and wingbox-out/map.html
     wingbox <command> [arguments]           Query the code graph: impact, quick, analyze, search, ...
     wingbox infra [arguments]               Build the infrastructure topology (Kustomize, Helm, Terraform)
+    wingbox install [--global|--project] [--assistant NAME ...] [--dry-run] [--sexp]
+                                            Put the wingbox skill, an always-on block in CLAUDE.md and
+                                            AGENTS.md, and the Claude Code search hook in place
+    wingbox uninstall [--global|--project] [--assistant NAME ...] [--sexp]
+                                            Remove exactly what install added
+    wingbox update [--check] [--dry-run] [--sexp]
+                                            Upgrade with the installer that installed Wingbox (pipx, uv
+                                            or pip), then refresh what install put in place
+    wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
     wingbox --version
+
+Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
+~/.agents/skills folder). Without --assistant, install uses those whose
+configuration folder exists in the home folder.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -18,11 +31,12 @@ interactive page that opens in a browser without a network connection.
 from __future__ import annotations
 
 import os
+import shlex
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import date
 from importlib import import_module
-from importlib.metadata import PackageNotFoundError, version
 from types import ModuleType
 from typing import Optional
 
@@ -88,6 +102,37 @@ def scripts_directory(package_dir: str) -> str:
     return os.path.normpath(os.path.join(package_dir, os.pardir, os.pardir, "scripts"))
 
 
+def skill_directory(package_dir: str) -> str:
+    """Directory of the packaged skill (SKILL.md, references/): inside the package, or the checkout root."""
+    bundled = os.path.join(package_dir, "_skill")
+    if os.path.isdir(bundled):
+        return bundled
+    return os.path.normpath(os.path.join(package_dir, os.pardir, os.pardir))
+
+
+def read_skill_files(directory: str) -> dict[str, bytes]:
+    """SKILL.md and references/*.md, keyed by their path inside the skill folder."""
+    files: dict[str, bytes] = {}
+    names = ["SKILL.md"] + sorted(
+        "references/" + name
+        for name in os.listdir(os.path.join(directory, "references"))
+        if name.endswith(".md")
+    )
+    for name in names:
+        with open(os.path.join(directory, name), "rb") as handle:
+            files[name] = handle.read()
+    return files
+
+
+def global_hook_command(argv0: str, python: str) -> str:
+    """The hook command for a global install: the absolute `wingbox` program, else this Python."""
+    program = os.path.abspath(argv0) if os.path.basename(argv0) == "wingbox" and os.path.isfile(argv0) else None
+    program = program or shutil.which("wingbox")
+    if program:
+        return f"{shlex.quote(program)} hook pre-search"
+    return f"{shlex.quote(python)} -m wingbox.cli hook pre-search"
+
+
 def load_script(name: str) -> ModuleType:
     directory = scripts_directory(_PACKAGE_DIR)
     if directory not in sys.path:
@@ -96,6 +141,9 @@ def load_script(name: str) -> ModuleType:
 
 
 def _version() -> str:
+    # Imported here: importlib.metadata costs more than the whole search hook needs.
+    from importlib.metadata import PackageNotFoundError, version
+
     try:
         return version("wingbox")
     except PackageNotFoundError:
@@ -143,6 +191,88 @@ def _build(arguments: list[str]) -> int:
     return 0
 
 
+def _print_facts(facts: list, sexp: bool) -> None:
+    from wingbox.facts import render_sexp, render_text
+
+    sys.stdout.write(render_sexp(facts) if sexp else render_text(facts, os.path.expanduser("~")))
+
+
+def _machine(cwd: str):
+    from wingbox import install
+
+    return install.Machine(
+        home=os.path.expanduser("~"),
+        cwd=cwd,
+        version=_version(),
+        skill_files=read_skill_files(skill_directory(_PACKAGE_DIR)),
+        hook_command=global_hook_command(sys.argv[0], sys.executable),
+    )
+
+
+def _install_command(command: str, rest: list[str], cwd: str) -> int:
+    from wingbox import install
+
+    if any(argument in ("-h", "--help") for argument in rest):
+        print(install.__doc__)
+        return 0
+    options = install.parse_arguments("install" if command == "install" else "uninstall", rest)
+    if isinstance(options, install.UsageError):
+        print(f"[wingbox] {command}: {options.message}", file=sys.stderr)
+        return 2
+    machine = _machine(cwd)
+    facts = install.install(options, machine) if options.command == "install" else install.uninstall(options, machine)
+    _print_facts(facts, options.sexp)
+    return install.exit_status(facts)
+
+
+def _package_origin():
+    from importlib.metadata import PackageNotFoundError, distribution
+
+    from wingbox import update
+
+    in_docker = os.path.exists("/.dockerenv")
+    try:
+        direct_url = distribution("wingbox").read_text("direct_url.json")
+    except PackageNotFoundError:
+        # Running from a source checkout: the package is not installed.
+        return update.FromLocal(os.path.normpath(os.path.join(_PACKAGE_DIR, os.pardir, os.pardir)), True)
+    return update.package_origin(direct_url, in_docker)
+
+
+def _update_command(rest: list[str]) -> int:
+    from wingbox import install, update
+
+    if any(argument in ("-h", "--help") for argument in rest):
+        print(update.__doc__)
+        return 0
+    options = update.parse_arguments(rest)
+    if isinstance(options, update.UsageError):
+        print(f"[wingbox] update: {options.message}", file=sys.stderr)
+        return 2
+    home = os.path.expanduser("~")
+    record = install.record_path(home)
+    try:
+        with open(record, "r", encoding="utf-8") as handle:
+            installed = install.read_record(handle.read())
+    except FileNotFoundError:
+        installed = []
+    python = sys.executable
+    package_parent = os.path.dirname(_PACKAGE_DIR)
+    environment = update.Environment(
+        origin=_package_origin(),
+        python=python,
+        prefix=sys.prefix,
+        installed_version=_version(),
+        installed=installed,
+        run=update.run_installer,
+        new_version=lambda: update.read_new_version(python),
+        refresh=lambda entry: update.refresh_installed(python, package_parent, entry),
+    )
+    facts = update.update(options, environment)
+    _print_facts(facts, options.sexp)
+    return update.exit_status(facts)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     """Run a command; a reader that closes the pipe (`| head`) ends it quietly."""
     try:
@@ -167,6 +297,14 @@ def _run(argv: Optional[list[str]] = None) -> int:
 
     cwd = os.getcwd()
     command, rest = args[0], args[1:]
+    if command == "hook":
+        from wingbox import hook
+
+        return hook.main(rest)
+    if command in ("install", "uninstall"):
+        return _install_command(command, rest, cwd)
+    if command == "update":
+        return _update_command(rest)
     if command == "build":
         if any(argument in ("-h", "--help") for argument in rest):
             return int(load_script("build_code_graph").main(rest))

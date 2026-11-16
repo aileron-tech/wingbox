@@ -16,7 +16,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
 
-COPY pyproject.toml README.md LICENSE /src/
+COPY pyproject.toml README.md LICENSE SKILL.md /src/
+COPY references /src/references
 COPY src /src/src
 COPY scripts /src/scripts
 RUN pip install --no-cache-dir /src && rm -rf /src

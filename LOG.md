@@ -1,5 +1,25 @@
 # Completion Log
 
+## 2026-11-16 - wingbox install, uninstall, the search hook and wingbox update
+
+### Changes
+- `src/wingbox/install.py`: `wingbox install [--global|--project] [--assistant NAME ...] [--dry-run] [--sexp]` and `wingbox uninstall`. For Claude Code, Codex, Gemini CLI, Cursor, GitHub Copilot and the shared `~/.agents/skills` folder it copies the skill (SKILL.md, references/, stamp `.wingbox-version`), writes the always-on block between `<!-- wingbox:begin -->` and `<!-- wingbox:end -->` into CLAUDE.md, AGENTS.md, GEMINI.md or copilot-instructions.md, and for Claude Code merges a PreToolUse hook (matcher `Grep|Glob|Read`, timeout 5 s) into settings.json after a one-time backup `settings.json.wingbox-bak`. Assistants are detected by their folders in the home directory; folders that install itself created are recorded in `~/.wingbox/installed.sexp` and do not count. Uninstall removes stamped skill folders, the blocks, the hook entries and the empty folders install created; a folder still used by another installed assistant, or written by another installer, stays.
+- `src/wingbox/hook.py`: `wingbox hook pre-search` reads the Claude Code hook input on stdin and, when the project has `.wingbox/graph.sexp` or `.code_graph.sexp`, answers with `hookSpecificOutput.additionalContext`: the modules and definitions that match a Grep or Glob pattern with their direct dependents, or for Read the dependents of the file and the `wingbox impact` hint; at most 1,500 characters; always exit 0; nothing without a graph. It reads the graph as text (section offsets, one regular expression for the dependents) instead of the query engine, which takes 17 s to load a graph of 8,000 files.
+- `src/wingbox/update.py`: `wingbox update [--check] [--dry-run] [--sexp]` runs `pipx upgrade wingbox`, `uv tool upgrade wingbox` or `<python> -m pip install --upgrade wingbox` as a subprocess, then reruns `wingbox install` of the new version for every recorded install. pipx or uv is chosen only when it lists wingbox and Wingbox runs from that installer's wingbox environment, so a second copy elsewhere is not upgraded by mistake. Docker, editable and local installs print the command to use instead.
+- `src/wingbox/facts.py`: facts as S-expressions (`--sexp`) and their pretty print, the output of the three commands.
+- `src/wingbox/cli.py`: the new commands; `importlib.metadata` is imported only when the version is needed (it cost about 0.2 s of the hook's start).
+- `pyproject.toml`, `Dockerfile`: the wheel ships SKILL.md and references/ as `wingbox/_skill`.
+- `SKILL.md`: section `/wingbox` (no argument: build when missing or stale, then the report's key findings and the map; `<file>`: `impact <file> 2`; `<command>`: that command), how to run the commands when the skill has no `scripts/`, table of install, uninstall, update and the hook.
+- `README.md`: "Install into your coding assistants" (paths per assistant, block, hook, record, `/wingbox`), "Update", the local-only sentence on `wingbox update`, FAQ on offline use and assistants. `AGENTS.md`: archive contents, layout, prefixes INSTALL and UPDATE.
+- Tests: REQ-INSTALL-001 to REQ-INSTALL-022, REQ-UPDATE-001 to REQ-UPDATE-007.
+
+### Motivation
+- The maintainer asked for `wingbox install` on the scheme of `graphify install`: the skill in every assistant, a block in CLAUDE.md and AGENTS.md, a hook before search, and `/wingbox`; then for `wingbox update` when there is internet.
+
+### Verification
+- Hook schema: Claude Code hooks reference (code.claude.com/docs/en/hooks, read 2026-11-16): PreToolUse input `tool_name`, `tool_input` (Grep `pattern`/`path`/`-i`, Glob `pattern`/`path`, Read `file_path`), `cwd`; output `hookSpecificOutput.hookEventName` and `additionalContext`; exit 0 never blocks, stderr is not shown to the model; strings over 10,000 characters are moved to a file.
+- Destinations from the assistants' documentation, read 2026-11-16: Codex skills `$HOME/.agents/skills`, `~/.codex/AGENTS.md`; Gemini CLI `~/.gemini/skills` (alias `~/.agents/skills`), `~/.gemini/GEMINI.md`; Cursor `~/.cursor/skills` (also reads `.agents`, `.claude`, `.codex`), project AGENTS.md; GitHub Copilot `~/.copilot/skills`, `.github/skills`, `~/.copilot/copilot-instructions.md`, project AGENTS.md.
+
 ## 2026-11-16 - README: the earlier repository is named without a link
 
 ### Changes

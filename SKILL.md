@@ -12,6 +12,46 @@ description: >
 
 Query `.code_graph.sexp` to discover modules, boundaries, and dependencies before reading source files. Never read code blindly -- query the graph first.
 
+## /wingbox
+
+When the user types `/wingbox` (in Codex `$wingbox`), do this before anything else:
+
+- `/wingbox` with no argument: find the graph (`.wingbox/graph.sexp` or
+  `.code_graph.sexp` in the project root). Build it with `wingbox build .`
+  when it is missing or stale. The graph is stale when a file of the project
+  was modified after the graph file; this check finds one:
+
+  ```bash
+  G=$(ls .wingbox/graph.sexp .code_graph.sexp 2>/dev/null | head -1)
+  [ -z "$G" ] || find . -type f -newer "$G" -not -path './.git/*' -not -path './wingbox-out/*' \
+    -not -path './.wingbox/*' -not -name '.code_graph*' -not -path '*/node_modules/*' -print -quit
+  ```
+
+  A rebuild re-parses only the files whose content changed. Then read
+  `wingbox-out/REPORT.md` and give the user its "Key findings", the most
+  depended-on modules and where to start reading, and say that the map is
+  `wingbox-out/map.html` (it opens in a browser, offline).
+- `/wingbox <file>`: run `wingbox impact <file> 2` and summarize what depends
+  on the file and which files to read first.
+- `/wingbox <command> ...`: run `wingbox <command> ...` (for example
+  `/wingbox quick "file upload"`, `/wingbox analyze src/billing/invoice`).
+
+## Running the commands
+
+When the `wingbox` command is installed (`command -v wingbox`), run
+`wingbox <command> ...` for every query below and `wingbox build PATH` to build;
+they take the same arguments as the scripts. A skill installed by
+`wingbox install` has no `scripts/` folder and always uses the command.
+
+| Command | Purpose |
+|---|---|
+| `wingbox install [--global\|--project] [--assistant NAME ...] [--dry-run]` | Copy this skill to each assistant, add the always-on block to CLAUDE.md / AGENTS.md, add the Claude Code search hook |
+| `wingbox uninstall [--global\|--project] [--assistant NAME ...]` | Remove exactly what install added |
+| `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed skills, blocks and hook |
+| `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin |
+
+Each of these prints facts as text; add `--sexp` for S-expressions.
+
 ## Scripts
 
 This skill bundles Python scripts. Resolve the skill and target roots before

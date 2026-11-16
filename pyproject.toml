@@ -63,6 +63,8 @@ packages = ["src/wingbox"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "scripts" = "wingbox/_scripts"
+"SKILL.md" = "wingbox/_skill/SKILL.md"
+"references" = "wingbox/_skill/references"
 
 [tool.hatch.build.targets.sdist]
-include = ["/src", "/scripts", "/README.md", "/LICENSE", "/CHANGELOG.md", "/pyproject.toml"]
+include = ["/src", "/scripts", "/SKILL.md", "/references", "/README.md", "/LICENSE", "/CHANGELOG.md", "/pyproject.toml"]
