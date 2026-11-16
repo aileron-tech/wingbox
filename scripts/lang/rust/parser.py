@@ -10,6 +10,7 @@ from tree_sitter import Node, Parser as _RustParser
 from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
+from .symbols import use_bindings_and_sites
 
 
 _RUST_LANGUAGE = _RustTreeSitterLanguage(_tsr.language())
@@ -19,6 +20,7 @@ _RUST_LANGUAGE = _RustTreeSitterLanguage(_tsr.language())
 class RustUse:
     path: str
     alias: str | None = None
+    glob: bool = False
 
 
 def _node_text(node: Node | None) -> str:
@@ -83,7 +85,7 @@ def _use_leaves(node: Node, prefix: tuple[str, ...] = ()) -> list[RustUse]:
         path = _node_text(node).removesuffix("::*")
         if prefix:
             path = "::".join((*prefix, path))
-        return [RustUse(path)] if path else []
+        return [RustUse(path, glob=True)] if path else []
 
     argument = node.child_by_field_name("argument")
     return _use_leaves(argument, prefix) if argument is not None else []
@@ -121,7 +123,7 @@ def _collect_uses(root: Node) -> list[RustUse]:
             for leaf in _use_leaves(node):
                 path = _path_seen_from_file(leaf.path, inline_depth)
                 if path is not None:
-                    uses.append(RustUse(path, leaf.alias))
+                    uses.append(RustUse(path, leaf.alias, leaf.glob))
             return
         is_inline_module = node.type == "mod_item" and node.child_by_field_name("body") is not None
         for child in node.named_children:
@@ -129,9 +131,9 @@ def _collect_uses(root: Node) -> list[RustUse]:
 
     _visit(root, 0)
     unique: list[RustUse] = []
-    seen: set[tuple[str, str | None]] = set()
+    seen: set[tuple[str, str | None, bool]] = set()
     for rust_use in uses:
-        key = (rust_use.path, rust_use.alias)
+        key = (rust_use.path, rust_use.alias, rust_use.glob)
         if rust_use.path and key not in seen:
             seen.add(key)
             unique.append(rust_use)
@@ -219,6 +221,9 @@ def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
 
 
 def _imported_name(rust_use: RustUse) -> ImportedName | None:
+    if rust_use.glob:
+        # Every public name of the module, as Python's `from m import *`.
+        return ImportedName(local_name="*", original_name="*", module=rust_use.path)
     parts = tuple(part for part in rust_use.path.split("::") if part)
     if len(parts) < 2:
         return None
@@ -373,6 +378,7 @@ def parse_rust_treesitter(
             imports.append(module_import)
 
     entity_payloads = [entity.to_dict() for entity in entities]
+    bindings, use_sites = use_bindings_and_sites(root, _path_seen_from_file)
     return FileResult(
         path=path,
         language="rust",
@@ -389,4 +395,6 @@ def parse_rust_treesitter(
         entities=entity_payloads,
         imported_names=[imported_name.to_dict() for imported_name in imported_names],
         exported_names=[entity.name for entity in entities],
+        bindings=bindings,
+        uses=use_sites,
     )

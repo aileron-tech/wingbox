@@ -546,8 +546,11 @@ class CodeGraph:
                 self.all_edges.append(edge)
                 src_mod = source.split("::")[0]
                 tgt_mod = target.split("::")[0]
-                self.edges_from.setdefault(src_mod, []).append(edge)
-                self.edges_to.setdefault(tgt_mod, []).append(edge)
+                # A use reached through a re-export is entity-level only: module
+                # queries (impact, deps, rdeps, analyze) follow the imports.
+                if ":reexport" not in flags:
+                    self.edges_from.setdefault(src_mod, []).append(edge)
+                    self.edges_to.setdefault(tgt_mod, []).append(edge)
                 self.edges_from_entity.setdefault(source, []).append(edge)
                 for part in (source, target):
                     if "::" in part:

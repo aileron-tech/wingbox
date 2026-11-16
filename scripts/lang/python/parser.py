@@ -4,9 +4,10 @@ import ast
 import re
 import sys
 
-from ..interface import Entity, FileResult, ImportedName
+from ..interface import BindingPayload, Entity, FileResult, ImportedName, UsePayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
+from .symbols import module_bindings, module_variables, use_sites
 
 
 PY_ABC_RE = re.compile(r"""class\s+\w+\s*\(.*(?:ABC|ABCMeta|Protocol).*\)""")
@@ -34,6 +35,9 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     entities: list[Entity] = []
     imported_names: list[ImportedName] = []
     exported_names: list[str] = []
+    variables: list[Entity] = []
+    bindings: list[BindingPayload] = []
+    uses: list[UsePayload] = []
 
     try:
         tree = ast.parse(content, filename=path)
@@ -120,6 +124,18 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
                     if isinstance(target, ast.Name) and target.id.isupper():
                         exported_names.append(target.id)
 
+        variables = module_variables(tree, frozenset(entity.name for entity in entities))
+        exported_names.extend(
+            variable.name for variable in variables if variable.name not in exported_names
+        )
+        bindings = module_bindings(tree)
+        module_names = frozenset(
+            [entity.name for entity in (*entities, *variables)]
+            + [binding["local"] for binding in bindings if binding["local"] != "*"]
+        )
+        has_glob = any(binding["local"] == "*" for binding in bindings)
+        uses = use_sites(tree, module_names, has_glob)
+
     except SyntaxError as error:
         print(
             f"[code-graph] WARNING: AST parse failed for {path}: {error}",
@@ -148,9 +164,11 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         purpose=infer_purpose(path, content, "python", [e.to_dict() for e in entities]),
         naming_convention=detect_naming(path),
         has_validation=_detect_validation(content),
-        entities=[e.to_dict() for e in entities],
+        entities=[e.to_dict() for e in (*entities, *variables)],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
+        bindings=bindings,
+        uses=uses,
     )
 
 

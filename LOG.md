@@ -1,5 +1,25 @@
 # Completion Log
 
+## 2026-11-16 - entity S: every file that uses S in Python and Rust
+
+### Changes
+- `scripts/lang/interface.py`: `FileResult.bindings` (module-level import bindings, with `*` for glob imports) and `FileResult.uses` (use sites: a name or a qualified path as written, with the line and column of each segment); both are kept in the parse cache.
+- `scripts/lang/python/symbols.py`: module-level variables (assignment, annotated assignment with a value, `Final`, `TypeAlias`, `type X = ...`, tuple targets, also inside module-level `if`/`try`/`with`) that are public or listed in `__all__` become `function` entities, the kind TypeScript consts and Rust const/static already have; import bindings; use sites with Python scoping (parameters, locals, comprehension targets and class bodies shadow module-level names; `global` is honoured).
+- `scripts/lang/rust/symbols.py`: `use` bindings (glob, alias, `pub use` marked as export) and use sites in code, types, patterns and macro arguments; pattern bindings, generic parameters and items defined inside functions or inline modules shadow a name.
+- `scripts/lang/rust/parser.py`: a glob `use` is an imported name `*` (as Python's `from m import *`).
+- `scripts/lang/symbols.py` (new): resolves a use site to the defining module: own definitions, import bindings, child modules, glob imports and re-export chains, with cycle protection and no answer when two definitions compete.
+- `scripts/build_code_graph.py` (`_symbol_usage_edges`): a refs edge from each file to each definition it uses; `:reexport` when the file has no other edge to the defining module.
+- `scripts/code_graph_search.py` (`CodeGraph.load`): `:reexport` refs stay out of the module adjacency, so `impact`, `deps`, `rdeps` and `analyze` are unchanged.
+- Tests: REQ-PY-001 to REQ-PY-005, REQ-RUST-015 to REQ-RUST-018.
+
+### Motivation
+- The refactoring benchmark (`benchmarks/refactor`, 100 questions "which files use exported symbol S") measured `entity S` at 8 of 40 exact for Rust and 7 of 20 for Python: Python module-level variables were not entities, and Rust uses through glob imports, re-exports and qualified paths made no refs edge.
+
+### Verification
+- Refactoring benchmark, Wingbox 0.2.5 against this tree, reference lists of rust-analyzer, pyright and the TypeScript language service: TypeScript 40/40 exact before and after; Rust 8/40 exact, mean recall 0.33 -> 40/40, recall 1.00; Python 7/20, recall 0.40 -> 20/20, recall 1.00; no file outside a reference list. Over all 711 symbols the reference was asked (587 of them used by no other file), no Python or Rust file is named outside the reference.
+- `impact <file> 2` on the five questions of `benchmarks/graphify`: the same file lists as 0.2.5.
+- Test suite on Python 3.12 and 3.11.
+
 ## 2026-11-16 - Plugins found by purpose; MCP tool annotations; SECURITY.md
 
 ### Changes

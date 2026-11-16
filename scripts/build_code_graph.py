@@ -124,6 +124,7 @@ try:
         from .lang.purpose import infer_purpose, scan_root
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
+        from .lang.symbols import SymbolIndex, supports_symbols
         from .lang.source import file_hash
         from .lang.typescript.javascript import is_minified_javascript
         from .git_ignore import (
@@ -145,6 +146,7 @@ try:
         from lang.purpose import infer_purpose, scan_root
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
+        from lang.symbols import SymbolIndex, supports_symbols
         from lang.source import file_hash
         from lang.typescript.javascript import is_minified_javascript
         from git_ignore import (
@@ -610,6 +612,9 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
 
     if not isinstance(raw_result.get("import_forms", {}), dict):
         return Err("cache result field import_forms must be an object")
+    for field_name in ("bindings", "uses"):
+        if not isinstance(raw_result.get(field_name, []), list):
+            return Err(f"cache result field {field_name} must be a list")
 
     try:
         return Ok(FileResult(**raw_result))
@@ -835,6 +840,48 @@ def _resolve_target_entity(
         if entity["name"].rsplit("::", 1)[-1] == original_name
     ]
     return short_matches[0] if len(short_matches) == 1 else None
+
+
+def _symbol_usage_edges(
+    id_to_result: Mapping[str, FileResult],
+    bound_languages: Mapping[str, BoundLanguage],
+    edges: list[dict],
+) -> list[dict]:
+    """refs edges from every resolved use site to the module that defines the name.
+
+    A file that reaches the definition only through a re-export (a package
+    __init__.py, a Rust `pub use`) has no dependency on the defining module: its
+    edge carries the relation "reexport", which module-level queries (impact,
+    deps) do not walk, so they keep following imports.
+    """
+    index = SymbolIndex(
+        id_to_result,
+        lambda language, spec, path: bound_languages[language].resolve_import(spec, path),
+    )
+    adjacent = {
+        (edge["source"].split("::")[0], edge["target"].split("::")[0])
+        for edge in edges
+    }
+    found: list[dict] = []
+    for node_id, result in id_to_result.items():
+        if not supports_symbols(result.language):
+            continue
+        targets = {
+            (resolved.module, resolved.name)
+            for use in result.uses
+            if (resolved := index.resolve(node_id, use)) is not None
+            and resolved.module != node_id
+        }
+        for module, name in sorted(targets):
+            edge: dict[str, Any] = {
+                "source": node_id,
+                "target": f"{module}::{name}",
+                "type": "REFERENCES",
+            }
+            if (node_id, module) not in adjacent:
+                edge["relations"] = ["reexport"]
+            found.append(edge)
+    return found
 
 
 def build_graph(
@@ -1119,6 +1166,15 @@ def build_graph(
                             "type": "REFERENCES",
                         }
                     )
+
+    referenced = {
+        (edge["source"].split("::")[0], edge["target"])
+        for edge in edges
+        if edge["type"] == "REFERENCES"
+    }
+    for edge in _symbol_usage_edges(id_to_result, bound_languages, edges):
+        if (edge["source"], edge["target"]) not in referenced:
+            edges.append(edge)
 
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
@@ -2855,6 +2911,8 @@ def _serialize_file_result(result: FileResult) -> dict:
             "exported_names": result.exported_names,
             "relations": result.relations,
             "import_forms": result.import_forms,
+            "bindings": result.bindings,
+            "uses": result.uses,
         },
     }
 

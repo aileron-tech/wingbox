@@ -18,7 +18,7 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec] [:lsp])
 (calls-api <src> <tgt> :via-ifc [:lsp])
 (data-flow <src> <tgt> [:validated])
-(refs <src> <tgt>::<Entity> [:callback] [:lsp])
+(refs <src> <tgt>::<Entity> [:callback] [:reexport] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
 ```
 
@@ -63,7 +63,16 @@ entity; an `analyze-more` or `key-entity-more` line gives the number left out.
 (entity-def cls <mod> <Name> <line> :lang py :file <path>)
 (entity-def ifc <mod> <Name> <line> :lang ts :file <path>)
 (refs <src-mod> <tgt-mod>::<Name>)
+(refs <src-mod> <tgt-mod>::<Name> :reexport)
 ```
+
+Each `refs` line names a module that uses `<Name>` defined in `<tgt-mod>`: by an
+import, a qualified path (`m.Name`, `m::Name`), a glob import or a re-export
+(`__init__.py`, `pub use`). `:reexport` marks a module that reaches the
+definition only through a re-export and does not import `<tgt-mod>` itself;
+module-level commands (`impact`, `deps`, `rdeps`, `analyze`) do not walk these
+lines and keep following imports. A value defined at module level (a Python
+assignment, a TypeScript `const`, a Rust `const` or `static`) is an `fn` entity.
 
 ## deps / rdeps Output
 

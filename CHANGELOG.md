@@ -4,6 +4,17 @@
 
 ### Changes
 
+- `entity S` names every file that uses S in Python and Rust, as the language
+  tooling's find usages does. Python: public module-level variables, constants
+  and type aliases are entities, `m.S` after `from pkg import m` or `import
+  pkg.m as m` is a use, and a name re-exported by a package `__init__.py` leads
+  to its defining file. Rust: names reached through glob imports
+  (`use a::b::*`), `pub use` chains and qualified paths (`screenshot::take()`
+  after `use crate::screenshot`) are uses, and a `use` that names S is one. A
+  parameter or local variable of the same name is not a use. On the refactoring
+  benchmark the exact answers go from 8 to 40 of 40 (Rust) and from 7 to 20 of
+  20 (Python), with no file outside the reference lists; TypeScript stays at 40
+  of 40 and `impact` answers do not change.
 - Plugin for Claude Code in `plugins/wingbox`, and this repository as its
   marketplace `aileron-tech`: `/plugin install wingbox --marketplace
   aileron-tech/wingbox`. The plugin bundles the `wingbox` skill, the MCP

@@ -22,6 +22,37 @@ class ImportedNamePayload(TypedDict):
     module: str
 
 
+class BindingPayload(TypedDict):
+    """A name that an import binds at module level.
+
+    local: the name bound in the file, "*" for a glob import. module: the module
+    as written (resolved by the language). name: the imported name, "" when the
+    module itself is bound, "*" for a glob import. export: importers of the file
+    see the name too (Rust `pub use`, Python imports at module level).
+    """
+
+    local: str
+    module: str
+    name: str
+    export: bool
+
+
+class UsePayloadRequired(TypedDict):
+    path: list[str]
+    at: list[list[int]]
+
+
+class UsePayload(UsePayloadRequired, total=False):
+    """A name or qualified path written in the file, not shadowed by a local binding.
+
+    path: the segments as written (S, m.S, a::b::S). at: [line, column] of each
+    segment, both 1-based. module: when set, path starts inside that module as
+    written in an import statement (from m import S) instead of in the file's scope.
+    """
+
+    module: str
+
+
 class SourceRelationPayloadRequired(TypedDict):
     target: str
     relation: str
@@ -94,6 +125,9 @@ class FileResult:
     relations: list[SourceRelationPayload] = field(default_factory=list)
     # TypeScript: specifier -> "type" or "named" when the file imports it for names only
     import_forms: dict[str, str] = field(default_factory=dict)
+    # Symbol index: module-level import bindings and the use sites of names.
+    bindings: list[BindingPayload] = field(default_factory=list)
+    uses: list[UsePayload] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
