@@ -38,7 +38,7 @@ access to build or query it.
 </p>
 
 Once the graph is built, an agent asks what a change breaks before it edits
-anything. Real output, Wingbox 0.2.0 on the server of
+anything. Real output, Wingbox 0.2.2 on the server of
 [immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
 
 ```text

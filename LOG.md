@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-16 - README demo pictures rebuilt from 0.2.2
+
+### Changes
+- `docs/assets/demo-impact.svg`, `demo-layers.webp`, `map-layers-hub.webp`: generated again from Wingbox 0.2.2 on the same commit of the example repository. The stack of layers in the animation has six planes (the index file of the controllers folder is API, `types.ts` is shared), the recording and the screenshot show the layer sizes of 0.2.2. `README.md` names the version.
+
+### Motivation
+- The pictures were made with 0.2.0 and an unreleased build; a reader who runs the released tool on the example should see what the pictures show.
+
 ## 2026-11-16 - a Python package init takes the layer of its package
 
 ### Changes
