@@ -1,13 +1,13 @@
 # Wingbox benchmark: impact questions on public code
 
-Wingbox 0.2.2 from PyPI, run of 2026-11-16. This file is written by `make_report.py` from the files in `results/`. `Dockerfile.benchmark` at the root of the repository runs the tests that need no model in a clean container and compares every result file with the committed one.
+Wingbox 0.2.3 from PyPI, run of 2026-11-16. This file is written by `make_report.py` from the files in `results/`. `Dockerfile.benchmark` at the root of the repository runs the tests that need no model in a clean container and compares every result file with the committed one.
 
 ## Summary
 
 - 100 questions drawn at random with a fixed seed in 5 public repositories (TypeScript, Rust, Python): `wingbox impact` names the complete list of dependent files, with nothing outside it, in 100 of 100 (95 % interval 96 to 100 %). A required file is missing in 0 of 100.
 - A coding agent on 55 of these questions, with Wingbox against its built-in search alone: tokens -35 % (-47 % to -20 %), cost -51 % (-58 % to -43 %); complete answers 55 of 55 against 48 of 55.
 - Every module dependency of the graph against the import statements of the code, in 7 corpora (3,795 dependencies in the largest): 0 wrong, 1 missing.
-- Building the graph, the report and the map of fastapi (1,227 source files) from a fresh checkout takes 3.2 s on a hosted runner.
+- Building the graph, the report and the map of fastapi (1,227 source files) from a fresh checkout takes 2.0 s on a hosted runner.
 
 ## The question
 
@@ -54,7 +54,7 @@ Claude Code, headless, model alias `sonnet`, no user settings, skills or connect
 | claudes-c-compiler | 12 | 24,270 | 50,428 | -52 % |
 | fastapi | 7 | 22,396 | 38,753 | -42 % |
 
-Ratios are totals over the questions; their intervals are 95 % paired bootstrap intervals over the questions (10,000 resamples). The 110 trials cost 5.15 USD in total and ran with Wingbox 0.2.1 (the 100 answers of `wingbox impact` are identical in 0.2.1 and 0.2.2); every trial with its scores is in `results/agent.json`.
+Ratios are totals over the questions; their intervals are 95 % paired bootstrap intervals over the questions (10,000 resamples). The 110 trials cost 5.15 USD in total and ran with Wingbox 0.2.1 (the 100 answers of `wingbox impact` are identical in 0.2.1, 0.2.2 and 0.2.3); every trial with its scores is in `results/agent.json`.
 
 ## Test 3. Are the edges in the code?
 
@@ -76,16 +76,16 @@ The graph holds more edges than the code requires where it also records accepted
 
 ## Test 4. Building the graph
 
-Seconds from a fresh checkout to the graph, the report and the map: every run starts from a new export of the repository, with no earlier output and no cache. Median of 3 runs on a GitHub-hosted runner (Linux, AMD EPYC 9V74 80-Core Processor, 4 logical CPUs), workflow `benchmark-build-time`, script `tools/time_builds.py`, wingbox 0.2.2.
+Seconds from a fresh checkout to the graph, the report and the map: every run starts from a new export of the repository, with no earlier output and no cache. Median of 3 runs on a GitHub-hosted runner (Linux, AMD EPYC 9V45 96-Core Processor, 4 logical CPUs), workflow `benchmark-build-time`, script `tools/time_builds.py`, wingbox 0.2.3.
 
 | Corpus | Source files | Build, s | Modules | Import edges |
 |---|---|---|---|---|
-| karpathy | 29 | 0.28 | 29 | 15 |
-| chrome-devtools-mcp | 296 | 0.79 | 293 | 919 |
-| agent-browser | 363 | 2.06 | 359 | 751 |
-| claudes-c-compiler | 351 | 2.23 | 351 | 1,462 |
-| immich-server | 707 | 1.84 | 707 | 3,795 |
-| fastapi | 1,227 | 3.23 | 1,227 | 1,818 |
+| karpathy | 29 | 0.20 | 29 | 15 |
+| chrome-devtools-mcp | 296 | 0.58 | 293 | 919 |
+| agent-browser | 363 | 1.24 | 359 | 751 |
+| claudes-c-compiler | 351 | 1.23 | 351 | 1,462 |
+| immich-server | 707 | 1.34 | 707 | 3,795 |
+| fastapi | 1,227 | 2.05 | 1,227 | 1,818 |
 
 The size of the graph is read from the file each build wrote; the summary stops when two runs differ.
 
@@ -99,7 +99,7 @@ The size of the graph is read from the file each build wrote; the summary stops 
 
 | Item | Version or commit |
 |---|---|
-| Wingbox | 0.2.2 (PyPI `wingbox`) |
+| Wingbox | 0.2.3 (PyPI `wingbox`) |
 | grimp | 3.20 |
 | nanoGPT | 3adf61e |
 | minGPT | 37baab7 |
