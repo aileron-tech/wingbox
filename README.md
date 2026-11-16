@@ -9,8 +9,8 @@
 > boundaries and the **blast radius** of a change before editing code.
 > It works as an agent skill in Claude Code, Codex, Gemini CLI, Cursor and
 > GitHub Copilot, as an MCP server for any MCP client, and from the command
-> line. It supports Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free
-> Pascal, and Lazarus.
+> line. It supports Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, PHP,
+> Laravel (Blade, Livewire), Free Pascal, and Lazarus.
 >
 > **Runs fully locally:** no network access, no model, no telemetry. It can be
 > used inside a security perimeter and on a machine with no internet.
@@ -31,10 +31,11 @@
 > [Changelog](CHANGELOG.md) for the old and new names.
 
 Understand a large codebase before you change it. Wingbox is an
-architecture-aware code search and impact analysis tool for Python, TypeScript, TSX, Rust, C#,
-Java, Go, Ruby, Ruby on Rails, Free Pascal, and Lazarus repositories. It helps
-developers and AI coding agents find the right module, trace dependencies,
-measure change impact, and read only the source files that matter.
+architecture-aware code search and impact analysis tool for Python, TypeScript,
+TSX, Rust, C#, Java, Go, Ruby, Ruby on Rails, PHP, Laravel, Blade, Livewire,
+Free Pascal, and Lazarus repositories. It helps developers and AI coding agents
+find the right module, trace dependencies, measure change impact, and read only
+the source files that matter.
 
 Use it for codebase architecture discovery, dependency graph search, blast-radius
 analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
@@ -494,11 +495,14 @@ example:
 python3 -m pip install -r requirements/typescript.txt
 python3 -m pip install -r requirements/csharp.txt
 python3 -m pip install -r requirements/ruby.txt
+python3 -m pip install -r requirements/php.txt
 ```
 
 Install only the files for languages you use, then run the same build command
-again. `requirements.txt` contains the separate infrastructure-topology
-dependency.
+again. `requirements/php.txt` pins `tree-sitter==0.25.2` and
+`tree-sitter-php==0.24.1`; the package dependencies list the PHP grammar, so an
+installed `wingbox` needs no separate step. `requirements.txt` contains the
+separate infrastructure-topology dependency.
 
 Run a relevant search and get the first matching module with its full context:
 
@@ -639,13 +643,15 @@ when the graph is outside the current directory and its parents.
 | Java | Packages, imports, classes, interfaces, records, enums, methods, annotations, inheritance, and local type dependencies |
 | Go | Modules, packages, imports, structs, interfaces, functions, constants, variables, receiver methods, and local package dependencies |
 | Ruby and Rails | Ruby classes, modules, instance and singleton methods, inheritance, requires, Zeitwerk constants, concerns, associations, callbacks, jobs, mailers, and impacted specs |
+| PHP and Laravel | PHP 8 classes, interfaces, traits, enums, methods, attributes, `use` aliases, inheritance, Composer PSR-4 classes, Blade views and components, Livewire components, Eloquent associations, events, and jobs |
 | Free Pascal and Lazarus | Units, programs, uses/includes, classes, records, interfaces, inheritance, methods, and routines |
 
 Wingbox is designed for single repositories and monorepos. It understands
 Python project roots, TypeScript configuration and package aliases, Cargo package
 names and local Rust crate dependencies, .NET solutions and projects, Maven and
-Gradle projects, Go modules and workspaces, and Rails application/autoload
-roots with project acronyms.
+Gradle projects, Go modules and workspaces, Rails application/autoload
+roots with project acronyms, and Composer PSR-4 roots, including nested module
+manifests and `autoload-dev`.
 
 Pascal dependencies resolve by case-insensitive unit identity and explicit
 `UnitName in 'path.pas'` paths, then by a unique same-directory unit. Other
@@ -667,6 +673,46 @@ The default Ruby map does not boot Rails. Ambiguous reopened constants remain
 unlinked, polymorphic associations stay open, and external or dynamic Ruby
 calls are not guessed. This keeps blast-radius results useful without executing
 application code.
+
+## PHP and Laravel dependency search
+
+PHP and Laravel code names classes through Composer instead of relative paths,
+and one feature can span PHP classes, Blade templates and Livewire components.
+Wingbox reads every `composer.json` (the root manifest and a module's nested
+one) and merges `autoload.psr-4` with `autoload-dev.psr-4`, the longest matching
+prefix first, as Composer does. A `.php` file is indexed as PHP, a `.blade.php`
+file as Blade: classes, interfaces, traits, enums, methods, attributes, `use`
+aliases and grouped uses, `extends`, `implements` and trait use.
+
+Laravel conventions become edges. `view('users.show')`, `View::make(...)` and
+`view()->make(...)` name the template; a namespaced `admin::nav` uses the
+directories registered by `loadViewsFrom(...)` or `View::addNamespace(...)`, or
+a module's `resources/views` directory. Blade `@extends`, the `@include*`
+family, `@component` and `@each`, anonymous `<x-*>` components, and
+`<livewire:counter>` or `@livewire('counter')` are followed. A Livewire
+component resolves through `Livewire::component(...)` registrations, its flat
+or dotted alias under `App\Livewire` or a module's `Livewire` folder, or its
+`livewire.<alias>` template; a component class that extends
+`Livewire\Component` also links to the template named after it
+(`App\Livewire\Chat\FileUpload` to `livewire.chat.file-upload`).
+
+Eloquent associations create edges when the first argument is `X::class`
+(`belongsTo`, `hasOne`, `hasMany`, the through and morph variants);
+`event(new X(...))`, `dispatch(new X(...))`, `X::dispatch(...)` and
+`X::dispatchSync(...)` link events and queued jobs. Models are domain,
+controllers, middleware and requests under `app/Http` are api, `app/Livewire`
+and `resources/views` are ui, `app/Jobs`, `app/Listeners` and `app/Policies`
+are service, `app/Events` is domain, and tests are test.
+
+The map is conservative: a class name that no file declares, or that several
+files declare without a single PSR-4 owner, creates no edge, and so do an alias
+with several targets and a view in several view directories. IDE-helper stubs
+such as `_ide_helper_models.php` do not shadow the real class: the file the
+PSR-4 map autoloads wins. A Livewire alias that the application registers
+dynamically, in a loop over a directory for example, is left unlinked unless it
+also follows one of the conventions above. Nothing boots Laravel, runs Composer
+or opens a network connection; the graph comes from source text and
+`composer.json`.
 
 ## A simple workflow
 
@@ -791,9 +837,9 @@ must be verified against the running application.
 
 ### Which languages are supported?
 
-Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on Rails, Free
-Pascal and Lazarus, plus infrastructure relationships from Kustomize, Helm and
-Terraform.
+Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on
+Rails, PHP and Laravel (Blade and Livewire), Free Pascal and Lazarus, plus
+infrastructure relationships from Kustomize, Helm and Terraform.
 
 ## Where Wingbox comes from
 

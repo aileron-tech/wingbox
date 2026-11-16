@@ -13,6 +13,7 @@ from .interface import (
 )
 from .java import JAVA_LANGUAGE
 from .pascal import PASCAL_LANGUAGE
+from .php import PHP_LANGUAGE
 from .python import PYTHON_LANGUAGE
 from .rust import RUST_LANGUAGE
 from .ruby import RUBY_LANGUAGE
@@ -31,6 +32,7 @@ LANGUAGES: tuple[Language, ...] = (
     JAVA_LANGUAGE,
     GO_LANGUAGE,
     RUBY_LANGUAGE,
+    PHP_LANGUAGE,
     PASCAL_LANGUAGE,
 )
 

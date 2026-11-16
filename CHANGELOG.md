@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- PHP 8 and Laravel: a `php` adapter for `.php` and `.blade.php` files with
+  Composer PSR-4 classes, Blade, Livewire, Eloquent, events and jobs.
+
 ## 0.3.0 - 2026-11-16
 
 ### Changes

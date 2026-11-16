@@ -38,16 +38,21 @@ def _fuzzy_suffix_match(name: str, suffix: str, max_dist: int = 1) -> bool:
 _TEST_FOLDER_NAMES = frozenset({"test", "tests", "__tests__", "e2e", "testdata"})
 _TEST_FOLDER_PREFIXES = ("test-", "test_", "tests-", "tests_")
 _TEST_STEM_ENDINGS = (".test", ".spec", "_test", "_spec", ".test-d")
+_PHP_TEST_SUFFIXES = ("Test.php", "Spec.php", "TestCase.php")
 
 
-def _is_test_file(rel: str) -> bool:
+def _is_test_file(rel: str, language: str = "", file_name: str = "") -> bool:
     """True for a file in a test folder or named as a test.
 
     A name that only begins with the letters "test" (test.email.tsx,
-    testclient.py, a testimonials folder) is not a test.
+    testclient.py, a testimonials folder) is not a test. PHP keeps its
+    PascalCase file names, so the original basename is checked too
+    (UserTest.php, UserSpec.php, UserTestCase.php); `rel` is lowercased.
     """
     *folders, name = rel.split("/")
     stem = name.rsplit(".", 1)[0]
+    if language == "php" and file_name.endswith(_PHP_TEST_SUFFIXES):
+        return True
     return (
         any(folder in _TEST_FOLDER_NAMES or folder.startswith(_TEST_FOLDER_PREFIXES) for folder in folders)
         or name.startswith("test_")
@@ -90,7 +95,39 @@ def infer_purpose(
     rel = _path_in_repository(path).lower()
 
     # Path-based heuristics
-    if language == "ruby" and "/app/models/" in rel:
+    if language in ("php", "blade") and _is_test_file(
+        rel, language, os.path.basename(path)
+    ):
+        parts.append("test")
+    elif language in ("php", "blade") and "/resources/views/" in rel:
+        parts.append("UI component")
+    elif language in ("php", "blade") and "/livewire/" in rel:
+        parts.append("UI component")
+    elif language in ("php", "blade") and "/models/" in rel:
+        parts.append("data model")
+    elif language in ("php", "blade") and "/http/controllers/" in rel:
+        parts.append("API controller")
+    elif language in ("php", "blade") and "/http/requests/" in rel:
+        parts.append("validation")
+    elif language in ("php", "blade") and "/policies/" in rel:
+        parts.append("policy")
+    elif language in ("php", "blade") and "/jobs/" in rel:
+        parts.append("worker")
+    elif language in ("php", "blade") and "/events/" in rel:
+        parts.append("domain event")
+    elif language in ("php", "blade") and "/listeners/" in rel:
+        parts.append("event listener")
+    elif language in ("php", "blade") and "/services/" in rel:
+        parts.append("service")
+    elif language in ("php", "blade") and "/providers/" in rel:
+        parts.append("provider")
+    elif language in ("php", "blade") and "/database/migrations/" in rel:
+        parts.append("database migration")
+    elif language in ("php", "blade") and "/routes/" in rel:
+        parts.append("page/route")
+    elif language in ("php", "blade") and "/config/" in rel:
+        parts.append("configuration")
+    elif language == "ruby" and "/app/models/" in rel:
         parts.append("data model")
     elif language == "ruby" and "/app/controllers/" in rel:
         parts.append("API controller")
@@ -118,7 +155,7 @@ def infer_purpose(
         parts.append("page/route")
     elif "/migrations/" in rel:
         parts.append("database migration")
-    elif _is_test_file(rel):
+    elif _is_test_file(rel, language, os.path.basename(path)):
         parts.append("test")
     elif "/config" in rel:
         parts.append("configuration")

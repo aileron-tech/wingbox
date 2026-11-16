@@ -1,0 +1,70 @@
+[
+ {
+  "corpus": "bookstack",
+  "language": "php",
+  "pairs": 3236,
+  "edges": 3236,
+  "wrong": 0,
+  "missing": 0,
+  "accepted": 0,
+  "wrong_edges": [],
+  "missing_edges": [],
+  "unmapped_edges": 1318,
+  "unmapped_by_cause": {
+   "non-PHP (TypeScript)": 1127,
+   "non-PHP (JavaScript) + non-PHP (TypeScript)": 115,
+   "non-PHP (JavaScript)": 76
+  },
+  "unmapped_modules": [],
+  "shared_modules": {}
+ },
+ {
+  "corpus": "livewire",
+  "language": "php",
+  "pairs": 526,
+  "edges": 526,
+  "wrong": 0,
+  "missing": 0,
+  "accepted": 0,
+  "wrong_edges": [],
+  "missing_edges": [],
+  "unmapped_edges": 0,
+  "unmapped_by_cause": {},
+  "unmapped_modules": [],
+  "shared_modules": {
+   "src/Features/SupportJsModules/fixtures/mfc-with-imports/mfc-with-imports": [
+    "src/Features/SupportJsModules/fixtures/mfc-with-imports/mfc-with-imports.blade.php",
+    "src/Features/SupportJsModules/fixtures/mfc-with-imports/mfc-with-imports.php"
+   ],
+   "src/Features/SupportJsEvaluation/fixtures/mfc-component-with-dollar-js-magic/mfc-component-with-dollar-js-magic": [
+    "src/Features/SupportJsEvaluation/fixtures/mfc-component-with-dollar-js-magic/mfc-component-with-dollar-js-magic.blade.php",
+    "src/Features/SupportJsEvaluation/fixtures/mfc-component-with-dollar-js-magic/mfc-component-with-dollar-js-magic.php"
+   ],
+   "src/Features/SupportJsModules/fixtures/back-forward/back-forward": [
+    "src/Features/SupportJsModules/fixtures/back-forward/back-forward.blade.php",
+    "src/Features/SupportJsModules/fixtures/back-forward/back-forward.php"
+   ],
+   "src/Features/SupportSingleAndMultiFileComponents/fixtures/mfc-counter/mfc-counter": [
+    "src/Features/SupportSingleAndMultiFileComponents/fixtures/mfc-counter/mfc-counter.blade.php",
+    "src/Features/SupportSingleAndMultiFileComponents/fixtures/mfc-counter/mfc-counter.php"
+   ]
+  }
+ },
+ {
+  "corpus": "monica",
+  "language": "php",
+  "pairs": 2292,
+  "edges": 2292,
+  "wrong": 0,
+  "missing": 0,
+  "accepted": 0,
+  "wrong_edges": [],
+  "missing_edges": [],
+  "unmapped_edges": 7,
+  "unmapped_by_cause": {
+   "non-PHP (JavaScript)": 7
+  },
+  "unmapped_modules": [],
+  "shared_modules": {}
+ }
+]

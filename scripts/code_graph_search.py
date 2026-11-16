@@ -353,6 +353,7 @@ _TS_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx")
 _PY_EXTENSIONS = (".py",)
 _RUBY_EXTENSIONS = (".rb", ".rake")
 _RUST_EXTENSIONS = (".rs",)
+_PHP_EXTENSIONS = (".blade.php", ".php")
 _PASCAL_EXTENSIONS = (".pas", ".pp", ".lpr", ".inc")
 _OTHER_EXTENSIONS = (".go", ".java", ".cs")
 
@@ -367,6 +368,7 @@ def _module_id_to_file(module_id: str, root: str) -> str:
         + _PY_EXTENSIONS
         + _RUBY_EXTENSIONS
         + _RUST_EXTENSIONS
+        + _PHP_EXTENSIONS
         + _PASCAL_EXTENSIONS
         + _OTHER_EXTENSIONS
     )
@@ -374,7 +376,7 @@ def _module_id_to_file(module_id: str, root: str) -> str:
         candidate = base + ext
         if os.path.isfile(candidate):
             return candidate
-    for idx in ("index.ts", "index.tsx", "index.js", "__init__.py", "mod.rs"):
+    for idx in ("index.ts", "index.tsx", "index.js", "__init__.py", "mod.rs", "index.blade.php"):
         candidate = os.path.join(base, idx)
         if os.path.isfile(candidate):
             return candidate
@@ -945,6 +947,13 @@ def _classify_layer_fallback(p: str) -> str:
     # Migrations and seeds change the database: infrastructure, even under a schema folder
     if "/migrations/" in p or "/seeds/" in p or "/seeders/" in p:
         return "infra"
+    # Laravel and Livewire folders have fixed roles
+    if "/livewire/" in p or "/resources/views/" in p:
+        return "ui"
+    if "/http/controllers/" in p or "/http/middleware/" in p or "/http/requests/" in p:
+        return "api"
+    if "/jobs/" in p or "/listeners/" in p or "/policies/" in p:
+        return "service"
     # Architecture layers
     if "/api/" in p or "/routes/" in p or "/controllers/" in p:
         return "api"
@@ -1242,6 +1251,7 @@ _IMPACT_SOURCE_EXTENSIONS = tuple(
         + _PY_EXTENSIONS
         + _RUBY_EXTENSIONS
         + _RUST_EXTENSIONS
+        + _PHP_EXTENSIONS
         + _PASCAL_EXTENSIONS
         + _OTHER_EXTENSIONS,
         key=len,

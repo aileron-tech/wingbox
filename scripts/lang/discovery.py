@@ -37,6 +37,18 @@ def _is_dotnet_output_directory(parent: str, name: str) -> bool:
     return any(sibling.endswith(_DOTNET_MARKERS) for sibling in siblings)
 
 
+def _is_published_view_directory(parent: str, name: str) -> bool:
+    """True for `resources/views/vendor`: published Blade views, not Composer packages.
+
+    Laravel publishes a package's templates under the application's views folder,
+    so the `vendor` basename there holds source, not dependencies.
+    """
+    if name != "vendor":
+        return False
+    parts = os.path.normpath(parent).replace("\\", "/").split("/")
+    return parts[-2:] == ["resources", "views"]
+
+
 def is_excluded_directory(
     exclusions: DiscoveryExclusions,
     parent: str,
@@ -44,7 +56,7 @@ def is_excluded_directory(
 ) -> bool:
     """Apply basename and repository-ignore policy before descending."""
     return (
-        name in exclusions.directory_names
+        (name in exclusions.directory_names and not _is_published_view_directory(parent, name))
         or _is_dotnet_output_directory(parent, name)
         or is_excluded_path(exclusions, os.path.join(parent, name))
     )
