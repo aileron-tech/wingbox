@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-16 - benchmark: build time on a hosted runner
+
+### Changes
+- `benchmarks/graphify/tools/time_builds.py` (new): times `wingbox build`, `graphify extract --code-only` and `graphify cluster-only` on the five corpora of the benchmark. Every run starts from a fresh export of the checkout, the tools alternate, wall and CPU seconds are recorded per step, the summary is the median of the rounds. Test REQ-BENCH-003.
+- `benchmarks/graphify/run.sh`: `RUN_ONLY=corpus` stops after the environments and the corpus are in place.
+- `.github/workflows/benchmark-build-time.yml` (new): started by hand, runs the timing on a hosted runner and keeps `build_times.json` as an artifact.
+
+### Motivation
+- Build time was measured only on a laptop that ran other jobs at the same time, so the numbers could not be published. A hosted runner is idle and anyone can repeat the run.
+
 ## 2026-11-16 - README: "See it in action" with the layers view
 
 ### Changes

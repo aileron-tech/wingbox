@@ -6,6 +6,7 @@
 # Takes about 15 minutes and 1.5 GB. Everything is written under <work dir>.
 # WINGBOX_SPEC overrides the Wingbox under test (default: the release named below),
 # for example WINGBOX_SPEC=/path/to/a/checkout.
+# RUN_ONLY=corpus stops after the environments and the corpus are in place (used by tools/time_builds.py).
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -56,6 +57,10 @@ fetch() { # <dir> <url> <commit>
   fetch corpus/agent-browser https://github.com/vercel-labs/agent-browser 53384771fbafc261ba67608ac806dd5aa70b84f0
   fetch corpus/claudes-c-compiler https://github.com/anthropics/claudes-c-compiler 6f1b99acb2f4ec2414592136c2009fe7713deec3
 } | tee out/commits.txt
+if [ "${RUN_ONLY:-}" = corpus ]; then
+  echo "RUN_ONLY=corpus: environments and corpus are ready in $W"
+  exit 0
+fi
 [ -f out/graphify_published_graph.json ] || curl -fsSL -o out/graphify_published_graph.json \
   "https://raw.githubusercontent.com/Graphify-Labs/graphify/$GRAPHIFY_COMMIT/worked/karpathy-repos/graph.json"
 
