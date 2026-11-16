@@ -7,6 +7,7 @@ Run of 2026-11-16. Wingbox 0.2.0 from PyPI. Graphify 0.9.110 from PyPI (`graphif
 - Graphify's "71.5x fewer tokens per query" is the size of the whole corpus divided by the size of one graph answer. No answer is checked. On the code of its own example corpus Graphify publishes 8.8x; Graphify 0.9.110 gives 3.5x and 5.0x today, and the same formula gives Wingbox 78.1x (test A).
 - Asked which files depend on a file, `wingbox impact` names the exact list in 5 of 5 questions, `graphify affected` in 1 of 5 (test C).
 - A coding agent answers the same questions correctly in all three setups. It spends 25,598 tokens with Wingbox, 59,367 with its built-in search alone and 109,071 with Graphify: Wingbox -57 % against plain search, Graphify +84 % (test D).
+- Building the graph of fastapi (1,227 source files) takes Wingbox 2.2 s and Graphify 17.9 s on a hosted runner; over the five corpora Graphify's extract takes 3.5 to 19.2 times as long as the whole Wingbox build (test E).
 
 ## What Graphify publishes in its repository
 
@@ -105,6 +106,22 @@ Claude Code, headless, model alias `sonnet` (claude-sonnet-5-5), no user setting
 
 Every trial with its answer list is in `results/agent_summary.json`. The 45 trials cost 2.79 USD in total.
 
+## Test E. Building the graph
+
+Seconds from a fresh checkout to a graph: every run starts from a new export of the repository, with no earlier output and no cache, and the two tools alternate. Median of 3 runs on a GitHub-hosted runner (Linux, AMD EPYC 9V45 96-Core Processor, 4 logical CPUs), workflow `benchmark-build-time`, script `tools/time_builds.py`. wingbox 0.2.0; graphify 0.9.110 with `GRAPHIFY_BACKEND=none`.
+
+`wingbox build .` writes the graph, the report and the map. `graphify extract . --code-only` writes the graph; `graphify cluster-only . --no-label --no-viz` is the step this benchmark runs before `graphify affected`.
+
+| Corpus | Source files | Wingbox build, s | Graphify extract, s | Graphify cluster, s | Extract / build | Wingbox graph | Graphify graph |
+|---|---|---|---|---|---|---|---|
+| karpathy | 29 | 0.23 | 0.80 | 0.30 | 3.5x | 29 modules, 15 import edges | 241 nodes, 363 links |
+| chrome-devtools-mcp | 296 | 0.59 | 11.34 | 2.18 | 19.2x | 293 modules, 918 import edges | 4,804 nodes, 11,240 links |
+| agent-browser | 363 | 1.25 | 16.68 | 5.31 | 13.3x | 359 modules, 751 import edges | 10,516 nodes, 27,103 links |
+| claudes-c-compiler | 351 | 1.27 | 7.56 | 5.24 | 6.0x | 351 modules, 1,462 import edges | 9,413 nodes, 28,384 links |
+| fastapi | 1,227 | 2.17 | 17.85 | 6.37 | 8.2x | 1,227 modules, 1,818 import edges | 12,897 nodes, 26,044 links |
+
+The size of the graph is read from the file each build wrote, in every run; the summary stops when two runs of one tool differ. CPU seconds per step and every single run are in `results/build_times.json`.
+
 ## Scope
 
 - Code only. Graphify also reads documents, papers and images with a model; that part is not tested here and Wingbox has no counterpart.
@@ -133,6 +150,7 @@ git clone https://github.com/aileron-tech/wingbox && cd wingbox
 benchmarks/graphify/run.sh ~/wingbox-bench    # tests A, B, C; needs git, curl and uv; no model, no key
 python3 -I benchmarks/graphify/tools/agent_test.py ~/wingbox-bench run      # test D: paid Claude Code sessions
 python3 -I benchmarks/graphify/tools/agent_test.py ~/wingbox-bench report
+python3 -I benchmarks/graphify/tools/time_builds.py ~/wingbox-bench             # test E: build time on this machine
 ```
 
 `run.sh` installs both tools from PyPI into its own environments, fetches the seven repositories at the commits above, builds both graphs, computes the reference lists and writes `out/REPORT.md` in the work directory. `WINGBOX_SPEC=<path or requirement>` runs the same tests on another Wingbox.

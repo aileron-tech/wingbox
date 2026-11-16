@@ -144,7 +144,9 @@ per setup:
 Without an agent, `wingbox impact` names the exact list of dependent files in
 5 of the 5 questions; `graphify affected` in 1 of 5. Checked against every
 import statement of FastAPI (1,801 file pairs, the same pairs the import graph
-of grimp gives), Wingbox has no wrong and no missing dependency.
+of grimp gives), Wingbox has no wrong and no missing dependency. Building the
+graph of FastAPI (1,227 files) from a fresh checkout takes Wingbox 2.2 s and
+Graphify 17.9 s on a GitHub-hosted runner.
 
 The scripts, the reference lists and every result file are in
 [benchmarks/graphify](benchmarks/graphify/README.md). One command reproduces

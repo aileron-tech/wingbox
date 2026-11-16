@@ -51,6 +51,13 @@ if agent:
     add(f"- A coding agent answers the same questions correctly in all three setups. It spends {w['tokens']:,} tokens with Wingbox, "
         f"{p['tokens']:,} with its built-in search alone and {g['tokens']:,} with Graphify: Wingbox {pct(w['tokens'], p['tokens'])} "
         f"against plain search, Graphify {pct(g['tokens'], p['tokens'])} (test D).")
+if os.path.exists(os.path.join(R, "build_times.json")):
+    rows = load("build_times.json")["summary"]
+    big = max(rows, key=lambda row: row["source_files"])
+    ratios = [row["extract_to_build_wall_ratio"] for row in rows]
+    add(f"- Building the graph of {big['corpus']} ({big['source_files']:,} source files) takes Wingbox {big['wingbox_build_wall_s']:.1f} s and Graphify "
+        f"{big['graphify_extract_wall_s']:.1f} s on a hosted runner; over the five corpora Graphify's extract takes {min(ratios):.1f} to {max(ratios):.1f} times "
+        f"as long as the whole Wingbox build (test E).")
 add("")
 add("## What Graphify publishes in its repository")
 add("")
@@ -206,6 +213,32 @@ if agent:
         f"{sum(t['cost_usd'] or 0 for t in trials):.2f} USD in total.")
     add("")
 
+build_path = os.path.join(R, "build_times.json")
+if os.path.exists(build_path):
+    bt = load("build_times.json")
+    info = bt["machine"]
+    add("## Test E. Building the graph")
+    add("")
+    add(f"Seconds from a fresh checkout to a graph: every run starts from a new export of the repository, with no earlier output and no cache, "
+        f"and the two tools alternate. Median of {bt['rounds']} runs on a GitHub-hosted runner ({info['system']}, {info['cpu']}, "
+        f"{info['logical_cpus']} logical CPUs), workflow `benchmark-build-time`, script `tools/time_builds.py`. {bt['versions']['wingbox']}; "
+        f"{bt['versions']['graphify']} with `GRAPHIFY_BACKEND=none`.")
+    add("")
+    add("`wingbox build .` writes the graph, the report and the map. `graphify extract . --code-only` writes the graph; "
+        "`graphify cluster-only . --no-label --no-viz` is the step this benchmark runs before `graphify affected`.")
+    add("")
+    add("| Corpus | Source files | Wingbox build, s | Graphify extract, s | Graphify cluster, s | Extract / build | Wingbox graph | Graphify graph |")
+    add("|---|---|---|---|---|---|---|---|")
+    for row in bt["summary"]:
+        wg, gg = row["wingbox_graph"], row["graphify_graph"]
+        add(f"| {row['corpus']} | {row['source_files']:,} | {row['wingbox_build_wall_s']:.2f} | {row['graphify_extract_wall_s']:.2f} | "
+            f"{row['graphify_cluster_wall_s']:.2f} | {row['extract_to_build_wall_ratio']:.1f}x | "
+            f"{wg['modules']:,} modules, {wg['import_edges']:,} import edges | {gg['nodes']:,} nodes, {gg['links']:,} links |")
+    add("")
+    add("The size of the graph is read from the file each build wrote, in every run; the summary stops when two runs of one tool differ. "
+        "CPU seconds per step and every single run are in `results/build_times.json`.")
+    add("")
+
 add("## Scope")
 add("")
 add("- Code only. Graphify also reads documents, papers and images with a model; that part is not tested here and Wingbox has no counterpart.")
@@ -229,6 +262,7 @@ add("git clone https://github.com/aileron-tech/wingbox && cd wingbox")
 add("benchmarks/graphify/run.sh ~/wingbox-bench    # tests A, B, C; needs git, curl and uv; no model, no key")
 add("python3 -I benchmarks/graphify/tools/agent_test.py ~/wingbox-bench run      # test D: paid Claude Code sessions")
 add("python3 -I benchmarks/graphify/tools/agent_test.py ~/wingbox-bench report")
+add("python3 -I benchmarks/graphify/tools/time_builds.py ~/wingbox-bench             # test E: build time on this machine")
 add("```")
 add("")
 add("`run.sh` installs both tools from PyPI into its own environments, fetches the seven repositories at the commits above, builds both graphs, "
