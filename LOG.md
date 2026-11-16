@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-16 - FAQ for people comparing code-graph tools
+
+### Changes
+- `README.md`: FAQ entries "Is Wingbox free?", "Can I run it fully offline?", "Does it use embeddings or a vector database?", "How is Wingbox different from RAG or vector search?", "My editor already has go to definition and find usages. Why a graph?", "How is it different from Sourcegraph or ctags?", "Does the graph stay current as I change code?".
+- `README.md`: the header opens with the maintainer's line "AI agents should know what their changes will break before editing code."
+- `README.md`: the website wingbox.dev in the header block and under "Project resources".
+- Checked before writing: a second `wingbox build` on a library of 1,227 files parses 0 files, and after one file changes it parses 1 (1,226 from the cache).
+
+### Motivation
+- These are the questions people ask when they compare code-graph tools; each answer states only what the code does.
 ## 2026-11-16 - benchmark results for version 0.2.3
 
 ### Changes
