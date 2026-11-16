@@ -52,10 +52,17 @@ def latest_release(repo: Path) -> tuple[str, str]:
     override = os.environ.get("WINGBOX_RELEASE", "").split()
     if len(override) == 2:
         return override[0], override[1]
-    tags = subprocess.run(["git", "-C", str(repo), "tag", "--list", "v[0-9]*", "--sort=-v:refname"],
-                          capture_output=True, text=True, check=True).stdout.split()
+    listed = subprocess.run(["git", "-C", str(repo), "tag", "--list", "v[0-9]*", "--sort=-v:refname"],
+                            capture_output=True, text=True)
+    tags = listed.stdout.split() if listed.returncode == 0 else []
     if not tags:
-        raise SystemExit("no vX.Y.Z tag: release first, or set WINGBOX_RELEASE")
+        # A source archive or a shallow clone without tags: keep the release the
+        # plugin already pins, so --check still compares the copied files.
+        pinned = _PIN.search((repo / PLUGIN_PATH / LAUNCHER).read_text(encoding="utf-8"))
+        if pinned is None:
+            raise SystemExit("no vX.Y.Z tag and no pinned commit: release first, or set WINGBOX_RELEASE")
+        manifest = json.loads((repo / PLUGIN_PATH / MANIFESTS[0]).read_text(encoding="utf-8"))
+        return manifest["version"], pinned.group(0).rsplit("@", 1)[1]
     commit = subprocess.run(["git", "-C", str(repo), "rev-parse", f"{tags[0]}^{{commit}}"],
                             capture_output=True, text=True, check=True).stdout.strip()
     return tags[0][1:], commit

@@ -1,5 +1,23 @@
 # Completion Log
 
+## 2026-11-16 - Plugins found by purpose; MCP tool annotations; SECURITY.md
+
+### Changes
+- `SKILL.md` description (copied into the plugin): leads with "Code graph for large repositories and monorepos" and the questions an agent hears: what a change will break, who uses a file, function, type or package, where a feature is implemented, which files to read first, how packages depend on each other; before grep or reading files, before a refactor or a cross-package change. 630 characters, within the 1,024 of the Agent Skills format.
+- Manifests: both descriptions and the Claude Code marketplace entry start with the same purpose; keywords monorepo, large-codebase, codebase-map, call-graph, refactoring, code-navigation added; Codex subtitle "Code graph for big monorepos", long description, capabilities and starter prompts by purpose. `termsOfServiceUrl` (the LICENSE) in the Claude Code manifest, asked by the directory's listing step. Plugin README, OpenAI package README and the docs/store listing follow.
+- `src/wingbox/mcp_server.py`: every tool in `tools/list` carries MCP `annotations` (`title`, `readOnlyHint` true except `build`, `destructiveHint` false, `idempotentHint` true, `openWorldHint` false), as policy 5E of Anthropic's Software Directory Policy requires.
+- `SECURITY.md` (new): private reports through GitHub's "Report a vulnerability" (enabled on the repository), acknowledgement within 7 days, latest release supported, scope; linked from the plugin README and docs/store, as the Software Directory Terms require.
+- `plugins/wingbox/evals/` (new): `claude plugin eval` suite, a scaffolded TypeScript and Python monorepo, six purpose requests that must invoke the skill and three unrelated ones that must not.
+- Tests: REQ-PLUGIN-014 and 015 (purpose wording, keywords, skill description length), REQ-MCP-011 (annotations), REQ-MCP-012 (tool names under 64 characters); REQ-PLUGIN-001 checks `termsOfServiceUrl`.
+
+### Motivation
+- The maintainer: "нужно проверить что плагины ищутся по назначению"; Wingbox is built for large repositories and monorepos, and "monorepo" appeared in no description or keyword. The coordinator added the directory policy and terms requirements.
+
+### Verification
+- `claude plugin eval` with only the plugin loaded (isolated home and configuration), 3 runs per request: before (main 4bf2242 wording) the skill was invoked in 11 of 18 purpose runs (blast radius 3/3, refactor plan 3/3, cross-package change 2/3, who depends 2/3, files to read first 1/3, where implemented 0/3); after, 18 of 18. Unrelated requests: 0 invocations in 9 runs, before and after. A first rewording reached 16 of 18 (where implemented 1/3); "before grep or reading files" fixed it.
+- Codex 0.169.0, static (its model has no tokens): `plugin/read` returns the new subtitle, capabilities and prompts and the new skill description; the MCP `impact` call still answers.
+- `claude plugin validate --strict` on the plugin and the marketplace; the full test suite.
+
 ## 2026-11-16 - Codex plugin and the OpenAI directory packages
 
 ### Changes

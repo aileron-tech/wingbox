@@ -20,12 +20,14 @@ directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
 |---|---|
 | Name | `wingbox`; display name Wingbox |
 | Publisher | Aileron Technologies |
-| One line (at most 30 characters) | Local code graph, blast radius |
+| One line (at most 30 characters) | Code graph for big monorepos |
 | Category | Developer Tools (OpenAI); `development` in our Claude marketplace entry |
-| Keywords | code-graph, blast-radius, impact-analysis, dependency-graph, code-search, architecture, local-first, mcp |
+| Short description | Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby. Runs on your machine; no code leaves it. |
+| Keywords | code-graph, blast-radius, impact-analysis, dependency-graph, code-search, architecture, local-first, mcp, monorepo, large-codebase, codebase-map, call-graph, refactoring, code-navigation |
 | Homepage | https://wingbox.dev |
 | Repository | https://github.com/aileron-tech/wingbox |
 | Support | https://github.com/aileron-tech/wingbox/issues |
+| Security reports | https://github.com/aileron-tech/wingbox/blob/main/SECURITY.md: GitHub private vulnerability reporting ("Report a vulnerability" on the Security tab; enabled), acknowledgement within 7 days, latest release supported |
 | Privacy | https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md ([PRIVACY.md](PRIVACY.md)) |
 | Terms | https://github.com/aileron-tech/wingbox/blob/main/LICENSE (MIT) |
 | License | MIT |
@@ -34,16 +36,18 @@ directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
 
 Long description:
 
-> Wingbox builds a code graph of the repository you work in and answers from
-> it before the agent reads source files: which modules exist and where their
-> boundaries are, what depends on a file, what a change could break two hops
-> away, which three or four files to read first, and which dependencies cross
-> an architecture layer. It parses Python, TypeScript and TSX, Rust, C#, Java,
-> Go, Ruby and Ruby on Rails with tree-sitter, and writes an offline HTML map of
-> the repository. Everything runs on your computer with the open-source wingbox
-> command (MIT, on PyPI): no code, graph or question is sent anywhere. The
-> plugin needs a local shell and the command, installed once with
-> pipx install wingbox.
+> Code graph for large repositories and monorepos. Wingbox builds a graph of
+> the repository you work in and answers from it before the agent reads source
+> files: what a change will break, two hops away and across packages (blast
+> radius); who uses a file, function or type; where a feature is implemented;
+> which modules and packages depend on each other and which dependencies cross
+> an architecture layer; and which three or four files to read first. Use it
+> before a refactor or a cross-package change. It parses Python, TypeScript
+> and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails with tree-sitter, and
+> writes an offline HTML map of the repository. Everything runs on your
+> computer with the open-source wingbox command (MIT, on PyPI): no code, graph
+> or question is sent anywhere. The plugin needs a local shell and the
+> command, installed once with pipx install wingbox.
 
 Privacy, in one paragraph: no data leaves the machine. The plugin only runs
 the local `wingbox` command; the MCP server is that command over stdio; the
@@ -81,6 +85,25 @@ Negative (the plugin must not act):
    may list such files, the deletion is the user's decision and not done by
    Wingbox.
 
+## Does the agent pick it by purpose?
+
+`plugins/wingbox/evals/` is a `claude plugin eval` suite: a small TypeScript
+and Python monorepo (scaffold) and nine requests, six that should invoke the
+skill (a cross-package change, the blast radius of a file, who depends on a
+type, where a feature is implemented, which files to read first, a refactor
+plan) and three that should not (deploy, an email, a poem). Each run starts in
+an isolated home and configuration with only the plugin loaded.
+
+```bash
+cd plugins/wingbox
+claude plugin eval . --runs 3 --ablation none --scaffold --trust-plugin --no-publish --output-dir /tmp/wingbox-evals
+```
+
+Results on 2026-11-16 (3 runs per request, Claude Code 2.1.325, default
+model): the skill was invoked in 11 of 18 purpose runs with the earlier
+descriptions and in 18 of 18 with the current ones; it was never invoked for
+the unrelated requests (9 of 9 correct in both).
+
 ## Anthropic directory (claude.ai, Cowork, Claude Code)
 
 Submission: developer portal https://claude.ai/directory/manage, Submit new,
@@ -97,6 +120,10 @@ Plugin bundle. Repository `aileron-tech/wingbox`, plugin path
 | No symlinks, submodules, LFS, system files; every file the plugin runs inside the plugin folder; no top-level `bin/` | ready (tested) |
 | Directory listing fields `icon`, `documentationUrl`, `supportUrl`, `privacyPolicyUrl` in `plugin.json` | ready; the privacy URL resolves once this branch is merged |
 | Launcher pinned to a full commit (`uvx --from git+https://github.com/aileron-tech/wingbox@<40-char commit>`, the release tag's commit; a PyPI version alone is refused as a pin) | ready |
+| Software Directory Policy 5E: every MCP tool carries annotations (`title`, `readOnlyHint`, `destructiveHint`; also `idempotentHint`, `openWorldHint`) | ready (tested, REQ-MCP-011): `build` is the only tool that is not read-only, none is destructive or open-world |
+| Policy 5C: tool names under 64 characters | ready (tested, REQ-MCP-012) |
+| Software Directory Terms: a mechanism to receive vulnerability reports | ready: [SECURITY.md](../../SECURITY.md), GitHub private vulnerability reporting enabled |
+| Listing `termsOfServiceUrl` | ready: the MIT LICENSE |
 | Data handling questions, compliance contact email, four acknowledgements | maintainer, answers above |
 
 Expected review outcome: the version is "held for a reviewer", not blocked.

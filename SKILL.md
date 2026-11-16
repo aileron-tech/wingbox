@@ -1,11 +1,14 @@
 ---
 name: wingbox
 description: >
-  Build and query architecture-aware code search, dependency graphs, call flows,
-  impact analysis, and code graphs for Python, TypeScript, TSX, Rust, C#, Java,
-  Go, Ruby, and Ruby on Rails repositories.
-  Use before non-trivial code changes to find module boundaries, blast radius,
-  architecture violations, and the minimal source files to read.
+  Code graph for large repositories and monorepos. Use it, before grep or
+  reading files, when the question is what a change will break (blast radius,
+  impact analysis), who uses a file, function, type or package, where a feature
+  is implemented, which files to read first, or how modules and packages depend
+  on each other; before a refactor, a cross-package change or any non-trivial
+  edit; and when exploring an unfamiliar codebase. Builds and queries architecture-aware code search,
+  dependency graphs, call flows, module boundaries and architecture violations
+  for Python, TypeScript, TSX, Rust, C#, Java, Go, Ruby, and Ruby on Rails.
 ---
 
 # Wingbox -- Code Graph Architecture Discovery

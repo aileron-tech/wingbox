@@ -485,7 +485,9 @@ source files it analyzes.
 `wingbox mcp` runs Wingbox as an MCP (Model Context Protocol) server: the
 client starts the command, sends JSON-RPC requests on its standard input and
 reads the answers on its standard output. The transport is stdio only: no
-port, no network. Logs go to standard error.
+port, no network. Logs go to standard error. Every tool carries MCP
+annotations: a title, and read-only for every tool except `build`, which
+writes the graph; no tool is destructive or reaches outside the repository.
 
 ```bash
 wingbox mcp                         # serve the current directory

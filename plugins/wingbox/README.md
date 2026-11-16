@@ -1,10 +1,13 @@
 # Wingbox plugin
 
-Wingbox builds a code graph of the repository you work in and answers from it
-before the agent reads source files: which modules exist and where their
-boundaries are, what depends on a file, what a change could break, and which
-few files to read first. It parses Python, TypeScript and TSX, Rust, C#, Java,
-Go, Ruby and Ruby on Rails, and writes an offline HTML map of the repository.
+Code graph for large repositories and monorepos. Wingbox builds a graph of the
+repository you work in and answers from it before the agent reads source
+files: what a change will break, across packages (blast radius); who uses a
+file, function or type; where a feature is implemented; where module and
+package boundaries are; and which few files to read first, before a refactor
+or a cross-package change. It parses Python, TypeScript and TSX, Rust, C#,
+Java, Go, Ruby and Ruby on Rails, and writes an offline HTML map of the
+repository.
 Project page: https://wingbox.dev. Source: https://github.com/aileron-tech/wingbox.
 
 ## What the plugin contains
@@ -62,6 +65,12 @@ reads the files of your repository and writes the graph next to them
 The only network access is the one-time download of the package from PyPI
 when you install it, or when uvx fetches it. See
 https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md.
+
+## Security
+
+Report a vulnerability privately through "Report a vulnerability" on the
+Security tab of https://github.com/aileron-tech/wingbox; see
+https://github.com/aileron-tech/wingbox/blob/main/SECURITY.md.
 
 ## License
 

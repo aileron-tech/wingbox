@@ -515,8 +515,46 @@ def _modern_version(params: dict[str, Any]) -> Optional[str]:
     return version
 
 
+# MCP ToolAnnotations: a human title per tool; every tool only reads the code
+# graph except `build`, which writes .code_graph.sexp, its cache and wingbox-out/
+# in the repository (never deletes) and gives the same result when repeated.
+TOOL_TITLES = {
+    "build": "Build the code graph",
+    "impact": "Impact of changing a file",
+    "analyze": "Analyze a module",
+    "quick": "Find a feature",
+    "boundary": "Boundary files of a module",
+    "boundaries": "Architecture boundaries",
+    "layers": "Architecture layers",
+    "deps": "Dependencies of a module",
+    "rdeps": "Dependents of a module",
+    "entity": "Look up an entity",
+    "find_function": "Find a function",
+    "find_type": "Find a type",
+    "find_callers": "Callers of a function",
+    "find_calls": "Calls made by a function",
+    "find_callchain": "Call chain between functions",
+    "diff_functions": "Functions changed in a diff",
+    "query": "Query the code graph",
+}
+WRITING_TOOLS = frozenset({"build"})
+
+
+def tool_annotations(name: str) -> dict[str, Any]:
+    return {
+        "title": TOOL_TITLES[name],
+        "readOnlyHint": name not in WRITING_TOOLS,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": False,
+    }
+
+
 def _tool_listing() -> list[dict[str, Any]]:
-    return [{"name": t.name, "description": t.description, "inputSchema": t.input_schema()} for t in TOOLS]
+    return [
+        {"name": t.name, "description": t.description, "inputSchema": t.input_schema(), "annotations": tool_annotations(t.name)}
+        for t in TOOLS
+    ]
 
 
 def _call_tool(server: Server, params: dict[str, Any]) -> dict[str, Any]:

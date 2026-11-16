@@ -19,6 +19,17 @@
 - `tools/build_openai_plugin.py` builds the ZIP packages for the OpenAI plugin
   directory (ChatGPT and Codex): skills only, and skills with the local MCP
   server; `docs/store/` lists what that directory requires.
+- The skill and the plugins say what they are for: a code graph for large
+  repositories and monorepos, to answer what a change will break, who uses a
+  file or function, where a feature is implemented and which files to read
+  first, before a refactor or a cross-package change. New keywords: monorepo,
+  large-codebase, codebase-map, call-graph, refactoring, code-navigation.
+- `wingbox mcp`: every tool carries MCP annotations (a title, read-only for
+  every tool but `build`, none destructive or open-world), as Anthropic's
+  directory policy requires.
+- SECURITY.md: report vulnerabilities privately through GitHub.
+- `plugins/wingbox/evals/`: a `claude plugin eval` suite that checks the skill
+  is chosen for those requests in a monorepo and not for unrelated ones.
 
 ## 0.2.7 - 2026-11-16
 
