@@ -50,7 +50,7 @@ PROJECT_HOOK_COMMAND = f"wingbox {HOOK_SUBCOMMAND}"
 ALWAYS_ON_BLOCK = f"""{BEGIN_MARKER}
 ## Wingbox code graph
 
-When the project has a Wingbox code graph (`.wingbox/graph.sexp` or `.code_graph.sexp`):
+When the project has a Wingbox code graph (`.wingbox/index.sexp` in the project folder or a parent):
 
 - Before reading code for a task, run `wingbox quick "<keyword>"` or `wingbox analyze <module>` and read the files it names first.
 - Before changing a file, run `wingbox impact <file>` to see what depends on it.

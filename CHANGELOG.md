@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Everything Wingbox writes into a project lives in `.wingbox/`: the graph
+  `index.sexp`, `index.uses.sexp`, `index.uses-cache.json`, the build cache
+  `cache.json`, `REPORT.md`, `map.html` and the freshness state; the build
+  writes nothing else in the project. `.wingbox/.gitignore` keeps the
+  generated files out of git, so files a person writes there later stay.
+- `.wingbox/` marks the project: every command, the hooks and the MCP server
+  find the nearest folder at or above the current one (or `--root`) that holds
+  `.wingbox/index.sexp` and use it as the root. Without one a query says
+  "no .wingbox/ in this folder or its parents: run wingbox build", names the
+  paths it looked at and the `--map`/`--root` options, and exits 1.
+- `wingbox open [PATH]` opens `.wingbox/map.html` in the browser, or prints its
+  path when there is no browser.
+- `wingbox update` names the files that earlier versions wrote outside
+  `.wingbox/` (`.code_graph*`, `wingbox-out/`), one yellow warning line per
+  project, and deletes nothing.
+- `wingbox build --help` describes `wingbox build [PATH]` and its options.
+  `--output` is gone: the graph is always `PATH/.wingbox/index.sexp`.
+
+### Fixes
+
+- A graph read from a folder it was not built from (a copied or moved
+  `.wingbox/`, or a graph without its snapshot) was refreshed against that
+  folder and replaced by an empty graph. The snapshot now records the folder
+  the graph was built from; such a graph is read as it is, with
+  `(wingbox-graph-unconfirmed :reason moved|no-snapshot :hint "rebuild: ...")`,
+  and never refreshed. An automatic refresh that finds no source never
+  replaces a graph that has modules.
+- `wingbox search` with no match printed nothing; it prints
+  `(result-count 0)` (and the count after matching facts).
+
 ## 0.4.0 - 2026-11-16
 
 ### Changes

@@ -49,7 +49,7 @@ Use `query '<expr>'` for one-shot or `repl` for interactive mode.
 (files SET)                 ; resolve module IDs to file paths
 (count SET)                 ; count set members (returns int)
 (analyze "id")              ; run full analysis (prints sexp, returns empty set)
-(search "pattern")          ; grep .code_graph.sexp (prints matches, returns empty set)
+(search "pattern")          ; grep .wingbox/index.sexp (prints matches, returns empty set)
 ```
 
 ## Composition Examples

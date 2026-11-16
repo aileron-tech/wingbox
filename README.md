@@ -64,9 +64,9 @@ Wingbox is safe to run on code that must not leave the company:
   parsers and calls `git` for the ignore rules; it does not execute the code,
   the tests or the build of the repository. The `--lsp` option, off by
   default, starts a language server that is installed on the machine.
-- **The results stay in the repository folder:** `.code_graph.sexp`,
-  `wingbox-out/REPORT.md` and `wingbox-out/map.html`. The map is one HTML
-  file that loads nothing from outside and opens offline.
+- **The results stay in one folder of the repository, `.wingbox/`:** the
+  graph `index.sexp`, `REPORT.md` and `map.html`. The map is one HTML file
+  that loads nothing from outside and opens offline.
 - **Works on a machine with no internet.** Fetch the package and its pinned
   dependencies once (`pip download wingbox -d wheels`), carry the folder
   inside, and install with `pip install --no-index --find-links wheels wingbox`.
@@ -115,7 +115,7 @@ The answer is 30 files in about 600 tokens, and it is exact: a TypeScript
 import resolver written separately from Wingbox finds the same 3,795
 dependencies between the 707 modules, none extra and none missing.
 
-`wingbox build` also writes `wingbox-out/map.html`. Its layers view stacks the
+`wingbox build` also writes `.wingbox/map.html` (`wingbox open` shows it). Its layers view stacks the
 architecture in 3D; click a file and its blast radius lights up across the
 layers:
 
@@ -145,7 +145,7 @@ relationships, architecture layers, and infrastructure connections.
 
 A code graph describes a codebase as facts instead of text. Modules, classes,
 functions and types are nodes; imports, references, data flows, calls and
-architecture layers are edges. Wingbox writes the graph to `.code_graph.sexp`
+architecture layers are edges. Wingbox writes the graph to `.wingbox/index.sexp`
 as plain S-expression facts, so the bundled query tool and ordinary text search
 can both read it.
 
@@ -351,7 +351,9 @@ other languages `usages` names the files that reference the symbol.
 `wingbox build [PATH]` accepts the builder options described below, and every
 query command in [Common code searches](#common-code-searches) is available as
 `wingbox <command>`. The command installs the parsers for all supported
-languages and finds `.code_graph.sexp` in the current directory or its parents.
+languages and finds the project by its `.wingbox/index.sexp`, in the current
+directory or a parent; without one it says so and names the paths it looked
+at. `wingbox open` shows the map of the project in the browser.
 
 ### Install into your coding assistants
 
@@ -403,7 +405,7 @@ home directory: `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
   `~/.wingbox/installed.sexp`; `wingbox update` and `wingbox uninstall` read
   it.
 - **`/wingbox`** with no argument builds the graph when it is missing or
-  older than the code and summarizes `wingbox-out/REPORT.md`;
+  older than the code and summarizes `.wingbox/REPORT.md`;
   `/wingbox <file>` runs `wingbox impact <file> 2`; `/wingbox <command> ...`
   runs that command. In Codex the skill is called as `$wingbox`.
 
@@ -425,6 +427,12 @@ environment it runs in. A Docker image or an editable or local install cannot
 update itself; the command says so and prints what to run instead. Wingbox
 itself opens no network connection: only the installer reaches the package
 index, and only when you run `wingbox update`.
+
+It also looks for files that versions before 0.4.1 wrote outside `.wingbox/`
+(`.code_graph.sexp`, `.code_graph.uses.sexp`, `.code_graph.uses-cache.json`,
+`.code_graph_cache.json`, `wingbox-out/`), in the current folder and its
+parents up to the project root and in every `--project` install, and prints
+one warning line per project (yellow on a terminal); it deletes nothing.
 
 ### Keeping the graph fresh
 
@@ -480,25 +488,34 @@ new graph.
 
 ### The report and the map
 
-`wingbox build` and `wingbox usages` write these files into the project:
+`wingbox build PATH` creates `PATH/.wingbox/` and writes everything there;
+nothing else in the project is written. The folder also marks the project:
+every command, the hooks and the MCP server look for the nearest
+`.wingbox/index.sexp` at or above the current folder, and that folder is the
+project root.
 
-| File | For whom | What it is |
+| File in `.wingbox/` | For whom | What it is |
 |---|---|---|
-| `.code_graph.sexp` | AI coding agents | The code graph in a compact form that the query commands read |
-| `.code_graph.uses.sexp` | AI coding agents | Module-level variables and the files that use each definition; `usages` adds every use position on its first call |
-| `.code_graph.uses-cache.json` | Wingbox | The use walk of each file by content hash, so that `usages` after a change reads only the changed files |
-| `wingbox-out/REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
-| `wingbox-out/map.html` | People | An interactive map of the code graph: one file, opens in a browser, works without a network connection |
-| `.wingbox/graph-*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the files changed since (see "Keeping the graph fresh") |
+| `index.sexp` | AI coding agents | The code graph in a compact form that the query commands read |
+| `index.uses.sexp` | AI coding agents | Module-level variables and the files that use each definition; `usages` adds every use position on its first call |
+| `index.uses-cache.json` | Wingbox | The use walk of each file by content hash, so that `usages` after a change reads only the changed files |
+| `cache.json` | Wingbox | The parse of each file by content hash, so that a build reads only changed files |
+| `REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
+| `map.html` | People | An interactive map of the code graph: one file, opens in a browser (`wingbox open`), works without a network connection |
+| `graph-*`, `refresh.*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the folder it was built from, the files changed since (see "Keeping the graph fresh") |
+| `.gitignore` | git | Ignores every file above, so that a file you write into `.wingbox/` later stays in the repository |
 
 On the map, click a file to see its blast radius: the files that depend on it
 move onto rings, one ring per hop. The layers view stacks the architecture
 layers as planes in 3D and can be turned with the mouse. A link such as
 `map.html#select=src/app.ts` opens the map on that file.
 
-Both files are rewritten on every build. Add `wingbox-out/` to `.gitignore`
-unless you want them in the repository, and in any case the state that
-Wingbox keeps in `.wingbox/`: `.wingbox/graph-*` and `.wingbox/refresh.*`.
+The generated files are rewritten on every build and never committed thanks to
+`.wingbox/.gitignore`; you can also ignore the whole folder. A `.wingbox/`
+folder copied or moved to another place is read as it is but never refreshed
+there: queries say `rebuild`. Wingbox deletes nothing outside `.wingbox/`;
+`wingbox update` names files that versions before 0.4.1 left in a project
+(`.code_graph*`, `wingbox-out/`) so that you can remove them.
 
 ### Run in Docker, with nothing installed
 
@@ -570,12 +587,12 @@ Run a relevant search and get the first matching module with its full context:
 
 ```bash
 python3 scripts/code_graph_search.py \
-  --map /absolute/path/to/project/.code_graph.sexp \
+  --map /absolute/path/to/project/.wingbox/index.sexp \
   --root /absolute/path/to/project \
   quick "file upload"
 ```
 
-The code graph is written to `.code_graph.sexp`. Wingbox does not modify the
+The code graph is written to `.wingbox/index.sexp`. Wingbox does not modify the
 source files it analyzes.
 
 ## Use from an MCP client
@@ -612,7 +629,7 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 Each tool returns the output of the `wingbox` command of the same name. A
 query tool called before the graph exists answers that `build` must be called
 first. Answers stop at 200 items; `all: true` lists everything. The graph is
-read once and read again when `.code_graph.sexp` changes.
+read once and read again when `.wingbox/index.sexp` changes.
 
 Claude Code, in the project directory:
 

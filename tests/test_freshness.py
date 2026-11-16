@@ -2,7 +2,6 @@
 import io
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -173,7 +172,7 @@ class ClaudeCodeEditsTest(FreshnessTestCase):
 
     def test_a_failed_refresh_keeps_the_marks_says_so_and_is_not_repeated(self) -> None:
         """/* REQ-FRESH-018: when the refresh fails, the marks must stay, the hook must give no context from the old graph but `(wingbox-graph-stale :reason refresh-failed ...)`, and no second refresh may run until something changes; a later change refreshes again. */"""
-        cache = self.root / ".code_graph_cache.json"
+        cache = self.root / ".wingbox/cache.json"
         cache.unlink()
         cache.mkdir()  # the builder cannot write its cache: the build fails
         self.edited("shop/notes.py", "def note():\n    return 'x'\n")
@@ -235,7 +234,7 @@ class OutsideChangesTest(FreshnessTestCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.write({".gitignore": ".code_graph*\n.wingbox/\nwingbox-out/\n"})
+        self.write({".gitignore": ".wingbox/\n"})
         subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
         subprocess.run(
             ["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "base"],
@@ -281,20 +280,22 @@ class FirstBuildTest(FreshnessTestCase):
         self.edited("shop/cart.py", "X = 1\n")
         self.assertEqual(self.context("shop/cart.py"), "")
         self.assertFalse((self.root / ".wingbox").exists())
-        self.assertFalse((self.root / ".code_graph.sexp").exists())
+        self.assertFalse((self.root / ".wingbox/index.sexp").exists())
         self.build()
         self.assertTrue(freshness.is_fresh(self.state()))
         self.assertIsNotNone(freshness.read_snapshot(str(self.root)))
         self.assertIn("(wingbox-file shop/cart.py", self.context("shop/cart.py"))
 
-    def test_a_graph_without_a_snapshot_is_refreshed_once(self) -> None:
-        """/* REQ-FRESH-027: a graph built without the freshness files (an older version) cannot be confirmed fresh: the first use must run one build that writes them, the next use none. */"""
+    def test_a_graph_without_a_snapshot_is_read_as_it_is_and_never_refreshed(self) -> None:
+        """/* REQ-FRESH-027: a graph whose snapshot is missing cannot be confirmed to belong to its folder: the hook must give its context with `(wingbox-graph-unconfirmed :reason no-snapshot ...)`, run no refresh and leave the graph as it is. */"""
         self.build()
-        shutil.rmtree(self.root / ".wingbox")  # what a build of 0.3.0 leaves
-        self.assertIn("(wingbox-file shop/cart.py", self.context("shop/cart.py"))
-        self.assertEqual(self.state().counters.get("refreshes_build"), 1)
-        self.context("shop/cart.py")
-        self.assertEqual(self.state().counters.get("refreshes_build"), 1)
+        (self.root / ".wingbox" / "graph-snapshot.json").unlink()
+        graph = (self.root / ".wingbox" / "index.sexp").read_bytes()
+        context = self.context("shop/cart.py")
+        self.assertIn("(wingbox-file shop/cart.py", context)
+        self.assertIn("(wingbox-graph-unconfirmed :reason no-snapshot", context)
+        self.assertFalse((self.root / ".wingbox" / freshness.REFRESH_LOG_NAME).exists())
+        self.assertEqual(graph, (self.root / ".wingbox" / "index.sexp").read_bytes())
 
 
 if __name__ == "__main__":

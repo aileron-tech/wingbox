@@ -138,7 +138,7 @@ class LanguageRegistryTests(unittest.TestCase):
                 "Found 8 source files (1 py, 1 ts, 1 rs, 1 cs, 1 java, 1 go, 0 rb, 1 php, 1 pas)",
                 completed.stdout,
             )
-            self.assertTrue((target / ".code_graph.sexp").is_file())
+            self.assertTrue((target / ".wingbox/index.sexp").is_file())
 
 
 if __name__ == "__main__":

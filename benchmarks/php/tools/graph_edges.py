@@ -1,6 +1,6 @@
-"""IMPORTS edges of a Wingbox graph (.code_graph.sexp), at module granularity, for PHP.
+"""IMPORTS edges of a Wingbox graph (.wingbox/index.sexp), at module granularity, for PHP.
 
-Usage: python3 -I graph_edges.py <root> <.code_graph.sexp> <files.json> <out.json>
+Usage: python3 -I graph_edges.py <root> <.wingbox/index.sexp> <files.json> <out.json>
 
 <files.json> is the list of absolute PHP/Blade sources of the same checkout that
 php_reference.php read. A module ID of the graph is a path without an extension:
@@ -145,7 +145,7 @@ def unmapped_cause(path: str, root: str, modules: set[str]) -> str:
 
 def main(arguments: list[str]) -> int:
     if len(arguments) < 4:
-        print("usage: graph_edges.py <root> <.code_graph.sexp> <files.json> <out.json>", file=sys.stderr)
+        print("usage: graph_edges.py <root> <.wingbox/index.sexp> <files.json> <out.json>", file=sys.stderr)
         return 2
     root, graph_path, files_path, out_path = arguments[:4]
     files = relative_sources(root, files_path)

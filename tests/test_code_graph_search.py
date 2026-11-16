@@ -28,7 +28,9 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
 
-        sexp_path = Path(tmpdir.name) / ".code_graph.sexp"
+        sexp_path = Path(tmpdir.name) / ".wingbox/index.sexp"
+
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             textwrap.dedent(
                 """
@@ -157,7 +159,8 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
             flat_module.write_text("pub mod payments;\n", encoding="utf-8")
             child_module.write_text("use super::*;\n", encoding="utf-8")
             nested_module.write_text("pub struct Database;\n", encoding="utf-8")
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox/index.sexp"
+            sexp_path.parent.mkdir(exist_ok=True)
             sexp_path.write_text(
                 textwrap.dedent(
                     """
@@ -233,7 +236,9 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("", encoding="utf-8")
 
-        sexp_path = root / ".code_graph.sexp"
+        sexp_path = root / ".wingbox/index.sexp"
+
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             textwrap.dedent(
                 """
@@ -345,7 +350,8 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
         """/* REQ-RUBY-010: Function search returns the precise Ruby method entity once when a class also lists that method. */"""
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
-        sexp_path = Path(tmpdir.name) / ".code_graph.sexp"
+        sexp_path = Path(tmpdir.name) / ".wingbox/index.sexp"
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             textwrap.dedent(
                 """
@@ -394,7 +400,9 @@ class CodeGraphImpactTest(unittest.TestCase):
             source.parent.mkdir(parents=True, exist_ok=True)
             source.write_text("", encoding="utf-8")
 
-        sexp_path = root / ".code_graph.sexp"
+        sexp_path = root / ".wingbox/index.sexp"
+
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             textwrap.dedent(
                 """
@@ -528,7 +536,7 @@ class CodeGraphImpactTest(unittest.TestCase):
     def test_impact_cli_parses_depth_and_sexp_flag(self) -> None:
         """/* REQ-CS-043: the impact command must accept [depth] and --sexp in any order and reject a bad depth. */"""
         _graph, root = self._load_graph()
-        base = ["--map", str(Path(root) / ".code_graph.sexp"), "--root", root]
+        base = ["--map", str(Path(root) / ".wingbox/index.sexp"), "--root", root]
 
         output = io.StringIO()
         with redirect_stdout(output):

@@ -14,6 +14,12 @@ A Docker image and an editable or local install cannot update themselves: the
 command says so and prints what to run instead. After an upgrade the new
 version refreshes what `wingbox install` put in place, as recorded in
 ~/.wingbox/installed.sexp.
+
+It also names the files an earlier version left in a project (.code_graph.sexp,
+.code_graph.uses.sexp, .code_graph.uses-cache.json, .code_graph_cache.json,
+wingbox-out/): Wingbox now writes only into .wingbox/ and deletes nothing, so
+they stay until you remove them. It looks in the current folder and its parents
+up to the project root, and in every project of a `--project` install.
 """
 from __future__ import annotations
 
@@ -22,7 +28,7 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Callable, Literal, Optional, Union
+from typing import Callable, Literal, Mapping, Optional, Union
 
 from wingbox.facts import Fact, make_fact, parse_fact
 from wingbox.install import Installed
@@ -192,6 +198,55 @@ def update(options: Options, env: Environment) -> list[Fact]:
     for entry in env.installed:
         facts.extend(env.refresh(entry))
     return facts
+
+
+OLD_LAYOUT_FILES = (".code_graph.sexp", ".code_graph.uses.sexp", ".code_graph.uses-cache.json", ".code_graph_cache.json")
+OLD_LAYOUT_FOLDER = "wingbox-out"
+_YELLOW, _RESET = "\033[33m", "\033[0m"
+
+
+def _old_files(folder: str) -> tuple[str, ...]:
+    names = tuple(name for name in OLD_LAYOUT_FILES if os.path.isfile(os.path.join(folder, name)))
+    return names + ((OLD_LAYOUT_FOLDER + "/",) if os.path.isdir(os.path.join(folder, OLD_LAYOUT_FOLDER)) else ())
+
+
+def _folders_up_to_root(cwd: str) -> list[str]:
+    """cwd and its parents up to the project root (a folder holding .wingbox/ or .git); cwd alone without one."""
+    folders: list[str] = []
+    folder = os.path.abspath(cwd)
+    while True:
+        folders.append(folder)
+        if os.path.isdir(os.path.join(folder, ".wingbox")) or os.path.exists(os.path.join(folder, ".git")):
+            return folders
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            return folders[:1]
+        folder = parent
+
+
+def old_layout_warnings(cwd: str, installed: list[Installed]) -> list[Fact]:
+    """One `update-warning` fact per project folder that still holds files of the old layout."""
+    folders = _folders_up_to_root(cwd) + [entry.root for entry in installed if entry.scope == "project"]
+    facts: list[Fact] = []
+    for folder in dict.fromkeys(os.path.abspath(item) for item in folders):
+        names = _old_files(folder)
+        if names:
+            facts.append(make_fact("update-warning", folder, old_files=names))
+    return facts
+
+
+def use_color(is_terminal: bool, environ: Mapping[str, str]) -> bool:
+    return is_terminal and "NO_COLOR" not in environ
+
+
+def warning_text(fact: Fact, color: bool) -> str:
+    names = fact.get("old-files")
+    listed = ", ".join(names) if isinstance(names, tuple) else names
+    line = (
+        f"! WARNING: {fact.args[0]}: old Wingbox files left: {listed}"
+        " - Wingbox now uses .wingbox/ only; remove them yourself"
+    )
+    return _YELLOW + line + _RESET if color else line
 
 
 def exit_status(facts: list[Fact]) -> int:

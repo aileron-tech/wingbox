@@ -191,7 +191,7 @@ def _folders(root: str, path: str) -> list[str]:
 
 def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], NotApplicable]:
     try:
-        with open(os.path.join(root, builder.CACHE_FILE), "r", encoding="utf-8") as handle:
+        with open(builder.cache_path(root), "r", encoding="utf-8") as handle:
             cache = json.load(handle)
     except (OSError, ValueError) as error:
         return NotApplicable(f"no readable build cache: {error}")
@@ -234,7 +234,7 @@ def _write_cache(root: str, fingerprint: str, results: list[builder.FileResult])
         "entries": {result.path: builder._serialize_file_result(result) for result in results},
     }
     builder._atomic_write_text(
-        os.path.join(root, builder.CACHE_FILE), json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n"
+        builder.cache_path(root), json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n"
     )
 
 
@@ -278,7 +278,7 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     """Patch the published graph of root for the changed paths (relative, with /); see the module docstring."""
     started = time.monotonic()
     root = os.path.realpath(root)
-    output_path = os.path.join(root, builder.OUTPUT_FILE)
+    output_path = builder.index_path(root)
     if len(changed) > MAX_CHANGED_FILES:
         return NotApplicable(f"{len(changed)} files changed (more than {MAX_CHANGED_FILES})")
     loaded = _load_cache(root)
@@ -320,6 +320,8 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     if {result.language for result in new_by_path.values()} != {result.language for result in cached.values()}:
         return NotApplicable("the set of languages changed")
     new_list = sorted(new_by_path.values(), key=_relative_key(root))
+    if not new_list:
+        return NotApplicable("no source file left")
 
     context_result = builder.graph_context(new_list, root, exclusions)
     if isinstance(context_result, builder.Err):

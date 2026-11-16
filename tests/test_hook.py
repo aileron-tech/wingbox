@@ -60,7 +60,9 @@ def mark_fresh(root: Path) -> None:
     """A hand-written graph has no sources: give it the snapshot of a build, so the hook does not rebuild it."""
     freshness.write_snapshot(
         str(root),
-        freshness.Snapshot({}, {"": os.stat(root).st_mtime_ns}, frozenset({".py"}), frozenset(), (), frozenset()),
+        freshness.Snapshot(
+            {}, {"": os.stat(root).st_mtime_ns}, frozenset({".py"}), frozenset(), (), frozenset(), str(root)
+        ),
     )
 
 
@@ -91,7 +93,7 @@ class HookOnABuiltGraphTest(unittest.TestCase):
         output = hook.run_pre_search(_payload("Grep", self.root, pattern="order_total"), "/")
         self.assertEqual("PreToolUse", json.loads(output)["hookSpecificOutput"]["hookEventName"])
         context = _context(output)
-        self.assertIn("(wingbox-graph .code_graph.sexp)", context)
+        self.assertIn("(wingbox-graph .wingbox/index.sexp)", context)
         self.assertIn("(definition order_total :kind fn :module shop/pricing :line 1 :dependents 2)", context)
 
         context = _context(hook.run_pre_search(_payload("Glob", self.root, pattern="**/*pricing*.py"), "/"))
@@ -110,16 +112,17 @@ class HookOnABuiltGraphTest(unittest.TestCase):
         self.assertEqual("", hook.run_pre_search(_payload("Read", self.root, file_path="README.md"), "/"))
 
     def test_the_graph_in_the_wingbox_folder_is_found(self) -> None:
-        """/* REQ-INSTALL-019: the hook must find the graph at .wingbox/graph.sexp as well as .code_graph.sexp, in the project root above the current folder. */"""
+        """/* REQ-INSTALL-019: the hook must find the graph at .wingbox/index.sexp of the project root above the current folder; a graph that was not built there is read as it is, with a note to rebuild. */"""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name).resolve()
         (root / ".git").mkdir()
         (root / ".wingbox").mkdir()
-        (root / ".wingbox" / "graph.sexp").write_bytes((self.root / ".code_graph.sexp").read_bytes())
+        (root / ".wingbox" / "index.sexp").write_bytes((self.root / ".wingbox/index.sexp").read_bytes())
         (root / "shop").mkdir()
         context = _context(hook.run_pre_search(_payload("Grep", root / "shop", pattern="pricing"), "/"))
-        self.assertIn("(wingbox-graph .wingbox/graph.sexp)", context)
+        self.assertIn("(wingbox-graph .wingbox/index.sexp)", context)
+        self.assertIn("(wingbox-graph-unconfirmed :reason no-snapshot", context)
         self.assertIn("(module shop/pricing :dependents 2)", context)
 
 
@@ -153,11 +156,12 @@ class HookBudgetTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name).resolve()
-        (root / ".code_graph.sexp").write_text(synthetic_graph(150, 3, 4), encoding="utf-8")
+        (root / ".wingbox").mkdir()
+        (root / ".wingbox/index.sexp").write_text(synthetic_graph(150, 3, 4), encoding="utf-8")
         graph = code_graph_search.CodeGraph()
-        loaded = graph.load(str(root / ".code_graph.sexp"), str(root))
+        loaded = graph.load(str(root / ".wingbox/index.sexp"), str(root))
         self.assertIsInstance(loaded, code_graph_search.MapLoadOk)
-        light = hook.load_graph(str(root), str(root / ".code_graph.sexp"))
+        light = hook.load_graph(str(root), str(root / ".wingbox/index.sexp"))
         for short_id in ("m0", "m3", "m40"):
             module = light.module(short_id)
             expected = len(code_graph_search._collect_rdep_mods(graph, module))
@@ -169,7 +173,8 @@ class HookBudgetTest(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name).resolve()
         (root / ".git").mkdir()
-        (root / ".code_graph.sexp").write_text(synthetic_graph(8000, 6, 6), encoding="utf-8")
+        (root / ".wingbox").mkdir()
+        (root / ".wingbox/index.sexp").write_text(synthetic_graph(8000, 6, 6), encoding="utf-8")
         mark_fresh(root)
         for payload in (
             _payload("Grep", root, pattern="handle_1"),

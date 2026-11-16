@@ -6,7 +6,7 @@ or `rb`.
 
 **Module ID**: relative path from workspace root, no extension, no `/index`. Example: `drive/modules/drive_db/api/drive_db_api.ts` -> `drive/modules/drive_db/api/drive_db_api`. A Blade template drops `.blade.php` (`resources/views/layouts/app.blade.php` -> `resources/views/layouts/app`).
 
-## Raw Graph Facts (in .code_graph.sexp)
+## Raw Graph Facts (in .wingbox/index.sexp)
 
 ```scheme
 (node <id> <lang> "<purpose>" :naming <convention> :pkg <repo>)
@@ -23,7 +23,7 @@ or `rb`.
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
 ```
 
-## Use File (.code_graph.uses.sexp, next to the graph)
+## Use File (.wingbox/index.uses.sexp, next to the graph)
 
 What only `entity`, `usages` and `entity --positions` read; module IDs are the
 short IDs of the graph whose digest the header carries (a file that does not
@@ -47,7 +47,7 @@ query that needs positions has the builder fill them in from the build cache
 and rewrite the file with positions: every use, also inside its own file. A
 build without changed files keeps the file as it is, positions included.
 
-`.code_graph.uses-cache.json`, next to it, keeps per file the content hash,
+`.wingbox/index.uses-cache.json`, next to it, keeps per file the content hash,
 the full use walk and the resolved uses, with a digest of the surface of the
 repository (every path, and the definitions and bindings of the files with a
 use index) and the import lookups. Filling positions walks again only the

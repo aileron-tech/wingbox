@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          cp target/wingbox-out/REPORT.md target/wingbox-out/map.html out/
+          cp target/.wingbox/REPORT.md target/.wingbox/map.html out/
           printf 'repository %s\ncommit %s\n%s\n' "$NAME" "$(cat commit.txt)" "$(cat version.txt)" > out/source.txt
           cat out/source.txt
 

@@ -9,7 +9,7 @@ system time of the child processes).
 `wingbox build .` writes the graph, the report and the map.
 
 After each build the size of the graph is read from the file the build wrote (modules and import edges
-of .code_graph.sexp), so a run that built less than the reference run cannot pass as a fast one.
+of .wingbox/index.sexp), so a run that built less than the reference run cannot pass as a fast one.
 
 Writes <work dir>/out/build_times.json and prints a Markdown table.
 """
@@ -40,7 +40,7 @@ SOURCE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".rs")
 def graph_size(target: str) -> dict:
     """What the build wrote: the size of the graph, read from the graph file itself."""
     counts = {"modules": 0, "import_edges": 0}
-    with open(os.path.join(target, ".code_graph.sexp"), encoding="utf-8") as handle:
+    with open(os.path.join(target, ".wingbox", "index.sexp"), encoding="utf-8") as handle:
         for line in handle:
             text = line.lstrip()
             if text.startswith("(node "):

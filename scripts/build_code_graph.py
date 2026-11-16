@@ -2,7 +2,7 @@
 """
 Code Graph Builder -- Architecture Graph Generator.
 
-Generates ``code_graph.sexp``, a flat S-expression graph of all modules,
+Generates ``.wingbox/index.sexp``, a flat S-expression graph of all modules,
 entities, and relationships in a codebase. Each line is a self-contained
 fact, queryable with ``rg`` or ``scripts/code_graph_search.py``.
 
@@ -50,7 +50,7 @@ Edge Types
 
 Output Format
 -------------
-Flat S-expression facts (``code_graph.sexp``)::
+Flat S-expression facts (``.wingbox/index.sexp``)::
 
     (node module/id ts "purpose description")
     (cls module/id ClassName 49 (:deco Injectable) (:methods create update delete))
@@ -195,15 +195,54 @@ SKIP_DIRS = {
     # What Wingbox writes into a project: never sources, and a file it adds there must not
     # change the repository ignore set (and with it the cache fingerprint).
     ".wingbox",
-    "wingbox-out",
 }
 DEFAULT_DISCOVERY_EXCLUSIONS = DiscoveryExclusions(
     directory_names=frozenset(SKIP_DIRS),
     paths=frozenset(),
 )
 
-CACHE_FILE = ".code_graph_cache.json"
-OUTPUT_FILE = ".code_graph.sexp"
+# Everything a build writes lives in ROOT/.wingbox/, which also marks the project root.
+WINGBOX_DIRECTORY = ".wingbox"
+INDEX_FILE = "index.sexp"
+CACHE_FILE = "cache.json"
+GITIGNORE_MARK = "# Written by Wingbox: the files it generates."
+GITIGNORE_TEXT = GITIGNORE_MARK + """ Files you write here (config.yaml, ...)
+# stay visible to git; the whole folder can be ignored as well.
+index*
+cache*
+REPORT.md
+map.html
+graph-*
+refresh.*
+*.tmp
+"""
+
+
+def wingbox_directory(root: str) -> str:
+    return os.path.join(root, WINGBOX_DIRECTORY)
+
+
+def index_path(root: str) -> str:
+    """The code graph of the project at root."""
+    return os.path.join(wingbox_directory(root), INDEX_FILE)
+
+
+def cache_path(root: str) -> str:
+    return os.path.join(wingbox_directory(root), CACHE_FILE)
+
+
+def prepare_wingbox_directory(root: str) -> None:
+    """Create ROOT/.wingbox/ and its .gitignore (kept when a person rewrote it)."""
+    folder = wingbox_directory(root)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, ".gitignore")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            current: Optional[str] = handle.read()
+    except FileNotFoundError:
+        current = None
+    if current is None or (current.startswith(GITIGNORE_MARK) and current != GITIGNORE_TEXT):
+        _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
 CACHE_SCHEMA_VERSION = 2
 MAP_SCHEMA_VERSION = 1
@@ -364,11 +403,16 @@ class TreeSnapshot:
     directories: dict[str, int] = field(default_factory=dict)
 
 
-def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str]) -> str:
-    """The snapshot file that `wingbox` compares the tree with to find changes made outside it."""
+def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str], root: str) -> str:
+    """The snapshot file that `wingbox` compares the tree with to find changes made outside it.
+
+    root is the folder the graph was built from: a .wingbox/ folder copied or moved elsewhere is
+    never refreshed against the folder it landed in.
+    """
     return json.dumps(
         {
             "schema_version": SNAPSHOT_SCHEMA_VERSION,
+            "root": root,
             "extensions": sorted({extension for language in LANGUAGES for extension in language.source_extensions}),
             "config_names": sorted(RESOLUTION_CONFIG_NAMES),
             "config_patterns": [list(pair) for pair in RESOLUTION_CONFIG_PATTERNS],
@@ -593,22 +637,22 @@ def load_cache(
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
 ) -> dict:
     """Load compatible cache entries or rebuild with an explicit warning."""
-    cache_path = os.path.join(root, CACHE_FILE)
-    if not os.path.exists(cache_path):
+    path = cache_path(root)
+    if not os.path.exists(path):
         return {}
     try:
-        with open(cache_path, "r", encoding="utf-8") as cache_file:
+        with open(path, "r", encoding="utf-8") as cache_file:
             cache = json.load(cache_file)
     except (json.JSONDecodeError, OSError) as exc:
         print(
-            f"[code-graph] WARNING: could not load cache {cache_path}: {exc}; rebuilding",
+            f"[code-graph] WARNING: could not load cache {path}: {exc}; rebuilding",
             file=sys.stderr,
         )
         return {}
 
     if not isinstance(cache, dict):
         print(
-            f"[code-graph] WARNING: incompatible cache {cache_path}: top-level value must be an object; rebuilding",
+            f"[code-graph] WARNING: incompatible cache {path}: top-level value must be an object; rebuilding",
             file=sys.stderr,
         )
         return {}
@@ -622,7 +666,7 @@ def load_cache(
         or not isinstance(cache.get("entries"), dict)
     ):
         print(
-            f"[code-graph] WARNING: incompatible cache {cache_path}: schema or builder fingerprint changed; rebuilding",
+            f"[code-graph] WARNING: incompatible cache {path}: schema or builder fingerprint changed; rebuilding",
             file=sys.stderr,
         )
         return {}
@@ -638,7 +682,6 @@ def save_cache(
     language_names: frozenset[str],
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
 ) -> None:
-    cache_path = os.path.join(root, CACHE_FILE)
     cache = {
         "schema_version": CACHE_SCHEMA_VERSION,
         "builder_fingerprint": _builder_fingerprint(
@@ -648,7 +691,7 @@ def save_cache(
         "entries": entries,
     }
     serialized = json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n"
-    _atomic_write_text(cache_path, serialized)
+    _atomic_write_text(cache_path(root), serialized)
 
 
 def decode_cache_entry(entry: object) -> Result[FileResult, str]:
@@ -3169,7 +3212,7 @@ def render_sexp(
     lines: list[str] = []
     violations = [e for e in edges if e.get("type") == "VIOLATION"]
     # A use reached only through a re-export and a module-level variable live in the use file
-    # (.code_graph.uses.sexp), which entity and usages read; module queries never need them.
+    # (.wingbox/index.uses.sexp), which entity and usages read; module queries never need them.
     real_edges = [
         e for e in edges
         if e.get("type") != "VIOLATION"
@@ -3310,7 +3353,7 @@ USES_SCHEMA_VERSION = 1
 
 
 def uses_path(map_path: str) -> str:
-    """The use-position file that goes with a code graph: .code_graph.sexp -> .code_graph.uses.sexp."""
+    """The use-position file that goes with a code graph: index.sexp -> index.uses.sexp."""
     return (map_path[: -len(".sexp")] if map_path.endswith(".sexp") else map_path) + ".uses.sexp"
 
 
@@ -3440,7 +3483,7 @@ USES_CACHE_SCHEMA_VERSION = 4
 
 
 def uses_cache_path(map_path: str) -> str:
-    """The cache of the full use walk next to a code graph: .code_graph.sexp -> .code_graph.uses-cache.json."""
+    """The cache of the full use walk next to a code graph: index.sexp -> index.uses-cache.json."""
     return (map_path[: -len(".sexp")] if map_path.endswith(".sexp") else map_path) + ".uses-cache.json"
 
 
@@ -3475,7 +3518,7 @@ def _expanded_use(item: list) -> dict:
 
 @dataclass(frozen=True)
 class WalkCache:
-    """.code_graph.uses-cache.json: per file, the content hash, the full use walk and, valid while the
+    """index.uses-cache.json: per file, the content hash, the full use walk and, valid while the
     surface of the repository (files, definitions, bindings) is the same, the resolved uses."""
 
     surface: str
@@ -3563,7 +3606,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
 
     The build parses only the uses that can name another file. The first query that needs positions
     (usages, entity --positions) calls this. It reads the build cache and the walk cache
-    (.code_graph.uses-cache.json): a file whose content hash is in the walk cache is not walked again
+    (.wingbox/index.uses-cache.json): a file whose content hash is in the walk cache is not walked again
     and, while the surface of the repository is the same, not resolved again either. The other files
     are walked in parallel and resolved; the use file is rewritten with positions and keeps its key,
     so the next build without changes keeps the positions.
@@ -3575,7 +3618,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
             header = next((line for line in uses_file if line.startswith("(code-graph-uses ")), "")
         with open(map_path, "r", encoding="utf-8") as graph_file:
             graph_text = graph_file.read()
-        with open(os.path.join(root, CACHE_FILE), "r", encoding="utf-8") as cache_file:
+        with open(cache_path(root), "r", encoding="utf-8") as cache_file:
             cache = json.load(cache_file)
     except (OSError, json.JSONDecodeError) as error:
         return Err(f"cannot read the graph, its use file or its cache: {error}")
@@ -3708,13 +3751,14 @@ class BuilderOptions:
     skip_directories: frozenset[str]
     fragments_path: Optional[str] = None  # write the fragment store there (partial updates)
     snapshot_path: Optional[str] = None  # write the snapshot of the tree there (change detection)
+    keep_published: bool = False  # an automatic refresh: never replace a graph with modules by an empty one
 
 
 def _builder_usage() -> str:
     return (
-        "usage: build_code_graph.py --root ABSOLUTE_PATH "
-        "[--output ABSOLUTE_PATH] [--full] [--lsp] "
-        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...]"
+        "usage: build_code_graph.py --root ABSOLUTE_PATH [--full] [--lsp] "
+        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...]\n"
+        "Writes ROOT/.wingbox/index.sexp and the files that go with it."
     )
 
 
@@ -3735,7 +3779,6 @@ def parse_directory_basename(value: str) -> Result[str, str]:
 def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
     """Validate builder CLI inputs before filesystem work starts."""
     root_argument: Optional[str] = None
-    output_argument: Optional[str] = None
     full_rebuild = False
     use_lsp = False
     lsp_timeout = LSP_REQUEST_TIMEOUT
@@ -3744,14 +3787,14 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
     index = 0
     while index < len(args):
         argument = args[index]
-        if argument in ("--root", "--output", "--lsp-timeout", "--exclude-dir"):
+        if argument == "--output":
+            return Err("--output is not supported: the graph is always ROOT/.wingbox/index.sexp")
+        if argument in ("--root", "--lsp-timeout", "--exclude-dir"):
             if index + 1 >= len(args):
                 return Err(f"{argument} requires a value")
             value = args[index + 1]
             if argument == "--root":
                 root_argument = value
-            elif argument == "--output":
-                output_argument = value
             elif argument == "--exclude-dir":
                 parsed_basename = parse_directory_basename(value)
                 if isinstance(parsed_basename, Err):
@@ -3785,18 +3828,10 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
     if not math.isfinite(lsp_timeout) or lsp_timeout <= 0:
         return Err("--lsp-timeout must be a positive finite number")
 
-    output_path = output_argument or os.path.join(root, OUTPUT_FILE)
-    if not os.path.isabs(output_path):
-        return Err("--output must be an absolute path")
-    output_path = os.path.realpath(output_path)
-    output_directory = os.path.dirname(output_path)
-    if not os.path.isdir(output_directory):
-        return Err(f"output directory does not exist: {output_directory}")
-
     return Ok(
         BuilderOptions(
             root=root,
-            output_path=output_path,
+            output_path=index_path(root),
             full_rebuild=full_rebuild,
             use_lsp=use_lsp,
             lsp_timeout=lsp_timeout,
@@ -3860,6 +3895,7 @@ def _run_build(options: BuilderOptions) -> int:
         paths=ignored_paths,
     )
 
+    prepare_wingbox_directory(root)
     snapshot = TreeSnapshot() if options.snapshot_path else None
     files = discover_files(root, exclusions, snapshot)
     language_counts = {
@@ -3972,6 +4008,12 @@ def _run_build(options: BuilderOptions) -> int:
         print(f"[code-graph] LSP pass: {t_lsp:.2f}s")
 
     new_cache = {result.path: _serialize_file_result(result) for result in all_results}
+    if options.keep_published and not nodes and _published_modules(options.output_path):
+        print(
+            f"[code-graph] ERROR: no source files under {root}; the published graph is kept",
+            file=sys.stderr,
+        )
+        return 1
     map_content = render_sexp(nodes, edges, root, mode, len(all_results))
     uses_content = (
         render_uses_sexp(nodes, symbol_key, map_content) if reused is None else reused_uses_text(reused, map_content)
@@ -3988,7 +4030,7 @@ def _run_build(options: BuilderOptions) -> int:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
     if options.snapshot_path and snapshot is not None:
         os.makedirs(os.path.dirname(options.snapshot_path), exist_ok=True)
-        _atomic_write_text(options.snapshot_path, snapshot_json(snapshot, options.skip_directories))
+        _atomic_write_text(options.snapshot_path, snapshot_json(snapshot, options.skip_directories, root))
 
     elapsed = time.monotonic() - t0
     print(
@@ -4013,6 +4055,15 @@ def _run_build(options: BuilderOptions) -> int:
     return 0
 
 
+def _published_modules(path: str) -> bool:
+    """Whether the graph at path has at least one module."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return any(line.startswith("(node ") for line in handle)
+    except OSError:
+        return False
+
+
 def _lock_path(root: str) -> str:
     root_digest = hashlib.sha256(root.encode("utf-8")).hexdigest()[:20]
     return os.path.join(
@@ -4021,19 +4072,16 @@ def _lock_path(root: str) -> str:
     )
 
 
-FRESHNESS_DIRECTORY = ".wingbox"  # the state folder of src/wingbox/freshness.py
 FRAGMENTS_FILE = "graph-fragments.json"
 SNAPSHOT_FILE = "graph-snapshot.json"
 
 
 def freshness_files(options: BuilderOptions) -> tuple[Optional[str], Optional[str]]:
-    """(fragment store, snapshot) of the graph at the default place, which `wingbox` keeps fresh; none elsewhere.
+    """(fragment store, snapshot) that `wingbox` keeps the graph fresh with.
 
     The fragment store lets a later change be patched in (scripts/graph_update.py); an LSP build has none.
     """
-    if options.output_path != os.path.join(options.root, OUTPUT_FILE):
-        return None, None
-    folder = os.path.join(options.root, FRESHNESS_DIRECTORY)
+    folder = wingbox_directory(options.root)
     return (None if options.use_lsp else os.path.join(folder, FRAGMENTS_FILE)), os.path.join(folder, SNAPSHOT_FILE)
 
 

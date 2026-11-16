@@ -1,5 +1,23 @@
 # Completion Log
 
+## 2026-11-17 - .wingbox/ holds everything and marks the project; a graph is never refreshed into another folder
+
+### Changes
+- `scripts/build_code_graph.py`: `wingbox_directory`, `index_path`, `cache_path`; the build writes `.wingbox/index.sexp`, `index.uses.sexp`, `index.uses-cache.json`, `cache.json` and `.wingbox/.gitignore` (rewritten only while it is Wingbox's own text); `--output` removed; the snapshot records `root`; `keep_published` (set by the refresh) refuses to publish an empty graph over one with modules.
+- `src/wingbox/freshness.py`: `graph_path`, `report_path`, `map_path`, `find_project` (nearest folder with `.wingbox/index.sexp`), `no_project_message`; `ensure_graph_fresh` returns `Unconfirmed(moved|no-snapshot)` and starts no refresh when the snapshot's root is not the folder; the hook gives the context with the note, MCP and queries print it.
+- `scripts/code_graph_search.py`: finds `.wingbox/index.sexp` from the current folder or `--root`, a graph's root is the folder holding its `.wingbox/`; the no-graph error names the paths and `--map`/`--root`; `search` prints `(result-count N)`.
+- `src/wingbox/cli.py`: `BUILD_USAGE` for `wingbox build --help`; `wingbox open`; REPORT.md and map.html in `.wingbox/`. `src/wingbox/update.py`: old-layout warnings (`! WARNING: ...`, yellow on a terminal without NO_COLOR, `(update-warning ...)` with --sexp).
+- hook.py, mcp_server.py, install.py block, SKILL.md and plugin copy, README, references, store docs, Dockerfile, .dockerignore, .gitignore, map-request workflow, benchmark readers: the new paths.
+- Tests: REQ-FRESH-029 to 034, REQ-CLI-008, 009, REQ-CS-074, REQ-UPDATE-008, 009; REQ-FRESH-027, REQ-INSTALL-019, REQ-CS-026 rewritten for the new contract; fixtures moved under `.wingbox/`.
+
+### Motivation
+- A real session: `wingbox build --root P --output O/graph.sexp`, the graph copied to `O/.code_graph.sexp`, `wingbox impact` from O answered `(error no-match ...)` and the refresh had replaced the graph by an empty build of O. Also `--output` still wrote the cache and `wingbox-out/` into P, `wingbox build --help` printed the builder script's usage, `wingbox search` printed nothing on no match, and the agent had to guess where the graph lives.
+- Maintainer: everything under `.wingbox/`, `.wingbox/` is the project marker, no compatibility and nothing deleted; `wingbox update` warns about old files.
+
+### Verification
+- The repro before: graph 544 -> 210 bytes, `refreshes_build 1, files 0`; after: the moved graph answers as it is with the rebuild note, its bytes unchanged, no refresh log.
+- Suite on 3.12 and 3.11; plugin validation; sync_plugin --check.
+
 ## 2026-11-16 - PHP 8 and Laravel (Blade, Livewire) language support
 
 ### Changes

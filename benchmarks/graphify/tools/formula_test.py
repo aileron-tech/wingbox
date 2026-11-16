@@ -67,7 +67,7 @@ empty = [m for m, t in analyze.items() if "(analyze " not in t]
 result["wingbox"] = {
     "analyze_every_module": stats([tokens(t) for t in analyze.values()]),
     "impact_every_file": stats([tokens(t) for t in impact.values()]),
-    "whole_graph_file_tokens": tokens(open(os.path.join(wb_root, ".code_graph.sexp"), encoding="utf-8").read()),
+    "whole_graph_file_tokens": tokens(open(os.path.join(wb_root, ".wingbox", "index.sexp"), encoding="utf-8").read()),
     "modules_without_analyze_answer": empty,
 }
 for name, questions in (("default_questions", list(_SAMPLE_QUESTIONS)), ("published_questions", PUBLISHED)):
