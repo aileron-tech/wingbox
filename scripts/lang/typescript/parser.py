@@ -183,6 +183,15 @@ def _ts_import_statement_form(node) -> str:  # type: ignore[no-untyped-def]
     return "named"
 
 
+# Calls whose first literal argument names a module: loading it, or mocking it in a test,
+# which breaks when the module moves or changes its exports.
+_MODULE_CALLS = frozenset({
+    "import", "require", "import.meta.resolve", "require.resolve",
+    "vi.mock", "vi.doMock", "vi.importActual", "vi.importMock",
+    "jest.mock", "jest.doMock", "jest.requireActual", "jest.requireMock",
+})
+
+
 def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
     """Every static and literal runtime dependency in source order, with the form of its statement."""
     occurrences: list[tuple[str, str]] = []
@@ -228,10 +237,13 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[n
                 if function is not None and function.text
                 else ""
             )
-            if function_name in ("import", "require", "import.meta.resolve"):
+            if function_name in _MODULE_CALLS:
                 arguments = node.child_by_field_name("arguments")
                 if arguments is not None:
-                    first_argument = next(iter(arguments.named_children), None)
+                    # A comment may stand before the literal: import(/* gated */ "./x").
+                    first_argument = next(
+                        (child for child in arguments.named_children if child.type != "comment"), None
+                    )
                     _append_literal(first_argument, "value")
 
         for child in node.named_children:

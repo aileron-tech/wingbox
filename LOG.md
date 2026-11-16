@@ -1,5 +1,29 @@
 # Completion Log
 
+## 2026-11-16 - version 0.2.4: modules and dependencies a check against two monorepos found missing
+
+### Changes
+- `pyproject.toml`: version 0.2.4.
+- `scripts/lang/typescript/__init__.py`, `imports.py`: `.mts` and `.cts` are TypeScript sources (declarations `.d.mts`, `.d.cts` are not); module IDs keep the extension; `./x.mjs` and `./x.cjs` name `x.mts` and `x.cts` first.
+- `scripts/lang/typescript/parser.py` (`_MODULE_CALLS`): module mocks of Vitest and Jest and `require.resolve` with a literal are dependencies; a comment before the literal argument of a module call is skipped.
+- `scripts/git_ignore.py` (`_tracked_paths`, `_parent_folders`): tracked files and the folders on the way to them are never excluded by ignore rules.
+- `README.md`: the FAQ entry that compared Wingbox with another tool is removed; that tool is named only in the benchmark section.
+- Tests: REQ-TS-JS-006, REQ-TS-RT-002, REQ-CS-059; REQ-CS-036 and REQ-CS-037 now use untracked snapshots.
+- Verified against the independent TypeScript resolver of `benchmarks/impact`: on a monorepo of 6,838 source files the graph equals the resolver (6,834 modules plus 4 declaration files, 31,533 dependencies); on a monorepo of 7,657 TypeScript files, 38,745 dependencies equal, and 17 tracked files under a folder named `core` are back.
+
+### Motivation
+- Building reports for two public monorepos and checking every number against an independent resolver showed ten `.mts` scripts missing, 1,105 dependencies of tests on mocked modules missing, four dynamic imports with a comment before the path losing their target, and 17 tracked source files hidden by an ignore pattern meant for core dumps.
+
+## 2026-11-16 - FAQ for people comparing code-graph tools
+
+### Changes
+- `README.md`: FAQ entries "Is Wingbox free?", "Can I run it fully offline?", "Does it use embeddings or a vector database?", "How is Wingbox different from RAG or vector search?", "My editor already has go to definition and find usages. Why a graph?", "How is it different from Sourcegraph or ctags?", "Does the graph stay current as I change code?".
+- `README.md`: the header opens with the maintainer's line "AI agents should know what their changes will break before editing code."
+- `README.md`: the website wingbox.dev in the header block and under "Project resources".
+- Checked before writing: a second `wingbox build` on a library of 1,227 files parses 0 files, and after one file changes it parses 1 (1,226 from the cache).
+
+### Motivation
+- These are the questions people ask when they compare code-graph tools; each answer states only what the code does.
 ## 2026-11-16 - benchmark results for version 0.2.3
 
 ### Changes

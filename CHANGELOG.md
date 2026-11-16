@@ -4,6 +4,17 @@
 
 ### Changes
 
+- Package version 0.2.4.
+- `.mts` and `.cts` files are TypeScript modules; an import of `./x.mjs` or
+  `./x.cjs` names `x.mts` or `x.cts` when it exists, as TypeScript reads it.
+- A test that mocks a module (`vi.mock`, `vi.doMock`, `vi.importActual`,
+  `vi.importMock`, `jest.mock`, `jest.doMock`, `jest.requireActual`,
+  `jest.requireMock` with a literal) depends on it. On one TypeScript monorepo
+  this adds 1,105 dependencies that a change to the mocked module breaks.
+- README: the header opens with "AI agents should know what their changes will
+  break before editing code."; the website wingbox.dev; FAQ entries on price,
+  offline use, embeddings, RAG, editor find usages, Sourcegraph and ctags, and
+  keeping the graph current.
 - Package version 0.2.3. The package page shows the current README.
 - The README states what makes Wingbox usable inside a security perimeter:
   no network, no model, no telemetry, code read and never run, an offline
@@ -38,6 +49,11 @@
 
 ### Fixes
 
+- A file that git tracks stays in the graph even when an ignore pattern
+  matches its folder, as git itself reads the rules: a pattern `core` meant for
+  core dumps hid tracked `core/` source folders.
+- `import(/* comment */ "./x")` and `require` with a comment before the literal
+  keep their target.
 - `boundaries-summary` counts pairs of files, as the report does; a pair
   printed once per relation (imports and data-flow) used to count twice.
 - The graph of a repository without TypeScript builds as fast as in 0.2.0

@@ -120,7 +120,7 @@ def load_git_ignored_paths(
     root: str,
     skipped_directory_names: frozenset[str],
 ) -> GitIgnoreLoadResult:
-    """Resolve target paths excluded by repository-owned Git ignore rules."""
+    """Resolve target paths excluded by repository-owned Git ignore rules; tracked paths are never excluded."""
     repository_result = _repository_root(root)
     if isinstance(repository_result, _RepositoryRootUnavailable):
         return GitIgnoreUnavailable(repository_result.reason)
@@ -175,4 +175,44 @@ def load_git_ignored_paths(
         for path in result.stdout.split(b"\0")
         if path
     )
-    return GitIgnoreLoaded(ignored_paths)
+    tracked_result = _tracked_paths(repository_root)
+    if isinstance(tracked_result, GitIgnoreUnavailable):
+        return tracked_result
+    # Like git: a tracked file is part of the repository whatever the ignore rules say,
+    # and so is every folder on the way to it.
+    kept = tracked_result.paths | _parent_folders(tracked_result.paths, repository_root)
+    return GitIgnoreLoaded(ignored_paths - kept)
+
+
+def _tracked_paths(repository_root: str) -> GitIgnoreLoadResult:
+    """Absolute paths of the files git tracks in the repository."""
+    try:
+        result = subprocess.run(
+            ("git", "-C", repository_root, "ls-files", "-z"),
+            capture_output=True,
+            check=False,
+            env=_git_environment(),
+        )
+    except OSError as error:
+        return GitIgnoreUnavailable(f"could not run git ls-files: {error}")
+    if result.returncode != 0:
+        reason = os.fsdecode(result.stderr).strip() or f"git ls-files exited {result.returncode}"
+        return GitIgnoreUnavailable(reason)
+    return GitIgnoreLoaded(
+        frozenset(
+            _absolute_ignored_path(repository_root, os.fsdecode(path))
+            for path in result.stdout.split(b"\0")
+            if path
+        )
+    )
+
+
+def _parent_folders(paths: frozenset[str], repository_root: str) -> frozenset[str]:
+    root = os.path.normcase(os.path.realpath(repository_root))
+    folders: set[str] = set()
+    for path in paths:
+        folder = os.path.dirname(path)
+        while folder.startswith(root) and folder != root and folder not in folders:
+            folders.add(folder)
+            folder = os.path.dirname(folder)
+    return frozenset(folders)

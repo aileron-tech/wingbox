@@ -2,6 +2,8 @@
 
 ![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
+> **AI agents should know what their changes will break before editing code.**
+>
 > Wingbox builds a local **code graph** of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture
 > boundaries and the **blast radius** of a change before editing code.
@@ -10,6 +12,9 @@
 >
 > **Runs fully locally:** no network access, no model, no telemetry. It can be
 > used inside a security perimeter and on a machine with no internet.
+>
+> **Website:** [wingbox.dev](https://wingbox.dev): benchmarks with charts, a
+> sample report and the live map.
 >
 > **Install the agent skill:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
@@ -470,6 +475,54 @@ No. The code graph is built and queried locally by deterministic static
 parsing. Building and querying need no LLM, no embeddings, no vector database
 and no network access.
 
+### Is Wingbox free?
+
+Yes. It is open source under the MIT license, with no paid tier, no account
+and no usage limit.
+
+### Can I run it fully offline?
+
+Yes. Building and querying need no network. On a machine with no internet,
+install from wheels fetched once elsewhere (`pip download wingbox -d wheels`,
+then `pip install --no-index --find-links wheels wingbox`), or run the Docker
+image with `--network none`.
+
+### Does it use embeddings or a vector database?
+
+No. The graph is built by parsers that read the source; a question is
+answered by following recorded import, reference and inheritance edges, not
+by retrieving text that looks similar.
+
+### How is Wingbox different from RAG or vector search?
+
+RAG splits code into chunks, embeds them and returns the chunks that look
+closest to a question. Wingbox resolves each import to the file it names and
+answers from those edges, so `impact` returns the complete list of dependent
+files with nothing guessed. The benchmark checks every list against resolvers
+that share no code with Wingbox: [benchmarks/impact](benchmarks/impact/README.md).
+
+### My editor already has "go to definition" and "find usages". Why a graph?
+
+The editor answers one symbol at a time, inside an open, resolved project. The
+graph answers for a whole file or module at once (what depends on it within
+two hops, which layer boundary a dependency crosses, which files to read
+first), for a coding agent on the command line, with no language server and
+no installed dependencies.
+
+### How is it different from Sourcegraph or ctags?
+
+ctags lists where names are defined; it does not resolve imports or say who
+depends on a file. Sourcegraph is a code search server; its precise navigation
+needs an indexer per language run on a resolved project. Wingbox is one local
+command that builds a dependency graph of the repository in seconds and keeps
+it as a file next to the code.
+
+### Does the graph stay current as I change code?
+
+Run `wingbox build` again: files whose content did not change are taken from
+the cache, so a rebuild reads only what changed. `diff_functions <ref>` lists
+the functions changed since a git ref.
+
 ### Which AI coding agents does Wingbox work with?
 
 Codex, Claude Code, and other clients that support Agent Skills. The scripts
@@ -481,17 +534,6 @@ Text search finds lines that match a pattern. A code graph answers structural
 questions: which modules depend on this one, what a change can break, which
 architecture boundary a dependency crosses, and which few files are worth
 reading first.
-
-### How is Wingbox different from Graphify?
-
-Graphify extracts a knowledge graph from code, documents, papers and images,
-with a model for the non-code part, and supports more languages. Wingbox reads
-code only, with deterministic parsers and no model, and resolves imports the
-way each language does, so that `wingbox impact` gives the exact list of files
-a change reaches. The two tools are measured side by side in
-[benchmarks/graphify](benchmarks/graphify/README.md). Wingbox can be used as a
-Graphify alternative when the question is change impact, dependencies and
-architecture boundaries of code.
 
 ### Does Wingbox replace a compiler or a language server?
 
@@ -508,6 +550,7 @@ Terraform.
 
 ## Project resources
 
+- Website: [wingbox.dev](https://wingbox.dev)
 - [Skill workflow and complete command reference](SKILL.md)
 - [S-expression map format](references/sexp-notation.md)
 - [Composable query language](references/scheme-queries.md)

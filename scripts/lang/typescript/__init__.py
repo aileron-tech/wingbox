@@ -42,14 +42,14 @@ class TypeScriptLanguage:
         LanguageDependency("tree-sitter", "0.25.2"),
         LanguageDependency("tree-sitter-typescript", "0.23.2"),
     )
-    source_extensions: tuple[str, ...] = (".ts", ".tsx") + JAVASCRIPT_EXTENSIONS
+    source_extensions: tuple[str, ...] = (".ts", ".tsx", ".mts", ".cts") + JAVASCRIPT_EXTENSIONS
 
     def accepts_file(self, file_name: str) -> bool:
         if is_javascript_file(file_name):
             return not is_bundled_javascript_name(file_name)
-        return (
-            file_name.endswith(".ts") or file_name.endswith(".tsx")
-        ) and not file_name.endswith(".d.ts")
+        return file_name.endswith((".ts", ".tsx", ".mts", ".cts")) and not file_name.endswith(
+            (".d.ts", ".d.mts", ".d.cts")
+        )
 
     def accepts_project_config(self, file_name: str) -> bool:
         return file_name in self.project_config_names
@@ -76,8 +76,8 @@ class TypeScriptLanguage:
         )
 
     def normalize_module_id(self, relative_path: str) -> str:
-        # .mjs and .cjs keep their extension: an import names them only in full.
-        if relative_path.endswith((".mjs", ".cjs")):
+        # .mjs, .cjs, .mts and .cts keep their extension: an import names them only in full.
+        if relative_path.endswith((".mjs", ".cjs", ".mts", ".cts")):
             return relative_path
         for extension in (".tsx", ".ts", ".jsx", ".js"):
             if relative_path.endswith(extension):
