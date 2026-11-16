@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-16 - links to the site wingbox.dev
+
+### Changes
+- `README.md`: the line under "See it in action" leads to wingbox.dev (benchmarks with charts, a sample report, the live map), which is live on its own domain.
+- `pyproject.toml`: the Homepage link of the package is wingbox.dev; the package page shows it from the next release.
+
+### Verification
+- https://wingbox.dev answers 200 over HTTPS; no code changed.
+
 ## 2026-11-16 - version 0.2.3: pair counts in the boundaries summary, build time
 
 ### Changes
