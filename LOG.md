@@ -7,7 +7,8 @@
 - `scripts/code_graph_search.py` (`cmd_boundaries`): the summary counts pairs of files per kind; the lines stay one per relation.
 - `scripts/build_code_graph.py` (`_imports_types_only`): returns at once for a file without import forms, so only TypeScript files pay for the check.
 - `benchmarks/graphify/`: restored as it was before it was replaced by `benchmarks/impact` (results of Wingbox 0.2.0 and Graphify 0.9.110); `README.md`: section "Wingbox and Graphify on the same tests" and a FAQ entry; `pyproject.toml`: keywords `graphify`, `graphify-alternative`, `knowledge-graph`. People who look for one tool should find the comparison with the other.
-- Tests: REQ-CS-058, REQ-BENCH-008; REQ-BENCH-002 covers both benchmark folders.
+- `README.md`: section "Runs fully locally, inside your security perimeter"; `tests/test_local_only.py`: the package imports no network module (REQ-SEC-001) and the map page loads no outside resource (REQ-SEC-002); `pyproject.toml`: keywords `offline`, `local-first`, `air-gapped`.
+- Tests: REQ-CS-058, REQ-BENCH-008, REQ-SEC-001, REQ-SEC-002; REQ-BENCH-002 covers both benchmark folders.
 - Measured on a Python library of 1,227 files, same machine, full build: 0.2.0 7.4 to 7.9 s, 0.2.2 9.4 to 9.5 s, this version 7.7 to 8.5 s.
 
 ### Motivation

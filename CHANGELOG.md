@@ -5,6 +5,9 @@
 ### Changes
 
 - Package version 0.2.3. The package page shows the current README.
+- The README states what makes Wingbox usable inside a security perimeter:
+  no network, no model, no telemetry, code read and never run, an offline
+  install. Two tests keep it true (REQ-SEC-001, REQ-SEC-002).
 - `benchmarks/graphify` is back, next to `benchmarks/impact`: Wingbox and
   Graphify measured on the same public repositories, with the scripts and the
   result files. The README has a section and a FAQ entry on the two tools.

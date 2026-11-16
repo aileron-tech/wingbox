@@ -8,6 +8,9 @@
 > It works as an agent skill in Claude Code and Codex and supports Python,
 > TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus.
 >
+> **Runs fully locally:** no network access, no model, no telemetry. It can be
+> used inside a security perimeter and on a machine with no internet.
+>
 > **Install the agent skill:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
 > **Install the command:** `pipx install wingbox` | [PyPI](https://pypi.org/project/wingbox/)
@@ -30,6 +33,31 @@ analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 Everything runs on your machine. The code graph is built by deterministic
 static parsing: no LLM call, no embeddings, no vector database, and no network
 access to build or query it.
+
+## Runs fully locally, inside your security perimeter
+
+Wingbox is safe to run on code that must not leave the company:
+
+- **No network.** Building and querying the graph open no network connection.
+  Run it with the network switched off to see for yourself:
+  `docker run --rm --network none -v "$PWD":/repo wingbox`.
+- **No model, no account, no key, no telemetry.** Nothing is sent to a model
+  or to a service, and nothing is collected about its use.
+- **Your code is read, never run.** Wingbox parses source files with its own
+  parsers and calls `git` for the ignore rules; it does not execute the code,
+  the tests or the build of the repository. The `--lsp` option, off by
+  default, starts a language server that is installed on the machine.
+- **The results stay in the repository folder:** `.code_graph.sexp`,
+  `wingbox-out/REPORT.md` and `wingbox-out/map.html`. The map is one HTML
+  file that loads nothing from outside and opens offline.
+- **Works on a machine with no internet.** Fetch the package and its pinned
+  dependencies once (`pip download wingbox -d wheels`), carry the folder
+  inside, and install with `pip install --no-index --find-links wheels wingbox`.
+- **Deterministic and open.** The same code gives the same graph; the source
+  is MIT licensed and small enough to review.
+
+Two tests of the repository keep this true: the package imports no module
+that opens network connections, and the map page loads no outside resource.
 
 ## See it in action
 
