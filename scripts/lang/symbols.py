@@ -20,6 +20,8 @@ _SEPARATORS: dict[str, Optional[str]] = {
     "python": ".", "rust": "::", "typescript": None, "tsx": None, "javascript": None,
 }
 _MAX_DEPTH = 16
+# Entity kinds whose methods a call can name: classes, structs, enums, interfaces, traits.
+_MEMBER_KINDS = frozenset({"class", "enum", "interface"})
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,10 @@ class SymbolIndex:
         self._modules: dict[tuple[str, str, str], Optional[str]] = {}
         self._defined = {
             module: frozenset(entity["name"] for entity in result.entities)
+            for module, result in id_to_result.items()
+        }
+        self._entities = {
+            module: {entity["name"]: entity for entity in result.entities}
             for module, result in id_to_result.items()
         }
 
@@ -167,8 +173,49 @@ class SymbolIndex:
                 return ref
         return None
 
+    def _member_owner(self, module: str, name: str, member: str, depth: int = 0) -> Optional[Symbol]:
+        """The class that defines member: name itself or, through its bases, an ancestor."""
+        entity = self._entities.get(module, {}).get(name)
+        if entity is None or depth > _MAX_DEPTH or entity["kind"] not in _MEMBER_KINDS:
+            return None
+        if member in entity.get("methods", []):
+            return Symbol(module, name)
+        separator = "::" if self._results[module].language == "rust" else "."
+        for base in entity.get("bases", []):
+            segments = [segment for segment in base.split(separator) if segment]
+            target = self._walk(module, segments) if segments else None
+            if isinstance(target, Symbol):
+                owner = self._member_owner(target.module, target.name, member, depth + 1)
+                if owner is not None:
+                    return owner
+        return None
+
+    def _walk(self, module: str, path: list[str]) -> Optional[Target]:
+        current = self._head(module, path[0])
+        for segment in path[1:]:
+            if not isinstance(current, ModuleRef):
+                return current if isinstance(current, Symbol) else None
+            current = self.member(current, segment)
+        return current
+
+    def resolve_member(self, module: str, use: UsePayload) -> Optional[ResolvedUse]:
+        """A method call: Class.method when the receiver's type is in sight and defines it."""
+        path, at, member = use["path"], use["at"], use.get("member", "")
+        if not path or not member or len(at) != len(path) + 1:
+            return None
+        target = self._walk(module, path)
+        if not isinstance(target, Symbol):
+            return None
+        owner = self._member_owner(target.module, target.name, member)
+        if owner is None:
+            return None
+        line, column = at[-1]
+        return ResolvedUse(owner.module, f"{owner.name}.{member}", line, column)
+
     def resolve(self, module: str, use: UsePayload) -> Optional[ResolvedUse]:
         """The definition a use site names, with the position of the segment that names it."""
+        if use.get("member"):
+            return self.resolve_member(module, use)
         result = self._results[module]
         path, at = use["path"], use["at"]
         if not path or len(at) != len(path):

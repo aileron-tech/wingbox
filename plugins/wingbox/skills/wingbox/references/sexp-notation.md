@@ -21,12 +21,18 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (refs <src> <tgt>::<Entity> [:callback] [:reexport] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
 (use <mod> <tgt>::<Entity> <line>:<col> <line>:<col> ...)
+(use <mod> <tgt>::<Class>.<method> <line>:<col> ...)
+(unresolved <mod> :method-calls <count>)
 ```
 
 `use` lists every place where `<mod>` names `<Entity>` defined in `<tgt>`: an
 import, a name, a qualified path, a type, a re-export; line and column are
 1-based. One line per file and definition (a line per place made the graph
-about twice as large again).
+about twice as large again). A method call `recv.m()` is a use of
+`<Class>.<method>` only when the receiver's class is in sight: `self` or `this`
+in the class, a parameter or variable annotated with the class, a variable
+built by its constructor; the method may come from a base class. Any other
+method call is not guessed: `unresolved` counts them per module.
 
 ## boundary Output
 

@@ -845,24 +845,31 @@ def _resolve_target_entity(
 def _resolve_symbol_uses(
     id_to_result: Mapping[str, FileResult],
     bound_languages: Mapping[str, BoundLanguage],
-) -> dict[str, list[tuple[int, int, str, str]]]:
-    """Every use site resolved to its definition: module -> sorted (line, column, module, name)."""
+) -> tuple[dict[str, list[tuple[int, int, str, str]]], dict[str, int]]:
+    """Every use site resolved to its definition: module -> sorted (line, column, module, name).
+
+    Also the number of method calls per module whose receiver type is not in
+    sight or does not define the method: they stay unresolved, never guessed.
+    """
     index = SymbolIndex(
         id_to_result,
         lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
     )
     resolved_by_module: dict[str, list[tuple[int, int, str, str]]] = {}
+    unresolved_calls: dict[str, int] = {}
     for node_id, result in id_to_result.items():
         if not supports_symbols(result.language):
             continue
-        found = {
-            (resolved.line, resolved.column, resolved.module, resolved.name)
-            for use in result.uses
-            if (resolved := index.resolve(node_id, use)) is not None
-        }
+        found: set[tuple[int, int, str, str]] = set()
+        for use in result.uses:
+            resolved = index.resolve(node_id, use)
+            if resolved is not None:
+                found.add((resolved.line, resolved.column, resolved.module, resolved.name))
+            elif use.get("member"):
+                unresolved_calls[node_id] = unresolved_calls.get(node_id, 0) + 1
         if found:
             resolved_by_module[node_id] = sorted(found)
-    return resolved_by_module
+    return resolved_by_module, unresolved_calls
 
 
 def _symbol_usage_edges(
@@ -882,7 +889,10 @@ def _symbol_usage_edges(
     }
     found: list[dict] = []
     for node_id, uses in resolved_by_module.items():
-        targets = {(module, name) for _line, _column, module, name in uses if module != node_id}
+        # A method (Class.method) is a use site only; its class has its own refs.
+        targets = {
+            (module, name) for _line, _column, module, name in uses if module != node_id and "." not in name
+        }
         for module, name in sorted(targets):
             edge: dict[str, Any] = {
                 "source": node_id,
@@ -1183,13 +1193,15 @@ def build_graph(
         for edge in edges
         if edge["type"] == "REFERENCES"
     }
-    resolved_uses = _resolve_symbol_uses(id_to_result, bound_languages)
+    resolved_uses, unresolved_calls = _resolve_symbol_uses(id_to_result, bound_languages)
     for edge in _symbol_usage_edges(resolved_uses, edges):
         if (edge["source"], edge["target"]) not in referenced:
             edges.append(edge)
     for node in nodes:
         if node["id"] in resolved_uses:
             node["uses"] = resolved_uses[node["id"]]
+        if node["id"] in unresolved_calls:
+            node["unresolved_method_calls"] = unresolved_calls[node["id"]]
 
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
@@ -2773,6 +2785,10 @@ def render_sexp(
             f"(use {path_to_sid[node['id']]} {_pid(module)}::{name} {' '.join(positions)})"
             for (module, name), positions in sorted(sites.items())
         )
+        if node.get("unresolved_method_calls"):
+            use_lines.append(
+                f"(unresolved {path_to_sid[node['id']]} :method-calls {node['unresolved_method_calls']})"
+            )
     if use_lines:
         lines.append("")
         lines.append("; --- uses ---")

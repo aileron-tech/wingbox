@@ -202,9 +202,94 @@ def module_names(root: Node) -> frozenset[str]:
     return frozenset(names)
 
 
+def _type_path(node: Node | None) -> tuple[str, ...] | None:
+    """A type or constructor written as a name or a qualified name; None for anything else."""
+    if node is None:
+        return None
+    if node.type == "type_annotation":
+        inner = node.named_children[0] if node.named_children else None
+        return _type_path(inner)
+    if node.type in ("type_identifier", "identifier"):
+        return (_text(node),)
+    if node.type in ("nested_type_identifier", "member_expression", "nested_identifier"):
+        owner = node.child_by_field_name("module") or node.child_by_field_name("object") or (
+            node.named_children[0] if node.named_children else None)
+        name = node.child_by_field_name("name") or node.child_by_field_name("property") or (
+            node.named_children[-1] if node.named_children else None)
+        head = _type_path(owner)
+        return (*head, _text(name)) if head is not None and name is not None else None
+    return None
+
+
+def _local_types(node: Node) -> dict[str, tuple[str, ...] | None]:
+    """The class of each parameter and variable of a function when it is in sight:
+    an annotation or `new C()`. A name bound in two ways has none."""
+    found: dict[str, set[tuple[str, ...] | None]] = {}
+    parameters = node.child_by_field_name("parameters")
+    for parameter in parameters.named_children if parameters is not None else []:
+        pattern = parameter.child_by_field_name("pattern")
+        if pattern is not None and pattern.type == "identifier":
+            found.setdefault(_text(pattern), set()).add(_type_path(parameter.child_by_field_name("type")))
+
+    def visit(current: Node) -> None:
+        if current.type == "variable_declarator":
+            name = current.child_by_field_name("name")
+            if name is not None and name.type == "identifier":
+                written = _type_path(current.child_by_field_name("type"))
+                value = current.child_by_field_name("value")
+                if written is None and value is not None and value.type == "new_expression":
+                    written = _type_path(value.child_by_field_name("constructor"))
+                found.setdefault(_text(name), set()).add(written)
+        if current.type in _FUNCTION_NODES:
+            return
+        for child in current.named_children:
+            visit(child)
+
+    body = node.child_by_field_name("body")
+    if body is not None:
+        visit(body)
+    return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
+
+
 def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
     """Use sites of names the file binds at module level (declarations and imports)."""
     uses: list[UsePayload] = []
+    types_stack: list[dict[str, tuple[str, ...] | None]] = []
+    class_stack: list[str] = []
+
+    def local_type(name: str, scopes: tuple[frozenset[str], ...]) -> tuple[str, ...] | None:
+        for types in reversed(types_stack):
+            if name in types:
+                return types[name]
+        return None
+
+    def method_call(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
+        """recv.m(...): a use of Class.m when the receiver's class is in sight (this, an
+        annotation, `new C()`); module-level names and namespaces are paths, not calls."""
+        function = node.child_by_field_name("function")
+        if function is None or function.type != "member_expression":
+            return
+        receiver = function.child_by_field_name("object")
+        member = function.child_by_field_name("property")
+        if receiver is None or member is None or member.type != "property_identifier":
+            return
+        if receiver.type in ("string", "template_string", "array", "object", "number", "regex"):
+            return
+        head = receiver
+        while head.type == "member_expression" and head.child_by_field_name("object") is not None:
+            head = head.child_by_field_name("object")
+        shadowed = any(_text(head) in scope for scope in scopes)
+        if head.type == "identifier" and not shadowed and _text(head) in wanted:
+            return
+        written: tuple[str, ...] | None = None
+        if receiver.type == "this" and class_stack and class_stack[-1]:
+            written = (class_stack[-1],)
+        elif receiver.type == "identifier" and shadowed:
+            written = local_type(_text(receiver), scopes)
+        start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
+        path = list(written) if written is not None else []
+        uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
+                     "member": _text(member)})
 
     def add(segments: list[Segment], scopes: tuple[frozenset[str], ...], module: str = "") -> None:
         if not module and (segments[0][0] not in wanted or any(segments[0][0] in scope for scope in scopes)):
@@ -318,8 +403,13 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
             visit(node.child_by_field_name("type"), scopes)
             visit(node.child_by_field_name("body"), scopes)
             return
+        if kind == "call_expression":
+            method_call(node, scopes)
         inner = scopes
+        pushed_types = pushed_class = False
         if kind in _FUNCTION_NODES:
+            types_stack.append(_local_types(node))
+            pushed_types = True
             parameters = node.child_by_field_name("parameter")
             if parameters is not None and parameters.type == "identifier":
                 inner = (*scopes, frozenset({_text(parameters)} | _body_names(node)))
@@ -327,16 +417,26 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
                 inner = (*scopes, frozenset(_parameter_names(node) | _type_parameter_names(node) | _body_names(node)))
             if parameters is not None and parameters.type == "identifier":
                 visit(node.child_by_field_name("body"), inner)
+                types_stack.pop()
                 return
         elif kind in ("class_declaration", "class", "abstract_class_declaration", "interface_declaration",
                       "type_alias_declaration"):
             names = _type_parameter_names(node)
             if names:
                 inner = (*scopes, frozenset(names))
+            if kind != "interface_declaration" and kind != "type_alias_declaration":
+                # `this` names a class declared at module level; other classes are not in the table.
+                name = node.child_by_field_name("name")
+                class_stack.append(_text(name) if name is not None and not scopes and kind != "class" else "")
+                pushed_class = True
         elif kind in ("statement_block", "for_statement", "for_in_statement") and scopes:
             pass
         for child in node.named_children:
             visit(child, inner)
+        if pushed_types:
+            types_stack.pop()
+        if pushed_class:
+            class_stack.pop()
 
     for child in root.named_children:
         visit(child, ())

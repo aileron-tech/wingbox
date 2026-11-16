@@ -395,6 +395,7 @@ class CodeGraph:
         self.all_edges: list[Edge] = []
         self._symbol_lines: list[str] = []  # use facts, parsed on first access (most queries never need them)
         self._uses_by_target: Optional[dict[str, list[tuple[str, int, int]]]] = None
+        self.unresolved_method_calls: dict[str, int] = {}  # module -> method calls without a visible receiver type
         self.pmap: dict[str, str] = {}
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self._root: str = ""
@@ -410,6 +411,7 @@ class CodeGraph:
         self.all_edges = []
         self._symbol_lines = []
         self._uses_by_target = None
+        self.unresolved_method_calls = {}
         self.pmap = {}
         self.package_layers = {}
         self._root = os.path.abspath(
@@ -565,6 +567,9 @@ class CodeGraph:
                     if "::" in part:
                         ent_name = part.split("::", 1)[1]
                         self.edges_by_entity_name.setdefault(ent_name, []).append(edge)
+
+            elif kind == "unresolved" and len(tokens) >= 4 and tokens[2] == ":method-calls" and tokens[3].isdigit():
+                self.unresolved_method_calls[_resolve(tokens[1])] = int(tokens[3])
 
             elif kind == "violation" and len(tokens) >= 5:
                 source = _resolve(tokens[2])
@@ -1377,10 +1382,13 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
         print(_edge_sexp(e))
     if positions:
         # Every use site, as find usages lists it: file, line, column (1-based).
+        # The definition itself and its methods (Class.method) where a call resolved to one.
+        wanted = {f"{defn.module}::{defn.name}" for defn in definitions}
         sites = sorted(
             (_impact_file(g, source), line, column, source, target)
-            for target in sorted({f"{defn.module}::{defn.name}" for defn in definitions})
-            for source, line, column in g.uses_by_target.get(target, [])
+            for target, found in g.uses_by_target.items()
+            if target in wanted or target.rsplit(".", 1)[0] in wanted
+            for source, line, column in found
         )
         for file_path, line, column, source, target in sites:
             print(f"(use {source} {line} {column} {target} :file {_q(file_path)})")

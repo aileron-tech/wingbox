@@ -4,6 +4,10 @@
 
 ### Changes
 
+- A method call is a use of `Class.method` when the receiver's class is in
+  sight (`self`/`this`, an annotation, a constructor, a base class); every
+  other method call is counted as unresolved in the graph, never guessed. On
+  the five benchmark repositories 2 to 12 % of method calls resolve.
 - `entity S --positions` lists every place that names S, with its file, line
   and column, as an editor's find usages does. The graph stores the use sites
   as `(use <module> <defining-module>::<S> <line>:<col> ...)`; on immich-server

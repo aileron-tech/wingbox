@@ -1,5 +1,23 @@
 # Completion Log
 
+## 2026-11-16 - method calls: resolved only with the receiver's type in sight (step 5 of the symbol index)
+
+### Changes
+- `scripts/lang/interface.py`: `UsePayload.member`, a method call with the receiver's type path (empty when no type is in sight).
+- `scripts/lang/python/symbols.py`, `scripts/lang/typescript/symbols.py`, `scripts/lang/rust/symbols.py`: method call sites; the receiver's type from `self`/`this` of a class at module level (Rust: the type of the impl), a parameter or variable annotation, a constructor (`C()`, `new C()`, `C { .. }`, `C(..)`, a unit struct). A name bound in two ways has no type. Calls on module-level names and namespaces stay paths; calls on literals are not counted.
+- `scripts/lang/symbols.py`: `resolve_member` resolves the type, then the method in the class or, through its bases, an ancestor.
+- `scripts/build_code_graph.py`: resolved calls are `use` facts of `<Class>.<method>` (no refs edge: the class has its own); `(unresolved <module> :method-calls N)` per module.
+- `scripts/code_graph_search.py`: the loader reads `unresolved`; `entity C --positions` also lists the resolved calls of C's methods.
+- Tests: REQ-LANG-011, REQ-LANG-012.
+
+### Motivation
+- Maintainer, step 5: a method call whose receiver type is not visible is recorded as unresolved, never guessed; report how many such sites each repository has.
+
+### Verification
+- Method calls, resolved / unresolved: agent-browser 641 / 30,992 (2 %), chrome-devtools-mcp 890 / 9,546 (9 %), claudes-c-compiler 5,202 / 37,960 (12 %), fastapi 985 / 7,509 (12 %), immich-server 2,674 / 32,817 (8 %). Most unresolved calls are on values of the standard library or of dependencies (`.unwrap()`, `.map()`, `this.repository.find()`) or on fields whose type the walk does not follow.
+- Graph size: immich-server 1,169,369 bytes, fastapi 906,640.
+- Refactoring benchmark 40/40, 40/40, 20/20 exact; impact unchanged; suite on 3.12 and 3.11.
+
 ## 2026-11-16 - positions of every use (step 4 of the symbol index)
 
 ### Changes

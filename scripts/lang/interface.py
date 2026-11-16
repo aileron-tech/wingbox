@@ -48,9 +48,13 @@ class UsePayload(UsePayloadRequired, total=False):
     path: the segments as written (S, m.S, a::b::S). at: [line, column] of each
     segment, both 1-based. module: when set, path starts inside that module as
     written in an import statement (from m import S) instead of in the file's scope.
+    member: a method call; path is then the receiver's type as written in sight
+    (an annotation, a constructor, the class of self or this), empty when no type
+    is in sight, and the last entry of at is the method name's position.
     """
 
     module: str
+    member: str
 
 
 class SourceRelationPayloadRequired(TypedDict):

@@ -184,6 +184,74 @@ def _use_paths(node: Node, prefix: list[Segment]) -> Iterator[tuple[list[Segment
             yield [*prefix, *head], None, True
 
 
+TypePath = tuple[str, ...]
+
+
+def _type_path(node: Node | None, impl_type: TypePath | None) -> TypePath | None:
+    """A type written as a path (Store, model::Store, &Store, &mut Self); None for anything else."""
+    if node is None:
+        return None
+    if node.type == "reference_type":
+        return _type_path(node.child_by_field_name("type"), impl_type)
+    if node.type == "type_identifier" and _text(node) == "Self":
+        return impl_type
+    if node.type in ("type_identifier", "scoped_type_identifier", "identifier", "scoped_identifier"):
+        segments = _path_segments(node)
+        return tuple(name for name, _line, _col in segments) if segments else None
+    return None
+
+
+def _constructed_type(value: Node | None, impl_type: TypePath | None) -> TypePath | None:
+    """The struct a let value builds in sight: Store { .. }, Store(..) or a unit Store."""
+    if value is None:
+        return None
+    if value.type == "struct_expression":
+        return _type_path(value.child_by_field_name("name"), impl_type)
+    if value.type == "call_expression":
+        function = value.child_by_field_name("function")
+        if function is not None and function.type == "identifier" and _text(function)[:1].isupper():
+            return (_text(function),)
+        return None
+    if value.type == "identifier" and _text(value)[:1].isupper():
+        return (_text(value),)
+    return None
+
+
+def _local_types(function: Node, impl_type: TypePath | None) -> dict[str, TypePath | None]:
+    """The type of each parameter and let binding of a function when it is in sight.
+
+    self is the type of the impl; a name bound in two ways, or by a pattern, has none.
+    """
+    found: dict[str, set[TypePath | None]] = {}
+    parameters = function.child_by_field_name("parameters")
+    for parameter in parameters.named_children if parameters is not None else []:
+        if parameter.type == "self_parameter":
+            found.setdefault("self", set()).add(impl_type)
+        elif parameter.type == "parameter":
+            pattern = parameter.child_by_field_name("pattern")
+            if pattern is not None and pattern.type == "identifier":
+                found.setdefault(_text(pattern), set()).add(
+                    _type_path(parameter.child_by_field_name("type"), impl_type))
+
+    def visit(current: Node) -> None:
+        if current.type in _ITEM_NODES:
+            return
+        if current.type == "let_declaration":
+            pattern = current.child_by_field_name("pattern")
+            if pattern is not None and pattern.type == "identifier":
+                written = _type_path(current.child_by_field_name("type"), impl_type)
+                if written is None:
+                    written = _constructed_type(current.child_by_field_name("value"), impl_type)
+                found.setdefault(_text(pattern), set()).add(written)
+        for child in current.named_children:
+            visit(child)
+
+    body = function.child_by_field_name("body")
+    if body is not None:
+        visit(body)
+    return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
+
+
 def _seen_from_file(segments: list[Segment], inline_depth: int,
                     rewrite: Callable[[str, int], str | None]) -> list[Segment]:
     """A path written inside inline modules, as the file's own module sees it.
@@ -268,7 +336,54 @@ def use_bindings_and_sites(
             return
         add_use(path)
 
+    impl_stack: list[TypePath | None] = []
+    types_stack: list[dict[str, TypePath | None]] = []
+
+    def method_call(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
+        """recv.m(..): a use of Type.m when the receiver's type is in sight (self in an impl,
+        an annotated parameter or let, a struct literal); any other receiver stays unresolved."""
+        function = node.child_by_field_name("function")
+        if function is None or function.type != "field_expression":
+            return
+        receiver = function.child_by_field_name("value")
+        member = function.child_by_field_name("field")
+        if receiver is None or member is None or member.type != "field_identifier":
+            return
+        if receiver.type in ("string_literal", "raw_string_literal", "integer_literal", "float_literal",
+                             "array_expression", "tuple_expression"):
+            return
+        written: TypePath | None = None
+        if receiver.type in ("self", "identifier"):
+            name = _text(receiver)
+            if receiver.type == "self" or any(name in scope for scope in scopes):
+                written = next((types[name] for types in reversed(types_stack) if name in types), None)
+        start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
+        path = list(written) if written is not None else []
+        uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
+                     "member": _text(member)})
+
     def visit(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
+        kind = node.type
+        if kind == "call_expression":
+            method_call(node, scopes)
+        if kind == "impl_item":
+            implemented = _type_path(node.child_by_field_name("type"), None)
+            if implemented is None:
+                type_node = node.child_by_field_name("type")
+                if type_node is not None and type_node.type == "generic_type":
+                    implemented = _type_path(type_node.child_by_field_name("type"), None)
+            impl_stack.append(implemented)
+            visit_children(node, scopes, inline_depth)
+            impl_stack.pop()
+            return
+        if kind == "function_item":
+            types_stack.append(_local_types(node, impl_stack[-1] if impl_stack else None))
+            visit_children(node, scopes, inline_depth)
+            types_stack.pop()
+            return
+        visit_children(node, scopes, inline_depth)
+
+    def visit_children(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
         kind = node.type
         if kind == "use_declaration":
             visit_use(node, inline_depth)

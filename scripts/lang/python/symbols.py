@@ -155,10 +155,62 @@ def _body_locals(body: list[ast.stmt]) -> set[str]:
     return names - declared_global
 
 
+TypePath = tuple[str, ...]
+_LITERALS = (ast.Constant, ast.JoinedStr, ast.List, ast.Dict, ast.Set, ast.Tuple,
+             ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+def _type_path(node: ast.expr | None) -> TypePath | None:
+    """A type written as a name or a dotted name (Store, models.Store); None for anything else."""
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        owner = _type_path(node.value)
+        return (*owner, node.attr) if owner is not None else None
+    return None
+
+
+def _local_types(function: ast.FunctionDef | ast.AsyncFunctionDef, receiver: TypePath | None) -> dict[str, TypePath | None]:
+    """The class of each local name when it is in sight: an annotation, a constructor call, self.
+
+    A name bound in two ways, or in any other way, has no type in sight (None).
+    """
+    found: dict[str, set[TypePath | None]] = {}
+    arguments = [*function.args.posonlyargs, *function.args.args]
+    for index, arg in enumerate([*arguments, *function.args.kwonlyargs]):
+        written = _type_path(arg.annotation)
+        if index == 0 and receiver is not None and arg in arguments and written is None:
+            written = receiver
+        found.setdefault(arg.arg, set()).add(written)
+
+    def visit(node: ast.AST) -> None:
+        if isinstance(node, _SCOPE_NODES):
+            return
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            found.setdefault(node.target.id, set()).add(_type_path(node.annotation))
+            return
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            value = node.value
+            constructed = _type_path(value.func) if isinstance(value, ast.Call) else None
+            found.setdefault(node.targets[0].id, set()).add(constructed)
+            visit(value)
+            return
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            found.setdefault(node.id, set()).add(None)
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    for statement in function.body:
+        visit(statement)
+    return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
+
+
 @dataclass(frozen=True)
 class _Scope:
     names: frozenset[str]
     is_class: bool = False
+    types: tuple[tuple[str, TypePath | None], ...] = ()
+    class_name: str = ""
 
 
 class _UseCollector(ast.NodeVisitor):
@@ -194,7 +246,12 @@ class _UseCollector(ast.NodeVisitor):
         self._visit_arguments(node.args)
         if node.returns is not None:
             self.visit(node.returns)
-        self._within(_Scope(frozenset(_arguments(node.args) | _body_locals(node.body))), node.body)
+        # self (or cls) of a method of a class defined at module level is that class.
+        owner = self.scopes[-1] if self.scopes and self.scopes[-1].is_class else None
+        is_static = any(_type_path(decorator) == ("staticmethod",) for decorator in node.decorator_list)
+        receiver = (owner.class_name,) if owner is not None and owner.class_name and not is_static else None
+        types = tuple(sorted(_local_types(node, receiver).items()))
+        self._within(_Scope(frozenset(_arguments(node.args) | _body_locals(node.body)), types=types), node.body)
 
     visit_FunctionDef = _visit_function
     visit_AsyncFunctionDef = _visit_function
@@ -206,7 +263,8 @@ class _UseCollector(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         for expression in [*node.decorator_list, *node.bases, *node.keywords]:
             self.visit(expression)
-        self._within(_Scope(frozenset(_body_locals(node.body)), is_class=True), node.body)
+        class_name = node.name if not self.scopes else ""
+        self._within(_Scope(frozenset(_body_locals(node.body)), is_class=True, class_name=class_name), node.body)
 
     def _visit_comprehension(self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp) -> None:
         self.visit(node.generators[0].iter)
@@ -229,6 +287,36 @@ class _UseCollector(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         return
+
+    def _local_type(self, name: str) -> TypePath | None:
+        for scope in reversed(self.scopes):
+            if name in scope.names:
+                return dict(scope.types).get(name)
+        return None
+
+    def visit_Call(self, node: ast.Call) -> None:
+        """recv.method(...): a use of Class.method when the receiver's class is in sight.
+
+        Module-level names and their attributes are paths, not method calls; a
+        literal receiver has a type of the language, not of the repository.
+        """
+        function = node.func
+        if isinstance(function, ast.Attribute) and not isinstance(function.value, _LITERALS):
+            receiver = function.value
+            head = receiver
+            while isinstance(head, ast.Attribute):
+                head = head.value
+            is_path = isinstance(head, ast.Name) and not self._shadowed(head.id) and (
+                self.any_name or head.id in self.wanted)
+            if not is_path:
+                written = self._local_type(receiver.id) if isinstance(receiver, ast.Name) else None
+                end_line = function.end_lineno or function.lineno
+                end_col = function.end_col_offset if function.end_col_offset is not None else 0
+                member_at = [end_line, end_col - len(function.attr) + 1]
+                path = list(written) if written is not None else []
+                start = [receiver.lineno, receiver.col_offset + 1]
+                self.uses.append({"path": path, "at": [start for _ in path] + [member_at], "member": function.attr})
+        self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = "." * node.level + (node.module or "")

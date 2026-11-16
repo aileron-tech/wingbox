@@ -337,6 +337,106 @@ class UsePositionTests(unittest.TestCase):
         self.assertIn("(use src/run 3 25 src/shot::take :file src/run.rs)", rust)
 
 
+class MethodCallTests(unittest.TestCase):
+    def _facts(self, files: dict[str, str], cargo: bool = False) -> tuple[set[tuple[str, str, str, str]], dict[str, int]]:
+        import contextlib
+        import importlib.util
+        import io
+
+        from scripts.build_code_graph import render_sexp
+
+        spec = importlib.util.spec_from_file_location(
+            "code_graph_search_for_methods", Path(__file__).resolve().parents[1] / "scripts" / "code_graph_search.py")
+        assert spec is not None and spec.loader is not None
+        search = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = search
+        spec.loader.exec_module(search)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            if cargo:
+                (root / "Cargo.toml").write_text('[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+            results = []
+            for relative_path, content in files.items():
+                path = root / relative_path
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+                language = detect_source_language(path.name)
+                assert language is not None
+                results.append(parse_file((str(path), language, root.name)))
+            graph = build_graph(results, str(root))
+            assert isinstance(graph, Ok)
+            map_path = root / ".code_graph.sexp"
+            map_path.write_text(render_sexp(graph.value.nodes, graph.value.edges, str(root), "syntax", len(results)),
+                                encoding="utf-8")
+            loaded = search.CodeGraph()
+            loaded.load(str(map_path), str(root))
+        uses = {
+            (source, str(line), str(column), target)
+            for target, sites in loaded.uses_by_target.items()
+            for source, line, column in sites
+        }
+        return uses, dict(loaded.unresolved_method_calls)
+
+    def test_python_method_calls_resolve_only_with_a_visible_receiver_type(self) -> None:
+        """/* REQ-LANG-011: a Python method call resolves to Class.method when the receiver's class is in sight (self in a method, a parameter or variable annotated with the class, a variable assigned from the constructor, an inherited method of a base class); any other receiver is counted as unresolved, never guessed, and makes no refs edge. */"""
+        uses, unresolved = self._facts({
+            "app/__init__.py": "",
+            "app/base.py": "class Base:\n    def close(self): ...\n",
+            "app/store.py": "from app.base import Base\n\nclass Store(Base):\n    def save(self): ...\n    def flush(self):\n        self.save()\n",
+            "app/user.py": (
+                "from app.store import Store\n"
+                "def run(s: Store, items):\n"
+                "    s.save()\n"
+                "    t = Store()\n"
+                "    t.close()\n"
+                "    items.save()\n"
+                "    make().save()\n"
+            ),
+        })
+        self.assertIn(("app/store", "6", "14", "app/store::Store.save"), uses)
+        self.assertIn(("app/user", "3", "7", "app/store::Store.save"), uses)
+        self.assertIn(("app/user", "5", "7", "app/base::Base.close"), uses)
+        self.assertEqual(2, unresolved.get("app/user"))
+        self.assertNotIn("app/store", unresolved)
+
+    def test_typescript_and_rust_method_calls(self) -> None:
+        """/* REQ-LANG-012: TypeScript (this, an annotated parameter, `new C()`) and Rust (self in an impl, an annotated or referenced parameter, a struct literal) method calls resolve to Class.method; `x.m()` on an untyped receiver or a call result is unresolved. */"""
+        ts_uses, ts_unresolved = self._facts({
+            "src/store.ts": "export class Store {\n  save() {}\n  flush() { this.save(); }\n}\n",
+            "src/user.ts": (
+                "import { Store } from './store';\n"
+                "export function run(s: Store, x: any) {\n"
+                "  s.save();\n"
+                "  const t = new Store();\n"
+                "  t.flush();\n"
+                "  x.save();\n"
+                "}\n"
+            ),
+        })
+        self.assertIn(("src/store", "3", "18", "src/store::Store.save"), ts_uses)
+        self.assertIn(("src/user", "3", "5", "src/store::Store.save"), ts_uses)
+        self.assertIn(("src/user", "5", "5", "src/store::Store.flush"), ts_uses)
+        self.assertEqual(1, ts_unresolved.get("src/user"))
+        rs_uses, rs_unresolved = self._facts({
+            "src/lib.rs": "pub mod store;\npub mod user;\n",
+            "src/store.rs": "pub struct Store { pub n: u8 }\nimpl Store {\n    pub fn save(&self) {}\n    pub fn flush(&self) { self.save(); }\n}\n",
+            "src/user.rs": (
+                "use crate::store::Store;\n"
+                "fn run(s: &Store, v: Vec<u8>) {\n"
+                "    s.save();\n"
+                "    let t = Store { n: 1 };\n"
+                "    t.flush();\n"
+                "    v.len();\n"
+                "    make().save();\n"
+                "}\n"
+            ),
+        }, cargo=True)
+        self.assertIn(("src/store", "4", "32", "src/store::Store.save"), rs_uses)
+        self.assertIn(("src/user", "3", "7", "src/store::Store.save"), rs_uses)
+        self.assertIn(("src/user", "5", "7", "src/store::Store.flush"), rs_uses)
+        self.assertEqual(2, rs_unresolved.get("src/user"))
+
+
 def _parsed(relative_path: str, content: str) -> dict:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / relative_path
