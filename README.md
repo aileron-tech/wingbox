@@ -7,8 +7,10 @@
 > Wingbox builds a local **code graph** of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture
 > boundaries and the **blast radius** of a change before editing code.
-> It works as an agent skill in Claude Code and Codex and supports Python,
-> TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free Pascal, and Lazarus.
+> It works as an agent skill in Claude Code, Codex, Gemini CLI, Cursor and
+> GitHub Copilot, as an MCP server for any MCP client, and from the command
+> line. It supports Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, Free
+> Pascal, and Lazarus.
 >
 > **Runs fully locally:** no network access, no model, no telemetry. It can be
 > used inside a security perimeter and on a machine with no internet.
@@ -16,9 +18,11 @@
 > **Website:** [wingbox.dev](https://wingbox.dev): benchmarks with charts, a
 > sample report and the live map.
 >
-> **Install the agent skill:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
+> **Install:** `pipx install wingbox && wingbox install` | [PyPI](https://pypi.org/project/wingbox/):
+> the command, then the skill, an always-on block and a search hook for every
+> coding assistant on the machine. Then type `/wingbox` in your agent.
 >
-> **Install the command:** `pipx install wingbox` | [PyPI](https://pypi.org/project/wingbox/)
+> **Skill only:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
 > **Release notes:** [Changelog](CHANGELOG.md)
 >
@@ -46,8 +50,8 @@ Wingbox is safe to run on code that must not leave the company:
 - **No network.** Building and querying the graph open no network connection.
   Run it with the network switched off to see for yourself:
   `docker run --rm --network none -v "$PWD":/repo wingbox`.
-  Building and querying never use the network; `wingbox update` runs your
-  package installer (pipx, uv or pip) when you ask it to.
+  The one command that reaches the network is `wingbox update`, which runs
+  your package installer (pipx, uv or pip) when you ask it to.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
@@ -73,7 +77,7 @@ that opens network connections, and the map page loads no outside resource.
 </p>
 
 Once the graph is built, an agent asks what a change breaks before it edits
-anything. Real output, Wingbox 0.2.2 on the server of
+anything. Real output, Wingbox 0.2.6 on the server of
 [immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
 
 ```text
@@ -147,7 +151,7 @@ dependents by depth and the files to read first; `rdeps` and `boundary` give
 the same facts as a tree and as a change boundary.
 
 ```text
-$ python3 scripts/code_graph_search.py impact scripts/lang/treesitter.py
+$ wingbox impact scripts/lang/treesitter.py
 
 Impact of changing scripts/lang/treesitter.py
   direct dependents   4
@@ -221,13 +225,17 @@ result file and the token formula Graphify publishes are in
 
 ## Quick start for AI coding agents
 
-Install the skill:
+Install the command and let it set up every coding assistant on the machine
+(see [Install into your coding assistants](#install-into-your-coding-assistants)):
 
 ```bash
-npx skills add aileron-tech/wingbox
+pipx install wingbox
+wingbox install
 ```
 
-Then ask your agent a natural question:
+In the agent, `/wingbox` builds the graph and summarizes the report,
+`/wingbox path/to/file` shows what a change to that file breaks. Or ask a
+natural question:
 
 ```text
 Use the Wingbox skill before reading source.
@@ -235,16 +243,13 @@ Find where file uploads are handled, analyze that module, show its dependencies
 and blast radius, then list only the boundary files needed for the change.
 ```
 
-Wingbox works with Codex, Claude Code, and other clients that support Agent
-Skills.
-
-Or let the `wingbox` command set up every assistant on the machine (see
-[Install into your coding assistants](#install-into-your-coding-assistants)):
+To install the skill alone, without the command's block and hook:
 
 ```bash
-pipx install wingbox
-wingbox install
+npx skills add aileron-tech/wingbox
 ```
+
+MCP clients use `wingbox mcp`: see [Use from an MCP client](#use-from-an-mcp-client).
 
 ## Quick start from the command line
 
@@ -547,8 +552,8 @@ dependent files, nearest first; add `--all` for every file. `boundaries` reports
 an import of TypeScript types only apart from the violations: the compiler
 erases it, but a change of the type still reaches the importing file.
 
-Pass the same `--map` and `--root` options shown in the quick start when the map
-is outside the current directory.
+Pass `--map` and `--root` (see [Running the scripts from a clone](#running-the-scripts-from-a-clone))
+when the graph is outside the current directory and its parents.
 
 ## Supported languages and projects
 
@@ -609,9 +614,7 @@ edges. Add `--lsp` when supported language servers are installed to enrich the m
 with precise call-site information:
 
 ```bash
-python3 scripts/build_code_graph.py \
-  --root /absolute/path/to/project \
-  --lsp
+wingbox build /path/to/project --lsp
 ```
 
 You can then ask an agent to render Mermaid diagrams from the graph:
