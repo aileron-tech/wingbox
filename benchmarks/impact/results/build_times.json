@@ -1,0 +1,260 @@
+{
+ "machine": {
+  "system": "Linux",
+  "release": "7.0.0-1017-azure",
+  "cpu": "AMD EPYC 9V74 80-Core Processor",
+  "logical_cpus": 4
+ },
+ "version": "wingbox 0.2.2",
+ "rounds": 3,
+ "summary": [
+  {
+   "corpus": "karpathy",
+   "source_files": 29,
+   "build_wall_s": 0.28,
+   "build_cpu_s": 0.35,
+   "modules": 29,
+   "import_edges": 15
+  },
+  {
+   "corpus": "chrome-devtools-mcp",
+   "source_files": 296,
+   "build_wall_s": 0.79,
+   "build_cpu_s": 1.87,
+   "modules": 293,
+   "import_edges": 919
+  },
+  {
+   "corpus": "agent-browser",
+   "source_files": 363,
+   "build_wall_s": 2.06,
+   "build_cpu_s": 4.44,
+   "modules": 359,
+   "import_edges": 751
+  },
+  {
+   "corpus": "claudes-c-compiler",
+   "source_files": 351,
+   "build_wall_s": 2.23,
+   "build_cpu_s": 4.82,
+   "modules": 351,
+   "import_edges": 1462
+  },
+  {
+   "corpus": "immich-server",
+   "source_files": 707,
+   "build_wall_s": 1.84,
+   "build_cpu_s": 4.17,
+   "modules": 707,
+   "import_edges": 3795
+  },
+  {
+   "corpus": "fastapi",
+   "source_files": 1227,
+   "build_wall_s": 3.23,
+   "build_cpu_s": 5.18,
+   "modules": 1227,
+   "import_edges": 1818
+  }
+ ],
+ "runs": [
+  {
+   "round": 1,
+   "corpus": "karpathy",
+   "source_files": 29,
+   "wall_s": 0.35,
+   "cpu_s": 0.42,
+   "graph": {
+    "modules": 29,
+    "import_edges": 15
+   }
+  },
+  {
+   "round": 1,
+   "corpus": "chrome-devtools-mcp",
+   "source_files": 296,
+   "wall_s": 0.79,
+   "cpu_s": 1.87,
+   "graph": {
+    "modules": 293,
+    "import_edges": 919
+   }
+  },
+  {
+   "round": 1,
+   "corpus": "agent-browser",
+   "source_files": 363,
+   "wall_s": 2.05,
+   "cpu_s": 4.43,
+   "graph": {
+    "modules": 359,
+    "import_edges": 751
+   }
+  },
+  {
+   "round": 1,
+   "corpus": "claudes-c-compiler",
+   "source_files": 351,
+   "wall_s": 2.26,
+   "cpu_s": 4.85,
+   "graph": {
+    "modules": 351,
+    "import_edges": 1462
+   }
+  },
+  {
+   "round": 1,
+   "corpus": "immich-server",
+   "source_files": 707,
+   "wall_s": 1.85,
+   "cpu_s": 4.17,
+   "graph": {
+    "modules": 707,
+    "import_edges": 3795
+   }
+  },
+  {
+   "round": 1,
+   "corpus": "fastapi",
+   "source_files": 1227,
+   "wall_s": 3.2,
+   "cpu_s": 5.15,
+   "graph": {
+    "modules": 1227,
+    "import_edges": 1818
+   }
+  },
+  {
+   "round": 2,
+   "corpus": "karpathy",
+   "source_files": 29,
+   "wall_s": 0.28,
+   "cpu_s": 0.35,
+   "graph": {
+    "modules": 29,
+    "import_edges": 15
+   }
+  },
+  {
+   "round": 2,
+   "corpus": "chrome-devtools-mcp",
+   "source_files": 296,
+   "wall_s": 0.79,
+   "cpu_s": 1.87,
+   "graph": {
+    "modules": 293,
+    "import_edges": 919
+   }
+  },
+  {
+   "round": 2,
+   "corpus": "agent-browser",
+   "source_files": 363,
+   "wall_s": 2.06,
+   "cpu_s": 4.45,
+   "graph": {
+    "modules": 359,
+    "import_edges": 751
+   }
+  },
+  {
+   "round": 2,
+   "corpus": "claudes-c-compiler",
+   "source_files": 351,
+   "wall_s": 2.23,
+   "cpu_s": 4.81,
+   "graph": {
+    "modules": 351,
+    "import_edges": 1462
+   }
+  },
+  {
+   "round": 2,
+   "corpus": "immich-server",
+   "source_files": 707,
+   "wall_s": 1.84,
+   "cpu_s": 4.19,
+   "graph": {
+    "modules": 707,
+    "import_edges": 3795
+   }
+  },
+  {
+   "round": 2,
+   "corpus": "fastapi",
+   "source_files": 1227,
+   "wall_s": 3.23,
+   "cpu_s": 5.18,
+   "graph": {
+    "modules": 1227,
+    "import_edges": 1818
+   }
+  },
+  {
+   "round": 3,
+   "corpus": "karpathy",
+   "source_files": 29,
+   "wall_s": 0.27,
+   "cpu_s": 0.35,
+   "graph": {
+    "modules": 29,
+    "import_edges": 15
+   }
+  },
+  {
+   "round": 3,
+   "corpus": "chrome-devtools-mcp",
+   "source_files": 296,
+   "wall_s": 0.78,
+   "cpu_s": 1.87,
+   "graph": {
+    "modules": 293,
+    "import_edges": 919
+   }
+  },
+  {
+   "round": 3,
+   "corpus": "agent-browser",
+   "source_files": 363,
+   "wall_s": 2.21,
+   "cpu_s": 4.44,
+   "graph": {
+    "modules": 359,
+    "import_edges": 751
+   }
+  },
+  {
+   "round": 3,
+   "corpus": "claudes-c-compiler",
+   "source_files": 351,
+   "wall_s": 2.22,
+   "cpu_s": 4.82,
+   "graph": {
+    "modules": 351,
+    "import_edges": 1462
+   }
+  },
+  {
+   "round": 3,
+   "corpus": "immich-server",
+   "source_files": 707,
+   "wall_s": 1.84,
+   "cpu_s": 4.16,
+   "graph": {
+    "modules": 707,
+    "import_edges": 3795
+   }
+  },
+  {
+   "round": 3,
+   "corpus": "fastapi",
+   "source_files": 1227,
+   "wall_s": 3.28,
+   "cpu_s": 5.18,
+   "graph": {
+    "modules": 1227,
+    "import_edges": 1818
+   }
+  }
+ ]
+}
