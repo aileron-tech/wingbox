@@ -779,3 +779,11 @@
 ### Motivation
 - The maintainer asked when usages ships and chose to release it now, the architecture commands (init, place, align, learn) following as 0.4.0 after an independent check of learn.
 
+## 2026-11-16 - Release 0.4.0
+
+### Changes
+- Version 0.4.0: the graph keeps itself fresh through hooks (edit marks, outside-change check, partial update), the first `usages` after a change reads only the changed files, PHP 8 and Laravel (#42). The map-request workflow builds with 0.4.0.
+
+### Motivation
+- The maintainer: "давай выпускай".
+

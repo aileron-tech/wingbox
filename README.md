@@ -22,6 +22,11 @@
 > the command, then the skill, an always-on block and a search hook for every
 > coding assistant on the machine. Then type `/wingbox` in your agent.
 >
+> **The graph keeps itself fresh:** in Claude Code a hook marks every edited
+> file, and the next search patches only those files into the graph (about a
+> second on a 1,200-file project); changes made by git or an editor are found
+> too. See [Keeping the graph fresh](#keeping-the-graph-fresh).
+>
 > **Skill only:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
 > **Release notes:** [Changelog](CHANGELOG.md)
