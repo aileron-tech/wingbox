@@ -32,6 +32,25 @@ class BenchmarkReportTest(unittest.TestCase):
                         offenders.append(f"{path.relative_to(BENCHMARK)}:{number}")
         self.assertEqual(offenders, [])
 
+    def test_build_time_summary_takes_the_median_of_the_rounds(self) -> None:
+        """/* REQ-BENCH-003: the build-time summary must give, per corpus, the median wall time of each step and the ratio of Graphify extract to Wingbox build. */"""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("time_builds", BENCHMARK / "tools" / "time_builds.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        runs = []
+        for round_no, (build, extract, cluster) in enumerate([(2.0, 30.0, 5.0), (4.0, 50.0, 7.0), (3.0, 40.0, 6.0)], start=1):
+            for tool, step, wall in (("wingbox", "build", build), ("graphify", "extract", extract), ("graphify", "cluster", cluster)):
+                runs.append({"round": round_no, "corpus": "demo", "source_files": 12, "tool": tool, "step": step, "wall_s": wall, "cpu_s": wall * 2})
+        rows = module.summarise(runs)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["wingbox_build_wall_s"], 3.0)
+        self.assertEqual(rows[0]["graphify_extract_wall_s"], 40.0)
+        self.assertEqual(rows[0]["graphify_cluster_wall_s"], 6.0)
+        self.assertEqual(rows[0]["extract_to_build_wall_ratio"], 13.3)
+        self.assertIn("| demo | 12 | 3.0 | 40.0 | 6.0 | 13.3x |", module.table(rows))
+
 
 if __name__ == "__main__":
     unittest.main()
