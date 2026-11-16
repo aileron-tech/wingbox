@@ -1,0 +1,30 @@
+{
+ "question": {
+  "id": "immich-server-07",
+  "repo": "immich-server",
+  "file": "src/dtos/system-metadata.dto.ts"
+ },
+ "direct": [
+  "src/controllers/server.controller.ts",
+  "src/controllers/system-metadata.controller.ts",
+  "src/services/system-metadata.service.ts"
+ ],
+ "through_one": [
+  "src/controllers/index.ts",
+  "src/controllers/system-metadata.controller.spec.ts",
+  "src/maintenance/maintenance-worker.controller.ts",
+  "src/services/index.ts",
+  "src/services/system-metadata.service.spec.ts"
+ ],
+ "gold": [
+  "src/controllers/index.ts",
+  "src/controllers/server.controller.ts",
+  "src/controllers/system-metadata.controller.spec.ts",
+  "src/controllers/system-metadata.controller.ts",
+  "src/maintenance/maintenance-worker.controller.ts",
+  "src/services/index.ts",
+  "src/services/system-metadata.service.spec.ts",
+  "src/services/system-metadata.service.ts"
+ ],
+ "also_accepted": []
+}

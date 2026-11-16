@@ -1,0 +1,28 @@
+{
+ "question": {
+  "id": "immich-server-08",
+  "repo": "immich-server",
+  "file": "src/dtos/user-profile.dto.ts"
+ },
+ "direct": [
+  "src/controllers/user.controller.ts",
+  "src/services/user.service.ts"
+ ],
+ "through_one": [
+  "src/controllers/index.ts",
+  "src/controllers/user.controller.spec.ts",
+  "src/services/index.ts",
+  "src/services/user.service.spec.ts",
+  "test/medium/specs/services/user.service.spec.ts"
+ ],
+ "gold": [
+  "src/controllers/index.ts",
+  "src/controllers/user.controller.spec.ts",
+  "src/controllers/user.controller.ts",
+  "src/services/index.ts",
+  "src/services/user.service.spec.ts",
+  "src/services/user.service.ts",
+  "test/medium/specs/services/user.service.spec.ts"
+ ],
+ "also_accepted": []
+}

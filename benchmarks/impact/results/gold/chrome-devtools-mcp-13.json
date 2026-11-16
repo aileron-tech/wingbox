@@ -1,0 +1,30 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-13",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/tools/emulation.ts"
+ },
+ "direct": [
+  "src/tools/tools.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/network_blocking.test.ts",
+  "tests/tools/emulation.test.ts"
+ ],
+ "through_one": [
+  "src/index.ts",
+  "tests/tools/tools.test.ts"
+ ],
+ "gold": [
+  "src/index.ts",
+  "src/tools/tools.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/network_blocking.test.ts",
+  "tests/tools/emulation.test.ts",
+  "tests/tools/tools.test.ts"
+ ],
+ "also_accepted": [
+  "scripts/generate-cli.ts",
+  "scripts/generate-docs.ts",
+  "scripts/update_metrics.ts"
+ ]
+}

@@ -1,0 +1,36 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-03",
+  "repo": "claudes-c-compiler",
+  "file": "src/backend/arm/codegen/returns.rs"
+ },
+ "direct": [
+  "src/backend/arm/codegen/mod.rs"
+ ],
+ "through_one": [
+  "src/backend/arm/mod.rs"
+ ],
+ "gold": [
+  "src/backend/arm/codegen/mod.rs",
+  "src/backend/arm/mod.rs"
+ ],
+ "also_accepted": [
+  "src/backend/arm/codegen/alu.rs",
+  "src/backend/arm/codegen/asm_emitter.rs",
+  "src/backend/arm/codegen/atomics.rs",
+  "src/backend/arm/codegen/calls.rs",
+  "src/backend/arm/codegen/cast_ops.rs",
+  "src/backend/arm/codegen/comparison.rs",
+  "src/backend/arm/codegen/emit.rs",
+  "src/backend/arm/codegen/f128.rs",
+  "src/backend/arm/codegen/float_ops.rs",
+  "src/backend/arm/codegen/globals.rs",
+  "src/backend/arm/codegen/i128_ops.rs",
+  "src/backend/arm/codegen/inline_asm.rs",
+  "src/backend/arm/codegen/intrinsics.rs",
+  "src/backend/arm/codegen/memory.rs",
+  "src/backend/arm/codegen/prologue.rs",
+  "src/backend/arm/codegen/variadic.rs",
+  "src/backend/mod.rs"
+ ]
+}

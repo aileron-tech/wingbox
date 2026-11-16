@@ -1,0 +1,25 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-14",
+  "repo": "claudes-c-compiler",
+  "file": "src/backend/x86/codegen/peephole/passes/copy_propagation.rs"
+ },
+ "direct": [
+  "src/backend/x86/codegen/peephole/passes/mod.rs"
+ ],
+ "through_one": [
+  "src/backend/x86/codegen/peephole/mod.rs"
+ ],
+ "gold": [
+  "src/backend/x86/codegen/peephole/mod.rs",
+  "src/backend/x86/codegen/peephole/passes/mod.rs"
+ ],
+ "also_accepted": [
+  "src/backend/x86/codegen/peephole/passes/callee_saves.rs",
+  "src/backend/x86/codegen/peephole/passes/dead_code.rs",
+  "src/backend/x86/codegen/peephole/passes/frame_compact.rs",
+  "src/backend/x86/codegen/peephole/passes/local_patterns.rs",
+  "src/backend/x86/codegen/peephole/passes/loop_trampoline.rs",
+  "src/backend/x86/codegen/peephole/passes/store_forwarding.rs"
+ ]
+}

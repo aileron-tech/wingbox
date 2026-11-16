@@ -1,0 +1,48 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-16",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/tools/toolNames.ts"
+ },
+ "direct": [
+  "src/McpResponse.ts",
+  "src/tools/console.ts",
+  "src/tools/logpoints.ts"
+ ],
+ "through_one": [
+  "src/SlimMcpResponse.ts",
+  "src/ToolHandler.ts",
+  "src/tools/tools.ts",
+  "tests/McpResponse.test.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/mocks.ts",
+  "tests/network_blocking.test.ts",
+  "tests/tools/console.test.ts",
+  "tests/tools/input.test.ts",
+  "tests/tools/logpoints.test.ts",
+  "tests/tools/snapshot.test.ts",
+  "tests/tools/thirdPartyDeveloper.test.ts",
+  "tests/tools/webauthn.test.ts",
+  "tests/utils.ts"
+ ],
+ "gold": [
+  "src/McpResponse.ts",
+  "src/SlimMcpResponse.ts",
+  "src/ToolHandler.ts",
+  "src/tools/console.ts",
+  "src/tools/logpoints.ts",
+  "src/tools/tools.ts",
+  "tests/McpResponse.test.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/mocks.ts",
+  "tests/network_blocking.test.ts",
+  "tests/tools/console.test.ts",
+  "tests/tools/input.test.ts",
+  "tests/tools/logpoints.test.ts",
+  "tests/tools/snapshot.test.ts",
+  "tests/tools/thirdPartyDeveloper.test.ts",
+  "tests/tools/webauthn.test.ts",
+  "tests/utils.ts"
+ ],
+ "also_accepted": []
+}

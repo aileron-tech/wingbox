@@ -1,0 +1,42 @@
+{
+ "question": {
+  "id": "agent-browser-08",
+  "repo": "agent-browser",
+  "file": "cli/src/native/flow/hint.rs"
+ },
+ "direct": [
+  "cli/src/native/flow/mod.rs"
+ ],
+ "through_one": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/flow/hosts.rs",
+  "cli/src/native/flow/http.rs",
+  "cli/src/native/flow/memory.rs",
+  "cli/src/native/flow/net.rs",
+  "cli/src/native/flow/outcome.rs",
+  "cli/src/native/flow/page.rs",
+  "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
+  "cli/src/native/flow/template.rs",
+  "cli/src/native/mod.rs"
+ ],
+ "gold": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/flow/hosts.rs",
+  "cli/src/native/flow/http.rs",
+  "cli/src/native/flow/memory.rs",
+  "cli/src/native/flow/mod.rs",
+  "cli/src/native/flow/net.rs",
+  "cli/src/native/flow/outcome.rs",
+  "cli/src/native/flow/page.rs",
+  "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
+  "cli/src/native/flow/template.rs",
+  "cli/src/native/mod.rs"
+ ],
+ "also_accepted": [
+  "cli/src/native/flow/model.rs"
+ ]
+}

@@ -1,0 +1,15 @@
+{
+ "question": {
+  "id": "fastapi-09",
+  "repo": "fastapi",
+  "file": "docs_src/websockets_/tutorial001.py"
+ },
+ "direct": [
+  "tests/test_tutorial/test_websockets/test_tutorial001.py"
+ ],
+ "through_one": [],
+ "gold": [
+  "tests/test_tutorial/test_websockets/test_tutorial001.py"
+ ],
+ "also_accepted": []
+}

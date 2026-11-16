@@ -1,0 +1,24 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-03",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/ToolHandler.ts"
+ },
+ "direct": [
+  "src/index.ts",
+  "tests/McpServer.test.ts",
+  "tests/ToolHandler.test.ts"
+ ],
+ "through_one": [
+  "src/bin/chrome-devtools-mcp-main.ts",
+  "src/daemon/daemon.ts"
+ ],
+ "gold": [
+  "src/bin/chrome-devtools-mcp-main.ts",
+  "src/daemon/daemon.ts",
+  "src/index.ts",
+  "tests/McpServer.test.ts",
+  "tests/ToolHandler.test.ts"
+ ],
+ "also_accepted": []
+}

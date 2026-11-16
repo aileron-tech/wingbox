@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-19",
+  "repo": "immich-server",
+  "file": "test/factories/album-user.factory.ts"
+ },
+ "direct": [
+  "src/services/album.service.spec.ts",
+  "test/factories/album.factory.ts"
+ ],
+ "through_one": [
+  "src/dtos/album-response.dto.spec.ts",
+  "src/services/map.service.spec.ts",
+  "src/services/notification.service.spec.ts",
+  "src/services/shared-link.service.spec.ts",
+  "src/services/storage-template.service.spec.ts",
+  "test/factories/shared-link.factory.ts",
+  "test/mappers.ts"
+ ],
+ "gold": [
+  "src/dtos/album-response.dto.spec.ts",
+  "src/services/album.service.spec.ts",
+  "src/services/map.service.spec.ts",
+  "src/services/notification.service.spec.ts",
+  "src/services/shared-link.service.spec.ts",
+  "src/services/storage-template.service.spec.ts",
+  "test/factories/album.factory.ts",
+  "test/factories/shared-link.factory.ts",
+  "test/mappers.ts"
+ ],
+ "also_accepted": []
+}

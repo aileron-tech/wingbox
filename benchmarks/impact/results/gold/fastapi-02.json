@@ -1,0 +1,15 @@
+{
+ "question": {
+  "id": "fastapi-02",
+  "repo": "fastapi",
+  "file": "docs_src/behind_a_proxy/tutorial001_01.py"
+ },
+ "direct": [
+  "tests/test_tutorial/test_behind_a_proxy/test_tutorial001_01.py"
+ ],
+ "through_one": [],
+ "gold": [
+  "tests/test_tutorial/test_behind_a_proxy/test_tutorial001_01.py"
+ ],
+ "also_accepted": []
+}

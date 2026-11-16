@@ -1,0 +1,46 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-05",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/collectors/ServiceWorkerCollector.ts"
+ },
+ "direct": [
+  "src/McpContext.ts",
+  "tests/McpContext.test.ts",
+  "tests/collectors/ServiceWorkerCollector.test.ts"
+ ],
+ "through_one": [
+  "src/McpResponse.ts",
+  "src/SlimMcpResponse.ts",
+  "src/ToolHandler.ts",
+  "src/index.ts",
+  "tests/McpResponse.test.ts",
+  "tests/McpServer.test.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/mocks.ts",
+  "tests/network_blocking.test.ts",
+  "tests/roots.test.ts",
+  "tests/tools/thirdPartyDeveloper.test.ts",
+  "tests/tools/webauthn.test.ts",
+  "tests/utils.ts"
+ ],
+ "gold": [
+  "src/McpContext.ts",
+  "src/McpResponse.ts",
+  "src/SlimMcpResponse.ts",
+  "src/ToolHandler.ts",
+  "src/index.ts",
+  "tests/McpContext.test.ts",
+  "tests/McpResponse.test.ts",
+  "tests/McpServer.test.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/collectors/ServiceWorkerCollector.test.ts",
+  "tests/mocks.ts",
+  "tests/network_blocking.test.ts",
+  "tests/roots.test.ts",
+  "tests/tools/thirdPartyDeveloper.test.ts",
+  "tests/tools/webauthn.test.ts",
+  "tests/utils.ts"
+ ],
+ "also_accepted": []
+}

@@ -1,0 +1,38 @@
+{
+ "question": {
+  "id": "immich-server-09",
+  "repo": "immich-server",
+  "file": "src/dtos/workflow.dto.ts"
+ },
+ "direct": [
+  "src/controllers/workflow.controller.ts",
+  "src/repositories/workflow.repository.ts",
+  "src/services/workflow.service.ts"
+ ],
+ "through_one": [
+  "src/controllers/index.ts",
+  "src/controllers/workflow.controller.spec.ts",
+  "src/repositories/index.ts",
+  "src/services/base.service.ts",
+  "src/services/index.ts",
+  "test/medium.factory.ts",
+  "test/medium/specs/services/workflow.service.spec.ts",
+  "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+  "test/utils.ts"
+ ],
+ "gold": [
+  "src/controllers/index.ts",
+  "src/controllers/workflow.controller.spec.ts",
+  "src/controllers/workflow.controller.ts",
+  "src/repositories/index.ts",
+  "src/repositories/workflow.repository.ts",
+  "src/services/base.service.ts",
+  "src/services/index.ts",
+  "src/services/workflow.service.ts",
+  "test/medium.factory.ts",
+  "test/medium/specs/services/workflow.service.spec.ts",
+  "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+  "test/utils.ts"
+ ],
+ "also_accepted": []
+}

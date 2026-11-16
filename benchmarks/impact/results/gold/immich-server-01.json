@@ -1,0 +1,18 @@
+{
+ "question": {
+  "id": "immich-server-01",
+  "repo": "immich-server",
+  "file": "src/commands/grant-admin.ts"
+ },
+ "direct": [
+  "src/commands/index.ts"
+ ],
+ "through_one": [
+  "src/app.module.ts"
+ ],
+ "gold": [
+  "src/app.module.ts",
+  "src/commands/index.ts"
+ ],
+ "also_accepted": []
+}

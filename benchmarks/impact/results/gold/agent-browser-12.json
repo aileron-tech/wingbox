@@ -1,0 +1,72 @@
+{
+ "question": {
+  "id": "agent-browser-12",
+  "repo": "agent-browser",
+  "file": "cli/src/native/parity_tests.rs"
+ },
+ "direct": [
+  "cli/src/native/mod.rs"
+ ],
+ "through_one": [
+  "cli/src/main.rs"
+ ],
+ "gold": [
+  "cli/src/main.rs",
+  "cli/src/native/mod.rs"
+ ],
+ "also_accepted": [
+  "cli/src/chat.rs",
+  "cli/src/commands.rs",
+  "cli/src/doctor/chrome.rs",
+  "cli/src/doctor/environment.rs",
+  "cli/src/doctor/fix.rs",
+  "cli/src/doctor/security.rs",
+  "cli/src/mcp.rs",
+  "cli/src/native/a11y/mod.rs",
+  "cli/src/native/actions.rs",
+  "cli/src/native/browser.rs",
+  "cli/src/native/cdp/chrome.rs",
+  "cli/src/native/cdp/client.rs",
+  "cli/src/native/cdp/discovery.rs",
+  "cli/src/native/cdp/lightpanda.rs",
+  "cli/src/native/cdp/mod.rs",
+  "cli/src/native/cdp/obscura.rs",
+  "cli/src/native/cookies.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/e2e_tests.rs",
+  "cli/src/native/element.rs",
+  "cli/src/native/flow/hint.rs",
+  "cli/src/native/flow/hosts.rs",
+  "cli/src/native/flow/http.rs",
+  "cli/src/native/flow/memory.rs",
+  "cli/src/native/flow/mod.rs",
+  "cli/src/native/flow/model.rs",
+  "cli/src/native/flow/net.rs",
+  "cli/src/native/flow/outcome.rs",
+  "cli/src/native/flow/page.rs",
+  "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
+  "cli/src/native/flow/template.rs",
+  "cli/src/native/inspect_server.rs",
+  "cli/src/native/interaction.rs",
+  "cli/src/native/network.rs",
+  "cli/src/native/react/mod.rs",
+  "cli/src/native/recording.rs",
+  "cli/src/native/screenshot.rs",
+  "cli/src/native/snapshot.rs",
+  "cli/src/native/state.rs",
+  "cli/src/native/storage.rs",
+  "cli/src/native/stream/cdp_loop.rs",
+  "cli/src/native/stream/chat.rs",
+  "cli/src/native/stream/dashboard.rs",
+  "cli/src/native/stream/http.rs",
+  "cli/src/native/stream/mod.rs",
+  "cli/src/native/stream/websocket.rs",
+  "cli/src/native/tracing.rs",
+  "cli/src/native/webdriver/appium.rs",
+  "cli/src/native/webdriver/backend.rs",
+  "cli/src/native/webdriver/mod.rs",
+  "cli/src/session_settings/running.rs"
+ ]
+}

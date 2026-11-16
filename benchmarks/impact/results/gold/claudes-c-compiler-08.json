@@ -1,0 +1,31 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-08",
+  "repo": "claudes-c-compiler",
+  "file": "src/backend/riscv/assembler/compress.rs"
+ },
+ "direct": [
+  "src/backend/riscv/assembler/elf_writer.rs",
+  "src/backend/riscv/assembler/mod.rs"
+ ],
+ "through_one": [
+  "src/backend/mod.rs",
+  "src/backend/riscv/mod.rs"
+ ],
+ "gold": [
+  "src/backend/mod.rs",
+  "src/backend/riscv/assembler/elf_writer.rs",
+  "src/backend/riscv/assembler/mod.rs",
+  "src/backend/riscv/mod.rs"
+ ],
+ "also_accepted": [
+  "src/backend/riscv/assembler/encoder/atomics.rs",
+  "src/backend/riscv/assembler/encoder/base.rs",
+  "src/backend/riscv/assembler/encoder/compressed.rs",
+  "src/backend/riscv/assembler/encoder/float.rs",
+  "src/backend/riscv/assembler/encoder/mod.rs",
+  "src/backend/riscv/assembler/encoder/pseudo.rs",
+  "src/backend/riscv/assembler/encoder/system.rs",
+  "src/backend/riscv/assembler/encoder/vector.rs"
+ ]
+}

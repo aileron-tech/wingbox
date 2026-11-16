@@ -1,0 +1,38 @@
+{
+ "question": {
+  "id": "agent-browser-02",
+  "repo": "agent-browser",
+  "file": "cli/src/doctor/ffmpeg.rs"
+ },
+ "direct": [
+  "cli/src/doctor/mod.rs"
+ ],
+ "through_one": [
+  "cli/src/doctor/chrome.rs",
+  "cli/src/doctor/config.rs",
+  "cli/src/doctor/daemon.rs",
+  "cli/src/doctor/environment.rs",
+  "cli/src/doctor/fix.rs",
+  "cli/src/doctor/launch.rs",
+  "cli/src/doctor/network.rs",
+  "cli/src/doctor/providers.rs",
+  "cli/src/doctor/security.rs",
+  "cli/src/doctor/webgpu.rs",
+  "cli/src/main.rs"
+ ],
+ "gold": [
+  "cli/src/doctor/chrome.rs",
+  "cli/src/doctor/config.rs",
+  "cli/src/doctor/daemon.rs",
+  "cli/src/doctor/environment.rs",
+  "cli/src/doctor/fix.rs",
+  "cli/src/doctor/launch.rs",
+  "cli/src/doctor/mod.rs",
+  "cli/src/doctor/network.rs",
+  "cli/src/doctor/providers.rs",
+  "cli/src/doctor/security.rs",
+  "cli/src/doctor/webgpu.rs",
+  "cli/src/main.rs"
+ ],
+ "also_accepted": []
+}

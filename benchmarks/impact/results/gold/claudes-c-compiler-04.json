@@ -1,0 +1,28 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-04",
+  "repo": "claudes-c-compiler",
+  "file": "src/backend/arm/linker/link.rs"
+ },
+ "direct": [
+  "src/backend/arm/linker/mod.rs"
+ ],
+ "through_one": [
+  "src/backend/arm/mod.rs",
+  "src/backend/common.rs"
+ ],
+ "gold": [
+  "src/backend/arm/linker/mod.rs",
+  "src/backend/arm/mod.rs",
+  "src/backend/common.rs"
+ ],
+ "also_accepted": [
+  "src/backend/arm/linker/emit_dynamic.rs",
+  "src/backend/arm/linker/emit_shared.rs",
+  "src/backend/arm/linker/emit_static.rs",
+  "src/backend/arm/linker/input.rs",
+  "src/backend/arm/linker/plt_got.rs",
+  "src/backend/arm/linker/reloc.rs",
+  "src/backend/arm/linker/types.rs"
+ ]
+}

@@ -1,0 +1,28 @@
+# The Wingbox benchmark in a clean container: nothing from the machine that runs it takes part.
+#
+#   docker build -f Dockerfile.benchmark -t wingbox-benchmark .
+#   docker run --rm wingbox-benchmark
+#
+# The container installs Wingbox from PyPI, fetches the repositories of the benchmark at pinned
+# commits, builds the graphs, computes the reference lists with resolvers that share no code with
+# Wingbox, runs the tests that need no model (edges against the code, the impact command on the
+# sampled questions) and compares every result file with the committed one. It ends with
+# "REPRODUCED" and exit code 0, or lists the files that differ and exits 1.
+#
+#   docker run --rm -e WINGBOX_SPEC=wingbox==X.Y.Z -e VERIFY=0 -v "$PWD/out":/work/out wingbox-benchmark
+#       the same tests on another version, results written to ./out/results, nothing compared
+#
+# Needs the network (GitHub and PyPI). No model and no key. The agent test is not part of this image:
+# it runs paid model sessions (benchmarks/impact/impact100.py agent).
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv==0.6.6
+
+COPY benchmarks/impact /bench
+
+ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp UV_LINK_MODE=copy
+WORKDIR /work
+ENTRYPOINT ["/bench/run.sh", "/work"]

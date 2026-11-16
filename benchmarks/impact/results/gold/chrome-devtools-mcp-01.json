@@ -1,0 +1,18 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-01",
+  "repo": "chrome-devtools-mcp",
+  "file": "scripts/eslint_rules/check-license-rule.js"
+ },
+ "direct": [
+  "scripts/eslint_rules/local-plugin.js"
+ ],
+ "through_one": [
+  "eslint.config.js"
+ ],
+ "gold": [
+  "eslint.config.js",
+  "scripts/eslint_rules/local-plugin.js"
+ ],
+ "also_accepted": []
+}

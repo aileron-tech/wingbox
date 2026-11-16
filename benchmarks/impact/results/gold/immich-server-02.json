@@ -1,0 +1,26 @@
+{
+ "question": {
+  "id": "immich-server-02",
+  "repo": "immich-server",
+  "file": "src/commands/index.ts"
+ },
+ "direct": [
+  "src/app.module.ts"
+ ],
+ "through_one": [
+  "src/bin/sync-open-api.ts",
+  "src/main.ts",
+  "src/workers/api.ts",
+  "src/workers/maintenance.ts",
+  "src/workers/microservices.ts"
+ ],
+ "gold": [
+  "src/app.module.ts",
+  "src/bin/sync-open-api.ts",
+  "src/main.ts",
+  "src/workers/api.ts",
+  "src/workers/maintenance.ts",
+  "src/workers/microservices.ts"
+ ],
+ "also_accepted": []
+}

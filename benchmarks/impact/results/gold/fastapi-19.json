@@ -1,0 +1,21 @@
+{
+ "question": {
+  "id": "fastapi-19",
+  "repo": "fastapi",
+  "file": "tests/test_request_params/test_body/utils.py"
+ },
+ "direct": [
+  "tests/test_request_params/test_body/test_list.py",
+  "tests/test_request_params/test_body/test_optional_list.py",
+  "tests/test_request_params/test_body/test_optional_str.py",
+  "tests/test_request_params/test_body/test_required_str.py"
+ ],
+ "through_one": [],
+ "gold": [
+  "tests/test_request_params/test_body/test_list.py",
+  "tests/test_request_params/test_body/test_optional_list.py",
+  "tests/test_request_params/test_body/test_optional_str.py",
+  "tests/test_request_params/test_body/test_required_str.py"
+ ],
+ "also_accepted": []
+}

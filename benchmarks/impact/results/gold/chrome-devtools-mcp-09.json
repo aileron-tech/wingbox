@@ -1,0 +1,54 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-09",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/telemetry/errors.ts"
+ },
+ "direct": [
+  "src/telemetry/ClearcutLogger.ts",
+  "src/telemetry/persistence.ts",
+  "src/telemetry/types.ts",
+  "tests/telemetry/ClearcutLogger.test.ts",
+  "tests/telemetry/persistence.test.ts"
+ ],
+ "through_one": [
+  "src/ToolHandler.ts",
+  "src/bin/chrome-devtools-mcp-main.ts",
+  "src/daemon/daemon.ts",
+  "src/index.ts",
+  "src/telemetry/WatchdogClient.ts",
+  "src/telemetry/flagUtils.ts",
+  "src/telemetry/transformation.ts",
+  "src/telemetry/watchdog/ClearcutSender.ts",
+  "src/telemetry/watchdog/main.ts",
+  "tests/McpServer.test.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/e2e/telemetry.test.ts",
+  "tests/telemetry/WatchdogClient.test.ts",
+  "tests/telemetry/watchdog/ClearcutSender.test.ts"
+ ],
+ "gold": [
+  "src/ToolHandler.ts",
+  "src/bin/chrome-devtools-mcp-main.ts",
+  "src/daemon/daemon.ts",
+  "src/index.ts",
+  "src/telemetry/ClearcutLogger.ts",
+  "src/telemetry/WatchdogClient.ts",
+  "src/telemetry/flagUtils.ts",
+  "src/telemetry/persistence.ts",
+  "src/telemetry/transformation.ts",
+  "src/telemetry/types.ts",
+  "src/telemetry/watchdog/ClearcutSender.ts",
+  "src/telemetry/watchdog/main.ts",
+  "tests/McpServer.test.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/e2e/telemetry.test.ts",
+  "tests/telemetry/ClearcutLogger.test.ts",
+  "tests/telemetry/WatchdogClient.test.ts",
+  "tests/telemetry/persistence.test.ts",
+  "tests/telemetry/watchdog/ClearcutSender.test.ts"
+ ],
+ "also_accepted": [
+  "scripts/update_metrics.ts"
+ ]
+}

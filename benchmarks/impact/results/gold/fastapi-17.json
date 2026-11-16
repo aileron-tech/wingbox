@@ -1,0 +1,17 @@
+{
+ "question": {
+  "id": "fastapi-17",
+  "repo": "fastapi",
+  "file": "scripts/translation_git.py"
+ },
+ "direct": [
+  "scripts/translate.py",
+  "tests/test_translate.py"
+ ],
+ "through_one": [],
+ "gold": [
+  "scripts/translate.py",
+  "tests/test_translate.py"
+ ],
+ "also_accepted": []
+}
