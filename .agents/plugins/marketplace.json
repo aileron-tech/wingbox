@@ -1,0 +1,20 @@
+{
+  "name": "aileron-tech",
+  "interface": {
+    "displayName": "Aileron Technologies"
+  },
+  "plugins": [
+    {
+      "name": "wingbox",
+      "source": {
+        "source": "local",
+        "path": "./plugins/wingbox"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

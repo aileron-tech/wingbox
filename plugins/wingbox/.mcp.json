@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "wingbox": {
+      "command": "wingbox",
+      "args": ["mcp"]
+    }
+  }
+}

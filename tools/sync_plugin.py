@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Keep plugins/wingbox in step with the repository.
 
-The plugin folder is what Claude Code installs, and nothing outside
+The plugin folder is what Claude Code and Codex install, and nothing outside
 it reaches the user, so it holds a copy of the skill (SKILL.md and
-references/) and of LICENSE, and the version of pyproject.toml in the
-manifest and in the launcher's pinned `uvx --from wingbox==<version>`.
+references/) and of LICENSE, and the version of pyproject.toml in both
+manifests and in the launcher's pinned `uvx --from wingbox==<version>`.
 
     python3 tools/sync_plugin.py           rewrite what is stale
     python3 tools/sync_plugin.py --check   list what is stale, exit 1 if anything is
@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN_PATH = Path("plugins") / "wingbox"
-MANIFESTS = (Path(".claude-plugin") / "plugin.json",)
+MANIFESTS = (Path(".claude-plugin") / "plugin.json", Path(".codex-plugin") / "plugin.json")
 LAUNCHER = Path("scripts") / "wingbox-run"
 SKILL_DIR = Path("skills") / "wingbox"
 _PIN = re.compile(r"wingbox==[0-9][^\"' ]*")
