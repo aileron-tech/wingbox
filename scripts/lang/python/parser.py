@@ -4,9 +4,10 @@ import ast
 import re
 import sys
 
-from ..interface import Entity, FileResult, ImportedName
+from ..interface import BindingPayload, Entity, FileResult, ImportedName, UsePayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
+from .symbols import module_bindings, module_variables, use_sites
 
 
 PY_ABC_RE = re.compile(r"""class\s+\w+\s*\(.*(?:ABC|ABCMeta|Protocol).*\)""")
@@ -34,6 +35,9 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     entities: list[Entity] = []
     imported_names: list[ImportedName] = []
     exported_names: list[str] = []
+    variables: list[Entity] = []
+    bindings: list[BindingPayload] = []
+    uses: list[UsePayload] = []
 
     try:
         tree = ast.parse(content, filename=path)
@@ -120,6 +124,13 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
                     if isinstance(target, ast.Name) and target.id.isupper():
                         exported_names.append(target.id)
 
+        variables = module_variables(tree, frozenset(entity.name for entity in entities))
+        exported_names.extend(
+            variable.name for variable in variables if variable.name not in exported_names
+        )
+        bindings = module_bindings(tree)
+        uses = _use_sites(tree, path, entities, variables, bindings, full=False)
+
     except SyntaxError as error:
         print(
             f"[code-graph] WARNING: AST parse failed for {path}: {error}",
@@ -148,10 +159,48 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         purpose=infer_purpose(path, content, "python", [e.to_dict() for e in entities]),
         naming_convention=detect_naming(path),
         has_validation=_detect_validation(content),
-        entities=[e.to_dict() for e in entities],
+        entities=[e.to_dict() for e in (*entities, *variables)],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
+        bindings=bindings,
+        uses=uses,
     )
+
+
+def _use_sites(
+    tree: ast.Module,
+    path: str,
+    entities: list[Entity],
+    variables: list[Entity],
+    bindings: list[BindingPayload],
+    full: bool,
+) -> list[UsePayload]:
+    module_names = frozenset(
+        [entity.name for entity in (*entities, *variables)]
+        + [binding["local"] for binding in bindings if binding["local"] != "*"]
+    )
+    imported = frozenset(binding["local"] for binding in bindings if binding["local"] != "*")
+    has_glob = any(binding["local"] == "*" for binding in bindings)
+    return use_sites(tree, module_names, has_glob, path.endswith("__init__.py"), full, imported)
+
+
+def python_use_positions(path: str, content: str) -> list[UsePayload]:
+    """Every use site of the file (names, chains, method calls), for `usages` and `entity --positions`.
+
+    A build keeps only the uses that can name another file; this is the full list, computed
+    when a query first needs positions.
+    """
+    try:
+        tree = ast.parse(content, filename=path)
+    except SyntaxError:
+        return []
+    definitions = [
+        Entity(name=node.name, kind="function", line=node.lineno, methods=[], decorators=[], bases=[])
+        for node in ast.iter_child_nodes(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
+    variables = module_variables(tree, frozenset(entity.name for entity in definitions))
+    return _use_sites(tree, path, definitions, variables, module_bindings(tree), full=True)
 
 
 def _decorator_name(node: ast.expr) -> str:

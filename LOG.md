@@ -1,5 +1,150 @@
 # Completion Log
 
+## 2026-11-16 - the use index at the cost of a build without it
+
+### Changes
+- Measured first (wall and CPU, 3 rounds, variants interleaved so that each round sees the same load, load average beside each build), then profiled. The cost was in three places: the TypeScript use walk (half the parse time: every node visited in Python), a build that resolved every use again with no change, and positions and re-export refs in `.code_graph.sexp` (2.3x on immich-server).
+- `scripts/lang/*/symbols.py`, `parser.py`: two levels of use extraction. A build keeps only the uses that can name another file (import and export statements, chains and paths headed by an imported module or namespace, names a glob import may provide); `python_use_positions`, `typescript_use_positions`, `rust_use_positions` give the full list. The TypeScript walk is a tree-sitter query (names and method calls found in C); only names the module binds get scope work, and scopes are read lazily from the ancestors: a `let`, `const` or class shadows an import only in its block, a `var` in its function.
+- `scripts/build_code_graph.py`: `.code_graph.uses.sexp` next to the graph holds what only entity and usages read: `var` definitions (Python module-level variables, kind `variable`), the (file, definition) pairs, and after the first query that needs them every use position (`write_use_positions`: the full walk in parallel from the build cache, then resolution). `:reexport` refs and variables leave `.code_graph.sexp`. A build whose inputs (each file's content hash, the builder, the mode) match the use file's key takes the refs edges from it and resolves nothing.
+- `scripts/lang/symbols.py`: lookups that start afresh are memoised; `scripts/lang/*/imports.py`: `resolve_import` answers each (specifier, file) pair once per build (immich-server asked 91,191 times for 707 files; 0.2.6 did the same).
+- `scripts/code_graph_search.py`: the loader reads the use file only when a query needs it, ignores it with a warning when it does not belong to the graph, has the builder fill positions on first need, and answers `usages` from the lines that mention the name. `usages <file>::X` follows a file that only re-exports X to the definition.
+- Tests: REQ-CS-068, REQ-CS-069, REQ-TS-SYM-004.
+
+### Motivation
+- Maintainer: the price of usages is too high (graph about 2x, build 1.5 to 2.2x slower); build time and the main graph within about 10 to 15 % of 0.2.6, usages still 100/100, impact unchanged; also the two open gaps (TS block scope, re-exporting file as the target).
+
+### Verification
+- Interleaved, medians of 3, load 13 to 30 (`perf2.py`): immich-server cold 6.64 s wall / 25.9 s CPU (0.2.6) -> 4.79 / 25.6 (branch before: 10.29 / 39.6), warm 4.65 / 4.53 -> 2.55 / 2.51 (6.29 / 6.22); fastapi cold 24.95 / 42.0 -> 11.71 / 42.0 (30.62 / 63.7), warm 14.55 / 14.20 -> 6.51 / 6.41 (18.09 / 17.62).
+- `.code_graph.sexp`: immich-server 612,199 -> 628,101 bytes (+2.6 %), fastapi 542,272 -> 553,527 (+2.1 %); the branch before had 1,381,206 and 955,943. `.code_graph.uses.sexp` after the build: 198,512 and 91,971 bytes.
+- First `usages` query (fills positions): immich-server 6.4 s wall, fastapi 5.2 s; the next one 1.2 s and 0.5 s.
+- Refactoring benchmark: entity 40/40, 40/40, 20/20 exact; usages files 100/100, positions as before (Python 234/234, Rust 587/587, TypeScript 741 of 741 plus the 106 `new C()` sites); impact lists unchanged; 711-symbol check unchanged. Suite on 3.12 and 3.11.
+
+## 2026-11-16 - TypeScript imports with a Vite query suffix
+
+### Changes
+- `scripts/lang/typescript/imports.py` (`_without_query`): a specifier loses a `?query` or `#hash` suffix before it is resolved (relative, aliased or a package); a leading `#` (a package subpath import) is kept. A stripped path that does not exist stays unresolved.
+- Tests: REQ-TS-VITE-001.
+
+### Motivation
+- Found on a public Vite repository against an independent resolver: `import("./codeHighlight.worker?worker&inline")` and `./annotate.ts?api-404-guard` in two tests made no edge.
+
+### Verification
+- Refactoring benchmark TypeScript 40/40; impact lists unchanged; suite on 3.12 and 3.11.
+
+## 2026-11-16 - wingbox usages: every use of one symbol, with positions and kinds
+
+### Changes
+- `scripts/code_graph_search.py`: `cmd_usages` and the `usages` command (`Name`, `<file or module>::Name`, `<...>::Class.method`; `--sexp`, `--all`, 200 uses by default); facts `usages-target`, `usage`, `usage-file` (a language without use positions), `usages-more`, `usages-summary`, `usages-ambiguous`, `usages-candidate`, the text being their pretty print. The loader keeps `use` and `unresolved-call` lines unparsed until a query reads them; a position may carry a kind letter.
+- `scripts/lang/*/symbols.py`: the kind of each use: import, re-export (Rust `pub use`, TypeScript `export ... from` and `export { k }`, an import in a Python package `__init__.py`), call (also `new C()`), type, extends (extends, implements, `impl Trait for`); a resolved method call is a call. Rust: the `if` guard of a match arm is an expression, not a pattern (it hid three uses of a function and shadowed it for the rest of the function).
+- `scripts/build_code_graph.py`: `(use ... <line>:<col><kind letter> ...)`; `(unresolved-call <module> <method> <line>:<col> ...)` for unresolved method calls whose method name a class of the repository defines.
+- `src/wingbox/mcp_server.py`: the `usages` tool (text).
+- README, SKILL.md, `references/sexp-notation.md`: the command, the tool and the facts.
+- Tests: REQ-CS-062 to REQ-CS-067, REQ-MCP-011, REQ-RUST-019.
+
+### Motivation
+- Maintainer: a separate `usages` command instead of a symbol-level `impact`, which stays file-level and unchanged.
+
+### Verification
+- Refactoring benchmark through `usages <file>::<S> --sexp --all`: files exact in 40/40 TypeScript, 40/40 Rust, 20/20 Python questions. Positions in other files against the SCIP index of the same engines: Python 234 of 234, Rust 587 of 587 (584 before the match-guard fix), TypeScript 741 of 741 found plus 106 more, all `new C(...)` sites of a class with its own constructor, which SCIP files under the constructor symbol and an editor's find usages on the class lists.
+- `impact` lists of the five graphify questions unchanged; 711-symbol check: no new file outside the reference.
+- Graph size with kinds and unresolved call sites: immich-server 614,320 -> 1,383,327 bytes (the `unresolved-call` lines are 193,532 of it), fastapi 537,364 -> 951,035 (35,134).
+- Suite on 3.12 and 3.11.
+
+## 2026-11-16 - method calls: resolved only with the receiver's type in sight (step 5 of the symbol index)
+
+### Changes
+- `scripts/lang/interface.py`: `UsePayload.member`, a method call with the receiver's type path (empty when no type is in sight).
+- `scripts/lang/python/symbols.py`, `scripts/lang/typescript/symbols.py`, `scripts/lang/rust/symbols.py`: method call sites; the receiver's type from `self`/`this` of a class at module level (Rust: the type of the impl), a parameter or variable annotation, a constructor (`C()`, `new C()`, `C { .. }`, `C(..)`, a unit struct). A name bound in two ways has no type. Calls on module-level names and namespaces stay paths; calls on literals are not counted.
+- `scripts/lang/symbols.py`: `resolve_member` resolves the type, then the method in the class or, through its bases, an ancestor.
+- `scripts/build_code_graph.py`: resolved calls are `use` facts of `<Class>.<method>` (no refs edge: the class has its own); `(unresolved <module> :method-calls N)` per module.
+- `scripts/code_graph_search.py`: the loader reads `unresolved`; `entity C --positions` also lists the resolved calls of C's methods.
+- Tests: REQ-LANG-011, REQ-LANG-012.
+
+### Motivation
+- Maintainer, step 5: a method call whose receiver type is not visible is recorded as unresolved, never guessed; report how many such sites each repository has.
+
+### Verification
+- Method calls, resolved / unresolved: agent-browser 641 / 30,992 (2 %), chrome-devtools-mcp 890 / 9,546 (9 %), claudes-c-compiler 5,202 / 37,960 (12 %), fastapi 985 / 7,509 (12 %), immich-server 2,674 / 32,817 (8 %). Most unresolved calls are on values of the standard library or of dependencies (`.unwrap()`, `.map()`, `this.repository.find()`) or on fields whose type the walk does not follow.
+- Graph size: immich-server 1,169,369 bytes, fastapi 906,640.
+- Refactoring benchmark 40/40, 40/40, 20/20 exact; impact unchanged; suite on 3.12 and 3.11.
+
+## 2026-11-16 - positions of every use (step 4 of the symbol index)
+
+### Changes
+- `scripts/build_code_graph.py`: the resolved use sites of each file are kept on its node and written as `(use <module> <defining-module>::<S> <line>:<col> ...)`, one line per file and definition, in a `; --- uses ---` section.
+- `scripts/code_graph_search.py`: `entity S --positions` prints `(use <module> <line> <col> <defining-module>::<S> :file <path>)` for every use, sorted by file, line and column; the loader keeps the use lines unparsed until a query asks for them.
+- `scripts/lang/python/symbols.py`: binding a name (`x = ...`, `del x`) is not a use of another definition.
+- `references/sexp-notation.md`, `SKILL.md`: the `use` fact and the `--positions` flag.
+- Tests: REQ-CS-060, REQ-CS-061.
+
+### Motivation
+- Maintainer, step 4: each resolved use stored with line and column in the graph, `entity S` printing every line:column with a flag, the graph size kept in check.
+
+### Verification
+- Graph size, 0.2.5 -> this tree, all uses (also inside the defining file): immich-server 614,320 -> 1,086,605 bytes (1.77x), fastapi 537,364 -> 866,642 (1.61x), agent-browser 327,336 -> 694,854 (2.12x), chrome-devtools-mcp 203,123 -> 355,817 (1.75x), claudes-c-compiler 271,685 -> 915,376 (3.37x; glob imports of encoder modules). One line per use was 1,836,359 bytes on immich-server (2.99x) and 1,138,566 on fastapi (2.12x).
+- Graph load in process (median of 7, machine load 10 to 30): immich-server 700 -> 732 ms and 809 -> 810 ms in two rounds, claudes-c-compiler 314 -> 466 ms and 508 -> 631 ms. Parsing the use lines at load cost about 0.5 s per query before they were kept unparsed.
+- Refactoring benchmark: 40/40, 40/40, 20/20 exact; impact unchanged; suite on 3.12 and 3.11.
+
+## 2026-11-16 - use sites through scopes (step 3 of the symbol index)
+
+### Changes
+- `scripts/lang/typescript/parser.py`: use sites of every name the file binds at module level (its declarations and in-scope imports), from the scoped walk of `scripts/lang/typescript/symbols.py`: identifiers, member chains (`ns.S`, `Enum.A`), qualified types, JSX element names, shorthand properties and local `export { k }`. Parameters, variables, catch parameters, type parameters and declarations inside a function shadow a module-level name for the whole function. Python and Rust have had their scoped walks since the first change of this branch.
+- Tests: REQ-TS-SYM-002, REQ-TS-SYM-003.
+
+### Motivation
+- Maintainer, step 3: every identifier and qualified path resolved through scopes; a local binding with the same name shadows the import.
+
+### Verification
+- Refactoring benchmark: TypeScript 40/40, Rust 40/40, Python 20/20 exact, no file outside the lists; impact unchanged; the 711-symbol check gives the same single pre-existing TypeScript file. New refs edges: immich-server 5,890 -> 5,914, chrome-devtools-mcp 1,364 -> 1,397; a sample read against the source was right each time (generator functions newly in the symbol table, `export { ConfigSmtpDto as SystemConfigSmtpDto }`, `export type {TestScenario}` re-exported from another file).
+
+## 2026-11-16 - name resolution to the defining file (step 2 of the symbol index)
+
+### Changes
+- `scripts/lang/symbols.py`: TypeScript, TSX and JavaScript files take part; a TypeScript module has no child modules (`ns.X` is a name, never a file); a binding with module "" names the file itself (`export { k as K }`, `export default k`); a name in the file's scope comes only from bindings with `scope` (a re-export binds nothing locally).
+- `scripts/build_code_graph.py`: the resolver maps a result language (tsx, javascript) to its bound language.
+- `scripts/lang/typescript/parser.py`: use sites of the names in import and export statements.
+- Tests: REQ-TS-SYM-001, REQ-LANG-010 (cycles in TypeScript, Python and Rust).
+
+### Motivation
+- Maintainer, step 2: resolve names to the defining file through named and aliased imports, globs, namespace imports and re-export chains, with cycle protection.
+
+### Verification
+- Refactoring benchmark: TypeScript 40/40, Rust 40/40, Python 20/20 exact, no file outside the lists; impact lists of the five graphify questions unchanged; over the 711 symbols the reference was asked, one file outside its list (TypeScript, already named by 0.2.5: a script that imports `../out/Default/gen/src/...`, which Wingbox maps to the source on purpose and the unbuilt reference does not resolve).
+
+## 2026-11-16 - symbol table per file (step 1 of the symbol index)
+
+### Changes
+- `scripts/lang/interface.py`: `BindingPayload.scope` tells a binding in the file's scope from a re-export that binds nothing locally (TypeScript `export ... from`); module "" names the file itself.
+- `scripts/lang/typescript/parser.py`: entities for `abstract class`, `function*`, `var`, `let`/`const` without a value, `declare` statements (unwrapped) and namespaces (kind `module`); enum members listed as the enum's methods. An abstract class has no bases in its entity, so interface edges and module dependencies stay as they were.
+- `scripts/lang/typescript/symbols.py` (new): bindings of named, aliased, default, namespace and `import x = require()` imports, and of `export { X as Y } from`, `export * from`, `export * as ns from`, `export default <name>`.
+- Tests: REQ-LANG-008, REQ-LANG-009.
+
+### Motivation
+- Maintainer: build the full symbol index on the tree-sitter and `ast` walk Wingbox already does; step 1 is a symbol table per file with every top-level definition and what the file re-exports.
+
+### Verification
+- Refactoring benchmark: TypeScript 40/40 exact, Rust 40/40, Python 20/20 (resolution unchanged for Python and Rust); suite on 3.12 and 3.11.
+
+## 2026-11-16 - entity S: every file that uses S in Python and Rust
+
+### Changes
+- `scripts/lang/interface.py`: `FileResult.bindings` (module-level import bindings, with `*` for glob imports) and `FileResult.uses` (use sites: a name or a qualified path as written, with the line and column of each segment); both are kept in the parse cache.
+- `scripts/lang/python/symbols.py`: module-level variables (assignment, annotated assignment with a value, `Final`, `TypeAlias`, `type X = ...`, tuple targets, also inside module-level `if`/`try`/`with`) that are public or listed in `__all__` become `function` entities, the kind TypeScript consts and Rust const/static already have; import bindings; use sites with Python scoping (parameters, locals, comprehension targets and class bodies shadow module-level names; `global` is honoured).
+- `scripts/lang/rust/symbols.py`: `use` bindings (glob, alias, `pub use` marked as export) and use sites in code, types, patterns and macro arguments; pattern bindings, generic parameters and items defined inside functions or inline modules shadow a name.
+- `scripts/lang/rust/parser.py`: a glob `use` is an imported name `*` (as Python's `from m import *`).
+- `scripts/lang/symbols.py` (new): resolves a use site to the defining module: own definitions, import bindings, child modules, glob imports and re-export chains, with cycle protection and no answer when two definitions compete.
+- `scripts/build_code_graph.py` (`_symbol_usage_edges`): a refs edge from each file to each definition it uses; `:reexport` when the file has no other edge to the defining module.
+- `scripts/code_graph_search.py` (`CodeGraph.load`): `:reexport` refs stay out of the module adjacency, so `impact`, `deps`, `rdeps` and `analyze` are unchanged.
+- Tests: REQ-PY-001 to REQ-PY-005, REQ-RUST-015 to REQ-RUST-018.
+
+### Motivation
+- The refactoring benchmark (`benchmarks/refactor`, 100 questions "which files use exported symbol S") measured `entity S` at 8 of 40 exact for Rust and 7 of 20 for Python: Python module-level variables were not entities, and Rust uses through glob imports, re-exports and qualified paths made no refs edge.
+
+### Verification
+- Refactoring benchmark, Wingbox 0.2.5 against this tree, reference lists of rust-analyzer, pyright and the TypeScript language service: TypeScript 40/40 exact before and after; Rust 8/40 exact, mean recall 0.33 -> 40/40, recall 1.00; Python 7/20, recall 0.40 -> 20/20, recall 1.00; no file outside a reference list. Over all 711 symbols the reference was asked (587 of them used by no other file), no Python or Rust file is named outside the reference.
+- `impact <file> 2` on the five questions of `benchmarks/graphify`: the same file lists as 0.2.5.
+- Test suite on Python 3.12 and 3.11.
+
 ## 2026-11-16 - Plugins found by purpose; MCP tool annotations; SECURITY.md
 
 ### Changes
@@ -563,4 +708,12 @@
 
 ### Motivation
 - The maintainer saw the PyPI page still showing the 0.2.5-era install line and chose a release now, with init and usages to follow as 0.3.0.
+
+## 2026-11-16 - Release 0.3.0
+
+### Changes
+- Version 0.3.0: `wingbox usages` (every use of a symbol with position and kind), faster builds (each import resolved once), the plugins and their purpose wording, MCP tool annotations, SECURITY.md. The map-request workflow builds with 0.3.0.
+
+### Motivation
+- The maintainer asked when usages ships and chose to release it now, the architecture commands (init, place, align, learn) following as 0.4.0 after an independent check of learn.
 

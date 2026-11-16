@@ -1,9 +1,63 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-11-16
 
 ### Changes
 
+- `wingbox usages <symbol>` lists every place that uses one function, class,
+  type or constant, through re-exports and aliases (`usages pkg/__init__.py::X`
+  answers for the definition the package re-exports): grouped by file, with
+  `line:column` and the kind of use (import, re-export, call, type, extends,
+  reference). The symbol is `Name`, `<file>::Name` or `<file>::Class.method`;
+  a name defined in several files lists the candidates; for a method, calls
+  whose receiver type is not in sight are listed as `unresolved-call`. At most
+  200 uses unless `--all`; `--sexp` prints `usage` facts. The MCP server has a
+  `usages` tool. On the 100 refactoring questions it names exactly the files
+  of the language tooling in all 100; its positions equal the SCIP index for
+  Python (234 of 234) and Rust (587 of 587); for TypeScript it lists 106
+  `new C(...)` sites more, which SCIP files under the constructor.
+- A method call is a use of `Class.method` when the receiver's class is in
+  sight (`self`/`this`, an annotation, a constructor, a base class); every
+  other method call is counted as unresolved, never guessed. On
+  the five benchmark repositories 2 to 12 % of method calls resolve.
+- `entity S --positions` lists every place that names S, with its file, line
+  and column, as an editor's find usages does.
+- The use index costs a build almost nothing: `wingbox build` reads only the
+  uses that can name another file and writes them, with module-level
+  variables, to `.code_graph.uses.sexp` next to the graph; the first `usages`
+  or `entity --positions` fills in every use position (a parallel pass over
+  the files, from the build cache) and keeps them until a file changes. A
+  build without changed files does not resolve uses again. `.code_graph.sexp`
+  stays within 3 % of 0.2.6 on immich-server and fastapi.
+- `wingbox build` resolves each import of a file once (0.2.6 resolved the
+  same import up to dozens of times): a build without changed files takes
+  2.6 s instead of 4.7 s on immich-server and 6.5 s instead of 14.6 s on
+  fastapi, a full build 4.8 s instead of 6.6 s and 11.7 s instead of 25.0 s.
+- TypeScript use sites in code count: names, `ns.S` after `import * as ns`,
+  qualified types, JSX elements, shorthand properties and `export { k }`; a
+  parameter, local variable, catch parameter or type parameter of the same name
+  shadows the import and is not a use; a `let`, `const` or class shadows it
+  only in its block.
+- TypeScript names in import and export statements resolve to the defining
+  file through barrels: named, aliased and default imports, `export * from`,
+  `export { X as Y } from`, `export * as ns from` and `export default`, with
+  re-export cycles ending without an answer.
+- The symbol table of a TypeScript file holds every top-level definition:
+  abstract classes, generator functions, `var`, `let` without a value,
+  `declare` statements and namespaces are entities, and enums list their
+  members. Every Python, TypeScript and Rust file records its import bindings
+  and what it re-exports (`pub use`, `export ... from`, package imports).
+- `entity S` names every file that uses S in Python and Rust, as the language
+  tooling's find usages does. Python: public module-level variables, constants
+  and type aliases are entities, `m.S` after `from pkg import m` or `import
+  pkg.m as m` is a use, and a name re-exported by a package `__init__.py` leads
+  to its defining file. Rust: names reached through glob imports
+  (`use a::b::*`), `pub use` chains and qualified paths (`screenshot::take()`
+  after `use crate::screenshot`) are uses, and a `use` that names S is one. A
+  parameter or local variable of the same name is not a use. On the refactoring
+  benchmark the exact answers go from 8 to 40 of 40 (Rust) and from 7 to 20 of
+  20 (Python), with no file outside the reference lists; TypeScript stays at 40
+  of 40 and `impact` answers do not change.
 - Plugin for Claude Code in `plugins/wingbox`, and this repository as its
   marketplace `aileron-tech`: `/plugin install wingbox --marketplace
   aileron-tech/wingbox`. The plugin bundles the `wingbox` skill, the MCP
@@ -30,6 +84,13 @@
 - SECURITY.md: report vulnerabilities privately through GitHub.
 - `plugins/wingbox/evals/`: a `claude plugin eval` suite that checks the skill
   is chosen for those requests in a monorepo and not for unrelated ones.
+
+### Fixes
+
+- A TypeScript or JavaScript import with a Vite query or hash suffix
+  (`import("./x.worker?worker&inline")`, `./annotate.ts?api-404-guard`,
+  `@/notes?raw`) names the file without the suffix, as Vite resolves it; it
+  was unresolved before. A `#` subpath import keeps its name.
 
 ## 0.2.7 - 2026-11-16
 

@@ -134,7 +134,8 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
 | `boundary <id> --files-only` | File paths only (compact) | `boundary operatives.service --files-only` |
-| `entity <Name>` | Find definitions + references | `entity DrivePath` |
+| `entity <Name> [--positions]` | Find definitions + the modules that use them; `--positions`: every use with line and column | `entity DrivePath --positions` |
+| `usages <symbol> [--sexp] [--all]` | Every use of one symbol (`Name`, `<file>::Name`, `<file>::Class.method`) through re-exports and aliases, by file, `line:col` and kind (import, re-export, call, type, extends, reference; `unresolved-call` for a method call whose receiver type is not in sight); at most 200 unless `--all`; a name defined in several files lists the candidates | `usages src/billing/invoice.ts::Invoice` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
 | `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth + files to read first; lists at most 200 unless `--all`, counts are always complete | `impact src/billing/invoice.service.ts --sexp` |
@@ -152,7 +153,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `diff_functions [ref]` | Changed functions in git diff | `diff_functions HEAD~3` |
 | `query '<sexp>'` | Composable Scheme query | `query '(count (boundary "X"))'` |
 | `repl` | Interactive Scheme REPL | `repl` |
-| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build`, `impact`, `analyze`, `quick`, `boundary`, `deps`, ...) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
+| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build`, `impact`, `usages`, `analyze`, `quick`, `boundary`, `deps`, ...) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
 
 `impact` accepts an ordinary file path. Without `--sexp` it prints readable text
 for people; agents pass `--sexp` to get the same facts in the compact

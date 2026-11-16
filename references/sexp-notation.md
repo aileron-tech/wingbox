@@ -22,6 +22,44 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
 ```
 
+## Use File (.code_graph.uses.sexp, next to the graph)
+
+What only `entity`, `usages` and `entity --positions` read; module IDs are the
+short IDs of the graph whose digest the header carries (a file that does not
+match the graph is ignored with a warning).
+
+```scheme
+(code-graph-uses :schema 1 :key <inputs> :positions no|yes :graph <digest>)
+(var <mod> <Name> <line>)                                 ; module-level variable (Python)
+(use <mod> <tgt>::<Entity>)                               ; :positions no
+(use <mod> <tgt>::<Entity> <line>:<col>[<kind>] ...)      ; :positions yes
+(use <mod> <tgt>::<Class>.<method> <line>:<col>c ...)
+(unresolved <mod> :method-calls <count>)
+(unresolved-call <mod> <method> <line>:<col> ...)
+```
+
+`wingbox build` writes the file without positions: one `use` line per file and
+definition in another file it uses, from the uses that can name another file
+(import and export statements, qualified paths, names a glob import may
+provide). That keeps the build as fast as without the use index. The first
+query that needs positions has the builder walk every file of a language with
+a use index again, from the build cache, and rewrite the file with positions:
+every use, also inside its own file. A build without changed files keeps the
+file as it is, positions included.
+
+The letter after a position is the kind of use: `i` import, `r` re-export, `c`
+call, `t` type, `e` extends or implements, none for any other reference.
+`unresolved-call` keeps the sites of unresolved method calls whose method name
+some class of the repository defines (the others are only counted).
+
+`use` lists every place where `<mod>` names `<Entity>` defined in `<tgt>`: an
+import, a name, a qualified path, a type, a re-export; line and column are
+1-based. One line per file and definition. A method call `recv.m()` is a use of
+`<Class>.<method>` only when the receiver's class is in sight: `self` or `this`
+in the class, a parameter or variable annotated with the class, a variable
+built by its constructor; the method may come from a base class. Any other
+method call is not guessed: `unresolved` counts them per module.
+
 ## boundary Output
 
 ```scheme
@@ -63,7 +101,41 @@ entity; an `analyze-more` or `key-entity-more` line gives the number left out.
 (entity-def cls <mod> <Name> <line> :lang py :file <path>)
 (entity-def ifc <mod> <Name> <line> :lang ts :file <path>)
 (refs <src-mod> <tgt-mod>::<Name>)
+(refs <src-mod> <tgt-mod>::<Name> :reexport)                  ; from the use file
+(use <src-mod> <line> <col> <tgt-mod>::<Name> :file <path>)   ; with --positions
 ```
+
+`entity <Name> --positions` adds one `use` line per place that names the
+definition, as an editor's find usages lists them, sorted by file, line and
+column; `:file` is relative to the repository root.
+
+Each `refs` line names a module that uses `<Name>` defined in `<tgt-mod>`: by an
+import, a qualified path (`m.Name`, `m::Name`), a glob import or a re-export
+(`__init__.py`, `pub use`). `:reexport` marks a module that reaches the
+definition only through a re-export and does not import `<tgt-mod>` itself;
+these lines come from the use file, so module-level commands (`impact`,
+`deps`, `rdeps`, `analyze`) never see them and keep following imports. A
+TypeScript `const` or a Rust `const` or `static` is an `fn` entity; a Python
+module-level variable is a `var` definition of the use file.
+
+## usages Output
+
+```scheme
+(usages-target <mod>::<Name> :kind cls :file <path> :line <n>)
+(usage <src-mod> <line> <col> :kind call :file <path>)
+(usage <src-mod> <line> <col> :kind unresolved-call :file <path>)
+(usage-file <src-mod> :kind reference :file <path>)    ; a language without use positions
+(usages-more <mod>::<Name> :hidden 12 :rerun "usages <symbol> --all")
+(usages-summary <mod>::<Name> :uses 7 :files 2 :unresolved 0)
+(usages-ambiguous <Name> :definitions 2)
+(usages-candidate <mod>::<Name> :kind cls :file <path> :line <n>)
+```
+
+`usages` without `--sexp` prints the same facts as text: the target, the
+counts, then each file with its `line:col` and kind. Kinds: `import`,
+`re-export`, `call`, `type`, `extends` (extends or implements), `reference`,
+`unresolved-call`. Uses are sorted by file, line and column; at most 200 unless
+`--all`. A bare name with several definitions answers with the candidates.
 
 ## deps / rdeps Output
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
@@ -46,8 +46,17 @@ def _candidate_bases(
 class BoundPythonLanguage:
     root: str
     path_to_id: Mapping[str, str]
+    _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
+        # One build asks the same (specifier, file) pairs many times (imports, imported names,
+        # relations, use sites); the answer depends only on this bound state.
+        key = (import_name, source_path)
+        if key not in self._resolved:
+            self._resolved[key] = self._resolve_import(import_name, source_path)
+        return self._resolved[key]
+
+    def _resolve_import(self, import_name: str, source_path: str) -> str | None:
         bases, parts = _candidate_bases(self.root, source_path, import_name)
         for base in bases:
             for candidate in (

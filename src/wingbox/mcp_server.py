@@ -402,6 +402,22 @@ TOOLS: tuple[Tool, ...] = (
         _simple(lambda a: ["entity", a["name"]], lambda s, g, _p, a: s.cmd_entity(g, a["name"])),
     ),
     Tool(
+        "usages",
+        "Every place that uses one function, class, type or constant, through re-exports and aliases: "
+        "by file, with line:column and the kind of use (import, re-export, call, type, extends, reference); "
+        "method calls whose receiver type is not in sight are marked unresolved.",
+        {
+            "symbol": _string("Name, <file>::Name or <file>::Class.method (a file path or module ID)."),
+            "all": _ALL,
+        },
+        ("symbol",),
+        _simple(
+            lambda a: ["usages", a["symbol"]],
+            lambda s, g, _p, a: s.cmd_usages(g, a["symbol"], show_all=a.get("all", False)),
+            capped=False,
+        ),
+    ),
+    Tool(
         "find_function",
         "Find function and method definitions by name, with file and line.",
         {"name": _FUNCTION, "all": _ALL},
@@ -529,6 +545,7 @@ TOOL_TITLES = {
     "deps": "Dependencies of a module",
     "rdeps": "Dependents of a module",
     "entity": "Look up an entity",
+    "usages": "Find every use of a symbol",
     "find_function": "Find a function",
     "find_type": "Find a type",
     "find_callers": "Callers of a function",

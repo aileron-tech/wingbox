@@ -39,6 +39,40 @@ class TypeScriptResolverTests(unittest.TestCase):
             if edge["type"] == "IMPORTS"
         }
 
+    def test_vite_query_and_hash_suffixes_are_stripped_before_resolving(self) -> None:
+        """/* REQ-TS-VITE-001: A relative or aliased specifier with a Vite query or hash suffix (`./x.worker?worker&inline`, `./annotate.ts?api-404-guard`, `@/y?raw`, `./z#frag`) names the file without the suffix; a stripped path that does not exist stays unresolved, and a `#` subpath import is not cut. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write(root, "tsconfig.json", '{"compilerOptions": {"paths": {"@/*": ["./src/*"]}}}\n')
+            results = [
+                self._parse(
+                    root,
+                    "src/app.ts",
+                    'const worker = import("./codeHighlight.worker?worker&inline");\n'
+                    'import guard from "./annotate.ts?api-404-guard";\n'
+                    'import text from "@/notes?raw";\n'
+                    'import part from "./frag#section";\n'
+                    'import gone from "./missing?url";\n'
+                    'import internal from "#internal/thing";\n',
+                ),
+                self._parse(root, "src/codeHighlight.worker.ts", "export const highlight = 1;\n"),
+                self._parse(root, "src/annotate.ts", "export default 1;\n"),
+                self._parse(root, "src/notes.ts", "export default 1;\n"),
+                self._parse(root, "src/frag.ts", "export default 1;\n"),
+            ]
+
+            import_edges = self._import_edges(results, root)
+
+        self.assertEqual(
+            {
+                ("src/app", "src/codeHighlight.worker"),
+                ("src/app", "src/annotate"),
+                ("src/app", "src/notes"),
+                ("src/app", "src/frag"),
+            },
+            {edge for edge in import_edges if edge[0] == "src/app"},
+        )
+
     def test_url_in_a_tsconfig_string_keeps_its_path_aliases(self) -> None:
         """/* REQ-TS-ALIAS-001: A "//" inside a tsconfig string, such as a $schema URL, is not a comment, so the paths of that tsconfig still resolve. */"""
         with tempfile.TemporaryDirectory() as directory:

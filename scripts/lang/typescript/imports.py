@@ -4,7 +4,7 @@ import os
 import posixpath
 import sys
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional
 
@@ -487,6 +487,19 @@ def _resolve_ts_package(
     return None
 
 
+def _without_query(specifier: str) -> str:
+    """The specifier without a Vite query or hash suffix (./x.worker?worker&inline, ./y#part),
+    as Vite resolves it; a leading # (a package subpath import) is part of the name."""
+    if "?" not in specifier and "#" not in specifier[1:]:
+        return specifier
+    cut = len(specifier)
+    for mark in ("?", "#"):
+        position = specifier.find(mark, 1)
+        if position != -1:
+            cut = min(cut, position)
+    return specifier[:cut]
+
+
 @dataclass(frozen=True)
 class BoundTypeScriptLanguage:
     root: str
@@ -494,6 +507,7 @@ class BoundTypeScriptLanguage:
     alias_contexts: tuple[TsPathAliasContext, ...]
     packages: tuple[TsPackage, ...]
     output_roots: tuple[TsOutputRoot, ...]
+    _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
 
     @classmethod
     def create(
@@ -533,6 +547,17 @@ class BoundTypeScriptLanguage:
         return cls(root, path_to_id, alias_contexts, packages, output_roots)
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
+        # One build asks the same (specifier, file) pairs many times (imports, imported names,
+        # relations, use sites); the answer depends only on this bound state.
+        key = (import_name, source_path)
+        if key not in self._resolved:
+            self._resolved[key] = self._resolve_import(import_name, source_path)
+        return self._resolved[key]
+
+    def _resolve_import(self, import_name: str, source_path: str) -> str | None:
+        import_name = _without_query(import_name)
+        if not import_name:
+            return None
         if not import_name.startswith(".") and not import_name.startswith("/"):
             resolved_via_alias = _resolve_ts_path_alias(
                 import_name,

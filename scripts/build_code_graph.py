@@ -91,6 +91,7 @@ Usage
 
 from __future__ import annotations
 
+import dataclasses
 import fcntl
 import hashlib
 import importlib.metadata
@@ -106,7 +107,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
-from typing import Any, Generic, Mapping, Optional, Sequence, TypeVar
+from typing import Any, Callable, Generic, Mapping, Optional, Sequence, TypeVar
 from urllib.parse import quote, unquote
 
 try:
@@ -124,6 +125,7 @@ try:
         from .lang.purpose import infer_purpose, scan_root
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
+        from .lang.symbols import SymbolIndex, supports_symbols
         from .lang.source import file_hash
         from .lang.typescript.javascript import is_minified_javascript
         from .git_ignore import (
@@ -145,6 +147,7 @@ try:
         from lang.purpose import infer_purpose, scan_root
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
+        from lang.symbols import SymbolIndex, supports_symbols
         from lang.source import file_hash
         from lang.typescript.javascript import is_minified_javascript
         from git_ignore import (
@@ -610,6 +613,9 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
 
     if not isinstance(raw_result.get("import_forms", {}), dict):
         return Err("cache result field import_forms must be an object")
+    for field_name in ("bindings", "uses"):
+        if not isinstance(raw_result.get(field_name, []), list):
+            return Err(f"cache result field {field_name} must be a list")
 
     try:
         return Ok(FileResult(**raw_result))
@@ -837,11 +843,110 @@ def _resolve_target_entity(
     return short_matches[0] if len(short_matches) == 1 else None
 
 
+ResolvedSite = tuple[int, int, str, str, str]  # line, column, defining module, name, kind of use
+
+
+@dataclass(frozen=True)
+class UnresolvedCalls:
+    """Method calls of one module that no receiver type resolves: their number, and the
+    sites of those whose method name a class of the repository defines (by name)."""
+
+    count: int
+    sites: dict[str, list[tuple[int, int]]]
+
+
+def _resolve_symbol_uses(
+    id_to_result: Mapping[str, FileResult],
+    bound_languages: Mapping[str, BoundLanguage],
+) -> tuple[dict[str, list[ResolvedSite]], dict[str, UnresolvedCalls]]:
+    """Every use site resolved to its definition: module -> sorted (line, column, module, name, kind).
+
+    Also the method calls per module whose receiver type is not in sight or does
+    not define the method: they stay unresolved, never guessed. The sites are
+    kept only for a method name that some class of the repository defines, the
+    calls that `usages Class.method` lists as unresolved.
+    """
+    index = SymbolIndex(
+        id_to_result,
+        lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
+    )
+    methods = {
+        method
+        for result in id_to_result.values()
+        if supports_symbols(result.language)
+        for entity in result.entities
+        if entity["kind"] in ("class", "enum", "interface")
+        for method in entity.get("methods", [])
+    }
+    resolved_by_module: dict[str, list[ResolvedSite]] = {}
+    unresolved_calls: dict[str, UnresolvedCalls] = {}
+    for node_id, result in id_to_result.items():
+        if not supports_symbols(result.language):
+            continue
+        found: set[ResolvedSite] = set()
+        count = 0
+        sites: dict[str, list[tuple[int, int]]] = {}
+        for use in result.uses:
+            resolved = index.resolve(node_id, use)
+            if resolved is not None:
+                found.add((resolved.line, resolved.column, resolved.module, resolved.name, resolved.kind))
+            elif use.get("member"):
+                count += 1
+                if use["member"] in methods:
+                    line, column = use["at"][-1]
+                    sites.setdefault(use["member"], []).append((line, column))
+        if found:
+            resolved_by_module[node_id] = sorted(found)
+        if count:
+            unresolved_calls[node_id] = UnresolvedCalls(count, sites)
+    return resolved_by_module, unresolved_calls
+
+
+# The kind of a use, as one letter after its line:column in the graph; none for a plain reference.
+_USE_KIND_LETTERS = {"import": "i", "re-export": "r", "call": "c", "type": "t", "extends": "e"}
+
+
+def _symbol_usage_edges(
+    resolved_by_module: Mapping[str, list[ResolvedSite]],
+    edges: list[dict],
+) -> list[dict]:
+    """refs edges from every file to each definition in another file that it uses.
+
+    A file that reaches the definition only through a re-export (a package
+    __init__.py, a Rust `pub use`) has no dependency on the defining module: its
+    edge carries the relation "reexport", which module-level queries (impact,
+    deps) do not walk, so they keep following imports.
+    """
+    adjacent = {
+        (edge["source"].split("::")[0], edge["target"].split("::")[0])
+        for edge in edges
+    }
+    found: list[dict] = []
+    for node_id, uses in resolved_by_module.items():
+        # A method (Class.method) is a use site only; its class has its own refs.
+        targets = {
+            (module, name) for _line, _column, module, name, _kind in uses if module != node_id and "." not in name
+        }
+        for module, name in sorted(targets):
+            edge: dict[str, Any] = {
+                "source": node_id,
+                "target": f"{module}::{name}",
+                "type": "REFERENCES",
+            }
+            if (node_id, module) not in adjacent:
+                edge["relations"] = ["reexport"]
+            found.append(edge)
+    return found
+
+
 def build_graph(
     results: list[FileResult],
     root: str,
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
+    reused: Optional["ReusedUses"] = None,
 ) -> Result[GraphBuildOutput, GraphBuildError]:
+    """The graph of results. With reused (a use file built from the same inputs), the refs edges of
+    use sites come from it and no use is resolved; nodes then carry no use positions."""
     index_result = _build_node_indexes(results, root)
     if isinstance(index_result, Err):
         return index_result
@@ -900,7 +1005,9 @@ def build_graph(
             "NestJS wiring module",
             "NestJS injectable",
         ):
-            enhanced = infer_purpose(rel_path, "", r.language, r.entities)
+            enhanced = infer_purpose(
+                rel_path, "", r.language, [entity for entity in r.entities if entity["kind"] != "variable"]
+            )
             if enhanced not in (
                 "general module",
                 "NestJS wiring module",
@@ -1119,6 +1226,31 @@ def build_graph(
                             "type": "REFERENCES",
                         }
                     )
+
+    referenced = {
+        (edge["source"].split("::")[0], edge["target"])
+        for edge in edges
+        if edge["type"] == "REFERENCES"
+    }
+    if reused is None:
+        resolved_uses, unresolved_calls = _resolve_symbol_uses(id_to_result, bound_languages)
+    else:
+        _sorted_nodes, path_to_sid = _path_ids(nodes)
+        sid_to_id = {sid: node_id for node_id, sid in path_to_sid.items()}
+        resolved_uses = {
+            sid_to_id[source]: [(0, 0, sid_to_id.get(module, module), name, "") for module, name in pairs]
+            for source, pairs in reused.targets.items()
+            if source in sid_to_id
+        }
+        unresolved_calls = {}
+    for edge in _symbol_usage_edges(resolved_uses, edges):
+        if (edge["source"], edge["target"]) not in referenced:
+            edges.append(edge)
+    for node in nodes:
+        if node["id"] in resolved_uses and reused is None:
+            node["uses"] = resolved_uses[node["id"]]
+        if node["id"] in unresolved_calls:
+            node["unresolved_method_calls"] = unresolved_calls[node["id"]]
 
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
@@ -2497,6 +2629,44 @@ def _is_safe_path_atom(path: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_./@+-]+", path))
 
 
+def _path_ids(nodes: list[dict]) -> tuple[list[dict], dict[str, str]]:
+    """Nodes sorted by ID and the short ID of each (repo prefix + sequence number), as the graph names them."""
+    sorted_nodes = sorted(nodes, key=lambda n: n["id"])
+
+    # Build path map: full path -> short prefixed ID (repo-prefix + seq number)
+    # e.g. ah0 = agent-hub first module, dr42 = drive 43rd module
+    _REPO_PREFIX: dict[str, str] = {}
+    _repo_counters: dict[str, int] = {}
+    path_to_sid: dict[str, str] = {}
+
+    for node in sorted_nodes:
+        repo = node.get("repo", "unknown")
+        if repo not in _REPO_PREFIX:
+            # Build 2-char prefix from repo name
+            parts = repo.replace("-", " ").split()
+            if len(parts) >= 2:
+                prefix = parts[0][0] + parts[1][0]
+            else:
+                prefix = repo[:2]
+            # Deduplicate prefixes
+            base = prefix
+            idx = 2
+            while prefix in _REPO_PREFIX.values():
+                prefix = (
+                    base + repo[idx : idx + 1] if idx < len(repo) else base + str(idx)
+                )
+                idx += 1
+            _REPO_PREFIX[repo] = prefix
+            _repo_counters[repo] = 0
+
+        seq = _repo_counters[repo]
+        _repo_counters[repo] = seq + 1
+        sid = f"{_REPO_PREFIX[repo]}{seq}"
+        path_to_sid[node["id"]] = sid
+
+    return sorted_nodes, path_to_sid
+
+
 def render_sexp(
     nodes: list[dict],
     edges: list[dict],
@@ -2531,38 +2701,7 @@ def render_sexp(
         ; --- violations ---
         (violation boundary 42 99 "domain imports infrastructure without abstract base")
     """
-    sorted_nodes = sorted(nodes, key=lambda n: n["id"])
-
-    # Build path map: full path -> short prefixed ID (repo-prefix + seq number)
-    # e.g. ah0 = agent-hub first module, dr42 = drive 43rd module
-    _REPO_PREFIX: dict[str, str] = {}
-    _repo_counters: dict[str, int] = {}
-    path_to_sid: dict[str, str] = {}
-
-    for node in sorted_nodes:
-        repo = node.get("repo", "unknown")
-        if repo not in _REPO_PREFIX:
-            # Build 2-char prefix from repo name
-            parts = repo.replace("-", " ").split()
-            if len(parts) >= 2:
-                prefix = parts[0][0] + parts[1][0]
-            else:
-                prefix = repo[:2]
-            # Deduplicate prefixes
-            base = prefix
-            idx = 2
-            while prefix in _REPO_PREFIX.values():
-                prefix = (
-                    base + repo[idx : idx + 1] if idx < len(repo) else base + str(idx)
-                )
-                idx += 1
-            _REPO_PREFIX[repo] = prefix
-            _repo_counters[repo] = 0
-
-        seq = _repo_counters[repo]
-        _repo_counters[repo] = seq + 1
-        sid = f"{_REPO_PREFIX[repo]}{seq}"
-        path_to_sid[node["id"]] = sid
+    sorted_nodes, path_to_sid = _path_ids(nodes)
 
     def _pid(path: str) -> str:
         """Resolve a path (possibly with ::entity suffix) to short ID."""
@@ -2575,7 +2714,13 @@ def render_sexp(
 
     lines: list[str] = []
     violations = [e for e in edges if e.get("type") == "VIOLATION"]
-    real_edges = [e for e in edges if e.get("type") != "VIOLATION"]
+    # A use reached only through a re-export and a module-level variable live in the use file
+    # (.code_graph.uses.sexp), which entity and usages read; module queries never need them.
+    real_edges = [
+        e for e in edges
+        if e.get("type") != "VIOLATION"
+        and not (e.get("type") == "REFERENCES" and "reexport" in e.get("relations", []))
+    ]
 
     lines.append("; Code Graph")
     lines.append(f"; mode {mode}")
@@ -2622,6 +2767,8 @@ def render_sexp(
         sid = path_to_sid[node["id"]]
         for ent in node.get("entities", []):
             kind = ent["kind"]
+            if kind == "variable":
+                continue
             name = ent["name"]
             line_num = ent.get("line", 0)
             eid = _entity_id(node["id"], name)
@@ -2705,6 +2852,205 @@ def render_sexp(
     return "\n".join(lines) + "\n"
 
 
+USES_SCHEMA_VERSION = 1
+
+
+def uses_path(map_path: str) -> str:
+    """The use-position file that goes with a code graph: .code_graph.sexp -> .code_graph.uses.sexp."""
+    return (map_path[: -len(".sexp")] if map_path.endswith(".sexp") else map_path) + ".uses.sexp"
+
+
+def text_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def symbol_index_key(results: Sequence[FileResult], fingerprint: str, mode: str) -> str:
+    """Identity of every input of use resolution: each file and its content, the builder, the mode."""
+    digest = hashlib.sha256(f"{fingerprint}|{mode}".encode("utf-8"))
+    for result in sorted(results, key=lambda item: item.path):
+        digest.update(f"\n{result.path}\0{result.content_hash}".encode("utf-8"))
+    return digest.hexdigest()[:32]
+
+
+def render_uses_sexp(nodes: list[dict], key: str, graph_text: str, positions: bool = False) -> str:
+    """The use file of a code graph: what only entity, usages and entity --positions read.
+
+    `var` facts define module-level variables (Python). Each `use` line names a file and a definition
+    in another file it uses (the refs that reach a definition through a re-export are only here);
+    with positions, every use of the file, also within itself, with the 1-based line:column of each
+    site and a letter for its kind, and the unresolved method calls. A build writes the file without
+    positions; the first query that needs them fills them in (write_use_positions). The module IDs
+    are the short IDs of the graph whose digest the header carries.
+    """
+    sorted_nodes, path_to_sid = _path_ids(nodes)
+    lines = [
+        "; Use file of the code graph: (use <module> <defining-module>::<name> [<line>:<col>[<kind>] ...])",
+        f"(code-graph-uses :schema {USES_SCHEMA_VERSION} :key {key} :positions {'yes' if positions else 'no'} "
+        f":graph {text_digest(graph_text)})",
+    ]
+    for node in sorted_nodes:
+        sid = path_to_sid[node["id"]]
+        lines.extend(
+            f"(var {sid} {entity['name']} {entity.get('line', 0)})"
+            for entity in node.get("entities", [])
+            if entity["kind"] == "variable"
+        )
+        sites: dict[tuple[str, str], list[str]] = {}
+        for line, column, module, name, kind in node.get("uses", []):
+            if positions:
+                sites.setdefault((module, name), []).append(f"{line}:{column}{_USE_KIND_LETTERS.get(kind, '')}")
+            elif module != node["id"] and "." not in name:
+                sites.setdefault((module, name), [])
+        lines.extend(
+            f"(use {sid} {path_to_sid.get(module, module)}::{name}{''.join(' ' + p for p in found)})"
+            for (module, name), found in sorted(sites.items())
+        )
+        unresolved = node.get("unresolved_method_calls")
+        if positions and unresolved is not None:
+            lines.append(f"(unresolved {sid} :method-calls {unresolved.count})")
+            lines.extend(
+                f"(unresolved-call {sid} {member} " + " ".join(f"{line}:{column}" for line, column in found) + ")"
+                for member, found in sorted(unresolved.sites.items())
+            )
+    return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True)
+class ReusedUses:
+    """What a build without changed files takes from the existing use file instead of resolving:
+    the (definition short ID, name) pairs each file short ID uses, and the file's lines."""
+
+    targets: dict[str, list[tuple[str, str]]]
+    lines: list[str]
+
+
+def reusable_symbol_uses(path: str, key: str) -> Optional[ReusedUses]:
+    """The use file at path when it was built from the same inputs (same key); None otherwise."""
+    try:
+        with open(path, "r", encoding="utf-8") as uses_file:
+            lines = uses_file.read().splitlines()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        print(f"[code-graph] WARNING: cannot read {path}: {error}; resolving uses again", file=sys.stderr)
+        return None
+    header = next((line for line in lines if line.startswith("(code-graph-uses ")), "")
+    if f":key {key} " not in header:
+        return None
+    targets: dict[str, list[tuple[str, str]]] = {}
+    for line in lines:
+        if line.startswith("(use "):
+            _use, source, target = line.rstrip(")").split(" ", 3)[:3]
+            module, _, name = target.partition("::")
+            if "." not in name:
+                targets.setdefault(source, []).append((module, name))
+    return ReusedUses(targets, lines)
+
+
+def reused_uses_text(reused: ReusedUses, graph_text: str) -> str:
+    """The reused use file with the digest of the graph it now goes with."""
+    digest = text_digest(graph_text)
+    return "\n".join(
+        re.sub(r":graph \S+\)$", f":graph {digest})", line) if line.startswith("(code-graph-uses ") else line
+        for line in reused.lines
+    ) + "\n"
+
+
+def _position_parser(language: str) -> Callable[[str, str], list]:
+    """The full use walk of a language (python_use_positions, typescript_use_positions, ...)."""
+    family = {"python": "python", "rust": "rust"}.get(language, "typescript")
+    package = f"{__package__}.lang" if __package__ else "lang"
+    module = importlib.import_module(f"{package}.{family}.parser")
+    return getattr(module, f"{family}_use_positions")
+
+
+def _position_uses(item: tuple[str, str]) -> tuple[str, list]:
+    """Worker: every use site of one file (path, result language)."""
+    path, language = item
+    with open(path, "r", encoding="utf-8", errors="replace") as source_file:
+        content = source_file.read()
+    return path, _position_parser(language)(path, content)
+
+
+def write_use_positions(map_path: str, root: str) -> Result[str, str]:
+    """Fill the use file of a built graph with every use position; Err with the reason when it cannot.
+
+    The build parses only the uses that can name another file. The first query that needs positions
+    (usages, entity --positions) calls this: it reads the build cache, walks every file of a language
+    with a use index again (in parallel), resolves all uses and rewrites the use file with positions.
+    The file keeps its key, so the next build without changes keeps the positions.
+    """
+    root = os.path.realpath(root)  # the build keys modules by real paths
+    path = uses_path(map_path)
+    try:
+        with open(path, "r", encoding="utf-8") as uses_file:
+            header = next((line for line in uses_file if line.startswith("(code-graph-uses ")), "")
+        with open(map_path, "r", encoding="utf-8") as graph_file:
+            graph_text = graph_file.read()
+        with open(os.path.join(root, CACHE_FILE), "r", encoding="utf-8") as cache_file:
+            cache = json.load(cache_file)
+    except (OSError, json.JSONDecodeError) as error:
+        return Err(f"cannot read the graph, its use file or its cache: {error}")
+    key_match = re.search(r":key (\S+)", header)
+    if key_match is None or f":graph {text_digest(graph_text)})" not in header:
+        return Err("the use file does not belong to this code graph")
+    entries = cache.get("entries") if isinstance(cache, dict) else None
+    if not isinstance(entries, dict):
+        return Err("the build cache has no entries")
+    results: list[FileResult] = []
+    for entry in entries.values():
+        decoded = decode_cache_entry(entry)
+        if isinstance(decoded, Err):
+            return Err(f"the build cache is invalid: {decoded.error}")
+        results.append(decoded.value)
+    mode_match = re.search(r"^; mode (.+)$", graph_text, re.M)
+    fingerprint = str(cache.get("builder_fingerprint", ""))
+    if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1)) != key_match.group(1):
+        return Err("the build cache does not match the code graph")
+    indexed = [result for result in results if supports_symbols(result.language)]
+    changed = [result.path for result in indexed if file_hash(result.path) != result.content_hash]
+    if changed:
+        return Err(f"{len(changed)} files changed since the build, e.g. {changed[0]}")
+    full_uses: dict[str, list] = {}
+    items = [(result.path, result.language) for result in indexed]
+    if items:
+        with ProcessPoolExecutor(max_workers=min(os.cpu_count() or 4, len(items))) as pool:
+            for file_path, uses in pool.map(_position_uses, items, chunksize=16):
+                full_uses[file_path] = uses
+    with_positions = [
+        dataclasses.replace(result, uses=full_uses[result.path]) if result.path in full_uses else result
+        for result in results
+    ]
+    index_result = _build_node_indexes(with_positions, root)
+    if isinstance(index_result, Err):
+        return Err("module ID collision")
+    path_to_id, id_to_result = index_result.value
+    git_ignore_result = load_git_ignored_paths(root, frozenset(SKIP_DIRS))
+    exclusions = DiscoveryExclusions(
+        directory_names=frozenset(SKIP_DIRS),
+        paths=frozenset() if isinstance(git_ignore_result, GitIgnoreUnavailable) else git_ignore_result.paths,
+    )
+    result_languages = {result.language for result in with_positions}
+    bound_languages = {
+        language.name: language.bind(root, path_to_id, exclusions)
+        for language in LANGUAGES
+        if result_languages.intersection(language.result_languages)
+    }
+    resolved, unresolved = _resolve_symbol_uses(id_to_result, bound_languages)
+    nodes = [
+        {
+            "id": node_id,
+            "repo": result.repo,
+            "entities": result.entities,
+            "uses": resolved.get(node_id, []),
+            **({"unresolved_method_calls": unresolved[node_id]} if node_id in unresolved else {}),
+        }
+        for node_id, result in id_to_result.items()
+    ]
+    _atomic_write_text(path, render_uses_sexp(nodes, key_match.group(1), graph_text, positions=True))
+    return Ok(path)
+
+
 def write_sexp(
     output_path: str,
     nodes: list[dict],
@@ -2713,9 +3059,10 @@ def write_sexp(
     mode: str,
     total_files: int,
 ) -> None:
-    """Atomically publish a fully rendered code graph."""
+    """Atomically publish a fully rendered code graph and its use positions."""
     content = render_sexp(nodes, edges, root, mode, total_files)
     _atomic_write_text(output_path, content)
+    _atomic_write_text(uses_path(output_path), render_uses_sexp(nodes, "-", content, positions=True))
 
 
 # ---------------------------------------------------------------------------
@@ -2855,6 +3202,8 @@ def _serialize_file_result(result: FileResult) -> dict:
             "exported_names": result.exported_names,
             "relations": result.relations,
             "import_forms": result.import_forms,
+            "bindings": result.bindings,
+            "uses": result.uses,
         },
     }
 
@@ -2941,7 +3290,9 @@ def _run_build(options: BuilderOptions) -> int:
         cached_results + new_results,
         key=lambda result: os.path.relpath(result.path, root).replace(os.sep, "/"),
     )
-    graph_result = build_graph(all_results, root, exclusions)
+    symbol_key = symbol_index_key(all_results, _builder_fingerprint(active_language_names, exclusions), mode)
+    reused = None if options.full_rebuild else reusable_symbol_uses(uses_path(options.output_path), symbol_key)
+    graph_result = build_graph(all_results, root, exclusions, reused)
     if isinstance(graph_result, Err):
         for collision in graph_result.error.collisions:
             paths = ", ".join(collision.paths)
@@ -2981,6 +3332,9 @@ def _run_build(options: BuilderOptions) -> int:
 
     new_cache = {result.path: _serialize_file_result(result) for result in all_results}
     map_content = render_sexp(nodes, edges, root, mode, len(all_results))
+    uses_content = (
+        render_uses_sexp(nodes, symbol_key, map_content) if reused is None else reused_uses_text(reused, map_content)
+    )
     save_cache(
         root,
         new_cache,
@@ -2988,6 +3342,7 @@ def _run_build(options: BuilderOptions) -> int:
         exclusions,
     )
     _atomic_write_text(options.output_path, map_content)
+    _atomic_write_text(uses_path(options.output_path), uses_content)
 
     elapsed = time.monotonic() - t0
     print(
