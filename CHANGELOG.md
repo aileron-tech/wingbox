@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-16
+
+### Changes
+
+- Added `benchmarks/graphify`: Wingbox, Graphify and plain search measured on
+  the same public repositories, with the scripts, the reference lists and the
+  result files. `benchmarks/graphify/run.sh <work dir>` reproduces the tests
+  that need no model. The README shows the summary table.
+
 ## 2026-11-15
 
 ### Changes
