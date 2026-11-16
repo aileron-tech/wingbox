@@ -162,6 +162,22 @@ class SkillCopyTest(unittest.TestCase):
             self.assertTrue(os.access(plugin / "scripts" / "wingbox-run", os.X_OK))
 
 
+class NoGitTest(unittest.TestCase):
+    def test_check_without_git(self) -> None:
+        """/* REQ-PLUGIN-016: in a copy of the repository without .git or tags (a source archive, a shallow CI clone) `tools/sync_plugin.py --check` must pass, keeping the release the launcher already pins. */"""
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "repo"
+            copy.mkdir()
+            for name in ("pyproject.toml", "SKILL.md", "LICENSE"):
+                shutil.copy(REPO / name, copy / name)
+            for folder in ("references", "plugins", "tools"):
+                shutil.copytree(REPO / folder, copy / folder)
+            env = {k: v for k, v in os.environ.items() if k != "WINGBOX_RELEASE"}
+            env["GIT_CEILING_DIRECTORIES"] = tmp
+            result = subprocess.run([sys.executable, str(copy / "tools" / "sync_plugin.py"), "--check"], capture_output=True, text=True, env=env)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 class LauncherTest(unittest.TestCase):
     def run_launcher(self, path: str, *args: str, stdin: str = "") -> subprocess.CompletedProcess:
         return subprocess.run(
