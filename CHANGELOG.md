@@ -4,6 +4,17 @@
 
 ### Changes
 
+- `wingbox usages <symbol>` lists every place that uses one function, class,
+  type or constant, through re-exports and aliases: grouped by file, with
+  `line:column` and the kind of use (import, re-export, call, type, extends,
+  reference). The symbol is `Name`, `<file>::Name` or `<file>::Class.method`;
+  a name defined in several files lists the candidates; for a method, calls
+  whose receiver type is not in sight are listed as `unresolved-call`. At most
+  200 uses unless `--all`; `--sexp` prints `usage` facts. The MCP server has a
+  `usages` tool. On the 100 refactoring questions it names exactly the files
+  of the language tooling in all 100; its positions equal the SCIP index for
+  Python (234 of 234) and Rust (587 of 587); for TypeScript it lists 106
+  `new C(...)` sites more, which SCIP files under the constructor.
 - A method call is a use of `Class.method` when the receiver's class is in
   sight (`self`/`this`, an annotation, a constructor, a base class); every
   other method call is counted as unresolved in the graph, never guessed. On

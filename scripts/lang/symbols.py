@@ -49,6 +49,7 @@ class ResolvedUse:
     name: str
     line: int
     column: int
+    kind: str = ""  # import, re-export, call, type, extends; "" any other reference
 
 
 def _join(language: str, spec: str, name: str) -> Optional[str]:
@@ -210,7 +211,7 @@ class SymbolIndex:
         if owner is None:
             return None
         line, column = at[-1]
-        return ResolvedUse(owner.module, f"{owner.name}.{member}", line, column)
+        return ResolvedUse(owner.module, f"{owner.name}.{member}", line, column, "call")
 
     def resolve(self, module: str, use: UsePayload) -> Optional[ResolvedUse]:
         """The definition a use site names, with the position of the segment that names it."""
@@ -233,7 +234,9 @@ class SymbolIndex:
             current = self.member(current, path[index])
         if isinstance(current, Symbol) and index >= 0:
             line, column = at[index]
-            return ResolvedUse(current.module, current.name, line, column)
+            # The kind belongs to the last segment: Foo in Foo::new() is a plain reference.
+            kind = use.get("kind", "") if index == len(path) - 1 else ""
+            return ResolvedUse(current.module, current.name, line, column, kind)
         return None
 
 

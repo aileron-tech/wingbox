@@ -89,8 +89,10 @@ def _scope_names(node: Node) -> set[str]:
         if holder is not None:
             names.update(pattern_bindings(current.child_by_field_name(holder)))
         elif current.type == "match_pattern" or current.type == "closure_parameters":
+            guard = current.child_by_field_name("condition")
             for child in current.named_children:
-                names.update(pattern_bindings(child.child_by_field_name("pattern") or child))
+                if child != guard:  # the `if` guard of a match arm is an expression, it binds nothing
+                    names.update(pattern_bindings(child.child_by_field_name("pattern") or child))
         elif current.type == "self_parameter":
             names.add("self")
         for child in current.named_children:
@@ -252,6 +254,27 @@ def _local_types(function: Node, impl_type: TypePath | None) -> dict[str, TypePa
     return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
 
 
+_TYPE_WRAPPERS = frozenset({"generic_type", "reference_type", "pointer_type", "array_type", "type_arguments"})
+
+
+def _use_kind(node: Node) -> str:
+    """How a name or path is used: call, type, extends (the trait of `impl Trait for`); "" otherwise."""
+    parent = node.parent
+    if parent is None:
+        return ""
+    if parent.type == "call_expression" and parent.child_by_field_name("function") == node:
+        return "call"
+    outer = node
+    while outer.parent is not None and outer.parent.type in _TYPE_WRAPPERS:
+        outer = outer.parent
+    holder = outer.parent
+    if holder is not None and holder.type == "impl_item" and holder.child_by_field_name("trait") == outer:
+        return "extends"
+    if node.type in ("type_identifier", "scoped_type_identifier") or outer is not node:
+        return "type"
+    return ""
+
+
 def _seen_from_file(segments: list[Segment], inline_depth: int,
                     rewrite: Callable[[str, int], str | None]) -> list[Segment]:
     """A path written inside inline modules, as the file's own module sees it.
@@ -282,10 +305,13 @@ def use_bindings_and_sites(
     uses: list[UsePayload] = []
     _top_items, nested_items = item_names(root)
 
-    def add_use(segments: list[Segment]) -> None:
+    def add_use(segments: list[Segment], kind: str = "") -> None:
         if segments and segments[-1][0] not in ("self", "super", "crate"):
-            uses.append({"path": [name for name, _line, _col in segments],
-                         "at": [[line, col] for _name, line, col in segments]})
+            use: UsePayload = {"path": [name for name, _line, _col in segments],
+                               "at": [[line, col] for _name, line, col in segments]}
+            if kind:
+                use["kind"] = kind
+            uses.append(use)
 
     def visit_use(node: Node, inline_depth: int) -> None:
         exported = any(child.type == "visibility_modifier" for child in node.children)
@@ -301,7 +327,7 @@ def use_bindings_and_sites(
                 if names and not stays_inside:
                     bindings.append({"local": "*", "module": "::".join(names), "name": "*", "export": exported, "scope": True})
                 continue
-            add_use(segments)
+            add_use(segments, "re-export" if exported else "import")
             if len(names) >= 2 and not stays_inside:
                 bindings.append({"local": alias or names[-1], "module": "::".join(names[:-1]),
                                  "name": names[-1], "export": exported, "scope": True})
@@ -330,11 +356,11 @@ def use_bindings_and_sites(
                 continue
             consider(path, scopes)
 
-    def consider(path: list[Segment], scopes: tuple[frozenset[str], ...]) -> None:
+    def consider(path: list[Segment], scopes: tuple[frozenset[str], ...], kind: str = "") -> None:
         head = path[0][0]
         if any(head in scope for scope in scopes) or head in nested_items:
             return
-        add_use(path)
+        add_use(path, kind)
 
     impl_stack: list[TypePath | None] = []
     types_stack: list[dict[str, TypePath | None]] = []
@@ -360,7 +386,7 @@ def use_bindings_and_sites(
         start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
         path = list(written) if written is not None else []
         uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
-                     "member": _text(member)})
+                     "member": _text(member), "kind": "call"})
 
     def visit(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
         kind = node.type
@@ -400,7 +426,7 @@ def use_bindings_and_sites(
                 segments = _seen_from_file(segments, inline_depth, rewrite) \
                     if segments[0][0] in ("self", "super") else segments
                 if segments:
-                    consider(segments, scopes)
+                    consider(segments, scopes, _use_kind(node))
                 return
         if kind in ("identifier", "type_identifier"):
             parent = node.parent
@@ -414,7 +440,7 @@ def use_bindings_and_sites(
                 for field in ("name", "macro", "field")
             ):
                 return
-            consider([_segment(node)], scopes)
+            consider([_segment(node)], scopes, _use_kind(node))
             return
         inner_scopes = scopes
         if kind in ("function_item", "closure_expression"):
@@ -430,7 +456,10 @@ def use_bindings_and_sites(
                 visit_pattern(child, inner_scopes, inline_depth)
                 continue
             if kind in ("match_pattern", "closure_parameters"):
-                visit_pattern(child, inner_scopes, inline_depth)
+                if kind == "match_pattern" and child == node.child_by_field_name("condition"):
+                    visit(child, inner_scopes, inline_depth)
+                else:
+                    visit_pattern(child, inner_scopes, inline_depth)
                 continue
             visit(child, inner_scopes, inline_depth + 1 if is_inline_module else inline_depth)
 

@@ -123,6 +123,7 @@ Benchmarks with charts, a sample report and the live map: [wingbox.dev](https://
 
 - Where is authentication, billing, upload, or another feature implemented?
 - Which modules depend on this service, class, function, or type?
+- Where exactly is this function, class or constant used, line by line?
 - What could break if I change this file?
 - Which two or three files should I read before fixing a bug?
 - How does a request or data value move through the system?
@@ -308,8 +309,35 @@ Build the code graph of a project, then ask what a change will break:
 cd /path/to/project
 wingbox build .
 wingbox impact path/to/file.py
+wingbox usages path/to/file.py::create_order
 wingbox quick "file upload"
 ```
+
+`wingbox usages` lists every place that uses one symbol, through re-exports and
+aliases, grouped by file, with the line, the column and the kind of use:
+
+```text
+Usages of Invoice (class, app/models.py:1)
+  7 uses in 2 files
+
+app/__init__.py
+  1:21   re-export
+app/billing.py
+  1:17   import
+  2:24   import
+  4:13   extends
+  7:13   type
+  7:25   type
+  8:11   call
+```
+
+The symbol is `Name`, `<file>::Name` or `<file>::Class.method`; a name defined
+in several files lists the candidates. Kinds: `import`, `re-export`, `call`,
+`type`, `extends` (extends or implements), `reference`. For a method, calls
+whose receiver type is not in sight are listed as `unresolved-call`, never
+guessed. At most 200 uses unless `--all`; `--sexp` prints the same answer as
+`usage` facts. Python, TypeScript, JavaScript and Rust have use positions; in
+other languages `usages` names the files that reference the symbol.
 
 `wingbox build [PATH]` accepts the builder options described below, and every
 query command in [Common code searches](#common-code-searches) is available as
@@ -506,6 +534,7 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 | `boundary`, `boundaries`, `layers` | Files to read for a change; layer violations; modules by layer |
 | `deps`, `rdeps` | Dependency and reverse dependency trees |
 | `entity`, `find_function`, `find_type` | Where a name is defined and used |
+| `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) |
 | `find_callers`, `find_calls`, `find_callchain` | Call graph questions |
 | `diff_functions` | Functions changed since a git ref |
 | `query` | A Scheme query on the graph |
@@ -576,6 +605,7 @@ Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 | Find files needed for a change | `boundary path/to/module --files-only` |
 | Trace dependencies | `deps path/to/module 2` |
 | See what a change will break | `impact path/to/file.py` |
+| Find every use of one symbol | `usages path/to/file.py::create_order` |
 | Measure blast radius as a tree | `rdeps path/to/module 2` |
 | Find a class, module, interface, enum, or type | `find_type OrderService` |
 | Find a function or method | `find_function createOrder` |
@@ -711,8 +741,10 @@ that share no code with Wingbox: [benchmarks/impact](benchmarks/impact/README.md
 
 ### My editor already has "go to definition" and "find usages". Why a graph?
 
-The editor answers one symbol at a time, inside an open, resolved project. The
-graph answers for a whole file or module at once (what depends on it within
+The editor answers one symbol at a time, inside an open, resolved project.
+`wingbox usages` gives the same kind of list without a language server or
+installed dependencies (on 100 refactoring questions it names exactly the
+files of the language tooling's find usages in all 100). The graph also answers for a whole file or module at once (what depends on it within
 two hops, which layer boundary a dependency crosses, which files to read
 first), for a coding agent on the command line, with no language server and
 no installed dependencies.

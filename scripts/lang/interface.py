@@ -51,10 +51,13 @@ class UsePayload(UsePayloadRequired, total=False):
     member: a method call; path is then the receiver's type as written in sight
     (an annotation, a constructor, the class of self or this), empty when no type
     is in sight, and the last entry of at is the method name's position.
+    kind: how the last segment is used: import, re-export, call, type, extends
+    (extends or implements); absent for any other reference.
     """
 
     module: str
     member: str
+    kind: str
 
 
 class SourceRelationPayloadRequired(TypedDict):

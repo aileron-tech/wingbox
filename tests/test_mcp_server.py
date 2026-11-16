@@ -25,6 +25,7 @@ EXPECTED_TOOLS = {
     "deps",
     "rdeps",
     "entity",
+    "usages",
     "find_function",
     "find_type",
     "find_callers",
@@ -229,6 +230,21 @@ class McpProtocolTest(unittest.TestCase):
         deps = session.reply(4)["result"]
         self.assertFalse(deps["isError"], deps)
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
+
+    def test_usages_returns_the_text_answer(self) -> None:
+        """/* REQ-MCP-011: the `usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
+        _make_shop(self.root)
+        session = McpSession(
+            self.root,
+            [_initialize(), _call(2, "build", {}), _call(3, "usages", {"symbol": "shop/pricing.py::total"})],
+        )
+        answer = session.reply(3)["result"]
+        self.assertFalse(answer["isError"], answer)
+        texts = _texts(session.reply(3))
+        self.assertEqual(1, len(texts))
+        self.assertIn("Usages of total (function, shop/pricing.py:1)", texts[0])
+        self.assertIn("shop/checkout.py\n  1:26   import\n  5:12   call", texts[0])
+        self.assertNotIn("(usage ", texts[0])
 
     def test_a_query_without_a_graph_asks_for_build(self) -> None:
         """/* REQ-MCP-005: a query tool called before any graph exists must return a tool error that tells the agent to call `build` first. */"""

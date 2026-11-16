@@ -251,6 +251,33 @@ def _local_types(node: Node) -> dict[str, tuple[str, ...] | None]:
     return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
 
 
+_TYPE_NODES = frozenset({"type_identifier", "nested_type_identifier"})
+
+
+def _use_kind(node: Node) -> str:
+    """How a name or member chain is used: call (also `new C()`), extends (extends and
+    implements clauses), type; "" otherwise."""
+    parent = node.parent
+    if parent is None:
+        return ""
+    if parent.type == "call_expression" and parent.child_by_field_name("function") == node:
+        return "call"
+    if parent.type == "new_expression" and parent.child_by_field_name("constructor") == node:
+        return "call"
+    ancestor: Node | None = parent
+    for _ in range(3):
+        if ancestor is None:
+            break
+        if ancestor.type in ("extends_clause", "implements_clause", "extends_type_clause"):
+            return "extends"
+        if ancestor.type in ("class_body", "statement_block", "object_type"):
+            break
+        ancestor = ancestor.parent
+    if node.type in _TYPE_NODES or parent.type in ("type_query", "generic_type", "type_arguments"):
+        return "type"
+    return ""
+
+
 def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
     """Use sites of names the file binds at module level (declarations and imports)."""
     uses: list[UsePayload] = []
@@ -289,15 +316,19 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
         start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
         path = list(written) if written is not None else []
         uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
-                     "member": _text(member)})
+                     "member": _text(member), "kind": "call"})
 
-    def add(segments: list[Segment], scopes: tuple[frozenset[str], ...], module: str = "") -> None:
+    def add(
+        segments: list[Segment], scopes: tuple[frozenset[str], ...], module: str = "", kind: str = "",
+    ) -> None:
         if not module and (segments[0][0] not in wanted or any(segments[0][0] in scope for scope in scopes)):
             return
         use: UsePayload = {"path": [name for name, _line, _col in segments],
                            "at": [[line, col] for _name, line, col in segments]}
         if module:
             use["module"] = module
+        if kind:
+            use["kind"] = kind
         uses.append(use)
 
     def member_chain(node: Node) -> list[Segment] | None:
@@ -322,12 +353,12 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
             return
         for part in clause.named_children:
             if part.type == "identifier":
-                add([("default", *_segment(part)[1:])], (), module)
+                add([("default", *_segment(part)[1:])], (), module, "import")
             elif part.type == "named_imports":
                 for specifier in part.named_children:
                     name = specifier.child_by_field_name("name") if specifier.type == "import_specifier" else None
                     if name is not None:
-                        add([_segment(name)], (), module)
+                        add([_segment(name)], (), module, "import")
 
     def visit_pattern(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
         """Default values and computed keys of a pattern hold uses; its names do not."""
@@ -369,14 +400,14 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
                 for specifier in clause.named_children:
                     name = specifier.child_by_field_name("name") if specifier.type == "export_specifier" else None
                     if name is not None:
-                        add([_segment(name)], scopes, module)
+                        add([_segment(name)], scopes, module, "re-export")
                 return
             if module:
                 return
         if kind in ("member_expression", "nested_type_identifier", "nested_identifier"):
             chain = member_chain(node)
             if chain is not None:
-                add(chain, scopes)
+                add(chain, scopes, kind=_use_kind(node))
                 return
         if kind in ("identifier", "type_identifier", "shorthand_property_identifier"):
             parent = node.parent
@@ -384,7 +415,7 @@ def use_sites(root: Node, wanted: frozenset[str]) -> list[UsePayload]:
                 return
             if parent is not None and parent.type in ("labeled_statement", "break_statement", "continue_statement"):
                 return
-            add([_segment(node)], scopes)
+            add([_segment(node)], scopes, kind=_use_kind(node))
             return
         if kind == "variable_declarator":
             visit_pattern(node.child_by_field_name("name"), scopes)

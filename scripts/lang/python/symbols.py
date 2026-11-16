@@ -214,11 +214,25 @@ class _Scope:
 
 
 class _UseCollector(ast.NodeVisitor):
-    def __init__(self, wanted: frozenset[str], any_name: bool) -> None:
+    def __init__(self, wanted: frozenset[str], any_name: bool, is_package: bool = False) -> None:
         self.wanted = wanted
         self.any_name = any_name
+        self.is_package = is_package
         self.scopes: tuple[_Scope, ...] = ()
         self.uses: list[UsePayload] = []
+        self.kind = ""  # how the expression being visited is used: call, type, extends; "" any other way
+
+    def _visit_as(self, node: ast.AST | None, kind: str) -> None:
+        if node is None:
+            return
+        saved, self.kind = self.kind, kind
+        self.visit(node)
+        self.kind = saved
+
+    def _add(self, use: UsePayload) -> None:
+        if self.kind:
+            use["kind"] = self.kind
+        self.uses.append(use)
 
     def _shadowed(self, name: str) -> bool:
         return any(name in scope.names for scope in self.scopes)
@@ -238,14 +252,14 @@ class _UseCollector(ast.NodeVisitor):
                 self.visit(default)
         for arg in [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]:
             if arg is not None and arg.annotation is not None:
-                self.visit(arg.annotation)
+                self._visit_as(arg.annotation, "type")
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         for decorator in node.decorator_list:
             self.visit(decorator)
         self._visit_arguments(node.args)
         if node.returns is not None:
-            self.visit(node.returns)
+            self._visit_as(node.returns, "type")
         # self (or cls) of a method of a class defined at module level is that class.
         owner = self.scopes[-1] if self.scopes and self.scopes[-1].is_class else None
         is_static = any(_type_path(decorator) == ("staticmethod",) for decorator in node.decorator_list)
@@ -261,8 +275,10 @@ class _UseCollector(ast.NodeVisitor):
         self._within(_Scope(frozenset(_arguments(node.args))), [node.body])
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        for expression in [*node.decorator_list, *node.bases, *node.keywords]:
-            self.visit(expression)
+        for expression in [*node.decorator_list, *node.keywords]:
+            self._visit_as(expression, "")
+        for base in node.bases:
+            self._visit_as(base, "extends")
         class_name = node.name if not self.scopes else ""
         self._within(_Scope(frozenset(_body_locals(node.body)), is_class=True, class_name=class_name), node.body)
 
@@ -315,15 +331,25 @@ class _UseCollector(ast.NodeVisitor):
                 member_at = [end_line, end_col - len(function.attr) + 1]
                 path = list(written) if written is not None else []
                 start = [receiver.lineno, receiver.col_offset + 1]
-                self.uses.append({"path": path, "at": [start for _ in path] + [member_at], "member": function.attr})
-        self.generic_visit(node)
+                self.uses.append({"path": path, "at": [start for _ in path] + [member_at], "member": function.attr,
+                                  "kind": "call"})
+        self._visit_as(function, "call" if isinstance(function, (ast.Name, ast.Attribute)) else "")
+        for argument in [*node.args, *node.keywords]:
+            self._visit_as(argument, "")
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = "." * node.level + (node.module or "")
+        # An import in a package __init__.py is what importers of the package see: a re-export.
+        kind = "re-export" if self.is_package else "import"
         for alias in node.names:
             if alias.name != "*" and hasattr(alias, "lineno"):
                 self.uses.append({"module": module, "path": [alias.name],
-                                  "at": [[alias.lineno, alias.col_offset + 1]]})
+                                  "at": [[alias.lineno, alias.col_offset + 1]], "kind": kind})
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self._visit_as(node.target, "")
+        self._visit_as(node.annotation, "type")
+        self._visit_as(node.value, "")
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         chain: list[ast.Attribute] = []
@@ -332,7 +358,7 @@ class _UseCollector(ast.NodeVisitor):
             chain.append(current)
             current = current.value
         if not isinstance(current, ast.Name):
-            self.visit(current)
+            self._visit_as(current, "")
             return
         if self._shadowed(current.id) or not (self.any_name or current.id in self.wanted):
             return
@@ -342,7 +368,7 @@ class _UseCollector(ast.NodeVisitor):
             end_line = attribute.end_lineno or attribute.lineno
             end_col = attribute.end_col_offset if attribute.end_col_offset is not None else 0
             at.append([end_line, end_col - len(attribute.attr) + 1])
-        self.uses.append({"path": path, "at": at})
+        self._add({"path": path, "at": at})
 
     def visit_Name(self, node: ast.Name) -> None:
         # Binding a name (x = ..., del x) defines or rebinds it; it is not a use of another definition.
@@ -350,16 +376,18 @@ class _UseCollector(ast.NodeVisitor):
             return
         if self._shadowed(node.id) or not (self.any_name or node.id in self.wanted):
             return
-        self.uses.append({"path": [node.id], "at": [[node.lineno, node.col_offset + 1]]})
+        self._add({"path": [node.id], "at": [[node.lineno, node.col_offset + 1]]})
 
 
-def use_sites(tree: ast.Module, module_names: frozenset[str], has_glob: bool) -> list[UsePayload]:
+def use_sites(
+    tree: ast.Module, module_names: frozenset[str], has_glob: bool, is_package: bool = False,
+) -> list[UsePayload]:
     """Names and attribute chains that refer to a module-level name of the file.
 
     module_names: names the module binds (definitions and imports); with a glob
     import every free name may come from it.
     """
-    collector = _UseCollector(module_names, has_glob)
+    collector = _UseCollector(module_names, has_glob, is_package)
     collector.visit(tree)
     return collector.uses
 

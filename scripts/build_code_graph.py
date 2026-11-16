@@ -842,38 +842,71 @@ def _resolve_target_entity(
     return short_matches[0] if len(short_matches) == 1 else None
 
 
+ResolvedSite = tuple[int, int, str, str, str]  # line, column, defining module, name, kind of use
+
+
+@dataclass(frozen=True)
+class UnresolvedCalls:
+    """Method calls of one module that no receiver type resolves: their number, and the
+    sites of those whose method name a class of the repository defines (by name)."""
+
+    count: int
+    sites: dict[str, list[tuple[int, int]]]
+
+
 def _resolve_symbol_uses(
     id_to_result: Mapping[str, FileResult],
     bound_languages: Mapping[str, BoundLanguage],
-) -> tuple[dict[str, list[tuple[int, int, str, str]]], dict[str, int]]:
-    """Every use site resolved to its definition: module -> sorted (line, column, module, name).
+) -> tuple[dict[str, list[ResolvedSite]], dict[str, UnresolvedCalls]]:
+    """Every use site resolved to its definition: module -> sorted (line, column, module, name, kind).
 
-    Also the number of method calls per module whose receiver type is not in
-    sight or does not define the method: they stay unresolved, never guessed.
+    Also the method calls per module whose receiver type is not in sight or does
+    not define the method: they stay unresolved, never guessed. The sites are
+    kept only for a method name that some class of the repository defines, the
+    calls that `usages Class.method` lists as unresolved.
     """
     index = SymbolIndex(
         id_to_result,
         lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
     )
-    resolved_by_module: dict[str, list[tuple[int, int, str, str]]] = {}
-    unresolved_calls: dict[str, int] = {}
+    methods = {
+        method
+        for result in id_to_result.values()
+        if supports_symbols(result.language)
+        for entity in result.entities
+        if entity["kind"] in ("class", "enum", "interface")
+        for method in entity.get("methods", [])
+    }
+    resolved_by_module: dict[str, list[ResolvedSite]] = {}
+    unresolved_calls: dict[str, UnresolvedCalls] = {}
     for node_id, result in id_to_result.items():
         if not supports_symbols(result.language):
             continue
-        found: set[tuple[int, int, str, str]] = set()
+        found: set[ResolvedSite] = set()
+        count = 0
+        sites: dict[str, list[tuple[int, int]]] = {}
         for use in result.uses:
             resolved = index.resolve(node_id, use)
             if resolved is not None:
-                found.add((resolved.line, resolved.column, resolved.module, resolved.name))
+                found.add((resolved.line, resolved.column, resolved.module, resolved.name, resolved.kind))
             elif use.get("member"):
-                unresolved_calls[node_id] = unresolved_calls.get(node_id, 0) + 1
+                count += 1
+                if use["member"] in methods:
+                    line, column = use["at"][-1]
+                    sites.setdefault(use["member"], []).append((line, column))
         if found:
             resolved_by_module[node_id] = sorted(found)
+        if count:
+            unresolved_calls[node_id] = UnresolvedCalls(count, sites)
     return resolved_by_module, unresolved_calls
 
 
+# The kind of a use, as one letter after its line:column in the graph; none for a plain reference.
+_USE_KIND_LETTERS = {"import": "i", "re-export": "r", "call": "c", "type": "t", "extends": "e"}
+
+
 def _symbol_usage_edges(
-    resolved_by_module: Mapping[str, list[tuple[int, int, str, str]]],
+    resolved_by_module: Mapping[str, list[ResolvedSite]],
     edges: list[dict],
 ) -> list[dict]:
     """refs edges from every file to each definition in another file that it uses.
@@ -891,7 +924,7 @@ def _symbol_usage_edges(
     for node_id, uses in resolved_by_module.items():
         # A method (Class.method) is a use site only; its class has its own refs.
         targets = {
-            (module, name) for _line, _column, module, name in uses if module != node_id and "." not in name
+            (module, name) for _line, _column, module, name, _kind in uses if module != node_id and "." not in name
         }
         for module, name in sorted(targets):
             edge: dict[str, Any] = {
@@ -2779,15 +2812,19 @@ def render_sexp(
     use_lines: list[str] = []
     for node in sorted_nodes:
         sites: dict[tuple[str, str], list[str]] = {}
-        for line, column, module, name in node.get("uses", []):
-            sites.setdefault((module, name), []).append(f"{line}:{column}")
+        for line, column, module, name, kind in node.get("uses", []):
+            sites.setdefault((module, name), []).append(f"{line}:{column}{_USE_KIND_LETTERS.get(kind, '')}")
         use_lines.extend(
             f"(use {path_to_sid[node['id']]} {_pid(module)}::{name} {' '.join(positions)})"
             for (module, name), positions in sorted(sites.items())
         )
-        if node.get("unresolved_method_calls"):
-            use_lines.append(
-                f"(unresolved {path_to_sid[node['id']]} :method-calls {node['unresolved_method_calls']})"
+        unresolved = node.get("unresolved_method_calls")
+        if unresolved is not None:
+            use_lines.append(f"(unresolved {path_to_sid[node['id']]} :method-calls {unresolved.count})")
+            use_lines.extend(
+                f"(unresolved-call {path_to_sid[node['id']]} {member} "
+                + " ".join(f"{line}:{column}" for line, column in positions) + ")"
+                for member, positions in sorted(unresolved.sites.items())
             )
     if use_lines:
         lines.append("")

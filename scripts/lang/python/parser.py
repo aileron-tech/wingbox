@@ -134,7 +134,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
             + [binding["local"] for binding in bindings if binding["local"] != "*"]
         )
         has_glob = any(binding["local"] == "*" for binding in bindings)
-        uses = use_sites(tree, module_names, has_glob)
+        uses = use_sites(tree, module_names, has_glob, path.endswith("__init__.py"))
 
     except SyntaxError as error:
         print(

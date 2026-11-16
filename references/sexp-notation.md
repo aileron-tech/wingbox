@@ -20,10 +20,16 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (data-flow <src> <tgt> [:validated])
 (refs <src> <tgt>::<Entity> [:callback] [:reexport] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
-(use <mod> <tgt>::<Entity> <line>:<col> <line>:<col> ...)
-(use <mod> <tgt>::<Class>.<method> <line>:<col> ...)
+(use <mod> <tgt>::<Entity> <line>:<col>[<kind>] <line>:<col>[<kind>] ...)
+(use <mod> <tgt>::<Class>.<method> <line>:<col>c ...)
 (unresolved <mod> :method-calls <count>)
+(unresolved-call <mod> <method> <line>:<col> ...)
 ```
+
+The letter after a position is the kind of use: `i` import, `r` re-export, `c`
+call, `t` type, `e` extends or implements, none for any other reference.
+`unresolved-call` keeps the sites of unresolved method calls whose method name
+some class of the repository defines (the others are only counted).
 
 `use` lists every place where `<mod>` names `<Entity>` defined in `<tgt>`: an
 import, a name, a qualified path, a type, a re-export; line and column are
@@ -90,6 +96,25 @@ definition only through a re-export and does not import `<tgt-mod>` itself;
 module-level commands (`impact`, `deps`, `rdeps`, `analyze`) do not walk these
 lines and keep following imports. A value defined at module level (a Python
 assignment, a TypeScript `const`, a Rust `const` or `static`) is an `fn` entity.
+
+## usages Output
+
+```scheme
+(usages-target <mod>::<Name> :kind cls :file <path> :line <n>)
+(usage <src-mod> <line> <col> :kind call :file <path>)
+(usage <src-mod> <line> <col> :kind unresolved-call :file <path>)
+(usage-file <src-mod> :kind reference :file <path>)    ; a language without use positions
+(usages-more <mod>::<Name> :hidden 12 :rerun "usages <symbol> --all")
+(usages-summary <mod>::<Name> :uses 7 :files 2 :unresolved 0)
+(usages-ambiguous <Name> :definitions 2)
+(usages-candidate <mod>::<Name> :kind cls :file <path> :line <n>)
+```
+
+`usages` without `--sexp` prints the same facts as text: the target, the
+counts, then each file with its `line:col` and kind. Kinds: `import`,
+`re-export`, `call`, `type`, `extends` (extends or implements), `reference`,
+`unresolved-call`. Uses are sorted by file, line and column; at most 200 unless
+`--all`. A bare name with several definitions answers with the candidates.
 
 ## deps / rdeps Output
 

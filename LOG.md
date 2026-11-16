@@ -1,5 +1,24 @@
 # Completion Log
 
+## 2026-11-16 - wingbox usages: every use of one symbol, with positions and kinds
+
+### Changes
+- `scripts/code_graph_search.py`: `cmd_usages` and the `usages` command (`Name`, `<file or module>::Name`, `<...>::Class.method`; `--sexp`, `--all`, 200 uses by default); facts `usages-target`, `usage`, `usage-file` (a language without use positions), `usages-more`, `usages-summary`, `usages-ambiguous`, `usages-candidate`, the text being their pretty print. The loader keeps `use` and `unresolved-call` lines unparsed until a query reads them; a position may carry a kind letter.
+- `scripts/lang/*/symbols.py`: the kind of each use: import, re-export (Rust `pub use`, TypeScript `export ... from` and `export { k }`, an import in a Python package `__init__.py`), call (also `new C()`), type, extends (extends, implements, `impl Trait for`); a resolved method call is a call. Rust: the `if` guard of a match arm is an expression, not a pattern (it hid three uses of a function and shadowed it for the rest of the function).
+- `scripts/build_code_graph.py`: `(use ... <line>:<col><kind letter> ...)`; `(unresolved-call <module> <method> <line>:<col> ...)` for unresolved method calls whose method name a class of the repository defines.
+- `src/wingbox/mcp_server.py`: the `usages` tool (text).
+- README, SKILL.md, `references/sexp-notation.md`: the command, the tool and the facts.
+- Tests: REQ-CS-062 to REQ-CS-067, REQ-MCP-011, REQ-RUST-019.
+
+### Motivation
+- Maintainer: a separate `usages` command instead of a symbol-level `impact`, which stays file-level and unchanged.
+
+### Verification
+- Refactoring benchmark through `usages <file>::<S> --sexp --all`: files exact in 40/40 TypeScript, 40/40 Rust, 20/20 Python questions. Positions in other files against the SCIP index of the same engines: Python 234 of 234, Rust 587 of 587 (584 before the match-guard fix), TypeScript 741 of 741 found plus 106 more, all `new C(...)` sites of a class with its own constructor, which SCIP files under the constructor symbol and an editor's find usages on the class lists.
+- `impact` lists of the five graphify questions unchanged; 711-symbol check: no new file outside the reference.
+- Graph size with kinds and unresolved call sites: immich-server 614,320 -> 1,383,327 bytes (the `unresolved-call` lines are 193,532 of it), fastapi 537,364 -> 951,035 (35,134).
+- Suite on 3.12 and 3.11.
+
 ## 2026-11-16 - method calls: resolved only with the receiver's type in sight (step 5 of the symbol index)
 
 ### Changes

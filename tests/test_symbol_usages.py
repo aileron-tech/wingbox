@@ -191,6 +191,40 @@ class RustSymbolUsageTests(unittest.TestCase):
         self.assertEqual({"src/user"}, _users(edges, "src/other", "link"))
 
 
+class RustMatchGuardTests(unittest.TestCase):
+    def test_a_call_in_a_match_guard_is_a_use_not_a_binding(self) -> None:
+        """/* REQ-RUST-019: in `x if is_wide(t) => ...` the guard is an expression: is_wide is a use (by position) and does not shadow the name for the rest of the function; x is a binding. */"""
+        _nodes, edges = _graph({
+            "src/lib.rs": "pub mod types;\npub mod emit;\n",
+            "src/types.rs": "pub fn is_wide(t: u8) -> bool { t > 8 }\n",
+            "src/emit.rs": (
+                "use crate::types::*;\n"
+                "fn size(t: u8) -> u8 {\n"
+                "    match t {\n"
+                "        x if is_wide(x) => 16,\n"
+                "        _ => 8,\n"
+                "    }\n"
+                "}\n"
+            ),
+        }, cargo=True)
+        self.assertEqual({"src/emit"}, _users(edges, "src/types", "is_wide"))
+        nodes, _edges = _graph({
+            "src/lib.rs": "pub mod types;\npub mod emit;\n",
+            "src/types.rs": "pub fn is_wide(t: u8) -> bool { t > 8 }\n",
+            "src/emit.rs": (
+                "use crate::types::is_wide;\n"
+                "fn size(t: u8) -> u8 {\n"
+                "    match t {\n"
+                "        _ if is_wide(t) => 16,\n"
+                "        _ => 8,\n"
+                "    }\n"
+                "}\n"
+            ),
+        }, cargo=True)
+        emit = next(node for node in nodes if node["id"] == "src/emit")
+        self.assertIn((4, 14), {(line, column) for line, column, *_rest in emit.get("uses", [])})
+
+
 class NameResolutionTests(unittest.TestCase):
     def test_typescript_imports_follow_reexport_chains_to_the_definition(self) -> None:
         """/* REQ-TS-SYM-001: a named, aliased or default import of S through barrels (`export * from`, `export { X as Y } from`, `export * as ns from`) references S in its defining file; the barrels that name S reference it too; module dependencies (impact) do not change. */"""
@@ -303,7 +337,7 @@ def _entity_output(files: dict[str, str], name: str, positions: bool, cargo: boo
 
 class UsePositionTests(unittest.TestCase):
     def test_entity_positions_list_every_use_with_line_and_column(self) -> None:
-        """/* REQ-CS-060: the graph stores the resolved uses of each file as (use <file-module> <defining-module>::<S> <line>:<col> ...), one line per file and definition; `entity S --positions` prints every use of S with its file, line and column (both 1-based), and without the flag only the definitions and refs lines. */"""
+        """/* REQ-CS-060: the graph stores the resolved uses of each file as (use <file-module> <defining-module>::<S> <line>:<col> ...), one line per file and definition, a letter after a position giving its kind (i import); `entity S --positions` prints every use of S with its file, line and column (both 1-based), and without the flag only the definitions and refs lines. */"""
         files = {
             "app/__init__.py": "",
             "app/config.py": "LIMIT = 3\n",
@@ -311,7 +345,7 @@ class UsePositionTests(unittest.TestCase):
         }
         plain = _entity_output(files, "LIMIT", positions=False)
         self.assertNotIn("\n(use ", "\n" + plain)
-        self.assertRegex(plain, r"; graph \(use \S+ \S+::LIMIT 1:24 5:12 5:27\)")
+        self.assertRegex(plain, r"; graph \(use \S+ \S+::LIMIT 1:24i 5:12 5:27\)")
         listed = _entity_output(files, "LIMIT", positions=True)
         self.assertIn("(use app/main 1 24 app/config::LIMIT :file app/main.py)", listed)
         self.assertIn("(use app/main 5 12 app/config::LIMIT :file app/main.py)", listed)
@@ -373,7 +407,7 @@ class MethodCallTests(unittest.TestCase):
         uses = {
             (source, str(line), str(column), target)
             for target, sites in loaded.uses_by_target.items()
-            for source, line, column in sites
+            for source, line, column, *_kind in sites
         }
         return uses, dict(loaded.unresolved_method_calls)
 
