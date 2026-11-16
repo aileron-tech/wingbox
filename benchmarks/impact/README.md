@@ -134,3 +134,9 @@ python3 -I benchmarks/impact/tools/time_builds.py ~/wingbox-bench           # te
 | `tools/` | the reference resolvers and the build timing; none of them uses Wingbox code |
 | `results/` | the questions, the reference lists (`gold/`), every row of the command test, every trial of the agent test, the edge test, the build times |
 
+
+## Context size (the `graphify benchmark` measure)
+
+`tools/context_ratio.py` divides the estimated tokens of each repository's source by the average size of the impact answers above, the same kind of number as `graphify benchmark` ("Nx fewer tokens per query"). Results in `results/context_ratio.json`: an impact answer is 802x (immich server) to 9,327x (agent-browser) smaller than the source, and all 100 answers are complete. On the three repositories where Graphify 0.9.110 was run (`graphify benchmark`, same commits, its own corpus estimate), Graphify reports 134.6x, 391.9x and 402.3x; Wingbox's answers on that same corpus estimate give 537x, 4,233x and 2,308x. The two tools answer different questions (Graphify: five fixed questions per repository, not graded; Wingbox: the impact of 20 files per repository, each checked against the import statements), so this compares answer size, not quality.
+
+    python3 tools/context_ratio.py <folder with the checkouts> [graphify.json]

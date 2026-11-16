@@ -1,0 +1,68 @@
+{
+ "method": "The same kind of number as `graphify benchmark` (\"Nx fewer tokens per query\"):\nestimated tokens of the repository's source divided by the average size of the\nanswer. Here the answers are the 100 impact answers of results/command.json,\neach one checked against the import statements (results/gold), so the ratio is\nreported next to how many answers were complete.",
+ "repos": [
+  {
+   "repo": "chrome-devtools-mcp",
+   "source_files": 289,
+   "corpus_tokens": 687856,
+   "questions": 20,
+   "complete_answers": 20,
+   "avg_answer_tokens": 596,
+   "ratio": 1154,
+   "graphify": {
+    "corpus_tokens": 320266,
+    "avg_query_tokens": 2380,
+    "ratio": 134.6,
+    "wingbox_ratio_on_graphify_corpus": 537
+   }
+  },
+  {
+   "repo": "agent-browser",
+   "source_files": 360,
+   "corpus_tokens": 1544602,
+   "questions": 20,
+   "complete_answers": 20,
+   "avg_answer_tokens": 166,
+   "ratio": 9327,
+   "graphify": {
+    "corpus_tokens": 701066,
+    "avg_query_tokens": 1789,
+    "ratio": 391.9,
+    "wingbox_ratio_on_graphify_corpus": 4233
+   }
+  },
+  {
+   "repo": "claudes-c-compiler",
+   "source_files": 351,
+   "corpus_tokens": 2030852,
+   "questions": 20,
+   "complete_answers": 20,
+   "avg_answer_tokens": 272,
+   "ratio": 7468,
+   "graphify": {
+    "corpus_tokens": 627533,
+    "avg_query_tokens": 1560,
+    "ratio": 402.3,
+    "wingbox_ratio_on_graphify_corpus": 2308
+   }
+  },
+  {
+   "repo": "fastapi",
+   "source_files": 1227,
+   "corpus_tokens": 1181798,
+   "questions": 20,
+   "complete_answers": 20,
+   "avg_answer_tokens": 1412,
+   "ratio": 837
+  },
+  {
+   "repo": "immich-server",
+   "source_files": 704,
+   "corpus_tokens": 1162858,
+   "questions": 20,
+   "complete_answers": 20,
+   "avg_answer_tokens": 1451,
+   "ratio": 802
+  }
+ ]
+}
