@@ -259,6 +259,84 @@ class UseSiteTests(unittest.TestCase):
         self.assertEqual(set(), _users(edges, "src/model", "Id"))
 
 
+def _entity_output(files: dict[str, str], name: str, positions: bool, cargo: bool = False) -> str:
+    """Build, render and load a graph, then print `entity name` as the command does."""
+    import contextlib
+    import importlib.util
+    import io
+
+    from scripts.build_code_graph import render_sexp
+
+    spec = importlib.util.spec_from_file_location(
+        "code_graph_search_for_uses", Path(__file__).resolve().parents[1] / "scripts" / "code_graph_search.py")
+    assert spec is not None and spec.loader is not None
+    search = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = search
+    spec.loader.exec_module(search)
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        if cargo:
+            (root / "Cargo.toml").write_text('[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+        results = []
+        for relative_path, content in files.items():
+            path = root / relative_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            language = detect_source_language(path.name)
+            assert language is not None
+            results.append(parse_file((str(path), language, root.name)))
+        graph = build_graph(results, str(root))
+        assert isinstance(graph, Ok)
+        map_path = root / ".code_graph.sexp"
+        map_path.write_text(render_sexp(graph.value.nodes, graph.value.edges, str(root), "syntax", len(results)),
+                            encoding="utf-8")
+        loaded = search.CodeGraph()
+        loaded.load(str(map_path), str(root))
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            search.cmd_entity(loaded, name, positions=positions)
+        return output.getvalue() + "".join(
+            "; graph " + line + "\n" for line in map_path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("(use ")
+        )
+
+
+class UsePositionTests(unittest.TestCase):
+    def test_entity_positions_list_every_use_with_line_and_column(self) -> None:
+        """/* REQ-CS-060: the graph stores the resolved uses of each file as (use <file-module> <defining-module>::<S> <line>:<col> ...), one line per file and definition; `entity S --positions` prints every use of S with its file, line and column (both 1-based), and without the flag only the definitions and refs lines. */"""
+        files = {
+            "app/__init__.py": "",
+            "app/config.py": "LIMIT = 3\n",
+            "app/main.py": "from app.config import LIMIT\nfrom app import config\n\ndef run(n):\n    return LIMIT + config.LIMIT\n",
+        }
+        plain = _entity_output(files, "LIMIT", positions=False)
+        self.assertNotIn("\n(use ", "\n" + plain)
+        self.assertRegex(plain, r"; graph \(use \S+ \S+::LIMIT 1:24 5:12 5:27\)")
+        listed = _entity_output(files, "LIMIT", positions=True)
+        self.assertIn("(use app/main 1 24 app/config::LIMIT :file app/main.py)", listed)
+        self.assertIn("(use app/main 5 12 app/config::LIMIT :file app/main.py)", listed)
+        self.assertIn("(use app/main 5 27 app/config::LIMIT :file app/main.py)", listed)
+        self.assertEqual(3, listed.count("\n(use ") + listed.startswith("(use "))
+
+    def test_positions_for_typescript_and_rust_uses(self) -> None:
+        """/* REQ-CS-061: TypeScript and Rust uses carry positions too: an import specifier, a type annotation, a `use` path segment and a call through a module path. */"""
+        ts = _entity_output({
+            "src/model.ts": "export class Session {}\n",
+            "src/app.ts": "import { Session } from './model';\nexport const s: Session = new Session();\n",
+        }, "Session", positions=True)
+        self.assertIn("(use src/app 1 10 src/model::Session :file src/app.ts)", ts)
+        self.assertIn("(use src/app 2 17 src/model::Session :file src/app.ts)", ts)
+        self.assertIn("(use src/app 2 31 src/model::Session :file src/app.ts)", ts)
+        rust = _entity_output({
+            "src/lib.rs": "pub mod shot;\npub mod run;\n",
+            "src/shot.rs": "pub fn take() {}\n",
+            "src/run.rs": "use crate::shot;\nuse crate::shot::take;\nfn go() { shot::take(); take(); }\n",
+        }, "take", positions=True, cargo=True)
+        self.assertIn("(use src/run 2 18 src/shot::take :file src/run.rs)", rust)
+        self.assertIn("(use src/run 3 17 src/shot::take :file src/run.rs)", rust)
+        self.assertIn("(use src/run 3 25 src/shot::take :file src/run.rs)", rust)
+
+
 def _parsed(relative_path: str, content: str) -> dict:
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / relative_path

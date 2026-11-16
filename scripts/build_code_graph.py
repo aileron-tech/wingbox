@@ -842,36 +842,47 @@ def _resolve_target_entity(
     return short_matches[0] if len(short_matches) == 1 else None
 
 
-def _symbol_usage_edges(
+def _resolve_symbol_uses(
     id_to_result: Mapping[str, FileResult],
     bound_languages: Mapping[str, BoundLanguage],
+) -> dict[str, list[tuple[int, int, str, str]]]:
+    """Every use site resolved to its definition: module -> sorted (line, column, module, name)."""
+    index = SymbolIndex(
+        id_to_result,
+        lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
+    )
+    resolved_by_module: dict[str, list[tuple[int, int, str, str]]] = {}
+    for node_id, result in id_to_result.items():
+        if not supports_symbols(result.language):
+            continue
+        found = {
+            (resolved.line, resolved.column, resolved.module, resolved.name)
+            for use in result.uses
+            if (resolved := index.resolve(node_id, use)) is not None
+        }
+        if found:
+            resolved_by_module[node_id] = sorted(found)
+    return resolved_by_module
+
+
+def _symbol_usage_edges(
+    resolved_by_module: Mapping[str, list[tuple[int, int, str, str]]],
     edges: list[dict],
 ) -> list[dict]:
-    """refs edges from every resolved use site to the module that defines the name.
+    """refs edges from every file to each definition in another file that it uses.
 
     A file that reaches the definition only through a re-export (a package
     __init__.py, a Rust `pub use`) has no dependency on the defining module: its
     edge carries the relation "reexport", which module-level queries (impact,
     deps) do not walk, so they keep following imports.
     """
-    index = SymbolIndex(
-        id_to_result,
-        lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
-    )
     adjacent = {
         (edge["source"].split("::")[0], edge["target"].split("::")[0])
         for edge in edges
     }
     found: list[dict] = []
-    for node_id, result in id_to_result.items():
-        if not supports_symbols(result.language):
-            continue
-        targets = {
-            (resolved.module, resolved.name)
-            for use in result.uses
-            if (resolved := index.resolve(node_id, use)) is not None
-            and resolved.module != node_id
-        }
+    for node_id, uses in resolved_by_module.items():
+        targets = {(module, name) for _line, _column, module, name in uses if module != node_id}
         for module, name in sorted(targets):
             edge: dict[str, Any] = {
                 "source": node_id,
@@ -1172,9 +1183,13 @@ def build_graph(
         for edge in edges
         if edge["type"] == "REFERENCES"
     }
-    for edge in _symbol_usage_edges(id_to_result, bound_languages, edges):
+    resolved_uses = _resolve_symbol_uses(id_to_result, bound_languages)
+    for edge in _symbol_usage_edges(resolved_uses, edges):
         if (edge["source"], edge["target"]) not in referenced:
             edges.append(edge)
+    for node in nodes:
+        if node["id"] in resolved_uses:
+            node["uses"] = resolved_uses[node["id"]]
 
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
@@ -2746,6 +2761,22 @@ def render_sexp(
             client = edge.get("client_entity", "")
             client_str = f" :client {client}" if client else ""
             lines.append(f"(http-calls {src} {tgt} :transport http{client_str})")
+
+    # -- Uses: the resolved use sites of each file, one line per file and definition,
+    # with the 1-based line:column of every site (one line per site tripled the size).
+    use_lines: list[str] = []
+    for node in sorted_nodes:
+        sites: dict[tuple[str, str], list[str]] = {}
+        for line, column, module, name in node.get("uses", []):
+            sites.setdefault((module, name), []).append(f"{line}:{column}")
+        use_lines.extend(
+            f"(use {path_to_sid[node['id']]} {_pid(module)}::{name} {' '.join(positions)})"
+            for (module, name), positions in sorted(sites.items())
+        )
+    if use_lines:
+        lines.append("")
+        lines.append("; --- uses ---")
+        lines.extend(use_lines)
 
     # -- Violations (Gap 2 fix) --
     if violations:

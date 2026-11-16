@@ -20,7 +20,13 @@ carries a compact `:lang` value such as `py`, `ts`, `rs`, or `rb`.
 (data-flow <src> <tgt> [:validated])
 (refs <src> <tgt>::<Entity> [:callback] [:reexport] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
+(use <mod> <tgt>::<Entity> <line>:<col> <line>:<col> ...)
 ```
+
+`use` lists every place where `<mod>` names `<Entity>` defined in `<tgt>`: an
+import, a name, a qualified path, a type, a re-export; line and column are
+1-based. One line per file and definition (a line per place made the graph
+about twice as large again).
 
 ## boundary Output
 
@@ -64,7 +70,12 @@ entity; an `analyze-more` or `key-entity-more` line gives the number left out.
 (entity-def ifc <mod> <Name> <line> :lang ts :file <path>)
 (refs <src-mod> <tgt-mod>::<Name>)
 (refs <src-mod> <tgt-mod>::<Name> :reexport)
+(use <src-mod> <line> <col> <tgt-mod>::<Name> :file <path>)   ; with --positions
 ```
+
+`entity <Name> --positions` adds one `use` line per place that names the
+definition, as an editor's find usages lists them, sorted by file, line and
+column; `:file` is relative to the repository root.
 
 Each `refs` line names a module that uses `<Name>` defined in `<tgt-mod>`: by an
 import, a qualified path (`m.Name`, `m::Name`), a glob import or a re-export

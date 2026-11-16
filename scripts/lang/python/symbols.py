@@ -257,6 +257,9 @@ class _UseCollector(ast.NodeVisitor):
         self.uses.append({"path": path, "at": at})
 
     def visit_Name(self, node: ast.Name) -> None:
+        # Binding a name (x = ..., del x) defines or rebinds it; it is not a use of another definition.
+        if not isinstance(node.ctx, ast.Load):
+            return
         if self._shadowed(node.id) or not (self.any_name or node.id in self.wanted):
             return
         self.uses.append({"path": [node.id], "at": [[node.lineno, node.col_offset + 1]]})

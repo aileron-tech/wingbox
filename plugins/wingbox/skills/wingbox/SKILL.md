@@ -134,7 +134,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
 | `boundary <id> --files-only` | File paths only (compact) | `boundary operatives.service --files-only` |
-| `entity <Name>` | Find definitions + references | `entity DrivePath` |
+| `entity <Name> [--positions]` | Find definitions + the modules that use them; `--positions`: every use with line and column | `entity DrivePath --positions` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
 | `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth + files to read first; lists at most 200 unless `--all`, counts are always complete | `impact src/billing/invoice.service.ts --sexp` |

@@ -17,7 +17,9 @@ Usage::
     code_graph_search.py deps <id> [depth]      Outgoing dependency tree (default depth 2)
     code_graph_search.py rdeps <id> [depth]     Reverse dependency tree (default depth 2)
     code_graph_search.py impact <file|id> [depth] [--sexp]  Blast radius of a change: dependents by depth and files to read first
-    code_graph_search.py entity <name>          Find entity: definition + all usages
+    code_graph_search.py entity <name> [--positions]
+                                                Find entity: definition + the modules that use it;
+                                                --positions: every use with its line and column
     code_graph_search.py flow <id> <entity>     Trace data/call flow from entity
     code_graph_search.py search <pattern>       Safe pattern search across all facts
     code_graph_search.py invariants [scope]     Check naming-convention violations (default: all)
@@ -391,6 +393,8 @@ class CodeGraph:
         self.edges_from_entity: dict[str, list[Edge]] = {}  # entity-qualified source -> edges
         self.edges_by_entity_name: dict[str, list[Edge]] = {}  # entity name -> edges
         self.all_edges: list[Edge] = []
+        self._symbol_lines: list[str] = []  # use facts, parsed on first access (most queries never need them)
+        self._uses_by_target: Optional[dict[str, list[tuple[str, int, int]]]] = None
         self.pmap: dict[str, str] = {}
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self._root: str = ""
@@ -404,6 +408,8 @@ class CodeGraph:
         self.edges_from_entity = {}
         self.edges_by_entity_name = {}
         self.all_edges = []
+        self._symbol_lines = []
+        self._uses_by_target = None
         self.pmap = {}
         self.package_layers = {}
         self._root = os.path.abspath(
@@ -425,7 +431,7 @@ class CodeGraph:
 
         for line in map_lines:
             stripped = line.strip()
-            if not stripped or stripped.startswith(";"):
+            if not stripped or stripped.startswith(";") or stripped.startswith("(use "):
                 continue
 
             header_tokens = tokenize(stripped)
@@ -502,6 +508,9 @@ class CodeGraph:
             return pmap.get(sid, sid)
 
         for line in map_lines:
+            if line.startswith("(use "):
+                self._symbol_lines.append(line)
+                continue
             tokens = tokenize(line)
             if not tokens:
                 continue
@@ -569,6 +578,25 @@ class CodeGraph:
                 f"{declared_node_count}, loaded {len(self.nodes)}"
             )
         return MapLoadOk()
+
+    @property
+    def uses_by_target(self) -> dict[str, list[tuple[str, int, int]]]:
+        """module::name -> (module, line, column) of every use, from (use <module> <target> <line>:<col> ...)."""
+        if self._uses_by_target is None:
+            found: dict[str, list[tuple[str, int, int]]] = {}
+            for line in self._symbol_lines:
+                tokens = tokenize(line)
+                if len(tokens) < 4:
+                    continue
+                module, _, name = tokens[2].partition("::")
+                sites = found.setdefault(f"{self.pmap.get(module, module)}::{name}", [])
+                source = self.pmap.get(tokens[1], tokens[1])
+                for position in tokens[3:]:
+                    line_text, _, column_text = position.partition(":")
+                    if line_text.isdigit() and column_text.isdigit():
+                        sites.append((source, int(line_text), int(column_text)))
+            self._uses_by_target = found
+        return self._uses_by_target
 
     def resolve_alias(self, module_id: str) -> str:
         """Resolve an internal path-map alias to a module ID when possible."""
@@ -1314,7 +1342,7 @@ def cmd_impact(
         print(f"  ... {read_first_count - len(read_first)} more: the other files of Depth 1")
 
 
-def cmd_entity(g: CodeGraph, name: str) -> None:
+def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
     # Always try exact match first, then safe-pattern fallback.
     definitions: list[EntityFact] = []
     if name in g.entity_by_name:
@@ -1347,6 +1375,15 @@ def cmd_entity(g: CodeGraph, name: str) -> None:
         print(f"(entity-def {defn.kind} {defn.module} {defn.name} {defn.line} :lang {g.module_lang(defn.module)} :file {_q(g.module_to_file(defn.module))})")
     for e in sorted(unique_refs, key=lambda x: (x.etype, x.source)):
         print(_edge_sexp(e))
+    if positions:
+        # Every use site, as find usages lists it: file, line, column (1-based).
+        sites = sorted(
+            (_impact_file(g, source), line, column, source, target)
+            for target in sorted({f"{defn.module}::{defn.name}" for defn in definitions})
+            for source, line, column in g.uses_by_target.get(target, [])
+        )
+        for file_path, line, column, source, target in sites:
+            print(f"(use {source} {line} {column} {target} :file {_q(file_path)})")
 
 
 def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> None:
@@ -2981,7 +3018,8 @@ def main(args: Optional[list[str]] = None) -> int:
         impact_depth = int(impact_args[1]) if len(impact_args) >= 2 else 2
         cmd_impact(g, impact_args[0], impact_depth, sexp="--sexp" in args, show_all=show_all)
     elif cmd == "entity" and len(args) >= 2:
-        cmd_entity(g, args[1])
+        entity_args = [argument for argument in args[1:] if argument != "--positions"]
+        cmd_entity(g, entity_args[0], positions="--positions" in args)
     elif cmd == "flow" and len(args) >= 3:
         cmd_flow(g, args[1], args[2])
     elif cmd == "search" and len(args) >= 2:

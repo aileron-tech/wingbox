@@ -4,6 +4,10 @@
 
 ### Changes
 
+- `entity S --positions` lists every place that names S, with its file, line
+  and column, as an editor's find usages does. The graph stores the use sites
+  as `(use <module> <defining-module>::<S> <line>:<col> ...)`; on immich-server
+  the graph grows from 614 KB to 1,087 KB, on fastapi from 537 KB to 867 KB.
 - TypeScript use sites in code count: names, `ns.S` after `import * as ns`,
   qualified types, JSX elements, shorthand properties and `export { k }`; a
   parameter, local variable, catch parameter or type parameter of the same name

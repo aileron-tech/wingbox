@@ -1,5 +1,22 @@
 # Completion Log
 
+## 2026-11-16 - positions of every use (step 4 of the symbol index)
+
+### Changes
+- `scripts/build_code_graph.py`: the resolved use sites of each file are kept on its node and written as `(use <module> <defining-module>::<S> <line>:<col> ...)`, one line per file and definition, in a `; --- uses ---` section.
+- `scripts/code_graph_search.py`: `entity S --positions` prints `(use <module> <line> <col> <defining-module>::<S> :file <path>)` for every use, sorted by file, line and column; the loader keeps the use lines unparsed until a query asks for them.
+- `scripts/lang/python/symbols.py`: binding a name (`x = ...`, `del x`) is not a use of another definition.
+- `references/sexp-notation.md`, `SKILL.md`: the `use` fact and the `--positions` flag.
+- Tests: REQ-CS-060, REQ-CS-061.
+
+### Motivation
+- Maintainer, step 4: each resolved use stored with line and column in the graph, `entity S` printing every line:column with a flag, the graph size kept in check.
+
+### Verification
+- Graph size, 0.2.5 -> this tree, all uses (also inside the defining file): immich-server 614,320 -> 1,086,605 bytes (1.77x), fastapi 537,364 -> 866,642 (1.61x), agent-browser 327,336 -> 694,854 (2.12x), chrome-devtools-mcp 203,123 -> 355,817 (1.75x), claudes-c-compiler 271,685 -> 915,376 (3.37x; glob imports of encoder modules). One line per use was 1,836,359 bytes on immich-server (2.99x) and 1,138,566 on fastapi (2.12x).
+- Graph load in process (median of 7, machine load 10 to 30): immich-server 700 -> 732 ms and 809 -> 810 ms in two rounds, claudes-c-compiler 314 -> 466 ms and 508 -> 631 ms. Parsing the use lines at load cost about 0.5 s per query before they were kept unparsed.
+- Refactoring benchmark: 40/40, 40/40, 20/20 exact; impact unchanged; suite on 3.12 and 3.11.
+
 ## 2026-11-16 - use sites through scopes (step 3 of the symbol index)
 
 ### Changes
