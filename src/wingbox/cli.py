@@ -4,6 +4,7 @@
                                             and write wingbox-out/REPORT.md and wingbox-out/map.html
     wingbox <command> [arguments]           Query the code graph: impact, quick, analyze, search, ...
     wingbox infra [arguments]               Build the infrastructure topology (Kustomize, Helm, Terraform)
+    wingbox mcp [--root DIR]                Run the MCP server on stdio for an MCP client (default: current directory)
     wingbox --version
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
@@ -171,6 +172,10 @@ def _run(argv: Optional[list[str]] = None) -> int:
         if any(argument in ("-h", "--help") for argument in rest):
             return int(load_script("build_code_graph").main(rest))
         return _build(build_arguments(rest, cwd))
+    if command == "mcp":
+        from wingbox import mcp_server
+
+        return mcp_server.main(rest, cwd)
     if command == "infra":
         sys.argv = ["wingbox infra"] + absolutize_path_options(rest, cwd)
         load_script("build_infra_topology").main()

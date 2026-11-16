@@ -4,6 +4,16 @@
 
 ### Changes
 
+- `wingbox mcp [--root DIR]` runs an MCP server on stdio, so that MCP
+  clients (Claude Code, Codex, Cursor, Claude Desktop) call Wingbox as tools:
+  `build`, `impact`, `analyze`, `quick`, `boundary`, `boundaries`, `layers`,
+  `deps`, `rdeps`, `entity`, `find_function`, `find_type`, `find_callers`,
+  `find_calls`, `find_callchain`, `diff_functions` and `query`. It speaks
+  protocol revision 2026-07-28 and the `initialize` handshake of 2025-11-25
+  and earlier, needs no new dependency and opens no network connection. The
+  README section "Use from an MCP client" gives the configuration of each
+  client.
+- `python -m wingbox` runs the `wingbox` command.
 - Package version 0.2.5.
 - Package version 0.2.4.
 - `.mts` and `.cts` files are TypeScript modules; an import of `./x.mjs` or

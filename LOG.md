@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-16 - `wingbox mcp`: an MCP server on stdio
+
+### Changes
+- `src/wingbox/mcp_server.py` (new): newline-delimited JSON-RPC 2.0 on stdin and stdout, written over the standard library. Protocol revision 2026-07-28 (per-request `_meta`, `server/discover`, `resultType`, `ttlMs`/`cacheScope`, -32022 for an unsupported version) and the `initialize` handshake of 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05, chosen per request. `ping` is answered for handshake-era clients.
+- Tools: `build`, `impact` (text and S-expressions), `analyze`, `quick`, `boundary`, `boundaries`, `layers`, `deps`, `rdeps`, `entity`, `find_function`, `find_type`, `find_callers`, `find_calls`, `find_callchain`, `diff_functions`, `query`. Each calls the same function as the `wingbox` command and is validated by the same argument check; answers without their own limit stop at 200 lines unless `all` is true. Left out: `search`, `module`, `flow`, `invariants`, `grep_functions` (overlap with the tools above or with the agent's own search) and `repl`.
+- The loaded graph is kept between calls and reloaded when `.code_graph.sexp` changes: on a library of 1,227 files the first `impact` takes about 1 s, the next calls 5 to 35 ms.
+- File descriptor 1 is pointed at stderr while the server runs and the protocol is written to a duplicate, so a stray print or a child process cannot corrupt the stream.
+- `src/wingbox/cli.py`: `wingbox mcp` dispatches to the new module. `src/wingbox/__main__.py`: `python -m wingbox`.
+- `README.md`: section "Use from an MCP client" with the configuration of Claude Code, Codex, Cursor and Claude Desktop, checked against their documentation on 2026-11-16; FAQ entry on agents. `SKILL.md`: command table row.
+- Tests: REQ-MCP-001 to REQ-MCP-010 (`tests/test_mcp_server.py`), which run `python -m wingbox mcp` as a subprocess.
+
+### Motivation
+- The maintainer asked that `wingbox mcp` start an MCP server. MCP clients that do not load Agent Skills can then use the code graph.
+
 ## 2026-11-16 - README: the earlier repository is named without a link
 
 ### Changes

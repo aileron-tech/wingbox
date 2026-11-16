@@ -1,0 +1,323 @@
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "src"
+MCP_PATH = SOURCE / "wingbox" / "mcp_server.py"
+
+LEGACY_VERSION = "2025-11-25"
+MODERN_VERSION = "2026-07-28"
+EXPECTED_TOOLS = {
+    "build",
+    "impact",
+    "analyze",
+    "quick",
+    "boundary",
+    "boundaries",
+    "layers",
+    "deps",
+    "rdeps",
+    "entity",
+    "find_function",
+    "find_type",
+    "find_callers",
+    "find_calls",
+    "find_callchain",
+    "diff_functions",
+    "query",
+}
+
+
+def _load_mcp_module():
+    sys.path.insert(0, str(SOURCE))
+    spec = importlib.util.spec_from_file_location("wingbox_mcp_server", MCP_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load the MCP server module from {MCP_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _request(identifier, method, params=None):
+    message = {"jsonrpc": "2.0", "id": identifier, "method": method}
+    if params is not None:
+        message["params"] = params
+    return json.dumps(message)
+
+
+def _initialize(identifier=1, version=LEGACY_VERSION):
+    return _request(
+        identifier,
+        "initialize",
+        {"protocolVersion": version, "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}},
+    )
+
+
+def _modern_meta(version=MODERN_VERSION):
+    return {
+        "io.modelcontextprotocol/protocolVersion": version,
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0"},
+    }
+
+
+def _call(identifier, name, arguments):
+    return _request(identifier, "tools/call", {"name": name, "arguments": arguments})
+
+
+def _make_shop(root: Path) -> None:
+    (root / "shop").mkdir()
+    (root / "shop" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "shop" / "pricing.py").write_text("def total(items):\n    return sum(items)\n", encoding="utf-8")
+    (root / "shop" / "checkout.py").write_text(
+        "from shop.pricing import total\n\n\ndef pay(items):\n    return total(items)\n", encoding="utf-8"
+    )
+
+
+class McpSession:
+    """Run `python -m wingbox mcp` on a list of input lines and collect what it writes."""
+
+    def __init__(self, root: Path, lines: list[str]) -> None:
+        environment = dict(os.environ)
+        environment["PYTHONPATH"] = str(SOURCE) + os.pathsep + environment.get("PYTHONPATH", "")
+        completed = subprocess.run(
+            [sys.executable, "-m", "wingbox", "mcp", "--root", str(root)],
+            input="".join(line + "\n" for line in lines).encode("utf-8"),
+            capture_output=True,
+            env=environment,
+            cwd=str(root),
+            timeout=180,
+        )
+        self.returncode = completed.returncode
+        self.stdout = completed.stdout.decode("utf-8")
+        self.stderr = completed.stderr.decode("utf-8")
+        self.messages = [json.loads(line) for line in self.stdout.splitlines() if line.strip()]
+
+    def reply(self, identifier):
+        for message in self.messages:
+            if message.get("id") == identifier:
+                return message
+        raise AssertionError(f"no reply with id {identifier}; stdout={self.stdout!r} stderr={self.stderr[-2000:]!r}")
+
+
+def _texts(reply) -> list[str]:
+    return [item["text"] for item in reply["result"]["content"] if item["type"] == "text"]
+
+
+class McpProtocolTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        self.root = Path(tmpdir.name).resolve()
+
+    def test_initialize_handshake_negotiates_the_protocol_version(self) -> None:
+        """/* REQ-MCP-001: `wingbox mcp` must answer `initialize` with the requested protocol version when it supports it, otherwise with its latest handshake version, and declare the tools capability and its name. */"""
+        session = McpSession(
+            self.root,
+            [
+                _initialize(1, LEGACY_VERSION),
+                json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+                _initialize(2, "2025-06-18"),
+                _initialize(3, "2024-01-01"),
+                _request(4, "ping"),
+            ],
+        )
+        self.assertEqual(0, session.returncode, session.stderr)
+        first = session.reply(1)["result"]
+        self.assertEqual(LEGACY_VERSION, first["protocolVersion"])
+        self.assertIn("tools", first["capabilities"])
+        self.assertEqual("wingbox", first["serverInfo"]["name"])
+        self.assertIn("build", first["instructions"])
+        self.assertEqual("2025-06-18", session.reply(2)["result"]["protocolVersion"])
+        self.assertEqual(LEGACY_VERSION, session.reply(3)["result"]["protocolVersion"])
+        self.assertEqual({}, session.reply(4)["result"])
+        self.assertEqual(4, len(session.messages), "a notification must get no reply")
+
+    def test_requests_with_per_request_metadata_follow_the_stateless_revision(self) -> None:
+        """/* REQ-MCP-002: a request carrying `_meta` protocol fields must be served by the stateless revision 2026-07-28: `server/discover` lists the supported versions, results carry `resultType`, an unsupported version gets -32022 with the supported list, a request without client capabilities gets -32602. */"""
+        session = McpSession(
+            self.root,
+            [
+                _request(1, "server/discover", {"_meta": _modern_meta()}),
+                _request(2, "tools/list", {"_meta": _modern_meta()}),
+                _request(3, "tools/list", {"_meta": _modern_meta("1900-01-01")}),
+                _request(4, "tools/list", {"_meta": {"io.modelcontextprotocol/protocolVersion": MODERN_VERSION}}),
+            ],
+        )
+        discover = session.reply(1)["result"]
+        self.assertEqual("complete", discover["resultType"])
+        self.assertIn(MODERN_VERSION, discover["supportedVersions"])
+        self.assertIn(LEGACY_VERSION, discover["supportedVersions"])
+        self.assertIn("tools", discover["capabilities"])
+        self.assertEqual("wingbox", discover["_meta"]["io.modelcontextprotocol/serverInfo"]["name"])
+        self.assertGreaterEqual(discover["ttlMs"], 0)
+        listing = session.reply(2)["result"]
+        self.assertEqual("complete", listing["resultType"])
+        self.assertEqual(EXPECTED_TOOLS, {tool["name"] for tool in listing["tools"]})
+        self.assertIn(listing["cacheScope"], ("public", "private"))
+        unsupported = session.reply(3)["error"]
+        self.assertEqual(-32022, unsupported["code"])
+        self.assertIn(MODERN_VERSION, unsupported["data"]["supported"])
+        self.assertEqual("1900-01-01", unsupported["data"]["requested"])
+        self.assertEqual(-32602, session.reply(4)["error"]["code"])
+
+    def test_tools_list_describes_every_tool_for_an_agent(self) -> None:
+        """/* REQ-MCP-003: `tools/list` must name the build tool and the read commands, each with a one-line description and a JSON object input schema. */"""
+        session = McpSession(self.root, [_initialize(), _request(2, "tools/list")])
+        tools = session.reply(2)["result"]["tools"]
+        self.assertEqual(EXPECTED_TOOLS, {tool["name"] for tool in tools})
+        for tool in tools:
+            self.assertTrue(tool["description"].strip(), tool["name"])
+            self.assertNotIn("\n", tool["description"], tool["name"])
+            self.assertEqual("object", tool["inputSchema"]["type"], tool["name"])
+            self.assertFalse(tool["inputSchema"].get("additionalProperties", True), tool["name"])
+        impact = next(tool for tool in tools if tool["name"] == "impact")
+        self.assertEqual(["target"], impact["inputSchema"]["required"])
+        self.assertEqual(2, impact["inputSchema"]["properties"]["depth"]["default"])
+        self.assertIn("all", impact["inputSchema"]["properties"])
+
+    def test_build_then_impact_return_text_and_s_expressions(self) -> None:
+        """/* REQ-MCP-004: the `build` tool must build the code graph of --root, and `impact` must then return the text answer of `wingbox impact` and its S-expression form. */"""
+        _make_shop(self.root)
+        session = McpSession(
+            self.root,
+            [
+                _initialize(),
+                _call(2, "build", {}),
+                _call(3, "impact", {"target": "shop/pricing.py"}),
+                _call(4, "deps", {"module": "shop/checkout", "depth": 1}),
+            ],
+        )
+        build = session.reply(2)["result"]
+        self.assertFalse(build["isError"], build)
+        self.assertTrue((self.root / ".code_graph.sexp").is_file())
+        impact = session.reply(3)["result"]
+        self.assertFalse(impact["isError"], impact)
+        text, sexp = _texts(session.reply(3))
+        self.assertIn("Impact of changing shop/pricing.py", text)
+        self.assertIn("shop/checkout.py", text)
+        self.assertIn("(impact shop/pricing shop/checkout :lang py :via", sexp)
+        deps = session.reply(4)["result"]
+        self.assertFalse(deps["isError"], deps)
+        self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
+
+    def test_a_query_without_a_graph_asks_for_build(self) -> None:
+        """/* REQ-MCP-005: a query tool called before any graph exists must return a tool error that tells the agent to call `build` first. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
+        result = session.reply(2)["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("call the build tool first", _texts(session.reply(2))[0])
+
+    def test_malformed_input_gets_json_rpc_errors_and_the_server_keeps_running(self) -> None:
+        """/* REQ-MCP-006: malformed JSON must get -32700, a message that is not a request object -32600, and the server must go on answering the next request. */"""
+        session = McpSession(
+            self.root,
+            [
+                "{not json",
+                "[1, 2]",
+                json.dumps({"jsonrpc": "2.0", "id": 5}),
+                json.dumps({"jsonrpc": "1.0", "id": 6, "method": "ping"}),
+                _initialize(7),
+            ],
+        )
+        self.assertEqual(0, session.returncode, session.stderr)
+        self.assertEqual(-32700, session.messages[0]["error"]["code"])
+        self.assertIsNone(session.messages[0]["id"])
+        self.assertEqual(-32600, session.messages[1]["error"]["code"])
+        self.assertEqual(-32600, session.reply(5)["error"]["code"])
+        self.assertEqual(-32600, session.reply(6)["error"]["code"])
+        self.assertEqual(LEGACY_VERSION, session.reply(7)["result"]["protocolVersion"])
+
+    def test_unknown_methods_tools_and_bad_arguments(self) -> None:
+        """/* REQ-MCP-007: an unknown method must get -32601, an unknown tool -32602, and arguments that do not match the input schema a tool result with isError true. */"""
+        session = McpSession(
+            self.root,
+            [
+                _initialize(),
+                _request(2, "resources/read", {"uri": "file:///etc/passwd"}),
+                _call(3, "no_such_tool", {}),
+                _call(4, "impact", {"depth": 2}),
+                _call(5, "impact", {"target": "a.py", "depth": "deep"}),
+                _call(6, "impact", {"target": "a.py", "colour": "red"}),
+                _request(7, "tools/call", {"arguments": {}}),
+            ],
+        )
+        self.assertEqual(-32601, session.reply(2)["error"]["code"])
+        self.assertEqual(-32602, session.reply(3)["error"]["code"])
+        for identifier in (4, 5, 6):
+            result = session.reply(identifier)["result"]
+            self.assertTrue(result["isError"], result)
+        self.assertIn("target", _texts(session.reply(4))[0])
+        self.assertIn("depth", _texts(session.reply(5))[0])
+        self.assertIn("colour", _texts(session.reply(6))[0])
+        self.assertEqual(-32602, session.reply(7)["error"]["code"])
+
+    def test_stdout_carries_only_json_rpc_messages(self) -> None:
+        """/* REQ-MCP-008: every line `wingbox mcp` writes to stdout must be one JSON-RPC 2.0 message, also while it builds; logs go to stderr. */"""
+        _make_shop(self.root)
+        session = McpSession(
+            self.root,
+            [_initialize(), _call(2, "build", {"full": True}), _call(3, "layers", {}), "garbage"],
+        )
+        self.assertEqual(0, session.returncode, session.stderr)
+        lines = [line for line in session.stdout.split("\n") if line]
+        self.assertEqual(4, len(lines))
+        for line in lines:
+            message = json.loads(line)
+            self.assertEqual("2.0", message["jsonrpc"])
+            self.assertTrue("result" in message or "error" in message)
+        self.assertIn("wingbox", session.stderr)
+
+
+class McpAnswerLimitTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.server = _load_mcp_module()
+
+    def test_answers_without_their_own_limit_stop_at_the_answer_limit(self) -> None:
+        """/* REQ-MCP-009: a tool answer without its own list limit must stop at 200 lines and say how many were left out, unless the call sets all. */"""
+        text = "\n".join(f"(dep a m{index})" for index in range(250))
+        capped = self.server.cap_answer(text, show_all=False)
+        lines = capped.splitlines()
+        self.assertEqual(201, len(lines))
+        self.assertEqual("(dep a m199)", lines[199])
+        self.assertIn(":hidden 50", lines[200])
+        self.assertIn("all", lines[200])
+        self.assertEqual(text, self.server.cap_answer(text, show_all=True))
+        self.assertEqual("(dep a b)", self.server.cap_answer("(dep a b)", show_all=False))
+
+    def test_arguments_are_checked_against_the_input_schema(self) -> None:
+        """/* REQ-MCP-010: tool arguments must be checked against the tool's input schema: required names, types, integer bounds and unknown names. */"""
+        schema = {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "minLength": 1},
+                "depth": {"type": "integer", "minimum": 0, "maximum": 50},
+                "all": {"type": "boolean"},
+                "exclude_dirs": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["target"],
+            "additionalProperties": False,
+        }
+        check = self.server.argument_errors
+        self.assertEqual([], check(schema, {"target": "a.py", "depth": 3, "all": True, "exclude_dirs": ["x"]}))
+        self.assertTrue(check(schema, {}))
+        self.assertTrue(check(schema, {"target": ""}))
+        self.assertTrue(check(schema, {"target": "a.py", "depth": 51}))
+        self.assertTrue(check(schema, {"target": "a.py", "depth": True}))
+        self.assertTrue(check(schema, {"target": "a.py", "all": "yes"}))
+        self.assertTrue(check(schema, {"target": "a.py", "exclude_dirs": [1]}))
+        self.assertTrue(check(schema, {"target": "a.py", "other": 1}))
+        self.assertTrue(check(schema, ["a.py"]))
+
+
+if __name__ == "__main__":
+    unittest.main()
