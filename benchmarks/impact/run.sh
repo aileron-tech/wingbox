@@ -15,7 +15,7 @@ T=$HERE/tools
 W=${1:?usage: run.sh <work dir>}
 mkdir -p "$W"
 W=$(cd "$W" && pwd)
-WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.2.2}
+WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.2.3}
 GRIMP_SPEC=grimp==3.20
 cd "$W"
 mkdir -p out corpus/karpathy bench/plain bench/wb bench/log

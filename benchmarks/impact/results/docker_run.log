@@ -1,8 +1,9 @@
-# docker build -f Dockerfile.benchmark -t wingbox-benchmark . && docker run --rm wingbox-benchmark
-# 2026-11-16T10:13Z, Docker 29.2.1, image base python:3.12-slim, linux/amd64
+# docker build -f Dockerfile.benchmark -t wingbox-benchmark . && docker run --rm -e WINGBOX_SPEC=wingbox==0.2.3 wingbox-benchmark
+# 2026-11-16T11:13Z, Docker 29.2.1, image base python:3.12-slim, linux/amd64
+
 
 == environments
-wingbox 0.2.2
+wingbox 0.2.3
 
 == corpus at pinned commits
 nanoGPT 3adf61e154c3fe3fca428ad6bc3818b27a3b8291
