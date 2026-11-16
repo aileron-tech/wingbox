@@ -1,12 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.7 - 2026-11-16
 
 ### Changes
 
 - README: install with `pipx install wingbox && wingbox install`, then
   `/wingbox` in the agent; the supported assistants and MCP clients are
   named; the examples are rerun on 0.2.6.
+- Map requests: an issue form asks for the map of a public repository; a
+  workflow builds it with the released Wingbox and attaches REPORT.md and
+  map.html to the run.
 
 ### Fixes
 
