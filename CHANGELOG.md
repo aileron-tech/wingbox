@@ -14,6 +14,23 @@
   CodeGraph from npm. The Wingbox column is measured with 0.5.1 and `run.sh`
   pins it; the report opens with "Which tool for which job" and explains in
   "Why the numbers differ" how each tool's design produces its numbers.
+- Python modules loaded at run time are in the graph. A literal name given to
+  `importlib.import_module` or `__import__` is an import. A name built from a
+  literal package path and one variable (`f".plugins.{name}"`,
+  `"app.plugins." + name`) is a new fact `(registry-wires <loader> <module>
+  :config <file>)` for each module of that package named by a string of a
+  JSON, YAML or TOML file in the folder of the loader; `deps`, `rdeps` and
+  `impact` follow it.
+- A method called in a loop on an object that such a registry returns for the
+  loop variable is `(calls <fn> <module>::<method> :lines N :registry)` to each
+  wired module that defines it; when the call replaces its own argument
+  (`data = stage.process(data)`) the modules of one configuration list get
+  `(data-flow <a> <b> :pipeline)` in list order. `impact` does not follow a
+  pipeline step backwards.
+- `benchmarks/tocs`: Wingbox on the Theory of Code Space benchmark, scored with
+  its own metric: Dep F1 0.953 on the paper's three medium codebases (0.802
+  with 0.2.4), with the scripts, the maps, eight generated codebases and a plan
+  for a model that starts from the Wingbox map.
 
 ## 0.5.1 - 2026-11-17
 

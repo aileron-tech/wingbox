@@ -1,0 +1,681 @@
+{
+ "step": 0,
+ "components": {
+  "text_processor/__init__.py": {
+   "filepath": "text_processor/__init__.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/adapters/__init__.py": {
+   "filepath": "text_processor/adapters/__init__.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/adapters/mod_h.py": {
+   "filepath": "text_processor/adapters/mod_h.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_a.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/adapters/mod_i.py": {
+   "filepath": "text_processor/adapters/mod_i.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_b.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/adapters/mod_j.py": {
+   "filepath": "text_processor/adapters/mod_j.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_c.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/adapters/mod_k.py": {
+   "filepath": "text_processor/adapters/mod_k.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_g.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/base.py": {
+   "filepath": "text_processor/base.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/cli.py": {
+   "filepath": "text_processor/cli.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/config.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/runner.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/config.py": {
+   "filepath": "text_processor/config.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/exceptions.py": {
+   "filepath": "text_processor/exceptions.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/legacy/__init__.py": {
+   "filepath": "text_processor/legacy/__init__.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/legacy/compat.py": {
+   "filepath": "text_processor/legacy/compat.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/legacy/old_pipeline.py": {
+   "filepath": "text_processor/legacy/old_pipeline.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/middleware/__init__.py": {
+   "filepath": "text_processor/middleware/__init__.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/middleware/mod_l.py": {
+   "filepath": "text_processor/middleware/mod_l.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/middleware/mod_m.py": {
+   "filepath": "text_processor/middleware/mod_m.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/middleware/mod_n.py": {
+   "filepath": "text_processor/middleware/mod_n.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/models.py": {
+   "filepath": "text_processor/models.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/registry.py": {
+   "filepath": "text_processor/registry.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/config.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_a.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_b.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_c.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_d.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_e.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_f.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_g.py",
+     "type": "REGISTRY_WIRES",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/runner.py": {
+   "filepath": "text_processor/runner.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_a.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_b.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_c.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_d.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_e.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_f.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/stages/mod_g.py",
+     "type": "CALLS_API",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/config.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/middleware/mod_l.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/middleware/mod_m.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/middleware/mod_n.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/registry.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/__init__.py": {
+   "filepath": "text_processor/stages/__init__.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_a.py": {
+   "filepath": "text_processor/stages/mod_a.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_b.py",
+     "type": "DATA_FLOWS_TO",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_b.py": {
+   "filepath": "text_processor/stages/mod_b.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_c.py",
+     "type": "DATA_FLOWS_TO",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_c.py": {
+   "filepath": "text_processor/stages/mod_c.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_d.py",
+     "type": "DATA_FLOWS_TO",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_d.py": {
+   "filepath": "text_processor/stages/mod_d.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_e.py",
+     "type": "DATA_FLOWS_TO",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_e.py": {
+   "filepath": "text_processor/stages/mod_e.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_f.py",
+     "type": "DATA_FLOWS_TO",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_f.py": {
+   "filepath": "text_processor/stages/mod_f.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/stages/mod_g.py",
+     "type": "DATA_FLOWS_TO",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/stages/mod_g.py": {
+   "filepath": "text_processor/stages/mod_g.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/base.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/exceptions.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    },
+    {
+     "target": "text_processor/utils/helpers.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/test_smoke.py": {
+   "filepath": "text_processor/test_smoke.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/utils/__init__.py": {
+   "filepath": "text_processor/utils/__init__.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [],
+   "confidence": 1.0
+  },
+  "text_processor/utils/formatters.py": {
+   "filepath": "text_processor/utils/formatters.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/models.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  },
+  "text_processor/utils/helpers.py": {
+   "filepath": "text_processor/utils/helpers.py",
+   "status": "observed",
+   "purpose": "",
+   "exports": [],
+   "edges": [
+    {
+     "target": "text_processor/config.py",
+     "type": "IMPORTS",
+     "confidence": 1.0
+    }
+   ],
+   "confidence": 1.0
+  }
+ },
+ "invariants": [],
+ "unexplored": [],
+ "uncertainty_summary": ""
+}

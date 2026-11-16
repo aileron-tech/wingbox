@@ -47,9 +47,13 @@ Edge Types
 - ``imports`` -- module imports module. ``:via-base`` if target exports
   abstract types.
 - ``calls-api`` -- implements/extends abstract type. ``:via-ifc``.
-- ``data-flow`` -- data flows to validation module. ``:validated``.
+- ``data-flow`` -- data flows to validation module. ``:validated``; or to the
+  next step of a configured pipeline, ``:pipeline``.
+- ``registry-wires`` -- module loads module by a name read from a configuration
+  file beside it (Python ``importlib``). ``:config <path>``.
 - ``refs`` -- entity-level cross-file reference (``Module::Entity``).
-- ``calls`` (LSP only) -- function calls function with call-site lines.
+- ``calls`` -- function calls function with call-site lines: from LSP
+  (``:lsp``), or through a registry that wires the target (``:registry``).
 
 Output Format
 -------------
@@ -128,6 +132,7 @@ try:
             language_for_name,
             language_for_result,
         )
+        from .lang.config_values import ConfigValues, read_config_values
         from .lang.purpose import infer_purpose, scan_root
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
@@ -150,6 +155,7 @@ try:
             language_for_name,
             language_for_result,
         )
+        from lang.config_values import ConfigValues, read_config_values
         from lang.purpose import infer_purpose, scan_root
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
@@ -247,7 +253,8 @@ def prepare_wingbox_directory(root: str) -> None:
     if current is None or (current.startswith(GITIGNORE_MARK) and current != GITIGNORE_TEXT):
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
-CACHE_SCHEMA_VERSION = 2
+# 3: Python results carry module_loads and registry_calls.
+CACHE_SCHEMA_VERSION = 3
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -758,6 +765,9 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
         if not isinstance(raw_result.get(field_name), list):
             return Err(f"cache result field {field_name} must be a list")
 
+    for field_name in ("module_loads", "registry_calls"):
+        if not isinstance(raw_result.get(field_name, []), list):
+            return Err(f"cache result field {field_name} must be a list")
     if not isinstance(raw_result.get("import_forms", {}), dict):
         return Err("cache result field import_forms must be an object")
     for field_name in ("bindings", "uses"):
@@ -1640,6 +1650,8 @@ def assemble_graph(
     seen_edges = {
         (edge["source"], edge["target"], edge["type"]) for edge in edges
     }
+    edges.extend(_registry_edges(context, edges))
+    seen_edges.update((edge["source"], edge["target"], edge["type"]) for edge in edges)
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
     # Detect modules with entities named *Client, *ClientService, *ClientApi,
@@ -1873,6 +1885,128 @@ def read_fragments(path: str, root: str) -> Result[tuple[str, DiscoveryExclusion
     except (ValueError, TypeError, IndexError, AttributeError, KeyError) as error:
         return Err(f"invalid fragment store: {error}")
     return Ok((key, exclusions, stored))
+
+
+def _registry_edges(context: GraphContext, edges: list[dict]) -> list[dict]:
+    """The registry-wires edges, the calls dispatched through a registry and the pipeline data flows.
+
+    They read configuration files and other modules' entities, so they are facts of the whole
+    graph, made after the per-module fragments. An existing data-flow between two consecutive
+    pipeline steps is replaced in edges by a copy with the pipeline flag.
+    """
+    id_to_result = context.id_to_result
+    wires_by_loader = _registry_wires(id_to_result, context.bound_languages, context.root)
+    added: list[dict] = []
+    pipeline_pairs: set[tuple[str, str]] = set()
+    for node_id, result in id_to_result.items():
+        for wire in wires_by_loader.get(node_id, ()):
+            added.append({"source": node_id, "target": wire.target, "type": "REGISTRY_WIRES", "config": wire.config})
+        if not result.registry_calls:
+            continue
+        bound_language = context.bound_languages[language_for_result(result.language).name]
+        calls, folds = _registry_call_edges(node_id, result, bound_language, wires_by_loader, id_to_result)
+        pipeline_pairs.update(folds)
+        for (source_ref, target_ref), lines in sorted(calls.items()):
+            added.append(
+                {"source": source_ref, "target": target_ref, "type": "CALLS", "from_lines": lines, "registry": True}
+            )
+    data_flows = {
+        (edge["source"], edge["target"]): position
+        for position, edge in enumerate(edges)
+        if edge["type"] == "DATA_FLOWS_TO"
+    }
+    for source_id, target_id in sorted(pipeline_pairs):
+        position = data_flows.get((source_id, target_id))
+        if position is not None:
+            # a copy: the fragment's own edge stays as the module produced it
+            edges[position] = {**edges[position], "pipeline": True}
+            continue
+        added.append({"source": source_id, "target": target_id, "type": "DATA_FLOWS_TO", "pipeline": True})
+    return added
+
+
+@dataclass(frozen=True)
+class RegistryWire:
+    """A module that a loader loads by a name taken from a configuration file."""
+
+    target: str
+    config: str
+    order: int
+
+
+def _registry_wires(
+    id_to_result: Mapping[str, FileResult],
+    bound_languages: Mapping[str, BoundLanguage],
+    root: str,
+) -> dict[str, tuple[RegistryWire, ...]]:
+    """Fill each load pattern with the names of the configuration files beside the loader.
+
+    A name counts only when the filled module name resolves to a module of the
+    graph; the order is the position of the name in its configuration file.
+    """
+    config_by_directory: dict[str, tuple[ConfigValues, ...]] = {}
+    wires: dict[str, tuple[RegistryWire, ...]] = {}
+    for node_id, result in id_to_result.items():
+        if not result.module_loads:
+            continue
+        bound_language = bound_languages[language_for_result(result.language).name]
+        directory = os.path.dirname(result.path)
+        if directory not in config_by_directory:
+            config_by_directory[directory] = read_config_values(directory)
+        found: dict[str, RegistryWire] = {}
+        for load in result.module_loads:
+            for config in config_by_directory[directory]:
+                config_path = os.path.relpath(config.path, root).replace(os.sep, "/")
+                for order, value in enumerate(config.values):
+                    target_id = bound_language.resolve_import(load["pattern"].replace("{}", value, 1), result.path)
+                    if target_id and target_id != node_id and target_id not in found:
+                        found[target_id] = RegistryWire(target_id, config_path, order)
+        if found:
+            wires[node_id] = tuple(found.values())
+    return wires
+
+
+def _defines(result: FileResult, name: str) -> bool:
+    """Whether a module defines a function of that name or a class with that method."""
+    return any(
+        (entity.get("kind") == "function" and entity.get("name") == name)
+        or (entity.get("kind") == "class" and name in entity.get("methods", []))
+        for entity in result.entities
+    )
+
+
+def _registry_call_edges(
+    node_id: str,
+    result: FileResult,
+    bound_language: BoundLanguage,
+    wires_by_loader: Mapping[str, tuple[RegistryWire, ...]],
+    id_to_result: Mapping[str, FileResult],
+) -> tuple[dict[tuple[str, str], list[int]], set[tuple[str, str]]]:
+    """Calls into the modules a registry wires, and the pipeline pairs of folding calls.
+
+    Returns the call lines by (source entity, target entity) and the ordered
+    pairs of consecutive modules of one configuration list.
+    """
+    calls: dict[tuple[str, str], list[int]] = {}
+    folds: set[tuple[str, str]] = set()
+    for call in result.registry_calls:
+        registry_id = next(
+            (target for target in (bound_language.resolve_import(name, result.path) for name in call["modules"]) if target),
+            None,
+        )
+        wired = [
+            wire
+            for wire in wires_by_loader.get(registry_id or "", ())
+            if wire.target != node_id and _defines(id_to_result[wire.target], call["method"])
+        ]
+        for wire in wired:
+            key = (f"{node_id}::{call['source_entity']}", f"{wire.target}::{call['method']}")
+            calls[key] = sorted(set(calls.get(key, [])) | {call["line"]})
+        if call["fold"]:
+            for config in sorted({wire.config for wire in wired}):
+                steps = sorted((wire for wire in wired if wire.config == config), key=lambda wire: wire.order)
+                folds.update((first.target, second.target) for first, second in zip(steps, steps[1:]))
+    return calls, folds
 
 
 def _find_local_references(
@@ -3346,7 +3480,13 @@ def render_sexp(
             lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
         elif etype == "DATA_FLOWS_TO":
             flags = " :validated" if edge.get("validated") else ""
+            if edge.get("pipeline"):
+                flags += " :pipeline"
             lines.append(f"(data-flow {src} {tgt}{flags})")
+        elif etype == "REGISTRY_WIRES":
+            config = edge.get("config", "")
+            flags = f" :config {config}" if config and _is_safe_path_atom(config) else ""
+            lines.append(f"(registry-wires {src} {tgt}{flags})")
         elif etype == "REFERENCES":
             relation_flags = "".join(
                 f" :{relation}" for relation in sorted(edge.get("relations", []))
@@ -3356,7 +3496,8 @@ def render_sexp(
         elif etype == "CALLS":
             fl = edge.get("from_lines", [])
             lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
-            lines.append(f"(calls {src} {tgt}{lns} :lsp)")
+            flags = (" :registry" if edge.get("registry") else "") + (" :lsp" if edge.get("lsp_verified") else "")
+            lines.append(f"(calls {src} {tgt}{lns}{flags})")
         elif etype == "HTTP_CALLS":
             client = edge.get("client_entity", "")
             client_str = f" :client {client}" if client else ""
@@ -3896,6 +4037,8 @@ def _serialize_file_result(result: FileResult) -> dict:
             "import_forms": result.import_forms,
             "bindings": result.bindings,
             "uses": result.uses,
+            "module_loads": result.module_loads,
+            "registry_calls": result.registry_calls,
         },
     }
 

@@ -4,7 +4,16 @@ import ast
 import re
 import sys
 
-from ..interface import BindingPayload, Entity, FileResult, ImportedName, UsePayload
+from ..interface import (
+    BindingPayload,
+    Entity,
+    FileResult,
+    ImportedName,
+    ModuleLoadPayload,
+    RegistryCallPayload,
+    UsePayload,
+)
+from .dynamic import find_module_loads, find_registry_calls
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .symbols import module_bindings, module_variables, use_sites
@@ -38,6 +47,8 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     variables: list[Entity] = []
     bindings: list[BindingPayload] = []
     uses: list[UsePayload] = []
+    module_loads: list[ModuleLoadPayload] = []
+    registry_calls: list[RegistryCallPayload] = []
 
     try:
         tree = ast.parse(content, filename=path)
@@ -45,6 +56,8 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         # Imports can be conditional or function-local, so walk the full tree.
         # module_of_name: the module path that each imported name stands for.
         module_of_name: dict[str, str] = {}
+        # import_targets: the import strings that may name the module behind each local name.
+        import_targets: dict[str, list[str]] = {}
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -60,6 +73,8 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
                     else:
                         package = alias.name.split(".")[0]
                         module_of_name[package] = package
+                    bound_name = alias.asname or alias.name.split(".")[0]
+                    import_targets[bound_name] = [alias.name if alias.asname else bound_name]
             elif isinstance(node, ast.ImportFrom):
                 mod = ("." * node.level) + (node.module or "")
                 if mod:
@@ -73,6 +88,11 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
                     ))
                     if mod and alias.name != "*":
                         module_of_name[local] = _submodule(mod, alias.name)
+                        import_targets[local] = [_submodule(mod, alias.name), mod]
+
+        literal_imports, module_loads = find_module_loads(tree, module_of_name)
+        imports.extend(literal_imports)
+        registry_calls = find_registry_calls(tree, import_targets)
 
         # Entities remain top-level so nested functions do not become modules.
         for node in ast.iter_child_nodes(tree):
@@ -164,6 +184,8 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         exported_names=exported_names,
         bindings=bindings,
         uses=uses,
+        module_loads=module_loads,
+        registry_calls=registry_calls,
     )
 
 

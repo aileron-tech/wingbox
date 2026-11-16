@@ -141,9 +141,13 @@ class EntityFact:
     methods: list[str] = field(default_factory=list)
 
 
+# Edge facts of the code graph; every kind except a pipeline data-flow is a dependency of its source.
+_EDGE_KINDS = ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls", "registry-wires")
+
+
 @dataclass
 class Edge:
-    etype: str   # imports, calls-api, data-flow, refs, calls
+    etype: str   # imports, calls-api, data-flow, refs, calls, registry-wires
     source: str
     target: str
     flags: list[str] = field(default_factory=list)
@@ -594,12 +598,16 @@ class CodeGraph:
                 self.entities.setdefault(module, []).append(ent)
                 self.entity_by_name.setdefault(name, []).append(ent)
 
-            elif kind in ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls") and len(tokens) >= 3:
+            elif kind in _EDGE_KINDS and len(tokens) >= 3:
                 source = _resolve(tokens[1])
                 target = _resolve(tokens[2])
                 flags = [t for t in tokens[3:] if t.startswith(":")]
                 edge = Edge(kind, source, target, flags)
                 self.all_edges.append(edge)
+                if kind == "data-flow" and ":pipeline" in flags:
+                    # The next step of a pipeline consumes the output of this one; it is
+                    # not a dependency of this step, so it stays out of deps and impact.
+                    continue
                 src_mod = source.split("::")[0]
                 tgt_mod = target.split("::")[0]
                 # A use reached through a re-export is entity-level only: module

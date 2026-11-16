@@ -187,6 +187,9 @@ rg '^\(cls drive/' .wingbox/index.sexp
 
 # Data flow edges
 rg 'data-flow' .wingbox/index.sexp
+
+# Python modules loaded by a name read from a configuration file
+rg 'registry-wires' .wingbox/index.sexp
 ```
 
 These one-liners are useful for quick checks. For structured output and full analysis, use the Python script commands.
@@ -345,6 +348,17 @@ An import that goes through the `outDir` of a `tsconfig*.json`, written as a
 relative path, through an alias or as a package entry, resolves to the file
 under `rootDir` that it is compiled from. Without `rootDir` the source is
 looked up next to that tsconfig, then in its `src` folder.
+
+Python indexing follows `import` and `from` imports and modules loaded at run
+time: a literal name given to `importlib.import_module` or `__import__` is an
+import; a name built from a literal package path and one variable
+(`f".plugins.{name}"`) is a `registry-wires` edge to each module of that
+package named by a string of a JSON, YAML or TOML file in the folder of the
+loader. A method called in a loop on an object such a registry returns for the
+loop variable is a `calls ... :registry` edge to each wired module that defines
+it, and `data-flow ... :pipeline` when the call replaces its own argument
+(`data = stage.process(data)`), in the order of the configuration list. Names
+computed any other way stay unlinked.
 
 C# indexing follows namespaces and referenced local types; Java indexing
 follows packages, explicit imports, and referenced wildcard types. Unused

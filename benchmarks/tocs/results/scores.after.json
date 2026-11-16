@@ -1,0 +1,1940 @@
+[
+ {
+  "codebase": "codebase_123",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 8,
+   "calls_api_gold_with_direct_call_in_code": 5,
+   "direct_calls_in_code": 21,
+   "direct_calls_in_code_not_calls_api_gold": 16
+  },
+  "complexity": "medium",
+  "modules": 30,
+  "precision": 1.0,
+  "recall": 0.9048,
+  "f1": 0.95,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 56,
+    "predicted": 56,
+    "gold": 56,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.4667,
+    "f1": 0.6364,
+    "true": 7,
+    "predicted": 7,
+    "gold": 15,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_h.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_e.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_g.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_k.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_l.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 6,
+    "predicted": 6,
+    "gold": 6,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "codebase_42",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 6,
+   "calls_api_gold_with_direct_call_in_code": 4,
+   "direct_calls_in_code": 18,
+   "direct_calls_in_code_not_calls_api_gold": 14
+  },
+  "complexity": "medium",
+  "modules": 27,
+  "precision": 1.0,
+  "recall": 0.9143,
+  "f1": 0.9552,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 47,
+    "predicted": 47,
+    "gold": 47,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.5,
+    "f1": 0.6667,
+    "true": 6,
+    "predicted": 6,
+    "gold": 12,
+    "missed": [
+     [
+      "text_processor/adapters/mod_g.py",
+      "text_processor/stages/mod_a.py"
+     ],
+     [
+      "text_processor/adapters/mod_h.py",
+      "text_processor/stages/mod_f.py"
+     ],
+     [
+      "text_processor/cli.py",
+      "text_processor/runner.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_i.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_j.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 6,
+    "predicted": 6,
+    "gold": 6,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 5,
+    "predicted": 5,
+    "gold": 5,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "codebase_999",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 6,
+   "calls_api_gold_with_direct_call_in_code": 4,
+   "direct_calls_in_code": 18,
+   "direct_calls_in_code_not_calls_api_gold": 14
+  },
+  "complexity": "medium",
+  "modules": 27,
+  "precision": 1.0,
+  "recall": 0.9143,
+  "f1": 0.9552,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 47,
+    "predicted": 47,
+    "gold": 47,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.5,
+    "f1": 0.6667,
+    "true": 6,
+    "predicted": 6,
+    "gold": 12,
+    "missed": [
+     [
+      "text_processor/adapters/mod_g.py",
+      "text_processor/stages/mod_c.py"
+     ],
+     [
+      "text_processor/adapters/mod_h.py",
+      "text_processor/stages/mod_f.py"
+     ],
+     [
+      "text_processor/cli.py",
+      "text_processor/runner.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_i.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_j.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 6,
+    "predicted": 6,
+    "gold": 6,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 5,
+    "predicted": 5,
+    "gold": 5,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_large_1",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 8,
+   "calls_api_gold_with_import_in_code": 30,
+   "calls_api_gold_with_direct_call_in_code": 17,
+   "direct_calls_in_code": 42,
+   "direct_calls_in_code_not_calls_api_gold": 25
+  },
+  "complexity": "large",
+  "modules": 50,
+  "precision": 0.9416,
+  "recall": 0.8113,
+  "f1": 0.8716,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 0.9298,
+    "recall": 1.0,
+    "f1": 0.9636,
+    "true": 106,
+    "predicted": 114,
+    "gold": 106,
+    "missed": [],
+    "extra": [
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_t.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_t.py"
+     ]
+    ]
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.2105,
+    "f1": 0.3478,
+    "true": 8,
+    "predicted": 8,
+    "gold": 38,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_a.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_b.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_k.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_l.py",
+      "data_pipeline/stages/mod_d.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_m.py",
+      "data_pipeline/stages/mod_e.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/pipeline_factory.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_v.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_w.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_o.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_p.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_v.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_w.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_o.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_p.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/serializers/mod_x.py"
+     ],
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_t.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_t.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_large_2",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 8,
+   "calls_api_gold_with_import_in_code": 28,
+   "calls_api_gold_with_direct_call_in_code": 15,
+   "direct_calls_in_code": 40,
+   "direct_calls_in_code_not_calls_api_gold": 25
+  },
+  "complexity": "large",
+  "modules": 48,
+  "precision": 0.9389,
+  "recall": 0.8146,
+  "f1": 0.8723,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 0.9259,
+    "recall": 1.0,
+    "f1": 0.9615,
+    "true": 100,
+    "predicted": 108,
+    "gold": 100,
+    "missed": [],
+    "extra": [
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_o.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_o.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_r.py"
+     ]
+    ]
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.2222,
+    "f1": 0.3636,
+    "true": 8,
+    "predicted": 8,
+    "gold": 36,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_b.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_k.py",
+      "data_pipeline/stages/mod_h.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/pipeline_factory.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_s.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_t.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_l.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_s.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_t.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_l.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/serializers/mod_v.py"
+     ],
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_o.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_o.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_r.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_large_3",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 8,
+   "calls_api_gold_with_import_in_code": 30,
+   "calls_api_gold_with_direct_call_in_code": 17,
+   "direct_calls_in_code": 41,
+   "direct_calls_in_code_not_calls_api_gold": 24
+  },
+  "complexity": "large",
+  "modules": 49,
+  "precision": 0.9403,
+  "recall": 0.8077,
+  "f1": 0.869,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 0.9279,
+    "recall": 1.0,
+    "f1": 0.9626,
+    "true": 103,
+    "predicted": 111,
+    "gold": 103,
+    "missed": [],
+    "extra": [
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_s.py"
+     ]
+    ]
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.2105,
+    "f1": 0.3478,
+    "true": 8,
+    "predicted": 8,
+    "gold": 38,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_a.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_k.py",
+      "data_pipeline/stages/mod_d.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_l.py",
+      "data_pipeline/stages/mod_e.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_m.py",
+      "data_pipeline/stages/mod_h.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/pipeline_factory.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_t.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_v.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_o.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_p.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_t.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_v.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_o.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_p.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/serializers/mod_w.py"
+     ],
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_s.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_s.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_medium_1",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 7,
+   "calls_api_gold_with_direct_call_in_code": 4,
+   "direct_calls_in_code": 22,
+   "direct_calls_in_code_not_calls_api_gold": 18
+  },
+  "complexity": "medium",
+  "modules": 30,
+  "precision": 1.0,
+  "recall": 0.9195,
+  "f1": 0.9581,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 57,
+    "predicted": 57,
+    "gold": 57,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.5333,
+    "f1": 0.6957,
+    "true": 8,
+    "predicted": 8,
+    "gold": 15,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_a.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_e.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_k.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_l.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_medium_2",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 8,
+   "calls_api_gold_with_direct_call_in_code": 6,
+   "direct_calls_in_code": 20,
+   "direct_calls_in_code_not_calls_api_gold": 14
+  },
+  "complexity": "medium",
+  "modules": 29,
+  "precision": 1.0,
+  "recall": 0.8974,
+  "f1": 0.9459,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 53,
+    "predicted": 53,
+    "gold": 53,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.4286,
+    "f1": 0.6,
+    "true": 6,
+    "predicted": 6,
+    "gold": 14,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_g.py",
+      "data_pipeline/stages/mod_b.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_h.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_e.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_f.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_k.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_l.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 6,
+    "predicted": 6,
+    "gold": 6,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 5,
+    "predicted": 5,
+    "gold": 5,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_medium_3",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 8,
+   "calls_api_gold_with_direct_call_in_code": 6,
+   "direct_calls_in_code": 24,
+   "direct_calls_in_code_not_calls_api_gold": 18
+  },
+  "complexity": "medium",
+  "modules": 31,
+  "precision": 1.0,
+  "recall": 0.913,
+  "f1": 0.9545,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 61,
+    "predicted": 61,
+    "gold": 61,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.5,
+    "f1": 0.6667,
+    "true": 8,
+    "predicted": 8,
+    "gold": 16,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_d.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_k.py",
+      "data_pipeline/stages/mod_e.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_l.py",
+      "data_pipeline/stages/mod_h.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_medium_4",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 7,
+   "calls_api_gold_with_direct_call_in_code": 4,
+   "direct_calls_in_code": 20,
+   "direct_calls_in_code_not_calls_api_gold": 16
+  },
+  "complexity": "medium",
+  "modules": 29,
+  "precision": 1.0,
+  "recall": 0.9125,
+  "f1": 0.9542,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 53,
+    "predicted": 53,
+    "gold": 53,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.5,
+    "f1": 0.6667,
+    "true": 7,
+    "predicted": 7,
+    "gold": 14,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_h.py",
+      "data_pipeline/stages/mod_a.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_d.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_j.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_k.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_l.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 6,
+    "predicted": 6,
+    "gold": 6,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "gen_medium_5",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 0,
+   "calls_api_gold_with_import_in_code": 9,
+   "calls_api_gold_with_direct_call_in_code": 6,
+   "direct_calls_in_code": 22,
+   "direct_calls_in_code_not_calls_api_gold": 16
+  },
+  "complexity": "medium",
+  "modules": 31,
+  "precision": 1.0,
+  "recall": 0.8977,
+  "f1": 0.9461,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 59,
+    "predicted": 59,
+    "gold": 59,
+    "missed": [],
+    "extra": []
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.4375,
+    "f1": 0.6087,
+    "true": 7,
+    "predicted": 7,
+    "gold": 16,
+    "missed": [
+     [
+      "text_processor/adapters/mod_h.py",
+      "text_processor/stages/mod_a.py"
+     ],
+     [
+      "text_processor/adapters/mod_i.py",
+      "text_processor/stages/mod_b.py"
+     ],
+     [
+      "text_processor/adapters/mod_j.py",
+      "text_processor/stages/mod_c.py"
+     ],
+     [
+      "text_processor/adapters/mod_k.py",
+      "text_processor/stages/mod_g.py"
+     ],
+     [
+      "text_processor/cli.py",
+      "text_processor/runner.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_l.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_m.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_n.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/registry.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 6,
+    "predicted": 6,
+    "gold": 6,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "large_123",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 8,
+   "calls_api_gold_with_import_in_code": 29,
+   "calls_api_gold_with_direct_call_in_code": 16,
+   "direct_calls_in_code": 40,
+   "direct_calls_in_code_not_calls_api_gold": 24
+  },
+  "complexity": "large",
+  "modules": 47,
+  "precision": 0.938,
+  "recall": 0.8067,
+  "f1": 0.8674,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 0.9245,
+    "recall": 1.0,
+    "f1": 0.9608,
+    "true": 98,
+    "predicted": 106,
+    "gold": 98,
+    "missed": [],
+    "extra": [
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_r.py"
+     ]
+    ]
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.2162,
+    "f1": 0.3556,
+    "true": 8,
+    "predicted": 8,
+    "gold": 37,
+    "missed": [
+     [
+      "data_pipeline/adapters/mod_i.py",
+      "data_pipeline/stages/mod_b.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_j.py",
+      "data_pipeline/stages/mod_c.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_k.py",
+      "data_pipeline/stages/mod_d.py"
+     ],
+     [
+      "data_pipeline/adapters/mod_l.py",
+      "data_pipeline/stages/mod_g.py"
+     ],
+     [
+      "data_pipeline/cli.py",
+      "data_pipeline/pipeline_factory.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_s.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_t.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/middleware/mod_o.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/pipeline_factory.py",
+      "data_pipeline/runner.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_s.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_t.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/hooks/mod_u.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_m.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_n.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/middleware/mod_o.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/registry.py"
+     ],
+     [
+      "data_pipeline/runner.py",
+      "data_pipeline/serializers/mod_v.py"
+     ],
+     [
+      "data_pipeline/stages/mod_a.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_b.py",
+      "data_pipeline/validators/mod_p.py"
+     ],
+     [
+      "data_pipeline/stages/mod_c.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_d.py",
+      "data_pipeline/validators/mod_q.py"
+     ],
+     [
+      "data_pipeline/stages/mod_e.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_f.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_g.py",
+      "data_pipeline/validators/mod_r.py"
+     ],
+     [
+      "data_pipeline/stages/mod_h.py",
+      "data_pipeline/validators/mod_r.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "large_42",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 8,
+   "calls_api_gold_with_import_in_code": 28,
+   "calls_api_gold_with_direct_call_in_code": 15,
+   "direct_calls_in_code": 39,
+   "direct_calls_in_code_not_calls_api_gold": 24
+  },
+  "complexity": "large",
+  "modules": 46,
+  "precision": 0.9365,
+  "recall": 0.8082,
+  "f1": 0.8676,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 0.9223,
+    "recall": 1.0,
+    "f1": 0.9596,
+    "true": 95,
+    "predicted": 103,
+    "gold": 95,
+    "missed": [],
+    "extra": [
+     [
+      "text_processor/stages/mod_a.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_b.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_c.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_d.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_e.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_f.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_g.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_h.py",
+      "text_processor/validators/mod_q.py"
+     ]
+    ]
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.2222,
+    "f1": 0.3636,
+    "true": 8,
+    "predicted": 8,
+    "gold": 36,
+    "missed": [
+     [
+      "text_processor/adapters/mod_i.py",
+      "text_processor/stages/mod_a.py"
+     ],
+     [
+      "text_processor/adapters/mod_j.py",
+      "text_processor/stages/mod_c.py"
+     ],
+     [
+      "text_processor/adapters/mod_k.py",
+      "text_processor/stages/mod_f.py"
+     ],
+     [
+      "text_processor/cli.py",
+      "text_processor/pipeline_factory.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/hooks/mod_r.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/hooks/mod_s.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/hooks/mod_t.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/middleware/mod_l.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/middleware/mod_m.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/middleware/mod_n.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/registry.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/runner.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/hooks/mod_r.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/hooks/mod_s.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/hooks/mod_t.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_l.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_m.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_n.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/registry.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/serializers/mod_u.py"
+     ],
+     [
+      "text_processor/stages/mod_a.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_b.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_c.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_d.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_e.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_f.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_g.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_h.py",
+      "text_processor/validators/mod_q.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ },
+ {
+  "codebase": "large_999",
+  "diagnostics": {
+   "imports_in_code_not_in_gold": 8,
+   "calls_api_gold_with_import_in_code": 28,
+   "calls_api_gold_with_direct_call_in_code": 15,
+   "direct_calls_in_code": 40,
+   "direct_calls_in_code_not_calls_api_gold": 25
+  },
+  "complexity": "large",
+  "modules": 47,
+  "precision": 0.938,
+  "recall": 0.8121,
+  "f1": 0.8705,
+  "per_type": {
+   "IMPORTS": {
+    "precision": 0.9245,
+    "recall": 1.0,
+    "f1": 0.9608,
+    "true": 98,
+    "predicted": 106,
+    "gold": 98,
+    "missed": [],
+    "extra": [
+     [
+      "text_processor/stages/mod_a.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_b.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_c.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_d.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_e.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_f.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_g.py",
+      "text_processor/validators/mod_r.py"
+     ],
+     [
+      "text_processor/stages/mod_h.py",
+      "text_processor/validators/mod_r.py"
+     ]
+    ]
+   },
+   "CALLS_API": {
+    "precision": 1.0,
+    "recall": 0.2222,
+    "f1": 0.3636,
+    "true": 8,
+    "predicted": 8,
+    "gold": 36,
+    "missed": [
+     [
+      "text_processor/adapters/mod_i.py",
+      "text_processor/stages/mod_b.py"
+     ],
+     [
+      "text_processor/adapters/mod_j.py",
+      "text_processor/stages/mod_d.py"
+     ],
+     [
+      "text_processor/adapters/mod_k.py",
+      "text_processor/stages/mod_h.py"
+     ],
+     [
+      "text_processor/cli.py",
+      "text_processor/pipeline_factory.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/hooks/mod_s.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/hooks/mod_t.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/hooks/mod_u.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/middleware/mod_l.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/middleware/mod_m.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/middleware/mod_n.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/registry.py"
+     ],
+     [
+      "text_processor/pipeline_factory.py",
+      "text_processor/runner.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/hooks/mod_s.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/hooks/mod_t.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/hooks/mod_u.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_l.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_m.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/middleware/mod_n.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/registry.py"
+     ],
+     [
+      "text_processor/runner.py",
+      "text_processor/serializers/mod_v.py"
+     ],
+     [
+      "text_processor/stages/mod_a.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_b.py",
+      "text_processor/validators/mod_o.py"
+     ],
+     [
+      "text_processor/stages/mod_c.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_d.py",
+      "text_processor/validators/mod_p.py"
+     ],
+     [
+      "text_processor/stages/mod_e.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_f.py",
+      "text_processor/validators/mod_q.py"
+     ],
+     [
+      "text_processor/stages/mod_g.py",
+      "text_processor/validators/mod_r.py"
+     ],
+     [
+      "text_processor/stages/mod_h.py",
+      "text_processor/validators/mod_r.py"
+     ]
+    ],
+    "extra": []
+   },
+   "REGISTRY_WIRES": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 8,
+    "predicted": 8,
+    "gold": 8,
+    "missed": [],
+    "extra": []
+   },
+   "DATA_FLOWS_TO": {
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "true": 7,
+    "predicted": 7,
+    "gold": 7,
+    "missed": [],
+    "extra": []
+   }
+  }
+ }
+]

@@ -234,6 +234,27 @@ figures restricted to imports too. The scripts, the reference lists, every
 result file and the token formula Graphify publishes are in
 [benchmarks/graphify](benchmarks/graphify/README.md).
 
+## Wingbox on Theory of Code Space
+
+[Theory of Code Space](https://arxiv.org/abs/2603.00601) (ToCS) generates Python
+codebases with a known architecture and scores a map of their dependencies by
+edge type, with its own metric. Its agents explore with a budget of 20 actions;
+Wingbox reads every file, with no model, which is closest to the paper's
+condition where a model is given every file at once. On the paper's three
+medium codebases:
+
+| Map | Dep F1 | IMPORTS | CALLS_API | REGISTRY_WIRES | DATA_FLOWS_TO |
+|---|---|---|---|---|---|
+| Wingbox, this version | 0.953 | 150 of 150 | 19 of 39 | 19 of 19 | 16 of 16 |
+| Wingbox 0.2.4 | 0.802 | 150 of 150 | 0 of 39 | 0 of 19 | 0 of 16 |
+
+No edge outside the ground truth on these three. The CALLS_API left are calls
+between files that also import each other, where the ground truth counts a call
+of an API but not of a helper; Wingbox leaves that judgement to a model. The
+scripts, the maps sent to the metric, eight more generated codebases and the
+plan for a model that starts from the Wingbox map are in
+[benchmarks/tocs](benchmarks/tocs/README.md).
+
 ## Quick start for AI coding agents
 
 Install the command and let it set up every coding assistant on the machine
@@ -723,7 +744,7 @@ when the graph is outside the current directory and its parents.
 
 | Language | What is indexed |
 |---|---|
-| Python | Modules, imports, classes, functions, methods, inheritance, and references |
+| Python | Modules, imports, modules loaded through `importlib` (literal names, and names read from a JSON, YAML or TOML file beside the loader), classes, functions, methods, inheritance, and references |
 | TypeScript, TSX and JavaScript | Imports, re-exports, classes, interfaces, functions, types, decorators, aliases, and references |
 | Rust | Cargo crates, modules, `use` dependencies, structs, traits, enums, functions, implementations, and methods |
 | C# | Namespaces, types, interfaces, records, enums, methods, attributes, inheritance, and local type dependencies |
@@ -879,7 +900,9 @@ available.
 
 For generated imports, runtime dependency injection, reflection, or framework
 behavior that is not explicit in source, verify the result against the running
-application or the owning framework.
+application or the owning framework. One run-time form is followed in Python: a
+module loaded by a name read from a JSON, YAML or TOML file beside the loader
+(`registry-wires`), and the calls made through such a registry.
 
 ## FAQ
 

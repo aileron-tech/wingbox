@@ -12,6 +12,26 @@
 - A TypeScript `new S(...)` is a site of class S: SCIP files it under the constructor symbol.
 - Every tool is asked for its whole list (`--all`, `--limit 1000000`); tokens are characters of the text answer / 4, as in the other benchmarks. No timing: accuracy and answer size only.
 - CodeGraph runs with the environment of `benchmarks/graphify/run.sh` (private HOME, no daemon, no watcher). Graphify has no find-usages command; `affected` is the nearest and is reported at both depths.
+## 2026-11-16 - modules loaded at run time, and the Theory of Code Space benchmark
+
+### Changes
+- `scripts/lang/python/dynamic.py` (new): literal `importlib.import_module` / `__import__` names, load patterns with one variable below a literal package, and method calls in a loop on objects a registry returns for the loop variable (fold when the result replaces an argument).
+- `scripts/lang/config_values.py` (new): name-shaped string values of the JSON, YAML (without a YAML parser) and TOML files of one folder, in file order.
+- `scripts/lang/interface.py`, `scripts/lang/python/parser.py`: `FileResult.module_loads`, `FileResult.registry_calls`.
+- `scripts/build_code_graph.py`: `REGISTRY_WIRES` edges, made in `assemble_graph` with the facts that need every module (they read configuration files and other modules' entities, so a partial update recomputes them) (`registry-wires ... :config`), registry `CALLS` (`:registry`; `:lsp` only on LSP calls now), pipeline `DATA_FLOWS_TO` (`:pipeline`); cache schema 3.
+- `scripts/code_graph_search.py`: reads `registry-wires`; a `data-flow :pipeline` stays out of `deps`, `rdeps` and `impact` (the next step depends on the previous one, not the reverse).
+- `benchmarks/tocs/` (new): `run.sh`, `tocs_score.py`, `make_report.py`, `verify.py`, `scaffold_eval.py`, `SCAFFOLD.md`, `results/`, generated `README.md`.
+- Docs: `references/sexp-notation.md`, `SKILL.md`, `README.md`, `CHANGELOG.md`.
+- Tests: REQ-PY-001 to REQ-PY-005 (`tests/test_python_dynamic_loading.py`).
+
+### Motivation
+- On ToCS, 0.2.4 found every import and no other edge type (medium Dep F1 0.802): stages loaded by `importlib` from names in a configuration file, the runner's calls into them through the registry and the order of the pipeline were invisible. Plugin registries built the same way are common in real code, and `impact` of a plugin missed its loader.
+- Direct calls of imported names were measured as a CALLS_API rule and rejected: of 407 such pairs in the 14 codebases, 273 are not CALLS_API in the ground truth (helpers, constructors, exceptions).
+
+### Verification
+- Full suite green on Python 3.12 and 3.11 (190 tests).
+- ToCS, its own `edge_prf`: medium (paper's 3) 0.802 -> 0.953, precision 1.000; large 0.766 -> 0.869; 8 generated 0.790 -> 0.921. REGISTRY_WIRES 103 of 103 and DATA_FLOWS_TO 89 of 89 over the 14 codebases, none extra. `run.sh` reproduces the committed results (`verify.py`).
+- Real code, 0.2.4 against this branch: fastapi gains one edge, a test that loads `docs_src/generate_clients/tutorial004.py` with a literal `importlib.import_module`; nanoGPT, minGPT and micrograd unchanged. The impact benchmark's import-statement reference does not hold that edge, so its edge test on fastapi will count it once.
 
 ## 2026-11-17 - Dart and Flutter language support
 
@@ -384,7 +404,6 @@
 
 ### Motivation
 - The maintainer asked that `wingbox mcp` start an MCP server. MCP clients that do not load Agent Skills can then use the code graph.
-
 ## 2026-11-16 - README: the earlier repository is named without a link
 
 ### Changes

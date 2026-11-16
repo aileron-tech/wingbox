@@ -18,10 +18,32 @@ or `rb`.
 (enm <mod> <name> <line> :eid <uuid>)
 (imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:lsp])
 (calls-api <src> <tgt> :via-ifc [:lsp])
-(data-flow <src> <tgt> [:validated])
+(data-flow <src> <tgt> [:validated] [:pipeline])
+(registry-wires <src> <tgt> [:config <path>])
 (refs <src> <tgt>::<Entity> [:callback] [:lsp])
-(calls <src>::<fn> <tgt>::<fn> :lines L1 L2 :lsp)
+(calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
+
+Modules loaded at run time (Python):
+
+- `importlib.import_module("<name>")`, `import_module(".<name>", __package__)`
+  and `__import__("<name>")` with a literal name are `imports`.
+- `registry-wires`: `<src>` loads `<tgt>` by a name it does not spell. The
+  module name is a literal package path and one variable
+  (`f".plugins.{name}"`, `"app.plugins." + name`); the variable is filled with
+  the strings of the JSON, YAML and TOML files in the folder of `<src>`, and
+  each string that names a module of that package is a wire. `:config` is the
+  file that names it.
+- `calls ... :registry`: inside a loop, `<src>::<fn>` calls a method on an
+  object that a module with wires returns for the loop variable
+  (`cls = registry.get(name); obj = cls(); obj.run(x)`); the call goes to each
+  wired module that defines the method. Found from the syntax tree, not by a
+  language server.
+- `data-flow ... :pipeline`: such a call replaces one of its own arguments
+  (`data = stage.process(data, config)`), so each module passes its output to
+  the next one of the same configuration list, in the order of the list.
+  `deps`, `rdeps` and `impact` do not follow it: the next step depends on the
+  previous one through the loop, not the other way round.
 
 ## Use File (.wingbox/index.uses.sexp, next to the graph)
 
