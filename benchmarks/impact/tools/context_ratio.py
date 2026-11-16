@@ -1,20 +1,21 @@
-"""How much smaller a Wingbox impact answer is than the source it covers.
+"""How much smaller a Wingbox impact answer is than the code, counted as Graphify counts.
 
-The same kind of number as `graphify benchmark` ("Nx fewer tokens per query"):
-estimated tokens of the repository's source divided by the average size of the
-answer. Here the answers are the 100 impact answers of results/command.json,
+`graphify benchmark` reports "Nx fewer tokens per query": its own estimate of
+the corpus tokens (words x 1.33 over the files it detects) divided by the
+average size of its answers. The main ratio here divides the same corpus
+estimate, taken from `graphify benchmark` on the same commits
+(results/graphify_benchmark.json), by the average size of the Wingbox answer. Here the answers are the 100 impact answers of results/command.json,
 each one checked against the import statements (results/gold), so the ratio is
 reported next to how many answers were complete.
 
-Corpus: source files in the languages of the benchmark (.ts .tsx .js .jsx .mjs
+A second, independent corpus estimate is kept for reference: source files in the languages of the benchmark (.ts .tsx .js .jsx .mjs
 .cjs .py .rs), without node_modules, build output, third_party/vendor folders,
 bundles and minified files (average line longer than 200 characters).
 Tokens: characters / 4, the estimate Graphify uses for answer size.
 
 usage: python3 context_ratio.py <folder holding the five checkouts> [graphify.json]
-graphify.json (optional): {"<repo>": {"corpus_tokens": N, "avg_query_tokens": M}}
-from `graphify benchmark` on the same checkouts, to compare on Graphify's own
-corpus estimate.
+graphify.json: {"<repo>": {"corpus_tokens": N, "avg_query_tokens": M, "graphify_ratio": R}}
+from `graphify benchmark` on the same checkouts (results/graphify_benchmark.json).
 """
 import json
 import os
@@ -68,22 +69,20 @@ def main() -> None:
             "questions": len(mine),
             "complete_answers": sum(a["wingbox"]["exact"] for a in mine),
             "avg_answer_tokens": round(mean),
-            "ratio": round(corpus / mean),
+            "own_estimate_ratio": round(corpus / mean),
         }
         g = graphify.get(repo)
         if g:
-            row["graphify"] = {
-                "corpus_tokens": g["corpus_tokens"],
-                "avg_query_tokens": g["avg_query_tokens"],
-                "ratio": round(g["corpus_tokens"] / g["avg_query_tokens"], 1),
-                "wingbox_ratio_on_graphify_corpus": round(g["corpus_tokens"] / mean),
-            }
+            row["graphify_corpus_tokens"] = g["corpus_tokens"]
+            row["ratio"] = round(g["corpus_tokens"] / mean)
+            row["graphify_avg_query_tokens"] = g["avg_query_tokens"]
+            row["graphify_ratio"] = g["graphify_ratio"]
         rows.append(row)
     out = {"method": __doc__.strip().split("\n\n")[1], "repos": rows}
     with open(os.path.join(RESULTS, "context_ratio.json"), "w") as fh:
         json.dump(out, fh, indent=1)
     for r in rows:
-        print(r["repo"], r["ratio"], "x;", r["complete_answers"], "of", r["questions"], "complete;", r.get("graphify", ""))
+        print(r["repo"], r.get("ratio"), "x (graphify", r.get("graphify_ratio"), "x);", r["complete_answers"], "of", r["questions"], "complete; own estimate", r["own_estimate_ratio"], "x")
 
 
 if __name__ == "__main__":

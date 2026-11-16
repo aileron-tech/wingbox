@@ -1,3 +1,5 @@
-{"agent-browser": {"corpus_tokens": 701066, "avg_query_tokens": 1789},
- "chrome-devtools-mcp": {"corpus_tokens": 320266, "avg_query_tokens": 2380},
- "claudes-c-compiler": {"corpus_tokens": 627533, "avg_query_tokens": 1560}}
+{"agent-browser": {"corpus_tokens": 701066, "avg_query_tokens": 1789, "graphify_ratio": 391.9},
+ "chrome-devtools-mcp": {"corpus_tokens": 320266, "avg_query_tokens": 2380, "graphify_ratio": 134.6},
+ "claudes-c-compiler": {"corpus_tokens": 627533, "avg_query_tokens": 1560, "graphify_ratio": 402.3},
+ "fastapi": {"corpus_tokens": 2046400, "avg_query_tokens": 1462, "graphify_ratio": 1399.7},
+ "immich-server": {"corpus_tokens": 539466, "avg_query_tokens": 1300, "graphify_ratio": 415.0}}
