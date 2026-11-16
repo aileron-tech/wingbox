@@ -48,7 +48,9 @@ def package_files(plugin: Path) -> list[Path]:
 
 def manifest_for(plugin: Path, with_mcp: bool) -> bytes:
     manifest = json.loads((plugin / CODEX_MANIFEST).read_text(encoding="utf-8"))
-    if not with_mcp:
+    if with_mcp:
+        manifest["mcpServers"] = "./.mcp.json"   # the package keeps the conventional name
+    else:
         manifest.pop("mcpServers", None)
     return (json.dumps(manifest, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
 
@@ -65,7 +67,7 @@ def build(plugin: Path, target: Path, with_mcp: bool) -> Path:
     with zipfile.ZipFile(target, "w") as archive:
         _add(archive, CODEX_MANIFEST.as_posix(), manifest_for(plugin, with_mcp))
         if with_mcp:
-            _add(archive, ".mcp.json", (plugin / ".mcp.json").read_bytes())
+            _add(archive, ".mcp.json", (plugin / "codex.mcp.json").read_bytes())
         _add(archive, "README.md", PACKAGE_README.read_bytes())
         for path in package_files(plugin):
             _add(archive, path.as_posix(), (plugin / path).read_bytes())

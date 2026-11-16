@@ -131,7 +131,7 @@ Codex manifest, as the desktop-only page says for that layout) marks them
 Desktop only: the skill runs the local `wingbox` command. The local MCP
 package starts `wingbox mcp` from `PATH` without `cwd`, so Codex runs it in
 the session folder; with `cwd` `.` it would serve the plugin folder, and
-Codex 0.169 does not expand `${PLUGIN_ROOT}` in `.mcp.json`.
+Codex 0.169 does not expand `${PLUGIN_ROOT}` in the MCP file (`codex.mcp.json`; not `.mcp.json`, which the Claude plugin directory would read as a second server).
 
 Submission: https://platform.openai.com/plugins, Upload new or existing
 plugin, Skills only, then the ZIP.
