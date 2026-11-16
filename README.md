@@ -31,6 +31,55 @@ Everything runs on your machine. The code graph is built by deterministic
 static parsing: no LLM call, no embeddings, no vector database, and no network
 access to build or query it.
 
+## See it in action
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/demo-impact.svg" alt="wingbox impact on the immich server: a terminal asks what breaks if src/dtos/asset.dto.ts changes; on a 3D stack of architecture layers the file lights up in the domain layer, then the ten files that import it, then twenty more at two hops" width="900">
+</p>
+
+Once the graph is built, an agent asks what a change breaks before it edits
+anything. Real output, Wingbox 0.2.0 on the server of
+[immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
+
+```text
+$ wingbox impact src/dtos/asset.dto.ts 2
+Impact of changing src/dtos/asset.dto.ts
+  direct dependents   10
+  within 2 hops       30
+
+Depth 1
+  src/controllers/asset-media.controller.ts   imports
+  src/controllers/asset.controller.ts         imports
+  src/controllers/shared-link.controller.ts   imports
+  src/controllers/user-admin.controller.ts    imports
+  src/dtos/asset-media.dto.ts                 imports
+  src/services/asset-media.service.ts         imports
+  src/services/asset.service.ts               imports
+  src/services/asset.service.spec.ts          imports
+  src/services/shared-link.service.ts         imports
+  src/services/user-admin.service.ts          imports
+
+Depth 2
+  src/controllers/index.ts                                 imports
+  src/controllers/asset-media.controller.spec.ts           imports
+  src/controllers/asset.controller.spec.ts                 imports
+  ...
+```
+
+The answer is 30 files in about 600 tokens, and it is exact: a TypeScript
+import resolver written separately from Wingbox finds the same 3,795
+dependencies between the 707 modules, none extra and none missing.
+
+`wingbox build` also writes `wingbox-out/map.html`. Its layers view stacks the
+architecture in 3D; click a file and its blast radius lights up across the
+layers:
+
+| One DTO changes: 30 files within two hops | The base service changes: 281 of 707 modules |
+|---|---|
+| ![The Wingbox map of the immich server in the layers view, turning slowly, with the 30 modules reached by a change to src/dtos/asset.dto.ts highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/demo-layers.webp) | ![Layers view of the Wingbox map with src/services/base.service.ts selected: 65 direct dependents, 281 modules within two hops](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/map-layers-hub.webp) |
+
+More pictures and a short walk-through: [aileron-tech.fr/wingbox](https://aileron-tech.fr/wingbox).
+
 ## What can Wingbox answer?
 
 - Where is authentication, billing, upload, or another feature implemented?
