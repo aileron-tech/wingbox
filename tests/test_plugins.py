@@ -77,13 +77,14 @@ class ClaudePluginTest(unittest.TestCase):
 
 class CodexPluginTest(unittest.TestCase):
     def test_manifest(self) -> None:
-        """/* REQ-PLUGIN-011: the Codex manifest `.codex-plugin/plugin.json` must name the plugin wingbox at the version of pyproject.toml, declare ./skills/ and ./.mcp.json, require a local executor, and give the listing fields within the directory limits (display name and subtitle at most 30 characters, at most three starter prompts of 128 characters, square icons that exist); `.mcp.json` must start `wingbox mcp` from PATH so that it runs in the session folder. */"""
+        """/* REQ-PLUGIN-011: the Codex manifest `.codex-plugin/plugin.json` must name the plugin wingbox at the version of pyproject.toml, declare ./skills/ and ./codex.mcp.json (not .mcp.json, which the Claude plugin directory reads as a second, shadowed server), require a local executor, and give the listing fields within the directory limits (display name and subtitle at most 30 characters, at most three starter prompts of 128 characters, square icons that exist); `codex.mcp.json` must start `wingbox mcp` from PATH so that it runs in the session folder. */"""
         manifest = load(PLUGIN / ".codex-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
         self.assertEqual(manifest["version"], VERSION)
         self.assertEqual(manifest["author"]["name"], "Aileron Technologies")
         self.assertEqual(manifest["skills"], "./skills/")
-        self.assertEqual(manifest["mcpServers"], "./.mcp.json")
+        self.assertEqual(manifest["mcpServers"], "./codex.mcp.json")
+        self.assertFalse((PLUGIN / ".mcp.json").exists())
         self.assertIs(manifest["requires_local_executor"], True)
         interface = manifest["interface"]
         self.assertLessEqual(len(interface["displayName"]), 30)
@@ -101,7 +102,7 @@ class CodexPluginTest(unittest.TestCase):
             width, height = png_size(PLUGIN / interface[key])
             self.assertEqual(width, height)
         self.assertFalse((PLUGIN / "hooks" / "hooks.json").exists(), "Codex loads hooks/hooks.json by default")
-        servers = load(PLUGIN / ".mcp.json")["mcpServers"]
+        servers = load(PLUGIN / "codex.mcp.json")["mcpServers"]
         self.assertEqual(servers, {"wingbox": {"command": "wingbox", "args": ["mcp"]}})
 
     def test_marketplace(self) -> None:
@@ -157,7 +158,7 @@ class SkillCopyTest(unittest.TestCase):
             self.assertTrue((plugin / "skills" / "wingbox" / "SKILL.md").read_text(encoding="utf-8").endswith("New line.\n"))
             self.assertEqual(load(plugin / ".claude-plugin" / "plugin.json")["version"], "9.8.7")
             self.assertEqual(load(plugin / ".codex-plugin" / "plugin.json")["version"], "9.8.7")
-            self.assertEqual(PIN.findall((plugin / "scripts" / "wingbox-run").read_text(encoding="utf-8")), [fake])
+            self.assertEqual(set(PIN.findall((plugin / "scripts" / "wingbox-run").read_text(encoding="utf-8"))), {fake})
             self.assertTrue(os.access(plugin / "scripts" / "wingbox-run", os.X_OK))
 
 
@@ -182,8 +183,9 @@ class LauncherTest(unittest.TestCase):
         self.assertTrue(LAUNCHER.stat().st_mode & stat.S_IXUSR)
         text = LAUNCHER.read_text(encoding="utf-8")
         self.assertNotIn("wingbox==", text)
-        commits = PIN.findall(text)
+        commits = sorted(set(PIN.findall(text)))
         self.assertEqual(len(commits), 1)
+        self.assertNotIn("$SOURCE", text)   # the directory reads the pin from the literal command
         tags = subprocess.run(["git", "-C", str(REPO), "tag", "--points-at", commits[0]], capture_output=True, text=True).stdout.split()
         if subprocess.run(["git", "-C", str(REPO), "tag", "--list", "v*"], capture_output=True, text=True).stdout.strip():
             self.assertTrue(any(re.fullmatch(r"v\d+\.\d+\.\d+", t) for t in tags), tags)
