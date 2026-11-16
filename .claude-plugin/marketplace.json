@@ -1,0 +1,16 @@
+{
+  "name": "aileron-tech",
+  "description": "Plugins by Aileron Technologies: Wingbox, the local code graph for coding agents.",
+  "owner": {
+    "name": "Aileron Technologies",
+    "url": "https://wingbox.dev"
+  },
+  "plugins": [
+    {
+      "name": "wingbox",
+      "source": "./plugins/wingbox",
+      "description": "Local code graph and blast radius analysis for coding agents: skill, search hook and MCP server.",
+      "category": "development"
+    }
+  ]
+}

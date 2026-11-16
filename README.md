@@ -251,6 +251,31 @@ npx skills add aileron-tech/wingbox
 
 MCP clients use `wingbox mcp`: see [Use from an MCP client](#use-from-an-mcp-client).
 
+## Install as a plugin
+
+This repository is also a plugin marketplace for Claude Code. The plugin, in
+[`plugins/wingbox`](plugins/wingbox), bundles the `wingbox` skill, the MCP
+server `wingbox mcp` and the search hook that `wingbox install` adds. Use
+either the plugin or `wingbox install`, not both (`wingbox uninstall` removes
+what install added).
+
+```bash
+/plugin install wingbox --marketplace aileron-tech/wingbox
+```
+
+or `/plugin marketplace add aileron-tech/wingbox`, then
+`/plugin install wingbox@aileron-tech` (from a shell:
+`claude plugin marketplace add aileron-tech/wingbox` and
+`claude plugin install wingbox@aileron-tech`). The skill is `/wingbox:wingbox`.
+The plugin runs the installed `wingbox` command; without it, and with `uv`
+installed, it runs `uvx --from wingbox==<version> wingbox`, which downloads the
+pinned version from PyPI on first use. The search hook never downloads and
+stays silent while neither is available.
+
+The plugin folder holds a copy of `SKILL.md` and `references/`, and the
+version of `pyproject.toml`; `python3 tools/sync_plugin.py` refreshes them and
+the tests fail while they differ.
+
 ## Quick start from the command line
 
 Install the `wingbox` command (Python 3.11 or newer, macOS or Linux):
