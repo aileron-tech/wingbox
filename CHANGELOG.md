@@ -1,11 +1,19 @@
 # Changelog
 
-## 2026-11-16
+## Unreleased
+
+### Changes
+
+- README: install with `pipx install wingbox && wingbox install`, then
+  `/wingbox` in the agent; the supported assistants and MCP clients are
+  named; the examples are rerun on 0.2.6.
 
 ### Fixes
 
 - `wingbox update` chooses pipx when `pipx list` exits 1 because some other
   pipx package has a missing interpreter; it chose pip before.
+
+## 0.2.6 - 2026-11-16
 
 ### Changes
 
@@ -35,9 +43,23 @@
   README section "Use from an MCP client" gives the configuration of each
   client.
 - `python -m wingbox` runs the `wingbox` command.
-- Package version 0.2.6.
-- Package version 0.2.5.
-- Package version 0.2.4.
+
+## 0.2.5 - 2026-11-16
+
+### Fixes
+
+- Rust: after `use other_crate::{bridge}` a path `bridge::start::run()` names
+  the module file in the other crate of the workspace; it used to stop at
+  `bridge`.
+- Rust: a file under `tests/<name>/`, `benches/<name>/` or `examples/<name>/`
+  belongs to the crate rooted at that folder, as Cargo builds it, so
+  `crate::harness` there names `tests/<name>/harness.rs`; it used to name a
+  module of `src/` with the same name.
+
+## 0.2.4 - 2026-11-16
+
+### Changes
+
 - `.mts` and `.cts` files are TypeScript modules; an import of `./x.mjs` or
   `./x.cjs` names `x.mts` or `x.cts` when it exists, as TypeScript reads it.
 - A test that mocks a module (`vi.mock`, `vi.doMock`, `vi.importActual`,
@@ -48,15 +70,56 @@
   break before editing code."; the website wingbox.dev; FAQ entries on price,
   offline use, embeddings, RAG, editor find usages, Sourcegraph and ctags, and
   keeping the graph current.
-- Package version 0.2.3. The package page shows the current README.
+
+### Fixes
+
+- A file that git tracks stays in the graph even when an ignore pattern
+  matches its folder, as git itself reads the rules: a pattern `core` meant for
+  core dumps hid tracked `core/` source folders.
+- `import(/* comment */ "./x")` and `require` with a comment before the literal
+  keep their target.
+
+## 0.2.3 - 2026-11-16
+
+### Changes
+
+- The package page on PyPI shows the current README.
 - The README states what makes Wingbox usable inside a security perimeter:
   no network, no model, no telemetry, code read and never run, an offline
   install. Two tests keep it true (REQ-SEC-001, REQ-SEC-002).
 - `benchmarks/graphify` is back, next to `benchmarks/impact`: Wingbox and
   Graphify measured on the same public repositories, with the scripts and the
   result files. The README has a section and a FAQ entry on the two tools.
-- Package version 0.2.2 (0.2.1 plus the layer of a Python `__init__.py`).
-- Package version 0.2.1.
+- Added `benchmarks/impact`: Wingbox measured on public repositories. One
+  hundred impact questions drawn with a fixed seed and checked against
+  reference lists from independent resolvers, a coding agent with and without
+  Wingbox, every edge against the import statements of the code, build time;
+  with confidence intervals, the scripts and every result file.
+  `Dockerfile.benchmark` reproduces the tests that need no model in a clean
+  container and compares the results with the committed ones. The README shows
+  the summary.
+
+### Fixes
+
+- `boundaries-summary` counts pairs of files, as the report does; a pair
+  printed once per relation (imports and data-flow) used to count twice.
+- The graph of a repository without TypeScript builds as fast as in 0.2.0
+  again: 0.2.1 resolved every import a second time while looking for imports
+  of types only (a Python library of 1,227 files: 9.4 s, now 7.7 s on the same
+  machine; 0.2.0: 7.4 s).
+
+## 0.2.2 - 2026-11-16
+
+### Fixes
+
+- Layers: a Python `__init__.py` is its package. It takes the layer of its
+  folder or, when no folder rule applies, the layer where most modules of the
+  package are; the names it re-exports no longer decide its layer.
+
+## 0.2.1 - 2026-11-16
+
+### Changes
+
 - `analyze` and `impact` print the complete counts and list at most 200
   dependent files, nearest first; `--all` lists every file. A line
   `analyze-more`, `key-entity-more`, `impact-more` or `read-first-more` gives
@@ -71,38 +134,9 @@
   their own table. The builder marks such an import edge `:type-only`.
 - The builder records `import.meta.resolve('<literal>')` as a dependency (a
   worker file loaded at run time).
-- Added `benchmarks/impact`: Wingbox measured on public repositories. One
-  hundred impact questions drawn with a fixed seed and checked against
-  reference lists from independent resolvers, a coding agent with and without
-  Wingbox, every edge against the import statements of the code, build time;
-  with confidence intervals, the scripts and every result file.
-  `Dockerfile.benchmark` reproduces the tests that need no model in a clean
-  container and compares the results with the committed ones. The README shows
-  the summary.
 
 ### Fixes
 
-- Rust: after `use other_crate::{bridge}` a path `bridge::start::run()` names
-  the module file in the other crate of the workspace; it used to stop at
-  `bridge`.
-- Rust: a file under `tests/<name>/`, `benches/<name>/` or `examples/<name>/`
-  belongs to the crate rooted at that folder, as Cargo builds it, so
-  `crate::harness` there names `tests/<name>/harness.rs`; it used to name a
-  module of `src/` with the same name.
-- A file that git tracks stays in the graph even when an ignore pattern
-  matches its folder, as git itself reads the rules: a pattern `core` meant for
-  core dumps hid tracked `core/` source folders.
-- `import(/* comment */ "./x")` and `require` with a comment before the literal
-  keep their target.
-- `boundaries-summary` counts pairs of files, as the report does; a pair
-  printed once per relation (imports and data-flow) used to count twice.
-- The graph of a repository without TypeScript builds as fast as in 0.2.0
-  again: 0.2.1 resolved every import a second time while looking for imports
-  of types only (a Python library of 1,227 files: 9.4 s, now 7.7 s on the same
-  machine; 0.2.0: 7.4 s).
-- Layers: a Python `__init__.py` is its package. It takes the layer of its
-  folder or, when no folder rule applies, the layer where most modules of the
-  package are; the names it re-exports no longer decide its layer.
 - Layers: a migration or seed file is infrastructure wherever its folder lies;
   under a `schema` folder it used to be domain, which reported migrations that
   import a repository as "domain imports infrastructure".
@@ -123,11 +157,10 @@
 - The report names the count of definitions "Functions, constants, classes and
   types": module-level constants are recorded and counted with the functions.
 
-## 2026-11-15
+## 0.2.0 - 2026-11-15
 
 ### Changes
 
-- Package version 0.2.0.
 - `wingbox build` now also writes `wingbox-out/REPORT.md` (key findings, the
   most depended-on files, layers, boundary violations, entry points) and
   `wingbox-out/map.html`, an interactive map of the code graph in one file
@@ -168,21 +201,6 @@
   `wingbox build [PATH]` builds the code graph and every query command runs as
   `wingbox <command>`, for example `wingbox impact path/to/file.py`. Install it
   with `pipx install wingbox` ([PyPI](https://pypi.org/project/wingbox/)).
-- Added the `impact <file|id> [depth] [--sexp]` command: the modules that
-  depend on a file, grouped by shortest distance, and the files to read first.
-  It accepts an ordinary file path, prints readable text by default and
-  compact S-expression facts with `--sexp`.
-- Renamed the project and the skill from `codespaces` to `wingbox`; the
-  repository is now `aileron-tech/wingbox`.
-- Replaced the term "belief map" with "code graph" in the documentation, the
-  scripts and the generated files: `scripts/build_belief_map.py` is now
-  `scripts/build_code_graph.py`, `scripts/belief_search.py` is now
-  `scripts/code_graph_search.py`, `.belief_map.sexp` is now `.code_graph.sexp`
-  and `.belief_map_cache.json` is now `.code_graph_cache.json`. The header of
-  the generated S-expression file is now `code-graph`.
-- Existing maps are not read under the old names: rebuild the code graph once,
-  delete the old generated files, and update agent instructions and ignore
-  rules that mention the old script or file names.
 
 ### Fixes
 
@@ -222,6 +240,26 @@
   unreadable, and every import through its `paths` aliases was lost.
 - TypeScript: `paths` and `baseUrl` inherited through `extends` were not read,
   so a project whose tsconfig only extends a base file had no aliases.
+
+## 0.1.1 - 2026-11-15
+
+### Changes
+
+- Added the `impact <file|id> [depth] [--sexp]` command: the modules that
+  depend on a file, grouped by shortest distance, and the files to read first.
+  It accepts an ordinary file path, prints readable text by default and
+  compact S-expression facts with `--sexp`.
+- Renamed the project and the skill from `codespaces` to `wingbox`; the
+  repository is now `aileron-tech/wingbox`.
+- Replaced the term "belief map" with "code graph" in the documentation, the
+  scripts and the generated files: `scripts/build_belief_map.py` is now
+  `scripts/build_code_graph.py`, `scripts/belief_search.py` is now
+  `scripts/code_graph_search.py`, `.belief_map.sexp` is now `.code_graph.sexp`
+  and `.belief_map_cache.json` is now `.code_graph_cache.json`. The header of
+  the generated S-expression file is now `code-graph`.
+- Existing maps are not read under the old names: rebuild the code graph once,
+  delete the old generated files, and update agent instructions and ignore
+  rules that mention the old script or file names.
 
 ## 2026-08-11
 
