@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-16 - a Python package init takes the layer of its package
+
+### Changes
+- `scripts/code_graph_search.py` (`_package_layer`, `_graph_layer`): the layer of a Python `__init__.py` comes from the folder rules, or, when none applies, from the layer where most modules of the package are (its own modules, or all modules below when it holds only sub-packages; a tie gives `other`). The purpose guessed from the names it re-exports is not used. The result is kept per graph in `CodeGraph.package_layers`.
+- `pyproject.toml`: version 0.2.2.
+- Test: REQ-OUT-016.
+- Verified on a Python library of 1,223 files: of 190 `__init__.py` files, 89 were placed in the configuration layer by a guess; now each stands with its package (81 unplaced like their packages, 92 tests, 9 api, 4 domain, 3 shared, 1 config). Import edges unchanged (1,818).
+
+### Motivation
+- In Python `__init__.py` is the package itself. Its layer was guessed from what it re-exports, so the root package of a web framework was placed in the api layer and most package files in configuration.
+
 ## 2026-11-16 - version 0.2.1: answer size, type-only imports, layer rules, map view
 
 ### Changes

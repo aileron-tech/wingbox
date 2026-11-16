@@ -58,6 +58,7 @@ and backslash escapes. Other regex operators are rejected.
 
 from __future__ import annotations
 
+import collections
 import functools
 import os
 import re
@@ -391,6 +392,7 @@ class CodeGraph:
         self.edges_by_entity_name: dict[str, list[Edge]] = {}  # entity name -> edges
         self.all_edges: list[Edge] = []
         self.pmap: dict[str, str] = {}
+        self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self._root: str = ""
 
     def load(self, path: str, root: Optional[str] = None) -> MapLoadResult:
@@ -403,6 +405,7 @@ class CodeGraph:
         self.edges_by_entity_name = {}
         self.all_edges = []
         self.pmap = {}
+        self.package_layers = {}
         self._root = os.path.abspath(
             root if root is not None else os.path.dirname(os.path.abspath(path))
         )
@@ -1101,12 +1104,44 @@ def _impact_file(g: CodeGraph, module_id: str) -> str:
     return path
 
 
+def _is_package_init(g: CodeGraph, module_id: str) -> bool:
+    return module_id.rsplit("/", 1)[-1] == "__init__" and g.module_lang(module_id) == "py"
+
+
+def _package_layer(g: CodeGraph, module_id: str) -> str:
+    """Layer of a Python package, for its __init__.py.
+
+    The folder decides when a folder rule applies. Otherwise the package is
+    where most of its modules are: its own modules, or all modules below it
+    when it holds only sub-packages. What __init__.py re-exports says nothing.
+    """
+    by_path = _classify_layer_by_path(module_id)
+    if by_path != "other":
+        return by_path
+    if module_id not in g.package_layers:
+        prefix = module_id[: -len("__init__")]
+        below = [
+            module
+            for module in g.nodes
+            if module.startswith(prefix) and module != module_id and not _is_package_init(g, module)
+        ]
+        own = [module for module in below if "/" not in module[len(prefix):]]
+        counts = collections.Counter(_graph_layer(g, module) for module in (own or below))
+        ranked = counts.most_common(2)
+        tied = len(ranked) == 2 and ranked[0][1] == ranked[1][1]
+        g.package_layers[module_id] = ranked[0][0] if ranked and not tied else "other"
+    return g.package_layers[module_id]
+
+
 def _graph_layer(g: CodeGraph, module_id: str) -> str:
     """Layer of a module of this graph.
 
     A JSX component (.tsx) is UI whatever its folder is called: a Next.js route
-    folder named `models` holds pages, not the domain model.
+    folder named `models` holds pages, not the domain model. A Python
+    __init__.py is its package and takes the layer of the package.
     """
+    if _is_package_init(g, module_id):
+        return _package_layer(g, module_id)
     layer = _classify_layer(module_id, g.module_purpose(module_id))
     if layer != "test" and g.module_lang(module_id) == "tsx":
         return "ui"
