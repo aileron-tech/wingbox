@@ -1,5 +1,30 @@
 # Completion Log
 
+## 2026-11-16 - Plugin for Claude Code and its marketplace
+
+### Changes
+- `plugins/wingbox/` (new). `.claude-plugin/plugin.json`: name `wingbox`, version of pyproject, listing fields (`icon`, `documentationUrl`, `supportUrl`, `privacyPolicyUrl`), the PreToolUse hook on `Grep|Glob|Read` (timeout 5 s) and the MCP server `wingbox`, both inline and both through `scripts/wingbox-run`. `skills/wingbox/` and `LICENSE` are copies; `assets/icon.png` (512 px, source `docs/store/icon.svg`); `README.md`.
+- `scripts/wingbox-run`: the installed `wingbox`, else `uvx --quiet --from wingbox==<version> wingbox`, else exit 127 with "pipx install wingbox". The hook (`hook ...`) uses uvx only `--offline`, hides stderr and always exits 0: uv exits 2 on errors, and exit 2 of a PreToolUse hook blocks the tool call.
+- `.claude-plugin/marketplace.json` (new): marketplace `aileron-tech` with the entry `./plugins/wingbox`.
+- `tools/sync_plugin.py` (new): copies SKILL.md, references/ and LICENSE into the plugin and stamps the version in the manifest and the launcher; `--check` lists what is stale and exits 1. Run it after a change to SKILL.md or the version.
+- `docs/store/` (new): listing, test prompts, requirements and status of Anthropic's directory (README.md), PRIVACY.md, icon.svg, three screenshots.
+- `README.md`: section "Install as a plugin". Tests: REQ-PLUGIN-001 to REQ-PLUGIN-010 in `tests/test_plugins.py`.
+
+### Decisions
+- Plugin folder `plugins/wingbox`, not the repository root: what the directory installs and scans is the plugin folder only (512 files, 256 KiB per text file, no symlink, no CLAUDE.md), so the skill is copied by `tools/sync_plugin.py` and a test keeps the copy identical.
+- Hook and MCP server inline in `.claude-plugin/plugin.json` rather than `hooks/hooks.json` and `.mcp.json`, which other assistants' plugin formats also read.
+- Launcher with an uvx fallback: the directory holds such a plugin for a reviewer ("Runs a pinned npx or uvx package"); it cannot be avoided, the plugin needs the Python package and its parsers.
+
+### Motivation
+- The maintainer asked for plugins for the Claude and the OpenAI stores; the Claude Code plugin comes first.
+
+### Verification
+- `claude plugin validate --strict` on `plugins/wingbox` and on the repository (marketplace): passed with no warning (Claude Code 2.1.325).
+- In a temporary `CLAUDE_CONFIG_DIR`: `claude plugin marketplace add`, `claude plugin install wingbox@aileron-tech`, `claude plugin list` (0.2.7, enabled), `claude mcp list` shows `plugin:wingbox:wingbox ... wingbox-run mcp - Connected`.
+- A headless `claude -p` with `--plugin-dir` and no session persistence, in a test repository with a graph: the session lists the skill `wingbox:wingbox` and the connected server; it called `mcp__plugin_wingbox_wingbox__impact` and got the three dependents; the Grep hook added the `wingbox-match` context.
+- The uvx fallback with only uv on PATH: `wingbox-run --version` printed `wingbox 0.2.7`; the hook answered from the uv cache.
+- Tests: the full suite.
+
 ## 2026-11-16 - wingbox install, uninstall, the search hook and wingbox update
 
 ### Changes

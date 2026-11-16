@@ -1,0 +1,49 @@
+{
+  "name": "wingbox",
+  "displayName": "Wingbox",
+  "version": "0.2.7",
+  "description": "Local code graph and blast radius analysis: module boundaries, dependents, impact of a change and the few files to read first, for Python, TypeScript, Rust, C#, Java, Go and Ruby repositories. Runs on your machine; no code leaves it.",
+  "author": {
+    "name": "Aileron Technologies",
+    "url": "https://wingbox.dev"
+  },
+  "homepage": "https://wingbox.dev",
+  "repository": "https://github.com/aileron-tech/wingbox",
+  "license": "MIT",
+  "keywords": [
+    "code-graph",
+    "blast-radius",
+    "impact-analysis",
+    "dependency-graph",
+    "code-search",
+    "architecture",
+    "local-first",
+    "mcp"
+  ],
+  "icon": "./assets/icon.png",
+  "documentationUrl": "https://github.com/aileron-tech/wingbox#readme",
+  "supportUrl": "https://github.com/aileron-tech/wingbox/issues",
+  "privacyPolicyUrl": "https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run\" hook pre-search",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "wingbox": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

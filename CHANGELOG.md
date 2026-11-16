@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Plugin for Claude Code in `plugins/wingbox`, and this repository as its
+  marketplace `aileron-tech`: `/plugin install wingbox --marketplace
+  aileron-tech/wingbox`. The plugin bundles the `wingbox` skill, the MCP
+  server `wingbox mcp` and the search hook; it runs the installed `wingbox`
+  command or, without it, `uvx --from wingbox==<version> wingbox`.
+- `docs/store/` holds the listing, the privacy statement, the icon and
+  screenshots for Anthropic's plugin directory.
+
 ## 0.2.7 - 2026-11-16
 
 ### Changes
