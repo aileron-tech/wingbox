@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-16 - benchmark: build time results (test E)
+
+### Changes
+- `benchmarks/graphify/results/build_times.json` (new): the run of the workflow `benchmark-build-time` on a hosted runner, three rounds, every single run included.
+- `benchmarks/graphify/tools/time_builds.py`: after each build the size of the graph is read from the file the tool wrote, and the summary stops when two runs of one tool differ. Test REQ-BENCH-004.
+- `benchmarks/graphify/tools/make_report.py` and `benchmarks/graphify/README.md`: section "Test E. Building the graph" and one line in the summary, written from the result file.
+
+### Motivation
+- The report had no build time. The graph sizes are recorded with the times so that a run which built less than the reference run cannot pass as a fast one: on the runner Wingbox built the same graphs as in the reference run (FastAPI 1,227 modules and 1,818 import edges).
+
 ## 2026-11-16 - benchmark: build time on a hosted runner
 
 ### Changes

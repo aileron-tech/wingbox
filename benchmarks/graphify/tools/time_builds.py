@@ -11,6 +11,10 @@ Wingbox: `wingbox build .` writes the graph, the report and the map.
 Graphify: `graphify extract . --code-only` writes the graph; `graphify cluster-only . --no-label
 --no-viz` is the step the benchmark runs before `graphify affected`. Both are timed separately.
 
+After each build the size of the graph is read from the file the tool wrote (Wingbox: modules
+and import edges of .code_graph.sexp; Graphify: nodes and links of graphify-out/graph.json), so a
+run that built less than the reference run cannot pass as a fast one.
+
 Writes <work dir>/out/build_times.json and prints a Markdown table.
 """
 from __future__ import annotations
@@ -39,6 +43,22 @@ STEPS = {
 SOURCE_SUFFIXES = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".rs")
 
 
+def graph_size(tool: str, target: str) -> dict:
+    """What the build wrote: the size of the graph, read from the graph file itself."""
+    if tool == "wingbox":
+        counts = {"modules": 0, "import_edges": 0}
+        with open(os.path.join(target, ".code_graph.sexp"), encoding="utf-8") as handle:
+            for line in handle:
+                text = line.lstrip()
+                if text.startswith("(node "):
+                    counts["modules"] += 1
+                elif text.startswith("(imports "):
+                    counts["import_edges"] += 1
+        return counts
+    graph = json.load(open(os.path.join(target, "graphify-out", "graph.json"), encoding="utf-8"))
+    return {"nodes": len(graph["nodes"]), "links": len(graph["links"])}
+
+
 def summarise(runs: list[dict]) -> list[dict]:
     """One row per corpus: the median wall and CPU seconds of each step over the rounds."""
     rows = []
@@ -47,6 +67,10 @@ def summarise(runs: list[dict]) -> list[dict]:
         for run in runs:
             if run["corpus"] == corpus:
                 row.setdefault("source_files", run["source_files"])
+                if "graph" in run:
+                    sizes = row.setdefault(f"{run['tool']}_graph", run["graph"])
+                    if sizes != run["graph"]:
+                        raise SystemExit(f"{run['tool']} built a different graph of {corpus} in round {run['round']}")
         for tool, steps in STEPS.items():
             for step, _ in steps:
                 mine = [run for run in runs if run["corpus"] == corpus and run["tool"] == tool and run["step"] == step]
@@ -120,8 +144,11 @@ def main() -> None:
                     wall, cpu, code = timed([tools[tool], *arguments], target, env)
                     if code:
                         raise SystemExit(f"{tool} {step} failed on {corpus} with exit code {code}")
-                    runs.append({"round": round_no, "corpus": corpus, "source_files": files, "tool": tool, "step": step,
-                                 "wall_s": round(wall, 2), "cpu_s": round(cpu, 2)})
+                    run = {"round": round_no, "corpus": corpus, "source_files": files, "tool": tool, "step": step,
+                           "wall_s": round(wall, 2), "cpu_s": round(cpu, 2)}
+                    if step in ("build", "extract"):
+                        run["graph"] = graph_size(tool, target)
+                    runs.append(run)
                     print(f"round {round_no} {corpus} {tool} {step}: {wall:.1f} s wall, {cpu:.1f} s cpu", file=sys.stderr, flush=True)
     shutil.rmtree(os.path.join(work, "timing"), ignore_errors=True)
     rows = summarise(runs)
