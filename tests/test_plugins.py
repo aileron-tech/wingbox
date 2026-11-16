@@ -17,6 +17,7 @@ REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins" / "wingbox"
 LAUNCHER = PLUGIN / "scripts" / "wingbox-run"
 VERSION = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+PIN = re.compile(r"git\+https://github\.com/aileron-tech/wingbox@([0-9a-f]{40})")
 SKILL_SOURCES = ["SKILL.md"] + sorted(f"references/{p.name}" for p in (REPO / "references").iterdir() if p.is_file())
 
 
@@ -38,7 +39,7 @@ def fake_command(folder: Path, name: str, body: str) -> None:
 
 class ClaudePluginTest(unittest.TestCase):
     def test_manifest(self) -> None:
-        """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs the launcher with `hook pre-search`, and an MCP server that runs the launcher with `mcp`, every path under ${CLAUDE_PLUGIN_ROOT} existing in the plugin. */"""
+        """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs the launcher with `hook pre-search`, and an MCP server that runs the launcher with `mcp`, both through `sh`, every path under ${CLAUDE_PLUGIN_ROOT} existing in the plugin. */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
         self.assertEqual(manifest["version"], VERSION)
@@ -55,10 +56,11 @@ class ClaudePluginTest(unittest.TestCase):
         (group,) = manifest["hooks"]["PreToolUse"]
         self.assertEqual(group["matcher"], "Grep|Glob|Read")
         (hook,) = group["hooks"]
-        self.assertEqual(hook["command"], '"${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run" hook pre-search')
+        # the directory asks that a script be started through its interpreter
+        self.assertEqual(hook["command"], 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run" hook pre-search')
         server = manifest["mcpServers"]["wingbox"]
-        self.assertEqual(server["command"], "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run")
-        self.assertEqual(server["args"], ["mcp"])
+        self.assertEqual(server["command"], "sh")
+        self.assertEqual(server["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "mcp"])
         for path in re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\\ ]+)", json.dumps(manifest)):
             self.assertTrue((PLUGIN / path).is_file(), path)
 
@@ -142,6 +144,9 @@ class SkillCopyTest(unittest.TestCase):
             pyproject = (copy / "pyproject.toml").read_text(encoding="utf-8")
             (copy / "pyproject.toml").write_text(pyproject.replace(f'version = "{VERSION}"', 'version = "9.8.7"', 1), encoding="utf-8")
             script = str(copy / "tools" / "sync_plugin.py")
+            fake = "f" * 40
+            os.environ["WINGBOX_RELEASE"] = f"9.8.7 {fake}"
+            self.addCleanup(os.environ.pop, "WINGBOX_RELEASE", None)
             check = subprocess.run([sys.executable, script, "--check"], capture_output=True, text=True)
             self.assertEqual(check.returncode, 1)
             for stale in ("skills/wingbox/SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "scripts/wingbox-run"):
@@ -152,7 +157,7 @@ class SkillCopyTest(unittest.TestCase):
             self.assertTrue((plugin / "skills" / "wingbox" / "SKILL.md").read_text(encoding="utf-8").endswith("New line.\n"))
             self.assertEqual(load(plugin / ".claude-plugin" / "plugin.json")["version"], "9.8.7")
             self.assertEqual(load(plugin / ".codex-plugin" / "plugin.json")["version"], "9.8.7")
-            self.assertIn("wingbox==9.8.7", (plugin / "scripts" / "wingbox-run").read_text(encoding="utf-8"))
+            self.assertEqual(PIN.findall((plugin / "scripts" / "wingbox-run").read_text(encoding="utf-8")), [fake])
             self.assertTrue(os.access(plugin / "scripts" / "wingbox-run", os.X_OK))
 
 
@@ -173,9 +178,15 @@ class LauncherTest(unittest.TestCase):
         self.path = f"{self.bin}:/usr/bin:/bin"
 
     def test_version_and_mode(self) -> None:
-        """/* REQ-PLUGIN-005: the launcher must be executable and pin uvx to the version of pyproject.toml. */"""
+        """/* REQ-PLUGIN-005: the launcher must be executable and pin uvx to a full 40-character commit of the repository (the Claude plugin directory refuses a PyPI version as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
         self.assertTrue(LAUNCHER.stat().st_mode & stat.S_IXUSR)
-        self.assertEqual(set(re.findall(r"wingbox==([0-9][^\"' ]*)", LAUNCHER.read_text(encoding="utf-8"))), {VERSION})
+        text = LAUNCHER.read_text(encoding="utf-8")
+        self.assertNotIn("wingbox==", text)
+        commits = PIN.findall(text)
+        self.assertEqual(len(commits), 1)
+        tags = subprocess.run(["git", "-C", str(REPO), "tag", "--points-at", commits[0]], capture_output=True, text=True).stdout.split()
+        if subprocess.run(["git", "-C", str(REPO), "tag", "--list", "v*"], capture_output=True, text=True).stdout.strip():
+            self.assertTrue(any(re.fullmatch(r"v\d+\.\d+\.\d+", t) for t in tags), tags)
 
     def test_installed_command_first(self) -> None:
         """/* REQ-PLUGIN-006: with `wingbox` on PATH the launcher must run it with the given arguments and pass its output and exit code through, even when uvx is present. */"""
@@ -185,12 +196,13 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual((result.stdout, result.returncode), ("wingbox mcp --root x\n", 3))
 
     def test_uvx_fallback(self) -> None:
-        """/* REQ-PLUGIN-007: without `wingbox` on PATH the launcher must run `uvx --from wingbox==<version> wingbox <arguments>`; the hook goes through uvx offline only. */"""
+        """/* REQ-PLUGIN-007: without `wingbox` on PATH the launcher must run `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox <arguments>`; the hook goes through uvx offline only. */"""
         fake_command(self.bin, "uvx", 'echo "uvx $*"')
+        source = "git+https://github.com/aileron-tech/wingbox@" + PIN.findall(LAUNCHER.read_text(encoding="utf-8"))[0]
         result = self.run_launcher(self.path, "mcp")
-        self.assertEqual(result.stdout, f"uvx --quiet --from wingbox=={VERSION} wingbox mcp\n")
+        self.assertEqual(result.stdout, f"uvx --quiet --from {source} wingbox mcp\n")
         result = self.run_launcher(self.path, "hook", "pre-search")
-        self.assertEqual(result.stdout, f"uvx --offline --quiet --from wingbox=={VERSION} wingbox hook pre-search\n")
+        self.assertEqual(result.stdout, f"uvx --offline --quiet --from {source} wingbox hook pre-search\n")
 
     def test_neither_available(self) -> None:
         """/* REQ-PLUGIN-008: without `wingbox` and uvx the launcher must exit 127 with a message naming `pipx install wingbox`, and the hook must print nothing and exit 0. */"""

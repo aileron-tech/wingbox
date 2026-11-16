@@ -32,8 +32,9 @@ not run, writes the files listed in its README section and records them in
 
 The only network access is the installation of the package from PyPI: when
 you run `pipx install wingbox`, or when the Claude Code plugin starts
-`uvx --from wingbox==<version> wingbox` because the command is not installed.
-uv then downloads the package and its parsers from PyPI the first time. The
+`uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox` because the
+command is not installed. uv then fetches that release commit from GitHub and the parsers from
+PyPI the first time. The
 search hook never downloads.
 
 ## Personal data and children

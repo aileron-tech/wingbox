@@ -8,7 +8,9 @@
   marketplace `aileron-tech`: `/plugin install wingbox --marketplace
   aileron-tech/wingbox`. The plugin bundles the `wingbox` skill, the MCP
   server `wingbox mcp` and the search hook; it runs the installed `wingbox`
-  command or, without it, `uvx --from wingbox==<version> wingbox`.
+  command or, without it, `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`,
+  pinned to the full commit of the latest release tag, as the Claude plugin
+  directory requires.
 - `docs/store/` holds the listing, the privacy statement, the icon and
   screenshots for Anthropic's plugin directory.
 - The same plugin for Codex: `codex plugin marketplace add

@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run\" hook pre-search",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run\" hook pre-search",
             "timeout": 5
           }
         ]
@@ -40,8 +40,9 @@
   },
   "mcpServers": {
     "wingbox": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+      "command": "sh",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
         "mcp"
       ]
     }

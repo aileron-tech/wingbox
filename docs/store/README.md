@@ -96,7 +96,7 @@ Plugin bundle. Repository `aileron-tech/wingbox`, plugin path
 | README of at least 40 words and a license in the plugin folder | ready (`plugins/wingbox/README.md`, `LICENSE`, `license: MIT`) |
 | No symlinks, submodules, LFS, system files; every file the plugin runs inside the plugin folder; no top-level `bin/` | ready (tested) |
 | Directory listing fields `icon`, `documentationUrl`, `supportUrl`, `privacyPolicyUrl` in `plugin.json` | ready; the privacy URL resolves once this branch is merged |
-| Launcher pinned to an exact version (`uvx --from wingbox==X.Y.Z`) | ready |
+| Launcher pinned to a full commit (`uvx --from git+https://github.com/aileron-tech/wingbox@<40-char commit>`, the release tag's commit; a PyPI version alone is refused as a pin) | ready |
 | Data handling questions, compliance contact email, four acknowledgements | maintainer, answers above |
 
 Expected review outcome: the version is "held for a reviewer", not blocked.

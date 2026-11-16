@@ -1,16 +1,18 @@
 #!/bin/sh
 # Wingbox plugin launcher for Claude Code: runs `wingbox <arguments>`.
 # 1. the installed wingbox command (pipx install wingbox);
-# 2. otherwise uvx with the pinned version; the first run downloads it from PyPI;
+# 2. otherwise uvx from the release commit pinned below (the newest vX.Y.Z tag;
+#    tools/sync_plugin.py keeps it current); the first run fetches it from GitHub;
 # 3. otherwise a message that names pipx install wingbox, exit 127.
 # The search hook (first argument "hook") never blocks a tool call: it is
 # silent and exits 0 when wingbox is missing or fails, and it uses uvx only
 # offline, from the uv cache.
+SOURCE="git+https://github.com/aileron-tech/wingbox@c74f89001ad978714d415fe6a893ec4cb423ba12"
 if [ "$1" = "hook" ]; then
   if command -v wingbox >/dev/null 2>&1; then
     wingbox "$@" 2>/dev/null
   elif command -v uvx >/dev/null 2>&1; then
-    uvx --offline --quiet --from "wingbox==0.2.7" wingbox "$@" 2>/dev/null
+    uvx --offline --quiet --from "$SOURCE" wingbox "$@" 2>/dev/null
   fi
   exit 0
 fi
@@ -18,8 +20,8 @@ if command -v wingbox >/dev/null 2>&1; then
   exec wingbox "$@"
 fi
 if command -v uvx >/dev/null 2>&1; then
-  exec uvx --quiet --from "wingbox==0.2.7" wingbox "$@"
+  exec uvx --quiet --from "$SOURCE" wingbox "$@"
 fi
 echo "wingbox: the wingbox command is not installed. Install it with: pipx install wingbox" >&2
-echo "(or install uv from https://docs.astral.sh/uv/ and the plugin runs uvx --from wingbox==0.2.7 wingbox)" >&2
+echo "(or install uv from https://docs.astral.sh/uv/ and the plugin runs wingbox through uvx)" >&2
 exit 127

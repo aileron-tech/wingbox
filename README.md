@@ -270,8 +270,8 @@ or `/plugin marketplace add aileron-tech/wingbox`, then
 `claude plugin marketplace add aileron-tech/wingbox` and
 `claude plugin install wingbox@aileron-tech`). The skill is `/wingbox:wingbox`.
 The plugin runs the installed `wingbox` command; without it, and with `uv`
-installed, it runs `uvx --from wingbox==<version> wingbox`, which downloads the
-pinned version from PyPI on first use. The search hook never downloads and
+installed, it runs `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`,
+pinned to the commit of the latest release tag, which uv fetches on first use. The search hook never downloads and
 stays silent while neither is available.
 
 Codex:

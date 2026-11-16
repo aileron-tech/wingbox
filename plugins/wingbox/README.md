@@ -26,8 +26,9 @@ pipx install wingbox
 
 In Claude Code the plugin also works without that step when `uv` is
 installed: its launcher, `scripts/wingbox-run`, runs the installed `wingbox`
-command first and otherwise `uvx --from wingbox==<version> wingbox`, which
-downloads the pinned version from PyPI on first use. The search hook never
+command first and otherwise `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`,
+pinned to the commit of the latest release tag, which uv fetches and builds on first use (its
+parser dependencies come from PyPI). The search hook never
 downloads anything and stays silent when `wingbox` is missing. In Codex the
 MCP server is `wingbox mcp` from your PATH, so install the command.
 
