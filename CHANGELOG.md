@@ -74,6 +74,13 @@
 - `plugins/wingbox/evals/`: a `claude plugin eval` suite that checks the skill
   is chosen for those requests in a monorepo and not for unrelated ones.
 
+### Fixes
+
+- A TypeScript or JavaScript import with a Vite query or hash suffix
+  (`import("./x.worker?worker&inline")`, `./annotate.ts?api-404-guard`,
+  `@/notes?raw`) names the file without the suffix, as Vite resolves it; it
+  was unresolved before. A `#` subpath import keeps its name.
+
 ## 0.2.7 - 2026-11-16
 
 ### Changes

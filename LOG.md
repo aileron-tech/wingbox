@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-16 - TypeScript imports with a Vite query suffix
+
+### Changes
+- `scripts/lang/typescript/imports.py` (`_without_query`): a specifier loses a `?query` or `#hash` suffix before it is resolved (relative, aliased or a package); a leading `#` (a package subpath import) is kept. A stripped path that does not exist stays unresolved.
+- Tests: REQ-TS-VITE-001.
+
+### Motivation
+- Found on a public Vite repository against an independent resolver: `import("./codeHighlight.worker?worker&inline")` and `./annotate.ts?api-404-guard` in two tests made no edge.
+
+### Verification
+- Refactoring benchmark TypeScript 40/40; impact lists unchanged; suite on 3.12 and 3.11.
+
 ## 2026-11-16 - wingbox usages: every use of one symbol, with positions and kinds
 
 ### Changes

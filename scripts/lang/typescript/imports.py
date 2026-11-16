@@ -487,6 +487,17 @@ def _resolve_ts_package(
     return None
 
 
+def _without_query(specifier: str) -> str:
+    """The specifier without a Vite query or hash suffix (./x.worker?worker&inline, ./y#part),
+    as Vite resolves it; a leading # (a package subpath import) is part of the name."""
+    cut = len(specifier)
+    for mark in ("?", "#"):
+        position = specifier.find(mark, 1)
+        if position != -1:
+            cut = min(cut, position)
+    return specifier[:cut]
+
+
 @dataclass(frozen=True)
 class BoundTypeScriptLanguage:
     root: str
@@ -533,6 +544,9 @@ class BoundTypeScriptLanguage:
         return cls(root, path_to_id, alias_contexts, packages, output_roots)
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
+        import_name = _without_query(import_name)
+        if not import_name:
+            return None
         if not import_name.startswith(".") and not import_name.startswith("/"):
             resolved_via_alias = _resolve_ts_path_alias(
                 import_name,
