@@ -49,10 +49,11 @@ they take the same arguments as the scripts. A skill installed by
 
 | Command | Purpose |
 |---|---|
-| `wingbox install [--global\|--project] [--assistant NAME ...] [--dry-run]` | Copy this skill to each assistant, add the always-on block to CLAUDE.md / AGENTS.md, add the Claude Code search hook |
+| `wingbox install [--global\|--project] [--assistant NAME ...] [--dry-run]` | Copy this skill to each assistant, add the always-on block to CLAUDE.md / AGENTS.md, add the Claude Code search and edit hooks |
 | `wingbox uninstall [--global\|--project] [--assistant NAME ...]` | Remove exactly what install added |
 | `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed skills, blocks and hook |
-| `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin |
+| `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin; refreshes the graph before it reads it |
+| `wingbox hook dirty` | The Claude Code PostToolUse hook on Edit and Write: marks the changed file so the graph is refreshed before its next use |
 
 Each of these prints facts as text; add `--sexp` for S-expressions.
 

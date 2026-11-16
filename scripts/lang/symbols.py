@@ -62,13 +62,25 @@ def _join(language: str, spec: str, name: str) -> Optional[str]:
 
 
 class SymbolIndex:
-    """Definitions, bindings and globs of every module, resolved lazily and memoised."""
+    """Definitions, bindings and globs of every module, resolved lazily and memoised.
+
+    With trace=True the index also records what each answer read: the modules
+    whose definitions or bindings it looked at (("m", id)) and the module names
+    it resolved (("q", spec)). Every memoised answer keeps what it read, so a
+    later answer served from the memo still names it; begin() and end() collect
+    what the uses of one file read, for an update that redoes only the files
+    whose inputs changed.
+    """
 
     def __init__(
         self,
         id_to_result: Mapping[str, FileResult],
         resolve_import: ResolveImport,
+        trace: bool = False,
     ) -> None:
+        self._trace = trace
+        self._stack: list[set] = []
+        self._deps: dict[tuple, frozenset] = {}
         self._results = id_to_result
         self._resolve_import = resolve_import
         self._modules: dict[tuple[str, str, str], Optional[str]] = {}
@@ -92,7 +104,39 @@ class SymbolIndex:
         self._by_local: dict[str, dict[str, list]] = {}
         self._glob_targets: dict[str, list[tuple[str, bool]]] = {}
 
+    # -- tracing ------------------------------------------------------------
+
+    def begin(self) -> None:
+        self._stack.append(set())
+
+    def end(self) -> frozenset:
+        return frozenset(self._stack.pop())
+
+    def _touch(self, item: tuple) -> None:
+        if self._trace and self._stack:
+            self._stack[-1].add(item)
+
+    def _open(self) -> None:
+        if self._trace:
+            self._stack.append(set())
+
+    def _close(self, key: tuple, memoised: bool) -> None:
+        if not self._trace:
+            return
+        read = self._stack.pop()
+        if memoised:
+            self._deps[key] = frozenset(read)
+        if self._stack:
+            self._stack[-1].update(read)
+
+    def _hit(self, key: tuple) -> None:
+        if self._trace and self._stack:
+            self._stack[-1].update(self._deps.get(key, ()))
+
+    # -- lookups --------------------------------------------------------------
+
     def _bindings_named(self, module: str, local: str) -> list:
+        self._touch(("m", module))
         if module not in self._by_local:
             index: dict[str, list] = {}
             for binding in self._results[module].bindings:
@@ -102,17 +146,23 @@ class SymbolIndex:
 
     def _globs_of(self, module: str) -> list[tuple[str, bool]]:
         """The modules a module glob-imports or re-exports with `*`, and whether in its own scope."""
-        if module not in self._glob_targets:
-            result = self._results[module]
-            found: list[tuple[str, bool]] = []
-            for binding in self._bindings_named(module, "*"):
-                target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
-                if target is not None:
-                    found.append((target, binding["scope"]))
-            self._glob_targets[module] = found
-        return self._glob_targets[module]
+        key = ("g", module)
+        if module in self._glob_targets:
+            self._hit(key)
+            return self._glob_targets[module]
+        self._open()
+        result = self._results[module]
+        found: list[tuple[str, bool]] = []
+        for binding in self._bindings_named(module, "*"):
+            target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
+            if target is not None:
+                found.append((target, binding["scope"]))
+        self._glob_targets[module] = found
+        self._close(key, True)
+        return found
 
     def module_id(self, ref: ModuleRef) -> Optional[str]:
+        self._touch(("q", ref.spec))
         key = (ref.language, ref.spec, ref.origin)
         if key not in self._modules:
             self._modules[key] = self._resolve_import(ref.language, ref.spec, ref.origin)
@@ -133,6 +183,7 @@ class SymbolIndex:
         self, module: str, local: str, depth: int, seen: frozenset, in_scope: bool = False,
     ) -> Optional[Target]:
         """What local is bound to in module; in_scope: only bindings of the file's own scope."""
+        self._touch(("m", module))
         result = self._results[module]
         language = result.language
         for binding in self._bindings_named(module, local):
@@ -151,12 +202,16 @@ class SymbolIndex:
         """What name means to an importer of module: its definition, or what a re-export names."""
         key = (module, name)
         if key in self._exports:
+            self._hit(("e",) + key)
             return self._exports[key]
+        self._touch(("m", module))
         if module not in self._results:
             return None
         if key in seen or depth > _MAX_DEPTH:
             self._cuts += 1
             return None
+        self._open()
+        self._touch(("m", module))  # also in the memoised answer's own record
         cuts = self._cuts
         seen = seen | {key}
         found: Optional[Target]
@@ -166,13 +221,16 @@ class SymbolIndex:
             found = self._binding_target(module, name, depth, seen)
             if found is None:
                 found = self._from_globs(module, name, depth, seen)
-        if self._cuts == cuts:
+        memoised = self._cuts == cuts
+        if memoised:
             self._exports[key] = found
+        self._close(("e",) + key, memoised)
         return found
 
     def _from_globs(
         self, module: str, name: str, depth: int, seen: frozenset, in_scope: bool = False,
     ) -> Optional[Target]:
+        self._touch(("m", module))
         result = self._results[module]
         if result.language == "python" and name.startswith("_"):
             return None
@@ -196,17 +254,26 @@ class SymbolIndex:
     def _head(self, module: str, name: str) -> Optional[Target]:
         """A name in the scope of a file: its own definition, an import binding, a glob import."""
         key = (module, name)
-        if key not in self._heads:
+        if key in self._heads:
+            self._hit(("h",) + key)
+        else:
+            self._open()
             self._heads[key] = self._find_head(module, name)
+            self._close(("h",) + key, True)
         return self._heads[key]
 
     def _top_member(self, ref: ModuleRef, name: str) -> Optional[Target]:
         key = (ref, name)
-        if key not in self._members:
+        if key in self._members:
+            self._hit(("t",) + key)
+        else:
+            self._open()
             self._members[key] = self.member(ref, name)
+            self._close(("t",) + key, True)
         return self._members[key]
 
     def _find_head(self, module: str, name: str) -> Optional[Target]:
+        self._touch(("m", module))
         result = self._results[module]
         if name in self._defined[module]:
             return Symbol(module, name)
@@ -229,12 +296,17 @@ class SymbolIndex:
         """The class that defines member: name itself or, through its bases, an ancestor."""
         if depth == 0:
             key = (module, name, member)
-            if key not in self._owners:
+            if key in self._owners:
+                self._hit(("o",) + key)
+            else:
+                self._open()
                 self._owners[key] = self._find_member_owner(module, name, member, 0)
+                self._close(("o",) + key, True)
             return self._owners[key]
         return self._find_member_owner(module, name, member, depth)
 
     def _find_member_owner(self, module: str, name: str, member: str, depth: int) -> Optional[Symbol]:
+        self._touch(("m", module))
         entity = self._entities.get(module, {}).get(name)
         if entity is None or depth > _MAX_DEPTH or entity["kind"] not in _MEMBER_KINDS:
             return None
@@ -276,6 +348,7 @@ class SymbolIndex:
         """The definition a use site names, with the position of the segment that names it."""
         if use.get("member"):
             return self.resolve_member(module, use)
+        self._touch(("m", module))
         result = self._results[module]
         path, at = use["path"], use["at"]
         if not path or len(at) != len(path):

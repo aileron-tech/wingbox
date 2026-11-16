@@ -14,6 +14,9 @@ Protocol revisions:
 Each tool is a thin call into the functions behind the `wingbox` command
 (`build`, `impact`, `analyze`, ...); the answer is the command's output.
 The loaded graph is kept between calls and reloaded when the file changes.
+Before each tool reads it, the graph is brought up to date with the files
+changed since it was built (freshness.ensure_graph_fresh); an answer from a
+graph that may miss changes starts with `(wingbox-graph-stale ...)`.
 """
 from __future__ import annotations
 
@@ -27,7 +30,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass, field
 from typing import IO, Any, Optional
 
-from wingbox import cli
+from wingbox import cli, freshness
 
 MODERN_VERSIONS = ("2026-07-28",)
 HANDSHAKE_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
@@ -163,6 +166,7 @@ def cap_answer(text: str, show_all: bool) -> str:
 class GraphReady:
     graph: Any
     path: str
+    warning: str = ""  # (wingbox-graph-stale ...) when the graph may miss recent changes
 
 
 @dataclass(frozen=True)
@@ -203,6 +207,8 @@ class Server:
         path = find_graph(self.root)
         if path is None:
             return GraphMissing(f"No code graph for {self.root}: call the build tool first.")
+        folder = os.path.dirname(path)
+        fresh = freshness.ensure_graph_fresh(folder, freshness.refresh_wait()) if path == freshness.graph_path(folder) else None
         try:
             status = os.stat(path)
         except OSError as error:
@@ -215,7 +221,7 @@ class Server:
             if isinstance(loaded, search.MapLoadErr):
                 return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the build tool.")
             self._cache_key, self._cache_graph = key, graph
-        return GraphReady(self._cache_graph, path)
+        return GraphReady(self._cache_graph, path, freshness.stale_line(fresh) if fresh is not None else "")
 
 
 def _captured(action: Callable[[], Any]) -> tuple[Any, str, str]:
@@ -246,7 +252,7 @@ def _query(
     if isinstance(ready, GraphMissing):
         return ToolAnswer((ready.message,), is_error=True)
     _value, out, err = _captured(lambda: command(search, ready.graph, ready.path))
-    text = out + ("\n" + err if err.strip() else "")
+    text = (ready.warning + "\n" if ready.warning else "") + out + ("\n" + err if err.strip() else "")
     return _answer(text if not capped else cap_answer(text.strip("\n"), show_all))
 
 

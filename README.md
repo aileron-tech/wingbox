@@ -381,14 +381,16 @@ home directory: `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
   changing a file, and `/wingbox` for an overview. Text outside the markers is
   never touched; a file that links to another one (`CLAUDE.md` to `AGENTS.md`)
   gets one block.
-- **The Claude Code hook** is a `PreToolUse` entry with the matcher
+- **The Claude Code hooks** are a `PreToolUse` entry with the matcher
   `Grep|Glob|Read` in `~/.claude/settings.json` (`.claude/settings.json` with
-  `--project`) that runs `wingbox hook pre-search`. When the project has a
-  graph, it adds a few lines of context to the search: the modules and
+  `--project`) that runs `wingbox hook pre-search`, and a `PostToolUse` entry
+  with the matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`. When the project has a
+  graph, the search hook adds a few lines of context to the search: the modules and
   definitions that match the pattern with their direct dependents, or for a
   file its dependents and the hint to run `wingbox impact`. It answers in
   0.4 to 0.7 s on a graph of 8,000 files, Python start included, never blocks the tool, opens no
-  network connection, and says nothing in a project without a graph. Other
+  network connection, and says nothing in a project without a graph. The edit
+  hook only marks the edited file (see "Keeping the graph fresh"). Other
   settings and hooks are kept; the file is backed up once to
   `settings.json.wingbox-bak` before the first change.
 - **A skill folder that another installer wrote** (for example
@@ -419,16 +421,70 @@ update itself; the command says so and prints what to run instead. Wingbox
 itself opens no network connection: only the installer reaches the package
 index, and only when you run `wingbox update`.
 
+### Keeping the graph fresh
+
+The graph follows the code without `wingbox build`. Before the search hook,
+an MCP tool or a query command reads it, the files changed since it was built
+are brought in:
+
+- In Claude Code, `wingbox hook dirty` (PostToolUse on Edit and Write) marks
+  the edited file in `.wingbox/graph-state.json` and returns; it never builds.
+- Changes made elsewhere (an editor, `git checkout`, a script, a shell
+  command) are found by comparing the size and modification time of every
+  source and resolution config, and the time of every folder, with the
+  snapshot the last build wrote: one `stat` per entry, no hashing.
+- The changed files are patched in: only they are parsed again, and only the
+  modules that read them, that resolved a name a created or deleted file could
+  now answer, or that looked up a name the change added or removed are
+  resolved again. The result is the graph a build publishes, byte for byte.
+  A changed `package.json`, `tsconfig*.json`, `pyproject.toml`, `.gitignore`
+  or other resolution config, a changed source in a language other than
+  Python and TypeScript, or a change that reaches more than a quarter of the
+  modules takes the incremental build instead. Several edits are brought in
+  by one refresh, and never two run at once for one project.
+- The search hook waits up to `WINGBOX_HOOK_WAIT` seconds (3) for the refresh;
+  a longer one goes on in the background and publishes when it is done. While
+  the graph misses known changes, after a failed refresh (not repeated until
+  something changes again) or with `WINGBOX_AUTO_REFRESH=0`, the hook gives no
+  context from it but `(wingbox-graph-stale :reason ...)`; MCP answers start
+  with that line and query commands print it on stderr.
+  `WINGBOX_REFRESH_WAIT` (600 s) is the wait of MCP tools and query commands;
+  `WINGBOX_CHECK_INTERVAL` (0) spaces out the file-system checks.
+
+Measured on a shared machine under heavy load (load average 20 to 55), wall
+time, the version before this change and after it, runs interleaved:
+
+| | fastapi, 1,227 Python files | TypeScript monorepo, 6,834 files |
+|---|---|---|
+| Search hook, nothing changed | 0.20 -> 0.24 s | 0.30 -> 0.38 to 0.52 s |
+| of which the check for outside changes | 0.02 s (1,666 entries) | 0.17 s (9,748 entries) |
+| Edit hook | 0.21 s | 0.26 s |
+| One edited file patched in | 1.0 s (24 modules redone) | 9 to 13 s (12 modules redone) |
+| Incremental build after one edit | 11.2 -> 4.4 s | 23.0 -> 25.9 s |
+| Build without changes | 11.1 -> 3.3 s | 20 to 23 -> 20 s |
+| Cold build | 24.1 -> 7.0 s | 44 -> 47 s |
+
+A patch grows with the modules it redoes: on fastapi 0.6 s for 1 file, 1.1 s
+for 10, 1.4 s for 50 and 3.3 s for 150 files (234 modules), against 3.5 to
+5.6 s for the incremental build of the same changes. On the monorepo the
+patch is dominated by reading and writing the build cache (35 MB) and the
+fragment store (39 MB); it takes longer than the search hook waits, so the
+first search after an edit there answers `(wingbox-graph-stale :reason
+refresh-timeout ...)` and the next ones, once the patch is published, use the
+new graph.
+
 ### The report and the map
 
-`wingbox build` writes four things into the project:
+`wingbox build` and `wingbox usages` write these files into the project:
 
 | File | For whom | What it is |
 |---|---|---|
 | `.code_graph.sexp` | AI coding agents | The code graph in a compact form that the query commands read |
 | `.code_graph.uses.sexp` | AI coding agents | Module-level variables and the files that use each definition; `usages` adds every use position on its first call |
+| `.code_graph.uses-cache.json` | Wingbox | The use walk of each file by content hash, so that `usages` after a change reads only the changed files |
 | `wingbox-out/REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
 | `wingbox-out/map.html` | People | An interactive map of the code graph: one file, opens in a browser, works without a network connection |
+| `.wingbox/graph-*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the files changed since (see "Keeping the graph fresh") |
 
 On the map, click a file to see its blast radius: the files that depend on it
 move onto rings, one ring per hop. The layers view stacks the architecture
@@ -436,7 +492,8 @@ layers as planes in 3D and can be turned with the mouse. A link such as
 `map.html#select=src/app.ts` opens the map on that file.
 
 Both files are rewritten on every build. Add `wingbox-out/` to `.gitignore`
-unless you want them in the repository.
+unless you want them in the repository, and in any case the state that
+Wingbox keeps in `.wingbox/`: `.wingbox/graph-*` and `.wingbox/refresh.*`.
 
 ### Run in Docker, with nothing installed
 
@@ -809,8 +866,11 @@ it as a file next to the code.
 
 ### Does the graph stay current as I change code?
 
-Run `wingbox build` again: files whose content did not change are taken from
-the cache, so a rebuild reads only what changed. `diff_functions <ref>` lists
+Yes: the search hook, the MCP tools and the query commands bring in the files
+changed since the last build before they read the graph, and in Claude Code an
+edit hook marks each edited file (see "Keeping the graph fresh"). A graph that
+may miss changes says so. `wingbox build` rebuilds by hand; files whose
+content did not change are taken from the cache. `diff_functions <ref>` lists
 the functions changed since a git ref.
 
 ### Which AI coding agents does Wingbox work with?

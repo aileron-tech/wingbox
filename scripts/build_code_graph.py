@@ -91,12 +91,14 @@ Usage
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import fcntl
 import hashlib
 import importlib.metadata
 import json
 import math
+import multiprocessing
 import os
 import re
 import subprocess
@@ -105,6 +107,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
 from typing import Any, Callable, Generic, Mapping, Optional, Sequence, TypeVar
@@ -189,6 +192,10 @@ SKIP_DIRS = {
     ".worktrees",
     ".ralphy-worktrees",
     ".ralphy-sandboxes",
+    # What Wingbox writes into a project: never sources, and a file it adds there must not
+    # change the repository ignore set (and with it the cache fingerprint).
+    ".wingbox",
+    "wingbox-out",
 }
 DEFAULT_DISCOVERY_EXCLUSIONS = DiscoveryExclusions(
     directory_names=frozenset(SKIP_DIRS),
@@ -243,6 +250,7 @@ class GraphBuildError:
 class GraphBuildOutput:
     nodes: list[dict]
     edges: list[dict]
+    fragments: Mapping[str, Any] = field(default_factory=dict)  # node ID -> ModuleFragment, when uses were resolved
 
 
 @dataclass
@@ -319,14 +327,80 @@ def detect_source_language(filename: str) -> Optional[str]:
     return language.name if language is not None else None
 
 
+# Files outside the sources that change how imports resolve; a change to one of
+# them is never patched into a graph: it takes an incremental build.
+RESOLUTION_CONFIG_NAMES = frozenset(
+    {
+        "package.json",
+        ".gitignore",
+        "pyproject.toml",
+        "setup.cfg",
+        "pyrightconfig.json",
+        "Cargo.toml",
+        "go.mod",
+        "go.work",
+        "Gemfile",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+    }
+    | {name for language in LANGUAGES for name in language.project_config_names}
+)
+RESOLUTION_CONFIG_PATTERNS = (("tsconfig", ".json"), ("jsconfig", ".json"), ("", ".csproj"), ("", ".sln"))
+SNAPSHOT_SCHEMA_VERSION = 1
+
+
+def is_resolution_config(name: str) -> bool:
+    return name in RESOLUTION_CONFIG_NAMES or any(
+        name.startswith(prefix) and name.endswith(suffix) for prefix, suffix in RESOLUTION_CONFIG_PATTERNS
+    )
+
+
+@dataclass
+class TreeSnapshot:
+    """What discovery saw: (mtime_ns, size) of every source and resolution config, mtime_ns of every folder."""
+
+    files: dict[str, tuple[int, int]] = field(default_factory=dict)
+    directories: dict[str, int] = field(default_factory=dict)
+
+
+def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str]) -> str:
+    """The snapshot file that `wingbox` compares the tree with to find changes made outside it."""
+    return json.dumps(
+        {
+            "schema_version": SNAPSHOT_SCHEMA_VERSION,
+            "extensions": sorted({extension for language in LANGUAGES for extension in language.source_extensions}),
+            "config_names": sorted(RESOLUTION_CONFIG_NAMES),
+            "config_patterns": [list(pair) for pair in RESOLUTION_CONFIG_PATTERNS],
+            "skip_dirs": sorted(skip_directories),
+            "files": {path: list(value) for path, value in sorted(snapshot.files.items())},
+            "directories": dict(sorted(snapshot.directories.items())),
+        },
+        separators=(",", ":"),
+    )
+
+
 def discover_files(
     root: str,
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
+    snapshot: Optional[TreeSnapshot] = None,
 ) -> list[tuple[str, str, str]]:
+    """Source files under root: (path, language, repository). With snapshot, also record what was seen."""
     results: list[tuple[str, str, str]] = []
     root_path = Path(root).resolve()
 
+    def _relative(path: str) -> str:
+        return os.path.relpath(path, root_path).replace(os.sep, "/")
+
+    def _record_file(entry: os.DirEntry) -> None:
+        if snapshot is not None:
+            status = entry.stat(follow_symlinks=False)
+            snapshot.files[_relative(entry.path)] = (status.st_mtime_ns, status.st_size)
+
     def _walk(dir_path: Path, repo: str):
+        if snapshot is not None:
+            relative = _relative(str(dir_path))
+            snapshot.directories["" if relative == "." else relative] = os.stat(dir_path).st_mtime_ns
         try:
             with os.scandir(dir_path) as it:
                 for entry in it:
@@ -361,6 +435,9 @@ def discover_files(
                             continue
                         if language is not None:
                             results.append((entry.path, language.name, repo))
+                            _record_file(entry)
+                        elif is_resolution_config(entry.name):
+                            _record_file(entry)
         except PermissionError as exc:
             print(
                 f"[code-graph] WARNING: could not scan {dir_path}: {exc}",
@@ -858,47 +935,28 @@ class UnresolvedCalls:
 def _resolve_symbol_uses(
     id_to_result: Mapping[str, FileResult],
     bound_languages: Mapping[str, BoundLanguage],
+    resolve_import: Optional[Callable[[str, str, str], Optional[str]]] = None,
+    modules: Optional[frozenset[str]] = None,
 ) -> tuple[dict[str, list[ResolvedSite]], dict[str, UnresolvedCalls]]:
-    """Every use site resolved to its definition: module -> sorted (line, column, module, name, kind).
-
-    Also the method calls per module whose receiver type is not in sight or does
-    not define the method: they stay unresolved, never guessed. The sites are
-    kept only for a method name that some class of the repository defines, the
-    calls that `usages Class.method` lists as unresolved.
-    """
+    """Every use site resolved to its definition: module -> sorted (line, column, module, name, kind),
+    and the unresolved method calls per module (see _module_uses)."""
     index = SymbolIndex(
         id_to_result,
-        lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
+        resolve_import or (
+            lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path)
+        ),
     )
-    methods = {
-        method
-        for result in id_to_result.values()
-        if supports_symbols(result.language)
-        for entity in result.entities
-        if entity["kind"] in ("class", "enum", "interface")
-        for method in entity.get("methods", [])
-    }
+    methods = frozenset(method for result in id_to_result.values() for method in class_methods(result))
     resolved_by_module: dict[str, list[ResolvedSite]] = {}
     unresolved_calls: dict[str, UnresolvedCalls] = {}
     for node_id, result in id_to_result.items():
-        if not supports_symbols(result.language):
+        if not supports_symbols(result.language) or (modules is not None and node_id not in modules):
             continue
-        found: set[ResolvedSite] = set()
-        count = 0
-        sites: dict[str, list[tuple[int, int]]] = {}
-        for use in result.uses:
-            resolved = index.resolve(node_id, use)
-            if resolved is not None:
-                found.add((resolved.line, resolved.column, resolved.module, resolved.name, resolved.kind))
-            elif use.get("member"):
-                count += 1
-                if use["member"] in methods:
-                    line, column = use["at"][-1]
-                    sites.setdefault(use["member"], []).append((line, column))
+        found, unresolved, _members = _module_uses(index, methods, node_id, result)
         if found:
-            resolved_by_module[node_id] = sorted(found)
-        if count:
-            unresolved_calls[node_id] = UnresolvedCalls(count, sites)
+            resolved_by_module[node_id] = found
+        if unresolved:
+            unresolved_calls[node_id] = unresolved
     return resolved_by_module, unresolved_calls
 
 
@@ -939,14 +997,131 @@ def _symbol_usage_edges(
     return found
 
 
-def build_graph(
+class Trace:
+    """What the resolution of one module read besides its own parse result.
+
+    modules: other modules whose parse results it looked at; specs: the module
+    names as written that it resolved; names: the provider names it looked up.
+    A graph update redoes a module when one of these may have changed.
+    """
+
+    __slots__ = ("modules", "specs", "names")
+
+    def __init__(self) -> None:
+        self.modules: set[str] = set()
+        self.specs: set[str] = set()
+        self.names: set[str] = set()
+
+
+class _TracedLanguage:
+    """A bound language that records the module names it is asked to resolve."""
+
+    def __init__(self, bound: BoundLanguage, trace: Trace) -> None:
+        self._bound = bound
+        self._trace = trace
+
+    def resolve_import(self, import_name: str, source_path: str) -> str | None:
+        self._trace.specs.add(import_name)
+        return self._bound.resolve_import(import_name, source_path)
+
+    def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
+        # Submodules named in `from package import name`: the answer depends on the paths of both.
+        for imported_name in result.imported_names:
+            self._trace.specs.add(str(imported_name.get("module", "")))
+            self._trace.specs.add(str(imported_name.get("original", "")))
+        return self._bound.resolve_additional_imports(result)
+
+
+class _TracedResults(Mapping[str, FileResult]):
+    """The parse results of the graph; records which modules are read."""
+
+    def __init__(self, results: Mapping[str, FileResult], trace: Trace) -> None:
+        self._results = results
+        self._trace = trace
+
+    def __getitem__(self, key: str) -> FileResult:
+        self._trace.modules.add(key)
+        return self._results[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        self._trace.modules.add(key)
+        return self._results.get(key, default)
+
+    def __contains__(self, key: object) -> bool:
+        if isinstance(key, str):
+            self._trace.modules.add(key)
+        return key in self._results
+
+    def __iter__(self):
+        return iter(self._results)
+
+    def __len__(self) -> int:
+        return len(self._results)
+
+
+class _TracedNames:
+    """provider_candidates: records the names looked up."""
+
+    def __init__(self, names: Mapping[str, set[str]], trace: Trace) -> None:
+        self._names = names
+        self._trace = trace
+
+    def get(self, name: str, default: set[str]) -> set[str]:
+        self._trace.names.add(name)
+        return self._names.get(name, default)
+
+
+@dataclass(frozen=True)
+class GraphContext:
+    """Everything the resolution of one module may read: the indexes, the bound languages, global name maps."""
+
+    root: str
+    path_to_id: dict[str, str]
+    id_to_result: dict[str, FileResult]
+    bound_languages: dict[str, BoundLanguage]
+    provider_candidates: dict[str, set[str]]
+    methods: frozenset[str]
+
+
+@dataclass(frozen=True)
+class ModuleFragment:
+    """The facts of one module: its node, its edges, its resolved uses, and what producing them read."""
+
+    node: dict
+    edges: list[dict]
+    uses: Optional[list[ResolvedSite]]  # None: uses not resolved (reused from the use file)
+    unresolved: Optional[UnresolvedCalls]
+    members: frozenset[str]  # method names of its unresolved calls
+    modules: frozenset[str]
+    specs: frozenset[str]
+    names: frozenset[str]
+
+
+def provider_names(result: FileResult) -> set[str]:
+    """The names under which a module is a provider candidate (provider_candidates keys)."""
+    names = set(result.exports_abstract) | set(result.exported_names)
+    for entity in result.entities:
+        if isinstance(entity, dict) and entity.get("kind") == "interface" and isinstance(entity.get("name"), str):
+            names.add(entity["name"])
+    return names
+
+
+def class_methods(result: FileResult) -> set[str]:
+    if not supports_symbols(result.language):
+        return set()
+    return {
+        method
+        for entity in result.entities
+        if entity["kind"] in ("class", "enum", "interface")
+        for method in entity.get("methods", [])
+    }
+
+
+def graph_context(
     results: list[FileResult],
     root: str,
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
-    reused: Optional["ReusedUses"] = None,
-) -> Result[GraphBuildOutput, GraphBuildError]:
-    """The graph of results. With reused (a use file built from the same inputs), the refs edges of
-    use sites come from it and no use is resolved; nodes then carry no use positions."""
+) -> Result[GraphContext, GraphBuildError]:
     index_result = _build_node_indexes(results, root)
     if isinstance(index_result, Err):
         return index_result
@@ -988,129 +1163,163 @@ def build_graph(
         provider_candidates.setdefault(base_name, set()).update(
             entity_candidates.get(base_name, set())
         )
+    methods = frozenset(method for result in id_to_result.values() for method in class_methods(result))
+    return Ok(GraphContext(root, path_to_id, id_to_result, bound_languages, provider_candidates, methods))
 
-    nodes: list[dict] = []
+
+def symbol_index(context: GraphContext) -> SymbolIndex:
+    bound_languages = context.bound_languages
+    return SymbolIndex(
+        context.id_to_result,
+        lambda language, spec, path: bound_languages[language_for_result(language).name].resolve_import(spec, path),
+        trace=True,
+    )
+
+
+def module_node(node_id: str, r: FileResult, root: str, purpose: str) -> dict:
+    """The node of a module: its parse result and the purpose resolution settled on."""
+    node: dict = {
+        "id": node_id,
+        "language": r.language,
+        "path": os.path.relpath(r.path, root),
+        "repo": r.repo,
+        "invariant": {
+            "naming": r.naming_convention,
+            "package": r.repo,
+        },
+        "purpose": purpose,
+    }
+    if r.entities:
+        node["entities"] = r.entities
+    return node
+
+
+def _module_facts(
+    node_id: str,
+    r: FileResult,
+    root: str,
+    bound_language: Any,
+    id_to_result: Mapping[str, FileResult],
+    provider_candidates: Any,
+) -> tuple[dict, list[dict]]:
+    """The node of one module and the edges that leave it (imports, calls-api, data-flow, references)."""
     edges: list[dict] = []
-    seen_edges: set[tuple] = set()
+    seen_edges: set[tuple] = set()  # every key starts with this module: per-module dedup is the global one
+    rel_path = os.path.relpath(r.path, root)
 
-    for node_id, r in id_to_result.items():
-        language = language_for_result(r.language)
-        bound_language = bound_languages[language.name]
-        rel_path = os.path.relpath(r.path, root)
-
-        # Gap 3 fix: enrich purpose with entity-name heuristics
-        purpose = r.purpose
-        if r.entities and purpose in (
+    # Gap 3 fix: enrich purpose with entity-name heuristics
+    purpose = r.purpose
+    if r.entities and purpose in (
+        "general module",
+        "NestJS wiring module",
+        "NestJS injectable",
+    ):
+        enhanced = infer_purpose(
+            rel_path, "", r.language, [entity for entity in r.entities if entity["kind"] != "variable"]
+        )
+        if enhanced not in (
             "general module",
             "NestJS wiring module",
             "NestJS injectable",
         ):
-            enhanced = infer_purpose(
-                rel_path, "", r.language, [entity for entity in r.entities if entity["kind"] != "variable"]
-            )
-            if enhanced not in (
-                "general module",
-                "NestJS wiring module",
-                "NestJS injectable",
-            ):
-                purpose = enhanced
+            purpose = enhanced
 
-        # -- build node with entities --
-        node: dict = {
-            "id": node_id,
-            "language": r.language,
-            "path": rel_path,
-            "repo": r.repo,
-            "invariant": {
-                "naming": r.naming_convention,
-                "package": r.repo,
-            },
-            "purpose": purpose,
-        }
-        if r.entities:
-            node["entities"] = r.entities
-        nodes.append(node)
+    node = module_node(node_id, r, root, purpose)
 
-        # Resolve all module dependencies before emission so relationship
-        # metadata is merged onto one deterministic import edge.
-        resolved_imports: dict[str, set[str]] = {}
-        additional_targets = set(bound_language.resolve_additional_imports(r))
-        for target_id in sorted(additional_targets):
-            if target_id != node_id:
-                resolved_imports.setdefault(target_id, set())
-        for imp in r.imports:
-            target_id = bound_language.resolve_import(imp, r.path)
-            if target_id and target_id != node_id:
-                resolved_imports.setdefault(target_id, set())
-        for relation in r.relations:
-            target_id = bound_language.resolve_import(
-                relation["target"],
-                r.path,
-            )
-            if target_id and target_id != node_id:
-                resolved_imports.setdefault(target_id, set()).add(relation["relation"])
+    # Resolve all module dependencies before emission so relationship
+    # metadata is merged onto one deterministic import edge.
+    resolved_imports: dict[str, set[str]] = {}
+    additional_targets = set(bound_language.resolve_additional_imports(r))
+    for target_id in sorted(additional_targets):
+        if target_id != node_id:
+            resolved_imports.setdefault(target_id, set())
+    for imp in r.imports:
+        target_id = bound_language.resolve_import(imp, r.path)
+        if target_id and target_id != node_id:
+            resolved_imports.setdefault(target_id, set())
+    for relation in r.relations:
+        target_id = bound_language.resolve_import(
+            relation["target"],
+            r.path,
+        )
+        if target_id and target_id != node_id:
+            resolved_imports.setdefault(target_id, set()).add(relation["relation"])
 
-        local_entities = {entity["name"] for entity in r.entities}
-        for relation in r.relations:
-            source_entity = relation.get("source_entity", "")
-            target_entity = relation.get("target_entity", "")
-            if not source_entity or not target_entity:
-                continue
-            target_id = bound_language.resolve_import(
-                relation["target"],
-                r.path,
-            )
-            if (
-                target_id != node_id
-                or source_entity not in local_entities
-                or target_entity not in local_entities
-            ):
-                continue
-            source_ref = f"{node_id}::{source_entity}"
-            target_ref = f"{node_id}::{target_entity}"
-            edge_key = (source_ref, target_ref, "REFERENCES")
-            if edge_key in seen_edges:
-                continue
-            seen_edges.add(edge_key)
-            edges.append(
-                {
-                    "source": source_ref,
-                    "target": target_ref,
-                    "type": "REFERENCES",
-                    "relations": [relation["relation"]],
-                }
-            )
-
-        # -- module-level IMPORTS edges --
-        for target_id, relations in sorted(resolved_imports.items()):
-            edge_key = (node_id, target_id, "IMPORTS")
-            if edge_key in seen_edges:
-                continue
-            seen_edges.add(edge_key)
-            target_r = id_to_result.get(target_id)
-            via_base = bool(target_r and target_r.exports_abstract)
-            edge: dict[str, Any] = {
-                "source": node_id,
-                "target": target_id,
-                "type": "IMPORTS",
-                "via_base": via_base,
-                "relations": sorted(relations),
+    local_entities = {entity["name"] for entity in r.entities}
+    for relation in r.relations:
+        source_entity = relation.get("source_entity", "")
+        target_entity = relation.get("target_entity", "")
+        if not source_entity or not target_entity:
+            continue
+        target_id = bound_language.resolve_import(
+            relation["target"],
+            r.path,
+        )
+        if (
+            target_id != node_id
+            or source_entity not in local_entities
+            or target_entity not in local_entities
+        ):
+            continue
+        source_ref = f"{node_id}::{source_entity}"
+        target_ref = f"{node_id}::{target_entity}"
+        edge_key = (source_ref, target_ref, "REFERENCES")
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        edges.append(
+            {
+                "source": source_ref,
+                "target": target_ref,
+                "type": "REFERENCES",
+                "relations": [relation["relation"]],
             }
-            if (
-                target_r is not None
-                and not relations
-                and target_id not in additional_targets
-                and _imports_types_only(r, target_id, target_r, bound_language)
-            ):
-                edge["type_only"] = True
-            edges.append(edge)
+        )
 
-        # -- CALLS_API edges (implements/extends + entity :bases) --
-        # Source 1: FileResult.implements + extends (from heritage clauses)
-        calls_api_targets: set[str] = set()
-        for iface in r.implements + r.extends:
+    # -- module-level IMPORTS edges --
+    for target_id, relations in sorted(resolved_imports.items()):
+        edge_key = (node_id, target_id, "IMPORTS")
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        target_r = id_to_result.get(target_id)
+        via_base = bool(target_r and target_r.exports_abstract)
+        edge: dict[str, Any] = {
+            "source": node_id,
+            "target": target_id,
+            "type": "IMPORTS",
+            "via_base": via_base,
+            "relations": sorted(relations),
+        }
+        if (
+            target_r is not None
+            and not relations
+            and target_id not in additional_targets
+            and _imports_types_only(r, target_id, target_r, bound_language)
+        ):
+            edge["type_only"] = True
+        edges.append(edge)
+
+    # -- CALLS_API edges (implements/extends + entity :bases) --
+    # Source 1: FileResult.implements + extends (from heritage clauses)
+    calls_api_targets: set[str] = set()
+    for iface in r.implements + r.extends:
+        provider_id = _resolve_provider(
+            iface,
+            r,
+            bound_language,
+            provider_candidates,
+            id_to_result,
+        )
+        if provider_id and provider_id != node_id:
+            calls_api_targets.add(provider_id)
+
+    # Source 2: Entity :bases cross-reference (catches bases not in
+    # heritage clauses, and bases defined in other modules)
+    for ent in r.entities:
+        for base_name in ent.get("bases", []):
             provider_id = _resolve_provider(
-                iface,
+                base_name,
                 r,
                 bound_language,
                 provider_candidates,
@@ -1119,113 +1328,216 @@ def build_graph(
             if provider_id and provider_id != node_id:
                 calls_api_targets.add(provider_id)
 
-        # Source 2: Entity :bases cross-reference (catches bases not in
-        # heritage clauses, and bases defined in other modules)
-        for ent in r.entities:
-            for base_name in ent.get("bases", []):
-                provider_id = _resolve_provider(
-                    base_name,
-                    r,
-                    bound_language,
-                    provider_candidates,
-                    id_to_result,
-                )
-                if provider_id and provider_id != node_id:
-                    calls_api_targets.add(provider_id)
-
-        for provider_id in calls_api_targets:
-            edge_key = (node_id, provider_id, "CALLS_API")
-            if edge_key not in seen_edges:
-                seen_edges.add(edge_key)
-                edges.append(
-                    {
-                        "source": node_id,
-                        "target": provider_id,
-                        "type": "CALLS_API",
-                        "via_interface": True,
-                    }
-                )
-
-        # -- DATA_FLOWS_TO edges --
-        for imp in r.imports:
-            target_id = bound_language.resolve_import(imp, r.path)
-            if target_id and target_id != node_id:
-                target_r = id_to_result.get(target_id)
-                if target_r and target_r.has_validation:
-                    edge_key = (node_id, target_id, "DATA_FLOWS_TO")
-                    if edge_key not in seen_edges:
-                        seen_edges.add(edge_key)
-                        edges.append(
-                            {
-                                "source": node_id,
-                                "target": target_id,
-                                "type": "DATA_FLOWS_TO",
-                                "validated": True,
-                            }
-                        )
-
-        # -- entity-level REFERENCES edges --
-        # For each imported name, link source_entity -> target_entity
-        for imp_name in r.imported_names:
-            target_id = bound_language.resolve_import(
-                imp_name["module"],
-                r.path,
+    for provider_id in calls_api_targets:
+        edge_key = (node_id, provider_id, "CALLS_API")
+        if edge_key not in seen_edges:
+            seen_edges.add(edge_key)
+            edges.append(
+                {
+                    "source": node_id,
+                    "target": provider_id,
+                    "type": "CALLS_API",
+                    "via_interface": True,
+                }
             )
-            if not target_id or target_id == node_id:
-                continue
+
+    # -- DATA_FLOWS_TO edges --
+    for imp in r.imports:
+        target_id = bound_language.resolve_import(imp, r.path)
+        if target_id and target_id != node_id:
             target_r = id_to_result.get(target_id)
-            if not target_r:
-                continue
-
-            orig = imp_name["original"]
-            local = imp_name["local"]
-
-            # Find matching entity in target
-            target_entity = _resolve_target_entity(
-                target_r.entities,
-                orig,
-                local,
-            )
-            if not target_entity:
-                # Still useful: the name is exported even if not a class/function entity
-                if orig in target_r.exported_names:
-                    target_entity = orig
-                elif orig == "default" and target_r.exported_names:
-                    target_entity = target_r.exported_names[0]
-                else:
-                    continue
-
-            # Find which local entities reference this imported name
-            referencing_entities = _find_local_references(r.entities, local)
-
-            if referencing_entities:
-                for ref_ent in referencing_entities:
-                    edge_key = (
-                        f"{node_id}::{ref_ent}",
-                        f"{target_id}::{target_entity}",
-                        "REFERENCES",
-                    )
-                    if edge_key not in seen_edges:
-                        seen_edges.add(edge_key)
-                        edges.append(
-                            {
-                                "source": f"{node_id}::{ref_ent}",
-                                "target": f"{target_id}::{target_entity}",
-                                "type": "REFERENCES",
-                            }
-                        )
-            else:
-                # Module-level reference (not inside a specific entity)
-                edge_key = (node_id, f"{target_id}::{target_entity}", "REFERENCES")
+            if target_r and target_r.has_validation:
+                edge_key = (node_id, target_id, "DATA_FLOWS_TO")
                 if edge_key not in seen_edges:
                     seen_edges.add(edge_key)
                     edges.append(
                         {
                             "source": node_id,
+                            "target": target_id,
+                            "type": "DATA_FLOWS_TO",
+                            "validated": True,
+                        }
+                    )
+
+    # -- entity-level REFERENCES edges --
+    # For each imported name, link source_entity -> target_entity
+    for imp_name in r.imported_names:
+        target_id = bound_language.resolve_import(
+            imp_name["module"],
+            r.path,
+        )
+        if not target_id or target_id == node_id:
+            continue
+        target_r = id_to_result.get(target_id)
+        if not target_r:
+            continue
+
+        orig = imp_name["original"]
+        local = imp_name["local"]
+
+        # Find matching entity in target
+        target_entity = _resolve_target_entity(
+            target_r.entities,
+            orig,
+            local,
+        )
+        if not target_entity:
+            # Still useful: the name is exported even if not a class/function entity
+            if orig in target_r.exported_names:
+                target_entity = orig
+            elif orig == "default" and target_r.exported_names:
+                target_entity = target_r.exported_names[0]
+            else:
+                continue
+
+        # Find which local entities reference this imported name
+        referencing_entities = _find_local_references(r.entities, local)
+
+        if referencing_entities:
+            for ref_ent in referencing_entities:
+                edge_key = (
+                    f"{node_id}::{ref_ent}",
+                    f"{target_id}::{target_entity}",
+                    "REFERENCES",
+                )
+                if edge_key not in seen_edges:
+                    seen_edges.add(edge_key)
+                    edges.append(
+                        {
+                            "source": f"{node_id}::{ref_ent}",
                             "target": f"{target_id}::{target_entity}",
                             "type": "REFERENCES",
                         }
                     )
+        else:
+            # Module-level reference (not inside a specific entity)
+            edge_key = (node_id, f"{target_id}::{target_entity}", "REFERENCES")
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+                edges.append(
+                    {
+                        "source": node_id,
+                        "target": f"{target_id}::{target_entity}",
+                        "type": "REFERENCES",
+                    }
+                )
+    return node, edges
+
+
+def _module_uses(
+    index: SymbolIndex,
+    methods: frozenset[str],
+    node_id: str,
+    result: FileResult,
+) -> tuple[Optional[list[ResolvedSite]], Optional[UnresolvedCalls], frozenset[str]]:
+    """The uses of one module resolved to their definitions, its unresolved method calls and their names.
+
+    The method calls whose receiver type is not in sight or does not define the
+    method stay unresolved, never guessed. Their sites are kept only for a
+    method name that some class of the repository defines (methods), the calls
+    that `usages Class.method` lists as unresolved.
+    """
+    found: set[ResolvedSite] = set()
+    count = 0
+    members: set[str] = set()
+    sites: dict[str, list[tuple[int, int]]] = {}
+    for use in result.uses:
+        resolved = index.resolve(node_id, use)
+        if resolved is not None:
+            found.add((resolved.line, resolved.column, resolved.module, resolved.name, resolved.kind))
+        elif use.get("member"):
+            count += 1
+            members.add(use["member"])
+            if use["member"] in methods:
+                line, column = use["at"][-1]
+                sites.setdefault(use["member"], []).append((line, column))
+    return (sorted(found) if found else None), (UnresolvedCalls(count, sites) if count else None), frozenset(members)
+
+
+def module_fragment(context: GraphContext, index: Optional[SymbolIndex], node_id: str) -> ModuleFragment:
+    """The facts of one module and what they were read from. index None: uses are not resolved."""
+    result = context.id_to_result[node_id]
+    trace = Trace()
+    language = _TracedLanguage(context.bound_languages[language_for_result(result.language).name], trace)
+    node, edges = _module_facts(
+        node_id,
+        result,
+        context.root,
+        language,
+        _TracedResults(context.id_to_result, trace),
+        _TracedNames(context.provider_candidates, trace),
+    )
+    uses: Optional[list[ResolvedSite]] = None
+    unresolved: Optional[UnresolvedCalls] = None
+    members: frozenset[str] = frozenset()
+    if index is not None and supports_symbols(result.language):
+        index.begin()
+        uses, unresolved, members = _module_uses(index, context.methods, node_id, result)
+        for kind, value in index.end():
+            (trace.modules if kind == "m" else trace.specs).add(value)
+    trace.modules.discard(node_id)
+    return ModuleFragment(
+        node, edges, uses, unresolved, members,
+        frozenset(trace.modules), frozenset(trace.specs), frozenset(trace.names),
+    )
+
+
+def _fragment_chunk(node_ids: list[str]) -> list[ModuleFragment]:
+    """Worker side of a parallel resolution: the context comes from the forked parent."""
+    context, resolve_uses = _FORK_CONTEXT
+    index = symbol_index(context) if resolve_uses else None
+    return [module_fragment(context, index, node_id) for node_id in node_ids]
+
+
+_FORK_CONTEXT: Any = None
+PARALLEL_MIN_MODULES = 400  # below this the workers cost more than they save
+_CHUNK_MODULES = 64
+
+
+def module_fragments(
+    context: GraphContext,
+    node_ids: Sequence[str],
+    resolve_uses: bool,
+    jobs: int = 1,
+) -> dict[str, ModuleFragment]:
+    """The fragments of node_ids, in their order; with jobs > 1, in forked worker processes.
+
+    Each answer depends only on the context, never on which other modules the
+    same process resolved before (the symbol index memoises an answer only when
+    no cycle cut shortened it), so the result is the same either way.
+    """
+    global _FORK_CONTEXT
+    ordered = list(node_ids)
+    if jobs <= 1 or len(ordered) < PARALLEL_MIN_MODULES or "fork" not in multiprocessing.get_all_start_methods():
+        index = symbol_index(context) if resolve_uses else None
+        return {node_id: module_fragment(context, index, node_id) for node_id in ordered}
+    chunks = [ordered[start : start + _CHUNK_MODULES] for start in range(0, len(ordered), _CHUNK_MODULES)]
+    _FORK_CONTEXT = (context, resolve_uses)
+    try:
+        with ProcessPoolExecutor(max_workers=jobs, mp_context=multiprocessing.get_context("fork")) as pool:
+            parts = list(pool.map(_fragment_chunk, chunks))
+    except (OSError, BrokenProcessPool) as error:
+        print(f"[code-graph] WARNING: parallel resolution failed ({error}); resolving in one process", file=sys.stderr)
+        return module_fragments(context, ordered, resolve_uses, 1)
+    finally:
+        _FORK_CONTEXT = None
+    return {node_id: fragment for chunk, part in zip(chunks, parts) for node_id, fragment in zip(chunk, part)}
+
+
+def assemble_graph(
+    context: GraphContext,
+    results: list[FileResult],
+    fragments: Mapping[str, ModuleFragment],
+    reused: Optional["ReusedUses"] = None,
+) -> GraphBuildOutput:
+    """The graph from the fragment of every module (in context order) and the facts that need all of them."""
+    id_to_result = context.id_to_result
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    for node_id in id_to_result:
+        fragment = fragments[node_id]
+        nodes.append(dict(fragment.node))
+        edges.extend(fragment.edges)
 
     referenced = {
         (edge["source"].split("::")[0], edge["target"])
@@ -1233,7 +1545,10 @@ def build_graph(
         if edge["type"] == "REFERENCES"
     }
     if reused is None:
-        resolved_uses, unresolved_calls = _resolve_symbol_uses(id_to_result, bound_languages)
+        resolved_uses = {node_id: fragments[node_id].uses for node_id in id_to_result if fragments[node_id].uses}
+        unresolved_calls = {
+            node_id: fragments[node_id].unresolved for node_id in id_to_result if fragments[node_id].unresolved
+        }
     else:
         _sorted_nodes, path_to_sid = _path_ids(nodes)
         sid_to_id = {sid: node_id for node_id, sid in path_to_sid.items()}
@@ -1252,6 +1567,9 @@ def build_graph(
         if node["id"] in unresolved_calls:
             node["unresolved_method_calls"] = unresolved_calls[node["id"]]
 
+    seen_edges = {
+        (edge["source"], edge["target"], edge["type"]) for edge in edges
+    }
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
     # Detect modules with entities named *Client, *ClientService, *ClientApi,
@@ -1348,7 +1666,143 @@ def build_graph(
                 }
             )
 
-    return Ok(GraphBuildOutput(nodes, edges))
+    return GraphBuildOutput(nodes, edges, dict(fragments) if reused is None else {})
+
+
+def build_graph(
+    results: list[FileResult],
+    root: str,
+    exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
+    reused: Optional["ReusedUses"] = None,
+    jobs: int = 1,
+) -> Result[GraphBuildOutput, GraphBuildError]:
+    """The graph of results. With reused (a use file built from the same inputs), the refs edges of
+    use sites come from it and no use is resolved; nodes then carry no use positions.
+    jobs > 1 resolves the modules in that many forked processes; the graph is the same."""
+    context_result = graph_context(results, root, exclusions)
+    if isinstance(context_result, Err):
+        return context_result
+    context = context_result.value
+    fragments = module_fragments(context, list(context.id_to_result), reused is None, jobs)
+    return Ok(assemble_graph(context, results, fragments, reused))
+
+
+FRAGMENTS_SCHEMA_VERSION = 1
+
+
+def fragment_record(node_id: str, fragment: ModuleFragment) -> list:
+    unresolved = fragment.unresolved
+    return [
+        node_id,
+        fragment.node["path"],
+        fragment.node["purpose"],
+        fragment.edges,
+        fragment.uses,
+        None if unresolved is None else [unresolved.count, unresolved.sites],
+        sorted(fragment.members),
+        sorted(fragment.modules),
+        sorted(fragment.specs),
+        sorted(fragment.names),
+    ]
+
+
+def write_fragments(
+    path: str,
+    key: str,
+    fragments: Mapping[str, ModuleFragment],
+    root: str,
+    exclusions: DiscoveryExclusions,
+    unchanged: Optional[Mapping[str, str]] = None,
+) -> None:
+    """The fragment store: one header line (its key and the exclusions of the build), then one JSON line
+    per module, for a later partial update."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    header = json.dumps(
+        {
+            "schema_version": FRAGMENTS_SCHEMA_VERSION,
+            "key": key,
+            "skip_dirs": sorted(exclusions.directory_names),
+            "ignored": sorted(os.path.relpath(item, root) for item in exclusions.paths),
+        },
+        separators=(",", ":"),
+    )
+    kept = unchanged or {}  # node ID -> its line in the store read before: same facts, same text
+    lines = [header] + [
+        kept[node_id] if node_id in kept else json.dumps(fragment_record(node_id, fragment), separators=(",", ":"))
+        for node_id, fragment in fragments.items()
+    ]
+    _atomic_write_text(path, "\n".join(lines) + "\n")
+
+
+def fragments_key(path: str) -> Optional[str]:
+    """The key (symbol_index_key of its inputs) of a fragment store; None when missing or of another schema."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            header = json.loads(handle.readline() or "null")
+    except (OSError, ValueError):
+        return None
+    if not isinstance(header, dict) or header.get("schema_version") != FRAGMENTS_SCHEMA_VERSION:
+        return None
+    key = header.get("key")
+    return key if isinstance(key, str) else None
+
+
+@dataclass(frozen=True)
+class StoredFragment:
+    line: str  # the store line it was read from
+    path: str
+    purpose: str
+    edges: list[dict]
+    uses: Optional[list[ResolvedSite]]
+    unresolved: Optional[UnresolvedCalls]
+    members: frozenset[str]
+    modules: frozenset[str]
+    specs: frozenset[str]
+    names: frozenset[str]
+
+    def fragment(self, node_id: str, result: FileResult, root: str) -> ModuleFragment:
+        return ModuleFragment(
+            module_node(node_id, result, root, self.purpose),
+            self.edges, self.uses, self.unresolved, self.members, self.modules, self.specs, self.names,
+        )
+
+
+def read_fragments(path: str, root: str) -> Result[tuple[str, DiscoveryExclusions, dict[str, StoredFragment]], str]:
+    """The key, the exclusions and the fragments of a store."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError as error:
+        return Err(f"cannot read {path}: {error}")
+    key = fragments_key(path)
+    if key is None:
+        return Err("no fragment store of this schema")
+    stored: dict[str, StoredFragment] = {}
+    try:
+        header = json.loads(lines[0])
+        exclusions = DiscoveryExclusions(
+            directory_names=frozenset(header["skip_dirs"]),
+            paths=frozenset(os.path.normcase(os.path.join(root, item)) for item in header["ignored"]),
+        )
+        for line in lines[1:]:
+            node_id, rel, purpose, edges, uses, unresolved, members, modules, specs, names = json.loads(line)
+            stored[node_id] = StoredFragment(
+                line,
+                rel,
+                purpose,
+                edges,
+                None if uses is None else [tuple(site) for site in uses],
+                None if unresolved is None else UnresolvedCalls(
+                    unresolved[0], {member: [tuple(site) for site in found] for member, found in unresolved[1].items()}
+                ),
+                frozenset(members),
+                frozenset(modules),
+                frozenset(specs),
+                frozenset(names),
+            )
+    except (ValueError, TypeError, IndexError, AttributeError, KeyError) as error:
+        return Err(f"invalid fragment store: {error}")
+    return Ok((key, exclusions, stored))
 
 
 def _find_local_references(
@@ -2883,36 +3337,46 @@ def render_uses_sexp(nodes: list[dict], key: str, graph_text: str, positions: bo
     are the short IDs of the graph whose digest the header carries.
     """
     sorted_nodes, path_to_sid = _path_ids(nodes)
-    lines = [
+    lines = _uses_header(key, graph_text, positions)
+    for node in sorted_nodes:
+        lines.extend(_use_block(node, path_to_sid, positions))
+    return "\n".join(lines) + "\n"
+
+
+def _uses_header(key: str, graph_text: str, positions: bool) -> list[str]:
+    return [
         "; Use file of the code graph: (use <module> <defining-module>::<name> [<line>:<col>[<kind>] ...])",
         f"(code-graph-uses :schema {USES_SCHEMA_VERSION} :key {key} :positions {'yes' if positions else 'no'} "
         f":graph {text_digest(graph_text)})",
     ]
-    for node in sorted_nodes:
-        sid = path_to_sid[node["id"]]
+
+
+def _use_block(node: Mapping[str, Any], path_to_sid: Mapping[str, str], positions: bool) -> list[str]:
+    """The lines of one file in the use file: its variables, its uses, its unresolved method calls."""
+    sid = path_to_sid[node["id"]]
+    lines = [
+        f"(var {sid} {entity['name']} {entity.get('line', 0)})"
+        for entity in node.get("entities", [])
+        if entity["kind"] == "variable"
+    ]
+    sites: dict[tuple[str, str], list[str]] = {}
+    for line, column, module, name, kind in node.get("uses", []):
+        if positions:
+            sites.setdefault((module, name), []).append(f"{line}:{column}{_USE_KIND_LETTERS.get(kind, '')}")
+        elif module != node["id"] and "." not in name:
+            sites.setdefault((module, name), [])
+    lines.extend(
+        f"(use {sid} {path_to_sid.get(module, module)}::{name}{''.join(' ' + p for p in found)})"
+        for (module, name), found in sorted(sites.items())
+    )
+    unresolved = node.get("unresolved_method_calls")
+    if positions and unresolved is not None:
+        lines.append(f"(unresolved {sid} :method-calls {unresolved.count})")
         lines.extend(
-            f"(var {sid} {entity['name']} {entity.get('line', 0)})"
-            for entity in node.get("entities", [])
-            if entity["kind"] == "variable"
+            f"(unresolved-call {sid} {member} " + " ".join(f"{line}:{column}" for line, column in found) + ")"
+            for member, found in sorted(unresolved.sites.items())
         )
-        sites: dict[tuple[str, str], list[str]] = {}
-        for line, column, module, name, kind in node.get("uses", []):
-            if positions:
-                sites.setdefault((module, name), []).append(f"{line}:{column}{_USE_KIND_LETTERS.get(kind, '')}")
-            elif module != node["id"] and "." not in name:
-                sites.setdefault((module, name), [])
-        lines.extend(
-            f"(use {sid} {path_to_sid.get(module, module)}::{name}{''.join(' ' + p for p in found)})"
-            for (module, name), found in sorted(sites.items())
-        )
-        unresolved = node.get("unresolved_method_calls")
-        if positions and unresolved is not None:
-            lines.append(f"(unresolved {sid} :method-calls {unresolved.count})")
-            lines.extend(
-                f"(unresolved-call {sid} {member} " + " ".join(f"{line}:{column}" for line, column in found) + ")"
-                for member, found in sorted(unresolved.sites.items())
-            )
-    return "\n".join(lines) + "\n"
+    return lines
 
 
 @dataclass(frozen=True)
@@ -2972,13 +3436,137 @@ def _position_uses(item: tuple[str, str]) -> tuple[str, list]:
     return path, _position_parser(language)(path, content)
 
 
-def write_use_positions(map_path: str, root: str) -> Result[str, str]:
+USES_CACHE_SCHEMA_VERSION = 4
+
+
+def uses_cache_path(map_path: str) -> str:
+    """The cache of the full use walk next to a code graph: .code_graph.sexp -> .code_graph.uses-cache.json."""
+    return (map_path[: -len(".sexp")] if map_path.endswith(".sexp") else map_path) + ".uses-cache.json"
+
+
+@dataclass(frozen=True)
+class UsePositions:
+    """A use file filled with positions: its path, and how many files were walked again, taken from the
+    walk cache, and resolved again."""
+
+    path: str
+    walked: int
+    reused: int
+    resolved: int = 0
+
+
+def _compact_use(use: Mapping[str, Any]) -> list:
+    """A use site as a short JSON list: path, flat positions, kind, module as written, method."""
+    return [use["path"], [number for pair in use["at"] for number in pair],
+            use.get("kind", ""), use.get("module", ""), use.get("member", "")]
+
+
+def _expanded_use(item: list) -> dict:
+    path, flat, kind, module, member = item
+    use: dict[str, Any] = {"path": path, "at": [[flat[i], flat[i + 1]] for i in range(0, len(flat), 2)]}
+    if kind:
+        use["kind"] = kind
+    if module:
+        use["module"] = module
+    if member:
+        use["member"] = member
+    return use
+
+
+@dataclass(frozen=True)
+class WalkCache:
+    """.code_graph.uses-cache.json: per file, the content hash, the full use walk and, valid while the
+    surface of the repository (files, definitions, bindings) is the same, the resolved uses."""
+
+    surface: str
+    files: dict[str, list]  # path -> [content hash, compact uses as JSON text, rendered use lines, unused]
+    imports: dict[str, Optional[str]]  # "language\0spec\0source path" -> module ID, while the surface is the same
+
+
+def _load_walk_cache(path: str, fingerprint: str) -> WalkCache:
+    """The walk cache written by the same builder; an empty one otherwise."""
+    empty = WalkCache("", {}, {})
+    try:
+        with open(path, "r", encoding="utf-8") as cache_file:
+            cache = json.load(cache_file)
+    except FileNotFoundError:
+        return empty
+    except (OSError, json.JSONDecodeError) as error:
+        print(f"[code-graph] WARNING: cannot read {path}: {error}; walking every file", file=sys.stderr)
+        return empty
+    if not isinstance(cache, dict) or cache.get("schema") != USES_CACHE_SCHEMA_VERSION \
+            or cache.get("builder_fingerprint") != fingerprint or not isinstance(cache.get("files"), dict):
+        return empty
+    files = {
+        file_path: entry
+        for file_path, entry in cache["files"].items()
+        if isinstance(entry, list) and len(entry) == 4 and isinstance(entry[0], str) and isinstance(entry[1], str)
+    }
+    imports = cache.get("imports") if isinstance(cache.get("imports"), dict) else {}
+    return WalkCache(str(cache.get("surface", "")), files, imports)
+
+
+def _surface_digest(results: Sequence[FileResult]) -> str:
+    """What resolving one file's uses reads of the others: every path, and the definitions and
+    bindings of the files with a use index. While it is the same, a file whose content did not
+    change resolves as before."""
+    digest = hashlib.sha256()
+    for result in sorted(results, key=lambda item: item.path):
+        digest.update(result.path.encode("utf-8") + b"\0")
+        if supports_symbols(result.language):
+            digest.update(repr((result.entities, result.bindings)).encode("utf-8"))
+    return digest.hexdigest()[:32]
+
+
+class _LazyBoundLanguages(dict):
+    """Bound languages created on first need: a query whose imports are all in the walk cache never
+    reads tsconfig files, packages or ignore rules."""
+
+    def __init__(self, root: str, path_to_id: Mapping[str, str], results: Sequence[FileResult]) -> None:
+        super().__init__()
+        self._root, self._path_to_id = root, path_to_id
+        self._languages = {result.language for result in results}
+
+    def __missing__(self, name: str) -> BoundLanguage:
+        git_ignore_result = load_git_ignored_paths(self._root, frozenset(SKIP_DIRS))
+        exclusions = DiscoveryExclusions(
+            directory_names=frozenset(SKIP_DIRS),
+            paths=frozenset() if isinstance(git_ignore_result, GitIgnoreUnavailable) else git_ignore_result.paths,
+        )
+        language = next(item for item in LANGUAGES if item.name == name)
+        self[name] = language.bind(self._root, self._path_to_id, exclusions)
+        return self[name]
+
+
+def _remove_walk_cache(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        print(f"[code-graph] WARNING: cannot remove {path}: {error}", file=sys.stderr)
+
+
+# Up to this many files are walked in this process: starting worker processes costs more.
+_WALK_IN_PROCESS = 8
+
+
+def _modified_since(result: FileResult) -> bool:
+    try:
+        return os.path.getmtime(result.path) != result.mtime
+    except OSError:
+        return True
+
+
+def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
     """Fill the use file of a built graph with every use position; Err with the reason when it cannot.
 
     The build parses only the uses that can name another file. The first query that needs positions
-    (usages, entity --positions) calls this: it reads the build cache, walks every file of a language
-    with a use index again (in parallel), resolves all uses and rewrites the use file with positions.
-    The file keeps its key, so the next build without changes keeps the positions.
+    (usages, entity --positions) calls this. It reads the build cache and the walk cache
+    (.code_graph.uses-cache.json): a file whose content hash is in the walk cache is not walked again
+    and, while the surface of the repository is the same, not resolved again either. The other files
+    are walked in parallel and resolved; the use file is rewritten with positions and keeps its key,
+    so the next build without changes keeps the positions.
     """
     root = os.path.realpath(root)  # the build keys modules by real paths
     path = uses_path(map_path)
@@ -3008,47 +3596,87 @@ def write_use_positions(map_path: str, root: str) -> Result[str, str]:
     if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1)) != key_match.group(1):
         return Err("the build cache does not match the code graph")
     indexed = [result for result in results if supports_symbols(result.language)]
-    changed = [result.path for result in indexed if file_hash(result.path) != result.content_hash]
+    # A file whose modification time is the one the build saw is not read again to compare hashes.
+    changed = [result.path for result in indexed if _modified_since(result) and file_hash(result.path) != result.content_hash]
     if changed:
         return Err(f"{len(changed)} files changed since the build, e.g. {changed[0]}")
-    full_uses: dict[str, list] = {}
-    items = [(result.path, result.language) for result in indexed]
-    if items:
-        with ProcessPoolExecutor(max_workers=min(os.cpu_count() or 4, len(items))) as pool:
-            for file_path, uses in pool.map(_position_uses, items, chunksize=16):
-                full_uses[file_path] = uses
-    with_positions = [
-        dataclasses.replace(result, uses=full_uses[result.path]) if result.path in full_uses else result
+
+    walk_cache_path = uses_cache_path(map_path)
+    walk_cache = _load_walk_cache(walk_cache_path, fingerprint)
+    surface = _surface_digest(results)
+    same_surface = walk_cache.surface == surface
+    entries_out: dict[str, list] = {}
+    to_walk: list[tuple[str, str]] = []
+    for result in indexed:
+        cached = walk_cache.files.get(result.path)
+        if cached is not None and cached[0] == result.content_hash:
+            entries_out[result.path] = cached if same_surface else [cached[0], cached[1], None, None]
+        else:
+            to_walk.append((result.path, result.language))
+    if to_walk:
+        with contextlib.ExitStack() as stack:
+            if len(to_walk) <= _WALK_IN_PROCESS:
+                walked = map(_position_uses, to_walk)
+            else:
+                pool = stack.enter_context(ProcessPoolExecutor(max_workers=min(os.cpu_count() or 4, len(to_walk))))
+                walked = pool.map(_position_uses, to_walk, chunksize=16)
+            for file_path, uses in walked:
+                entries_out[file_path] = ["", json.dumps([_compact_use(use) for use in uses], separators=(",", ":")),
+                                          None, None]
+        hashes = {result.path: result.content_hash for result in indexed}
+        for file_path, _language in to_walk:
+            entries_out[file_path][0] = hashes[file_path]
+
+    to_resolve = {result.path for result in indexed if entries_out[result.path][2] is None}
+    with_uses = [
+        dataclasses.replace(result, uses=[_expanded_use(item) for item in json.loads(entries_out[result.path][1])])
+        if result.path in to_resolve else result
         for result in results
     ]
-    index_result = _build_node_indexes(with_positions, root)
+    index_result = _build_node_indexes(with_uses, root)
     if isinstance(index_result, Err):
         return Err("module ID collision")
     path_to_id, id_to_result = index_result.value
-    git_ignore_result = load_git_ignored_paths(root, frozenset(SKIP_DIRS))
-    exclusions = DiscoveryExclusions(
-        directory_names=frozenset(SKIP_DIRS),
-        paths=frozenset() if isinstance(git_ignore_result, GitIgnoreUnavailable) else git_ignore_result.paths,
-    )
-    result_languages = {result.language for result in with_positions}
-    bound_languages = {
-        language.name: language.bind(root, path_to_id, exclusions)
-        for language in LANGUAGES
-        if result_languages.intersection(language.result_languages)
-    }
-    resolved, unresolved = _resolve_symbol_uses(id_to_result, bound_languages)
-    nodes = [
-        {
-            "id": node_id,
-            "repo": result.repo,
-            "entities": result.entities,
-            "uses": resolved.get(node_id, []),
-            **({"unresolved_method_calls": unresolved[node_id]} if node_id in unresolved else {}),
-        }
-        for node_id, result in id_to_result.items()
+    imports = dict(walk_cache.imports) if same_surface else {}
+    sorted_nodes, path_to_sid = _path_ids(
+        [{"id": node_id, "repo": result.repo} for node_id, result in id_to_result.items()])
+    if to_resolve:
+        bound = _LazyBoundLanguages(root, path_to_id, results)
+
+        def resolve_import(language: str, spec: str, source: str) -> Optional[str]:
+            key = f"{language}\0{spec}\0{source}"
+            if key not in imports:
+                imports[key] = bound[language_for_result(language).name].resolve_import(spec, source)
+            return imports[key]
+
+        id_of = {result.path: node_id for node_id, result in id_to_result.items()}
+        resolved, unresolved = _resolve_symbol_uses(
+            id_to_result, bound, resolve_import, frozenset(id_of[file_path] for file_path in to_resolve))
+        for file_path in to_resolve:
+            node_id = id_of[file_path]
+            node: dict[str, Any] = {"id": node_id, "entities": id_to_result[node_id].entities,
+                                    "uses": resolved.get(node_id, [])}
+            if node_id in unresolved:
+                node["unresolved_method_calls"] = unresolved[node_id]
+            # The rendered lines stay valid while the surface (hence every short ID) is the same.
+            entries_out[file_path][2] = "\n".join(_use_block(node, path_to_sid, positions=True))
+
+    order = {node["id"]: index for index, node in enumerate(sorted_nodes)}
+    texts = [
+        entries_out[result.path][2]
+        for node_id, result in sorted(id_to_result.items(), key=lambda item: order[item[0]])
+        if result.path in entries_out and entries_out[result.path][2]
     ]
-    _atomic_write_text(path, render_uses_sexp(nodes, key_match.group(1), graph_text, positions=True))
-    return Ok(path)
+    _atomic_write_text(path, "\n".join([*_uses_header(key_match.group(1), graph_text, True), *texts]) + "\n")
+    if to_walk or to_resolve or set(walk_cache.files) != set(entries_out):
+        _atomic_write_text(walk_cache_path, json.dumps({
+            "schema": USES_CACHE_SCHEMA_VERSION,
+            "builder_fingerprint": fingerprint,
+            "surface": surface,
+            "files": entries_out,
+            "imports": imports,
+        }, separators=(",", ":")) + "\n")
+    return Ok(UsePositions(path, walked=len(to_walk), reused=len(indexed) - len(to_walk), resolved=len(to_resolve)))
 
 
 def write_sexp(
@@ -3078,6 +3706,8 @@ class BuilderOptions:
     use_lsp: bool
     lsp_timeout: float
     skip_directories: frozenset[str]
+    fragments_path: Optional[str] = None  # write the fragment store there (partial updates)
+    snapshot_path: Optional[str] = None  # write the snapshot of the tree there (change detection)
 
 
 def _builder_usage() -> str:
@@ -3230,7 +3860,8 @@ def _run_build(options: BuilderOptions) -> int:
         paths=ignored_paths,
     )
 
-    files = discover_files(root, exclusions)
+    snapshot = TreeSnapshot() if options.snapshot_path else None
+    files = discover_files(root, exclusions, snapshot)
     language_counts = {
         language.name: sum(
             1 for _, language_name, _ in files if language_name == language.name
@@ -3291,8 +3922,18 @@ def _run_build(options: BuilderOptions) -> int:
         key=lambda result: os.path.relpath(result.path, root).replace(os.sep, "/"),
     )
     symbol_key = symbol_index_key(all_results, _builder_fingerprint(active_language_names, exclusions), mode)
-    reused = None if options.full_rebuild else reusable_symbol_uses(uses_path(options.output_path), symbol_key)
-    graph_result = build_graph(all_results, root, exclusions, reused)
+    # A fragment store that does not match these inputs is rewritten, which needs the uses resolved.
+    stale_store = bool(options.fragments_path) and fragments_key(options.fragments_path or "") != symbol_key
+    reused = (
+        None
+        if options.full_rebuild or stale_store
+        else reusable_symbol_uses(uses_path(options.output_path), symbol_key)
+    )
+    if options.full_rebuild:
+        # Import lookups and resolved uses of the walk cache may depend on tsconfig, package or Cargo
+        # settings that are not part of its key: a full build starts it afresh.
+        _remove_walk_cache(uses_cache_path(options.output_path))
+    graph_result = build_graph(all_results, root, exclusions, reused, jobs=os.cpu_count() or 1)
     if isinstance(graph_result, Err):
         for collision in graph_result.error.collisions:
             paths = ", ".join(collision.paths)
@@ -3343,6 +3984,11 @@ def _run_build(options: BuilderOptions) -> int:
     )
     _atomic_write_text(options.output_path, map_content)
     _atomic_write_text(uses_path(options.output_path), uses_content)
+    if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
+        write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
+    if options.snapshot_path and snapshot is not None:
+        os.makedirs(os.path.dirname(options.snapshot_path), exist_ok=True)
+        _atomic_write_text(options.snapshot_path, snapshot_json(snapshot, options.skip_directories))
 
     elapsed = time.monotonic() - t0
     print(
@@ -3375,6 +4021,22 @@ def _lock_path(root: str) -> str:
     )
 
 
+FRESHNESS_DIRECTORY = ".wingbox"  # the state folder of src/wingbox/freshness.py
+FRAGMENTS_FILE = "graph-fragments.json"
+SNAPSHOT_FILE = "graph-snapshot.json"
+
+
+def freshness_files(options: BuilderOptions) -> tuple[Optional[str], Optional[str]]:
+    """(fragment store, snapshot) of the graph at the default place, which `wingbox` keeps fresh; none elsewhere.
+
+    The fragment store lets a later change be patched in (scripts/graph_update.py); an LSP build has none.
+    """
+    if options.output_path != os.path.join(options.root, OUTPUT_FILE):
+        return None, None
+    folder = os.path.join(options.root, FRESHNESS_DIRECTORY)
+    return (None if options.use_lsp else os.path.join(folder, FRAGMENTS_FILE)), os.path.join(folder, SNAPSHOT_FILE)
+
+
 def main(args: Optional[list[str]] = None) -> int:
     raw_args = list(sys.argv[1:] if args is None else args)
     if raw_args in (["-h"], ["--help"]):
@@ -3386,7 +4048,10 @@ def main(args: Optional[list[str]] = None) -> int:
         print(_builder_usage(), file=sys.stderr)
         return 2
 
-    options = parsed_options.value
+    fragments_path, snapshot_path = freshness_files(parsed_options.value)
+    options = dataclasses.replace(
+        parsed_options.value, fragments_path=fragments_path, snapshot_path=snapshot_path
+    )
     lock_path = _lock_path(options.root)
     try:
         lock_file = open(lock_path, "a+", encoding="utf-8")

@@ -12,7 +12,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
-from wingbox import cli, hook  # noqa: E402
+from wingbox import cli, freshness, hook  # noqa: E402
 
 code_graph_search = cli.load_script("code_graph_search")
 
@@ -54,6 +54,14 @@ def synthetic_graph(modules: int, functions_per_module: int, imports_per_module:
             lines.append(f"(imports m{index} m{target})")
             lines.append(f"(refs m{index} m{target}::handle_{target}_0)")
     return "\n".join(lines) + "\n"
+
+
+def mark_fresh(root: Path) -> None:
+    """A hand-written graph has no sources: give it the snapshot of a build, so the hook does not rebuild it."""
+    freshness.write_snapshot(
+        str(root),
+        freshness.Snapshot({}, {"": os.stat(root).st_mtime_ns}, frozenset({".py"}), frozenset(), (), frozenset()),
+    )
 
 
 class HookOnABuiltGraphTest(unittest.TestCase):
@@ -162,6 +170,7 @@ class HookBudgetTest(unittest.TestCase):
         root = Path(tmp.name).resolve()
         (root / ".git").mkdir()
         (root / ".code_graph.sexp").write_text(synthetic_graph(8000, 6, 6), encoding="utf-8")
+        mark_fresh(root)
         for payload in (
             _payload("Grep", root, pattern="handle_1"),
             _payload("Grep", root, pattern="service"),
