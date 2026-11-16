@@ -48,7 +48,7 @@ class ClaudePluginTest(unittest.TestCase):
         self.assertEqual(manifest["homepage"], "https://wingbox.dev")
         self.assertEqual(manifest["repository"], "https://github.com/aileron-tech/wingbox")
         self.assertTrue(manifest["description"] and manifest["keywords"])
-        for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl"):
+        for key in ("documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"):
             self.assertTrue(manifest[key].startswith("https://"), key)
         width, height = png_size(PLUGIN / manifest["icon"])
         self.assertEqual(width, height)
@@ -238,6 +238,49 @@ class PluginFolderTest(unittest.TestCase):
         words = re.sub(r"```.*?```", "", (PLUGIN / "README.md").read_text(encoding="utf-8"), flags=re.S).split()
         self.assertGreaterEqual(len(words), 40)
         self.assertTrue((PLUGIN / "LICENSE").is_file())
+
+
+class PurposeTest(unittest.TestCase):
+    """The plugin is found by its purpose: code graphs of large repositories and monorepos."""
+
+    PURPOSE = "Code graph for large repositories and monorepos"
+    KEYWORDS = {
+        "code-graph", "blast-radius", "impact-analysis", "dependency-graph", "code-search", "architecture",
+        "local-first", "mcp", "monorepo", "large-codebase", "codebase-map", "call-graph", "refactoring",
+        "code-navigation",
+    }
+
+    def skill_description(self) -> str:
+        front = (REPO / "SKILL.md").read_text(encoding="utf-8").split("---", 2)[1]
+        folded = front.split("description: >", 1)[1]
+        return " ".join(line.strip() for line in folded.splitlines() if line.startswith("  "))
+
+    def test_descriptions_and_keywords(self) -> None:
+        """/* REQ-PLUGIN-014: the descriptions of both manifests and of the Claude Code marketplace entry must start with "Code graph for large repositories and monorepos", the Codex subtitle and long description must name monorepos, and the keywords of both manifests must include monorepo, large-codebase, codebase-map, call-graph, refactoring and code-navigation besides the earlier ones. */"""
+        claude = load(PLUGIN / ".claude-plugin" / "plugin.json")
+        codex = load(PLUGIN / ".codex-plugin" / "plugin.json")
+        (entry,) = load(REPO / ".claude-plugin" / "marketplace.json")["plugins"]
+        for description in (claude["description"], codex["description"], entry["description"]):
+            self.assertTrue(description.startswith(self.PURPOSE), description)
+        self.assertIn("monorepo", codex["interface"]["shortDescription"])
+        self.assertTrue(codex["interface"]["longDescription"].startswith(self.PURPOSE))
+        for manifest in (claude, codex):
+            self.assertLessEqual(self.KEYWORDS, set(manifest["keywords"]))
+
+    def test_skill_description(self) -> None:
+        """/* REQ-PLUGIN-015: the description of SKILL.md must name large repositories and monorepos and the questions an agent hears (what a change will break, who uses a file or function, where a feature is implemented, which files to read first) and the moments (a refactor, a cross-package change), within the 1,024 characters of the Agent Skills format. */"""
+        description = self.skill_description()
+        self.assertLessEqual(len(description), 1024)
+        for phrase in (
+            "large repositories and monorepos",
+            "what a change will break",
+            "who uses",
+            "where a feature is implemented",
+            "which files to read first",
+            "refactor",
+            "cross-package change",
+        ):
+            self.assertIn(phrase, description)
 
 
 class OpenAIPackageTest(unittest.TestCase):

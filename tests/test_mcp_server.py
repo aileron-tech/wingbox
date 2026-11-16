@@ -184,6 +184,26 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual(2, impact["inputSchema"]["properties"]["depth"]["default"])
         self.assertIn("all", impact["inputSchema"]["properties"])
 
+    def test_tools_carry_annotations(self) -> None:
+        """/* REQ-MCP-011: every tool in `tools/list` must carry MCP annotations with a short `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint` false; `build` is the only tool that is not read-only (it writes the graph), and it is neither destructive nor open-world and is idempotent. */"""
+        session = McpSession(self.root, [_initialize(), _request(2, "tools/list")])
+        tools = session.reply(2)["result"]["tools"]
+        for tool in tools:
+            annotations = tool["annotations"]
+            self.assertTrue(annotations["title"].strip(), tool["name"])
+            self.assertLessEqual(len(annotations["title"]), 40, tool["name"])
+            self.assertIs(annotations["readOnlyHint"], tool["name"] != "build", tool["name"])
+            self.assertIs(annotations["destructiveHint"], False, tool["name"])
+            self.assertIs(annotations["idempotentHint"], True, tool["name"])
+            self.assertIs(annotations["openWorldHint"], False, tool["name"])
+
+    def test_tool_names_fit_the_directory_limit(self) -> None:
+        """/* REQ-MCP-012: every tool name must be shorter than 64 characters and use only letters, digits, underscores and hyphens. */"""
+        session = McpSession(self.root, [_initialize(), _request(2, "tools/list")])
+        for tool in session.reply(2)["result"]["tools"]:
+            self.assertLess(len(tool["name"]), 64)
+            self.assertRegex(tool["name"], r"^[A-Za-z0-9_-]+$")
+
     def test_build_then_impact_return_text_and_s_expressions(self) -> None:
         """/* REQ-MCP-004: the `build` tool must build the code graph of --root, and `impact` must then return the text answer of `wingbox impact` only, as one text item. */"""
         _make_shop(self.root)

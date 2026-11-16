@@ -2,7 +2,7 @@
   "name": "wingbox",
   "displayName": "Wingbox",
   "version": "0.2.7",
-  "description": "Local code graph and blast radius analysis: module boundaries, dependents, impact of a change and the few files to read first, for Python, TypeScript, Rust, C#, Java, Go and Ruby repositories. Runs on your machine; no code leaves it.",
+  "description": "Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby. Runs on your machine; no code leaves it.",
   "author": {
     "name": "Aileron Technologies",
     "url": "https://wingbox.dev"
@@ -18,12 +18,19 @@
     "code-search",
     "architecture",
     "local-first",
-    "mcp"
+    "mcp",
+    "monorepo",
+    "large-codebase",
+    "codebase-map",
+    "call-graph",
+    "refactoring",
+    "code-navigation"
   ],
   "icon": "./assets/icon.png",
   "documentationUrl": "https://github.com/aileron-tech/wingbox#readme",
   "supportUrl": "https://github.com/aileron-tech/wingbox/issues",
   "privacyPolicyUrl": "https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/aileron-tech/wingbox/blob/main/LICENSE",
   "hooks": {
     "PreToolUse": [
       {

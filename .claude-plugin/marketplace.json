@@ -9,7 +9,7 @@
     {
       "name": "wingbox",
       "source": "./plugins/wingbox",
-      "description": "Local code graph and blast radius analysis for coding agents: skill, search hook and MCP server.",
+      "description": "Code graph for large repositories and monorepos: blast radius of a change, dependents, module boundaries and the files to read first. Skill, search hook and MCP server; runs on your machine.",
       "category": "development"
     }
   ]
