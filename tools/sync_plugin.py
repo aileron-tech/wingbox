@@ -4,7 +4,10 @@
 The plugin folder is what Claude Code and Codex install, and nothing outside
 it reaches the user, so it holds a copy of the skill (SKILL.md and
 references/) and of LICENSE, and the version of pyproject.toml in both
-manifests and in the launcher's pinned `uvx --from wingbox==<version>`.
+manifests and the launcher's pinned `uvx --from git+https://github.com/aileron-tech/wingbox@<commit>`.
+The plugin follows the latest release: the version and commit of the newest `vX.Y.Z` tag
+(the Claude plugin directory accepts a git source pinned to a full commit, not a PyPI version).
+Set WINGBOX_RELEASE="<version> <commit>" to override, as the tests do.
 
     python3 tools/sync_plugin.py           rewrite what is stale
     python3 tools/sync_plugin.py --check   list what is stale, exit 1 if anything is
@@ -14,7 +17,9 @@ Run it after a change to SKILL.md, references/ or the version.
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -25,7 +30,8 @@ PLUGIN_PATH = Path("plugins") / "wingbox"
 MANIFESTS = (Path(".claude-plugin") / "plugin.json", Path(".codex-plugin") / "plugin.json")
 LAUNCHER = Path("scripts") / "wingbox-run"
 SKILL_DIR = Path("skills") / "wingbox"
-_PIN = re.compile(r"wingbox==[0-9][^\"' ]*")
+_PIN = re.compile(r"git\+https://github\.com/aileron-tech/wingbox@[0-9a-f]{40}")
+SOURCE = "git+https://github.com/aileron-tech/wingbox@{commit}"
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,20 @@ class Wanted:
 
 def project_version(repo: Path) -> str:
     return tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+
+
+def latest_release(repo: Path) -> tuple[str, str]:
+    """(version, full commit) of the newest vX.Y.Z tag, or of WINGBOX_RELEASE."""
+    override = os.environ.get("WINGBOX_RELEASE", "").split()
+    if len(override) == 2:
+        return override[0], override[1]
+    tags = subprocess.run(["git", "-C", str(repo), "tag", "--list", "v[0-9]*", "--sort=-v:refname"],
+                          capture_output=True, text=True, check=True).stdout.split()
+    if not tags:
+        raise SystemExit("no vX.Y.Z tag: release first, or set WINGBOX_RELEASE")
+    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", f"{tags[0]}^{{commit}}"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+    return tags[0][1:], commit
 
 
 def skill_sources(repo: Path) -> list[Path]:
@@ -56,12 +76,12 @@ def with_version(manifest_text: str, version: str) -> bytes:
 def wanted_files(repo: Path) -> list[Wanted]:
     """Every file the sync owns, with the content it must have."""
     plugin = repo / PLUGIN_PATH
-    version = project_version(repo)
+    version, commit = latest_release(repo)
     files = [Wanted(SKILL_DIR / source, (repo / source).read_bytes()) for source in skill_sources(repo)]
     files.append(Wanted(Path("LICENSE"), (repo / "LICENSE").read_bytes()))
     for manifest in MANIFESTS:
         files.append(Wanted(manifest, with_version((plugin / manifest).read_text(encoding="utf-8"), version)))
-    launcher = _PIN.sub(f"wingbox=={version}", (plugin / LAUNCHER).read_text(encoding="utf-8"))
+    launcher = _PIN.sub(SOURCE.format(commit=commit), (plugin / LAUNCHER).read_text(encoding="utf-8"))
     files.append(Wanted(LAUNCHER, launcher.encode("utf-8"), executable=True))
     return files
 
