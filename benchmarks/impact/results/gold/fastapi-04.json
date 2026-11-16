@@ -1,0 +1,15 @@
+{
+ "question": {
+  "id": "fastapi-04",
+  "repo": "fastapi",
+  "file": "docs_src/configure_swagger_ui/tutorial002.py"
+ },
+ "direct": [
+  "tests/test_tutorial/test_configure_swagger_ui/test_tutorial002.py"
+ ],
+ "through_one": [],
+ "gold": [
+  "tests/test_tutorial/test_configure_swagger_ui/test_tutorial002.py"
+ ],
+ "also_accepted": []
+}

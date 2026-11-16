@@ -1,0 +1,24 @@
+{
+ "question": {
+  "id": "immich-server-17",
+  "repo": "immich-server",
+  "file": "src/services/notification-admin.service.ts"
+ },
+ "direct": [
+  "src/controllers/notification-admin.controller.spec.ts",
+  "src/controllers/notification-admin.controller.ts",
+  "src/services/index.ts"
+ ],
+ "through_one": [
+  "src/app.module.ts",
+  "src/controllers/index.ts"
+ ],
+ "gold": [
+  "src/app.module.ts",
+  "src/controllers/index.ts",
+  "src/controllers/notification-admin.controller.spec.ts",
+  "src/controllers/notification-admin.controller.ts",
+  "src/services/index.ts"
+ ],
+ "also_accepted": []
+}

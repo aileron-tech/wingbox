@@ -1,0 +1,34 @@
+{
+ "question": {
+  "id": "agent-browser-14",
+  "repo": "agent-browser",
+  "file": "cli/src/native/react/scripts.rs"
+ },
+ "direct": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/react/mod.rs"
+ ],
+ "through_one": [
+  "cli/src/main.rs",
+  "cli/src/mcp.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/e2e_tests.rs",
+  "cli/src/native/flow/mod.rs",
+  "cli/src/native/flow/recorder.rs",
+  "cli/src/native/mod.rs",
+  "cli/src/native/parity_tests.rs"
+ ],
+ "gold": [
+  "cli/src/main.rs",
+  "cli/src/mcp.rs",
+  "cli/src/native/actions.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/e2e_tests.rs",
+  "cli/src/native/flow/mod.rs",
+  "cli/src/native/flow/recorder.rs",
+  "cli/src/native/mod.rs",
+  "cli/src/native/parity_tests.rs",
+  "cli/src/native/react/mod.rs"
+ ],
+ "also_accepted": []
+}

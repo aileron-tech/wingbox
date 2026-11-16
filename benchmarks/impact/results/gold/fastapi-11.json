@@ -1,0 +1,18 @@
+{
+ "question": {
+  "id": "fastapi-11",
+  "repo": "fastapi",
+  "file": "fastapi/middleware/gzip.py"
+ },
+ "direct": [
+  "docs_src/advanced_middleware/tutorial003.py"
+ ],
+ "through_one": [
+  "tests/test_tutorial/test_advanced_middleware/test_tutorial003.py"
+ ],
+ "gold": [
+  "docs_src/advanced_middleware/tutorial003.py",
+  "tests/test_tutorial/test_advanced_middleware/test_tutorial003.py"
+ ],
+ "also_accepted": []
+}

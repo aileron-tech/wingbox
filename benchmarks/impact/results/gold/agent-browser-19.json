@@ -1,0 +1,41 @@
+{
+ "question": {
+  "id": "agent-browser-19",
+  "repo": "agent-browser",
+  "file": "cli/src/session_settings/seed.rs"
+ },
+ "direct": [
+  "cli/src/session_settings/mod.rs"
+ ],
+ "through_one": [
+  "cli/src/flags.rs",
+  "cli/src/main.rs",
+  "cli/src/mcp.rs",
+  "cli/src/native/actions.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/providers.rs",
+  "cli/src/native/stream/mod.rs",
+  "cli/src/output.rs",
+  "cli/src/session_settings/patch.rs",
+  "cli/src/session_settings/tests.rs"
+ ],
+ "gold": [
+  "cli/src/flags.rs",
+  "cli/src/main.rs",
+  "cli/src/mcp.rs",
+  "cli/src/native/actions.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/providers.rs",
+  "cli/src/native/stream/mod.rs",
+  "cli/src/output.rs",
+  "cli/src/session_settings/mod.rs",
+  "cli/src/session_settings/patch.rs",
+  "cli/src/session_settings/tests.rs"
+ ],
+ "also_accepted": [
+  "cli/src/session_settings/plan.rs",
+  "cli/src/session_settings/running.rs",
+  "cli/src/session_settings/spec.rs",
+  "cli/src/session_settings/store.rs"
+ ]
+}

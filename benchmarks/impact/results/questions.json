@@ -1,0 +1,708 @@
+{
+ "seed": 20261116,
+ "per_repo": 20,
+ "agent_per_repo": 12,
+ "agent_max_files": 120,
+ "questions": [
+  {
+   "id": "chrome-devtools-mcp-01",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "scripts/eslint_rules/check-license-rule.js",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-02",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "scripts/eslint_rules/enforce-using-rule.js",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-03",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/ToolHandler.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-04",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/collectors/PageCollector.ts",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-05",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/collectors/ServiceWorkerCollector.ts",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-06",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/daemon/types.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-07",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/devtools/DevToolsCommentBridge.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-08",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/formatters/IssueFormatter.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-09",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/telemetry/errors.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-10",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/telemetry/metricsRegistry.ts",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-11",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/third_party/index.ts",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-12",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/css.ts",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-13",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/emulation.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-14",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/extensions.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-15",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/pages.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-16",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/toolNames.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-17",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/utils/id.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-18",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/utils/url.ts",
+   "agent": false
+  },
+  {
+   "id": "chrome-devtools-mcp-19",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "tests/mocks.ts",
+   "agent": true
+  },
+  {
+   "id": "chrome-devtools-mcp-20",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "tests/utils.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-01",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/commands/grant-admin.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-02",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/commands/index.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-03",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/database.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-04",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/duplicate.dto.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-05",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/onboarding.dto.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-06",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/session.dto.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-07",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/system-metadata.dto.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-08",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/user-profile.dto.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-09",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/workflow.dto.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-10",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/activity.table.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-11",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/album-user-audit.table.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-12",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/asset-ocr.table.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-13",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/memory.table.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-14",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/ocr-search.table.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-15",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/plugin.table.ts",
+   "agent": false
+  },
+  {
+   "id": "immich-server-16",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/services/media.service.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-17",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/services/notification-admin.service.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-18",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/utils/asset.util.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-19",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "test/factories/album-user.factory.ts",
+   "agent": true
+  },
+  {
+   "id": "immich-server-20",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "test/repositories/config.repository.mock.ts",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-01",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/browser_security.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-02",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/doctor/ffmpeg.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-03",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/doctor/network.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-04",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/actions.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-05",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/cdp/chrome.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-06",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/cdp/obscura.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-07",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/downloads.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-08",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/hint.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-09",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/recorder.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-10",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/inspect_server.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-11",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/interaction.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-12",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/parity_tests.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-13",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/policy.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-14",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/react/scripts.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-15",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/storage.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-16",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/tracing.rs",
+   "agent": false
+  },
+  {
+   "id": "agent-browser-17",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/webdriver/appium.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-18",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/webdriver/backend.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-19",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/session_settings/seed.rs",
+   "agent": true
+  },
+  {
+   "id": "agent-browser-20",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/upgrade.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-01",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/codegen/asm_emitter.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-02",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/codegen/cast_ops.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-03",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/codegen/returns.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-04",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/linker/link.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-05",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/i686/linker/reloc.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-06",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/linker_common/dynamic.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-07",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/linker_common/write.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-08",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/assembler/compress.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-09",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/linker/emit_exec.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-10",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/linker/reloc.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-11",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/mod.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-12",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/x86/codegen/asm_emitter.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-13",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/x86/codegen/f128.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-14",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/x86/codegen/peephole/passes/copy_propagation.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-15",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/x86/codegen/peephole/passes/helpers.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-16",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/ir/lowering/expr_sizeof.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-17",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/ir/lowering/global_init.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-18",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/ir/lowering/pointer_analysis.rs",
+   "agent": true
+  },
+  {
+   "id": "claudes-c-compiler-19",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/ir/module.rs",
+   "agent": false
+  },
+  {
+   "id": "claudes-c-compiler-20",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/passes/if_convert.rs",
+   "agent": true
+  },
+  {
+   "id": "fastapi-01",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/additional_responses/tutorial001.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-02",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/behind_a_proxy/tutorial001_01.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-03",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/behind_a_proxy/tutorial004.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-04",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/configure_swagger_ui/tutorial002.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-05",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/middleware/tutorial001.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-06",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/python_types/tutorial004.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-07",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/settings/app02/main.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-08",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/using_request_directly/tutorial001.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-09",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/websockets_/tutorial001.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-10",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/dependencies/utils.py",
+   "agent": true
+  },
+  {
+   "id": "fastapi-11",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/middleware/gzip.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-12",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/openapi/constants.py",
+   "agent": true
+  },
+  {
+   "id": "fastapi-13",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/security/http.py",
+   "agent": true
+  },
+  {
+   "id": "fastapi-14",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/telemetry/__init__.py",
+   "agent": true
+  },
+  {
+   "id": "fastapi-15",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/telemetry/_api.py",
+   "agent": true
+  },
+  {
+   "id": "fastapi-16",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/testclient.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-17",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "scripts/translation_git.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-18",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "tests/test_modules_same_name_body/app/b.py",
+   "agent": false
+  },
+  {
+   "id": "fastapi-19",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "tests/test_request_params/test_body/utils.py",
+   "agent": true
+  },
+  {
+   "id": "fastapi-20",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "tests/utils.py",
+   "agent": true
+  }
+ ]
+}

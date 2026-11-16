@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-12",
+  "repo": "fastapi",
+  "file": "fastapi/openapi/constants.py"
+ },
+ "direct": [
+  "fastapi/_compat/v2.py",
+  "fastapi/openapi/utils.py"
+ ],
+ "through_one": [
+  "docs_src/extending_openapi/tutorial001.py",
+  "fastapi/_compat/__init__.py",
+  "fastapi/applications.py",
+  "fastapi/datastructures.py",
+  "fastapi/utils.py",
+  "tests/test_compat.py",
+  "tests/test_router_include_context.py"
+ ],
+ "gold": [
+  "docs_src/extending_openapi/tutorial001.py",
+  "fastapi/_compat/__init__.py",
+  "fastapi/_compat/v2.py",
+  "fastapi/applications.py",
+  "fastapi/datastructures.py",
+  "fastapi/openapi/utils.py",
+  "fastapi/utils.py",
+  "tests/test_compat.py",
+  "tests/test_router_include_context.py"
+ ],
+ "also_accepted": []
+}

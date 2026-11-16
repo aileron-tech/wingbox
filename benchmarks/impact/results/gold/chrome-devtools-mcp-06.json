@@ -1,0 +1,26 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-06",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/daemon/types.ts"
+ },
+ "direct": [
+  "src/bin/chrome-devtools.ts",
+  "src/daemon/client.ts",
+  "src/daemon/daemon.ts"
+ ],
+ "through_one": [
+  "tests/daemon/client.test.ts",
+  "tests/daemon/symlink.test.ts",
+  "tests/utils.ts"
+ ],
+ "gold": [
+  "src/bin/chrome-devtools.ts",
+  "src/daemon/client.ts",
+  "src/daemon/daemon.ts",
+  "tests/daemon/client.test.ts",
+  "tests/daemon/symlink.test.ts",
+  "tests/utils.ts"
+ ],
+ "also_accepted": []
+}

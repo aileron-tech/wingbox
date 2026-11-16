@@ -129,28 +129,39 @@ Depth 1
 The text form is for people. Agents add `--sexp` to get the same facts as
 compact S-expressions.
 
-## Measured: Wingbox, Graphify and plain search
+## Measured: 100 questions, with and without Wingbox
 
-Five "which files depend on this file" questions in four public repositories
-(TypeScript, Rust, Python), answered by Claude Code in three setups, 15 trials
-per setup:
+One hundred "which files depend on this file" questions, drawn at random with
+a fixed seed in five public repositories (TypeScript, Rust, Python):
 
-| Setup | Answer accuracy (F1) | Tokens per answer | Cost per answer |
+- `wingbox impact` names the complete list of dependent files, with nothing
+  outside it, in 100 of 100 questions (95 % interval 96 to 100 %). The lists
+  hold 1 to 503 files.
+- Claude Code answers 55 of the questions with its built-in search only, and
+  again with the `wingbox` command added:
+
+| Setup | Complete answers | Tokens per answer | Cost per answer |
 |---|---|---|---|
-| Built-in search only | 0.999 | 59,367 | 0.075 USD |
-| Search plus Wingbox 0.2.0 | 1.000 | 25,598 | 0.016 USD |
-| Search plus Graphify 0.9.110 | 0.997 | 109,071 | 0.095 USD |
+| With Wingbox | 55 of 55 | 32,183 | 0.031 USD |
+| Built-in search only | 48 of 55 | 49,292 | 0.063 USD |
 
-Without an agent, `wingbox impact` names the exact list of dependent files in
-5 of the 5 questions; `graphify affected` in 1 of 5. Checked against every
-import statement of FastAPI (1,801 file pairs, the same pairs the import graph
-of grimp gives), Wingbox has no wrong and no missing dependency. Building the
-graph of FastAPI (1,227 files) from a fresh checkout takes Wingbox 2.2 s and
-Graphify 17.9 s on a GitHub-hosted runner.
+  Tokens -35 % (95 % interval -47 % to -20 %), cost -51 % (-58 % to -43 %).
+  The saving is large on the Rust and Python repositories and absent on the
+  two TypeScript ones.
+- Checked against every import statement of seven corpora (3,795 dependencies
+  in the largest), the graph has no wrong dependency and one missing: an
+  import of a vendored bundle, which Wingbox leaves out of the graph.
 
-The scripts, the reference lists and every result file are in
-[benchmarks/graphify](benchmarks/graphify/README.md). One command reproduces
-the tests that need no model.
+The reference lists come from resolvers that share no code with Wingbox. The
+scripts, the lists and every result file are in
+[benchmarks/impact](benchmarks/impact/README.md), with what the benchmark does
+not show. `Dockerfile.benchmark` runs the tests that need no model in a clean
+container and compares every result with the committed one:
+
+```bash
+docker build -f Dockerfile.benchmark -t wingbox-benchmark .
+docker run --rm wingbox-benchmark
+```
 
 ## Quick start for AI coding agents
 

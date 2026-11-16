@@ -1,0 +1,17 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-10",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/telemetry/metricsRegistry.ts"
+ },
+ "direct": [
+  "tests/telemetry/metricsRegistry.test.ts"
+ ],
+ "through_one": [],
+ "gold": [
+  "tests/telemetry/metricsRegistry.test.ts"
+ ],
+ "also_accepted": [
+  "scripts/update_metrics.ts"
+ ]
+}

@@ -1,0 +1,20 @@
+{
+ "question": {
+  "id": "immich-server-16",
+  "repo": "immich-server",
+  "file": "src/services/media.service.ts"
+ },
+ "direct": [
+  "src/services/index.ts",
+  "src/services/media.service.spec.ts"
+ ],
+ "through_one": [
+  "src/app.module.ts"
+ ],
+ "gold": [
+  "src/app.module.ts",
+  "src/services/index.ts",
+  "src/services/media.service.spec.ts"
+ ],
+ "also_accepted": []
+}

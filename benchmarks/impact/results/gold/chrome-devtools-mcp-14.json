@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-14",
+  "repo": "chrome-devtools-mcp",
+  "file": "src/tools/extensions.ts"
+ },
+ "direct": [
+  "src/tools/tools.ts",
+  "tests/tools/console.test.ts",
+  "tests/tools/extensions.test.ts",
+  "tests/tools/script.test.ts"
+ ],
+ "through_one": [
+  "src/index.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/tools/tools.test.ts"
+ ],
+ "gold": [
+  "src/index.ts",
+  "src/tools/tools.ts",
+  "tests/ToolHandler.test.ts",
+  "tests/tools/console.test.ts",
+  "tests/tools/extensions.test.ts",
+  "tests/tools/script.test.ts",
+  "tests/tools/tools.test.ts"
+ ],
+ "also_accepted": [
+  "scripts/generate-cli.ts",
+  "scripts/generate-docs.ts",
+  "scripts/update_metrics.ts"
+ ]
+}

@@ -1,0 +1,15 @@
+{
+ "question": {
+  "id": "fastapi-08",
+  "repo": "fastapi",
+  "file": "docs_src/using_request_directly/tutorial001.py"
+ },
+ "direct": [
+  "tests/test_tutorial/test_using_request_directly/test_tutorial001.py"
+ ],
+ "through_one": [],
+ "gold": [
+  "tests/test_tutorial/test_using_request_directly/test_tutorial001.py"
+ ],
+ "also_accepted": []
+}

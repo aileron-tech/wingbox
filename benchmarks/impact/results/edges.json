@@ -1,0 +1,84 @@
+[
+ {
+  "corpus": "immich, server",
+  "language": "TypeScript",
+  "pairs": 3795,
+  "edges": 3795,
+  "wrong": 0,
+  "missing": 0,
+  "accepted_extra": 0,
+  "wrong_edges": [],
+  "missing_edges": []
+ },
+ {
+  "corpus": "chrome-devtools-mcp",
+  "language": "TypeScript",
+  "pairs": 901,
+  "edges": 919,
+  "wrong": 0,
+  "missing": 1,
+  "accepted_extra": 19,
+  "wrong_edges": [],
+  "missing_edges": [
+   [
+    "src/third_party/index.ts",
+    "src/third_party/lighthouse-devtools-mcp-bundle.d.ts"
+   ]
+  ]
+ },
+ {
+  "corpus": "agent-browser, Rust sources",
+  "language": "Rust",
+  "pairs": 391,
+  "edges": 391,
+  "wrong": 0,
+  "missing": 0,
+  "accepted_extra": 0,
+  "wrong_edges": [],
+  "missing_edges": []
+ },
+ {
+  "corpus": "claudes-c-compiler",
+  "language": "Rust",
+  "pairs": 1462,
+  "edges": 1462,
+  "wrong": 0,
+  "missing": 0,
+  "accepted_extra": 0,
+  "wrong_edges": [],
+  "missing_edges": []
+ },
+ {
+  "corpus": "FastAPI, whole tree",
+  "language": "Python",
+  "pairs": 1801,
+  "edges": 1818,
+  "wrong": 0,
+  "missing": 0,
+  "accepted_extra": 17,
+  "wrong_edges": [],
+  "missing_edges": []
+ },
+ {
+  "corpus": "FastAPI, the fastapi/ package",
+  "language": "Python",
+  "pairs": 124,
+  "edges": 130,
+  "wrong": 0,
+  "missing": 0,
+  "accepted_extra": 6,
+  "wrong_edges": [],
+  "missing_edges": []
+ },
+ {
+  "corpus": "nanoGPT, minGPT, micrograd",
+  "language": "Python",
+  "pairs": 15,
+  "edges": 15,
+  "wrong": 0,
+  "missing": 0,
+  "accepted_extra": 0,
+  "wrong_edges": [],
+  "missing_edges": []
+ }
+]

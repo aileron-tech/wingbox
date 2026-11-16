@@ -1,0 +1,18 @@
+{
+ "question": {
+  "id": "fastapi-18",
+  "repo": "fastapi",
+  "file": "tests/test_modules_same_name_body/app/b.py"
+ },
+ "direct": [
+  "tests/test_modules_same_name_body/app/main.py"
+ ],
+ "through_one": [
+  "tests/test_modules_same_name_body/test_main.py"
+ ],
+ "gold": [
+  "tests/test_modules_same_name_body/app/main.py",
+  "tests/test_modules_same_name_body/test_main.py"
+ ],
+ "also_accepted": []
+}

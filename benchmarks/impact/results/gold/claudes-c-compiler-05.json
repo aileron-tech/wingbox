@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-05",
+  "repo": "claudes-c-compiler",
+  "file": "src/backend/i686/linker/reloc.rs"
+ },
+ "direct": [
+  "src/backend/i686/linker/emit.rs",
+  "src/backend/i686/linker/mod.rs",
+  "src/backend/i686/linker/shared.rs"
+ ],
+ "through_one": [
+  "src/backend/common.rs",
+  "src/backend/i686/linker/link.rs",
+  "src/backend/i686/mod.rs"
+ ],
+ "gold": [
+  "src/backend/common.rs",
+  "src/backend/i686/linker/emit.rs",
+  "src/backend/i686/linker/link.rs",
+  "src/backend/i686/linker/mod.rs",
+  "src/backend/i686/linker/shared.rs",
+  "src/backend/i686/mod.rs"
+ ],
+ "also_accepted": [
+  "src/backend/i686/linker/dynsym.rs",
+  "src/backend/i686/linker/input.rs",
+  "src/backend/i686/linker/parse.rs",
+  "src/backend/i686/linker/sections.rs",
+  "src/backend/i686/linker/symbols.rs"
+ ]
+}

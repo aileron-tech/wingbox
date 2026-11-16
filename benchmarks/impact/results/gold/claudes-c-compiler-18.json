@@ -1,0 +1,59 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-18",
+  "repo": "claudes-c-compiler",
+  "file": "src/ir/lowering/pointer_analysis.rs"
+ },
+ "direct": [
+  "src/ir/lowering/mod.rs"
+ ],
+ "through_one": [
+  "src/driver/pipeline.rs",
+  "src/ir/mod.rs"
+ ],
+ "gold": [
+  "src/driver/pipeline.rs",
+  "src/ir/lowering/mod.rs",
+  "src/ir/mod.rs"
+ ],
+ "also_accepted": [
+  "src/ir/lowering/complex.rs",
+  "src/ir/lowering/const_eval.rs",
+  "src/ir/lowering/const_eval_global_addr.rs",
+  "src/ir/lowering/const_eval_init_size.rs",
+  "src/ir/lowering/expr.rs",
+  "src/ir/lowering/expr_access.rs",
+  "src/ir/lowering/expr_assign.rs",
+  "src/ir/lowering/expr_atomics.rs",
+  "src/ir/lowering/expr_builtins.rs",
+  "src/ir/lowering/expr_builtins_fpclass.rs",
+  "src/ir/lowering/expr_builtins_intrin.rs",
+  "src/ir/lowering/expr_builtins_overflow.rs",
+  "src/ir/lowering/expr_calls.rs",
+  "src/ir/lowering/expr_ops.rs",
+  "src/ir/lowering/expr_sizeof.rs",
+  "src/ir/lowering/expr_types.rs",
+  "src/ir/lowering/func_lowering.rs",
+  "src/ir/lowering/func_state.rs",
+  "src/ir/lowering/global_decl.rs",
+  "src/ir/lowering/global_init.rs",
+  "src/ir/lowering/global_init_bytes.rs",
+  "src/ir/lowering/global_init_compound.rs",
+  "src/ir/lowering/global_init_compound_ptrs.rs",
+  "src/ir/lowering/global_init_compound_struct.rs",
+  "src/ir/lowering/lower.rs",
+  "src/ir/lowering/lvalue.rs",
+  "src/ir/lowering/ref_collection.rs",
+  "src/ir/lowering/stmt.rs",
+  "src/ir/lowering/stmt_asm.rs",
+  "src/ir/lowering/stmt_control_flow.rs",
+  "src/ir/lowering/stmt_init.rs",
+  "src/ir/lowering/stmt_return.rs",
+  "src/ir/lowering/stmt_switch.rs",
+  "src/ir/lowering/struct_init.rs",
+  "src/ir/lowering/structs.rs",
+  "src/ir/lowering/types.rs",
+  "src/ir/lowering/types_ctype.rs",
+  "src/ir/lowering/types_seed.rs"
+ ]
+}

@@ -21,34 +21,27 @@
 - `scripts/code_graph_search.py` (`_classify_layer_fallback`, `_classify_layer_by_path`): migrations and seeds are infrastructure before the schema rule; a file named like a layer folder and the index file of such a folder take that layer.
 - `scripts/lang/purpose.py`: `_is_test_file` replaces the rule that matched any path containing `/test`; the purpose is inferred from the path inside the repository (`scan_root`, set by `parse_file`); the suffix rule that turned a class named `...API` into an "API client" is removed. `CACHE_SCHEMA_VERSION` is 2, so old caches are rebuilt.
 - `src/wingbox/cli.py`: a closed output pipe ends the command with status 0.
-- `pyproject.toml`: the paths of the source archive are anchored at the root, so `benchmarks/graphify/README.md` is no longer packed as a second `README.md`.
+- `pyproject.toml`: the paths of the source archive are anchored at the root, so the README of the benchmark folder is no longer packed as a second `README.md`.
 - `src/wingbox/overview.py`: the summary row is named "Functions, constants, classes and types".
 - `src/wingbox/assets/map_template.html`: a resize before the first interaction keeps the framing of the selected file instead of fitting the whole graph while the blast radius is still unfolding; the layer names use the same corner on every plane and are kept 32 px apart; the layers turn on slow frames too, so they keep turning while a file is selected; the note under the layer matrix and the violations list name the imports of types only.
 - Tests: REQ-CS-054 to REQ-CS-057, REQ-OUT-013 to REQ-OUT-015, REQ-LANG-005 to REQ-LANG-007, REQ-TS-RT-001, REQ-CLI-007.
-- Verified on open-source repositories: a TypeScript server of 707 modules keeps its 3,795 import edges, its boundary violations go from 8 to 0 with 6 type-only imports listed apart (every marked edge checked against the source text), its domain layer from 237 to 134 modules; on a Python library of 1,223 files the import edges are unchanged (1,818), the `analyze` answer for the file with 650 direct dependents goes from about 55,000 to about 8,800 tokens, and the five questions of `benchmarks/graphify` keep their exact answers.
+- Verified on open-source repositories: a TypeScript server of 707 modules keeps its 3,795 import edges, its boundary violations go from 8 to 0 with 6 type-only imports listed apart (every marked edge checked against the source text), its domain layer from 237 to 134 modules; on a Python library of 1,223 files the import edges are unchanged (1,818), the `analyze` answer for the file with 650 direct dependents goes from about 55,000 to about 8,800 tokens, and the questions of the benchmark keep their exact answers.
 
 ### Motivation
 - A check of version 0.2.0 against the source of a TypeScript server showed migrations counted as domain, an email template counted as a test, and boundary violations that were imports of a type only. The benchmark showed that the answer for a hub file had no upper bound and named every dependent three times with an absolute path.
 
-## 2026-11-16 - benchmark: build time results (test E)
+## 2026-11-16 - benchmark of impact questions, reproducible in a container
 
 ### Changes
-- `benchmarks/graphify/results/build_times.json` (new): the run of the workflow `benchmark-build-time` on a hosted runner, three rounds, every single run included.
-- `benchmarks/graphify/tools/time_builds.py`: after each build the size of the graph is read from the file the tool wrote, and the summary stops when two runs of one tool differ. Test REQ-BENCH-004.
-- `benchmarks/graphify/tools/make_report.py` and `benchmarks/graphify/README.md`: section "Test E. Building the graph" and one line in the summary, written from the result file.
+- `benchmarks/impact/` (new): `run.sh` installs Wingbox from PyPI, fetches eight public repositories at pinned commits, builds the graphs and computes reference edges with resolvers that share no code with Wingbox (`tools/py_edges.py` on Python's `ast`, checked against grimp; `tools/ts_resolve.py`; `tools/rust_resolve.py`). `edge_test.py` compares every module dependency of the graph with them. `impact100.py` draws 20 imported files per repository with a fixed seed, writes the reference list of each (`results/gold/`), runs `wingbox impact <file> 2 --all` on the 100 questions and, as a separate paid step, lets a coding agent answer 55 of them with and without Wingbox. `stats.py` gives the Wilson, bootstrap and sign-test figures; `make_report.py` writes `README.md` from `results/`; `verify.py` compares a run with the committed results.
+- `Dockerfile.benchmark` (new, at the root): the same run in a clean container; it ends with `REPRODUCED` or lists the result files that differ. `benchmarks/impact/results/docker_run.log` is the output of that run for the committed results. Workflow `benchmark-docker` runs the container on a hosted runner; workflow `benchmark-build-time` times `wingbox build` there.
+- What the reference accepts without requiring it is written down in one place (`impact100.reference`): a Python package `__init__.py` on the way to the import, a TypeScript import of the compiled output of a file (mapped through `outDir` and `rootDir`), a Rust path that passes through a module.
+- `README.md`: section "Measured: 100 questions, with and without Wingbox".
+- Tests REQ-BENCH-001 to REQ-BENCH-007.
 
 ### Motivation
-- The report had no build time. The graph sizes are recorded with the times so that a run which built less than the reference run cannot pass as a fast one: on the runner Wingbox built the same graphs as in the reference run (FastAPI 1,227 modules and 1,818 import edges).
-
-## 2026-11-16 - benchmark: build time on a hosted runner
-
-### Changes
-- `benchmarks/graphify/tools/time_builds.py` (new): times `wingbox build`, `graphify extract --code-only` and `graphify cluster-only` on the five corpora of the benchmark. Every run starts from a fresh export of the checkout, the tools alternate, wall and CPU seconds are recorded per step, the summary is the median of the rounds. Test REQ-BENCH-003.
-- `benchmarks/graphify/run.sh`: `RUN_ONLY=corpus` stops after the environments and the corpus are in place.
-- `.github/workflows/benchmark-build-time.yml` (new): started by hand, runs the timing on a hosted runner and keeps `build_times.json` as an artifact.
-
-### Motivation
-- Build time was measured only on a laptop that ran other jobs at the same time, so the numbers could not be published. A hosted runner is idle and anyone can repeat the run.
+- A handful of questions gives wide intervals: 5 of 5 is compatible with a true rate of 57 %. One hundred questions drawn at random, intervals on every figure and a container that reproduces the run are what a reader needs to trust the numbers.
+- The baseline is the agent's own search: it is what every reader already has.
 
 ## 2026-11-16 - README: "See it in action" with the layers view
 
@@ -59,18 +52,6 @@
 
 ### Motivation
 - The README described the commands but did not show the tool working. The pictures show the two things people ask about first: what one command answers, and what the map looks like.
-## 2026-11-16 - public benchmark against Graphify
-
-### Changes
-- `benchmarks/graphify/run.sh`: one command installs Wingbox and Graphify from PyPI, fetches seven public repositories at pinned commits, builds both graphs and runs three tests that need no model: Graphify's own token formula, every dependency edge against the import statements, and the impact command of each tool against reference lists.
-- `benchmarks/graphify/tools/`: the references come from Python's `ast` (`py_edges.py`, checked against grimp), an own TypeScript resolver and an own Rust resolver, never from either tool; `agent_test.py` runs the agent trials; `make_report.py` writes the report from the result files.
-- `benchmarks/graphify/gold/`, `benchmarks/graphify/results/`, `benchmarks/graphify/README.md`: the reference lists, the result files of the run on Wingbox 0.2.0 and Graphify 0.9.110, and the report.
-- `README.md`: section "Measured: Wingbox, Graphify and plain search".
-- Tests: REQ-BENCH-001 (the report equals the output of the report script on the committed results), REQ-BENCH-002 (no committed benchmark file names a path of a local machine).
-
-### Motivation
-- Token-reduction figures published for code-graph tools divide the size of a corpus by the size of an answer and check no answer. A reader needs numbers that can be run again: the same repositories, the same questions, reference lists built without either tool.
-
 ## 2026-11-15 - version 0.2.0 and base classes matched by name
 
 ### Changes
