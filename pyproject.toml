@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wingbox"
-version = "0.2.0"
+version = "0.2.1"
 description = "Code graph and blast radius analysis for AI coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -59,4 +59,4 @@ packages = ["src/wingbox"]
 "scripts" = "wingbox/_scripts"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "scripts", "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml"]
+include = ["/src", "/scripts", "/README.md", "/LICENSE", "/CHANGELOG.md", "/pyproject.toml"]

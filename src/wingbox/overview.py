@@ -269,7 +269,7 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         "|---|---|",
         f"| Modules | {_number(module_count)} |",
         f"| Dependencies between modules | {_number(len(view.edges))} |",
-        f"| Functions, classes and types | {_number(view.entity_count)} |",
+        f"| Functions, constants, classes and types | {_number(view.entity_count)} |",
         "| Languages | " + ", ".join(f"{lang} {_number(count)}" for lang, count in view.languages) + " |",
         f"| Boundary violations | {_number(len(view.violations))} |",
         "",
