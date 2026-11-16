@@ -1,5 +1,5 @@
 {
- "method": "The same kind of number as `graphify benchmark` (\"Nx fewer tokens per query\"):\nestimated tokens of the repository's source divided by the average size of the\nanswer. Here the answers are the 100 impact answers of results/command.json,\neach one checked against the import statements (results/gold), so the ratio is\nreported next to how many answers were complete.",
+ "method": "`graphify benchmark` reports \"Nx fewer tokens per query\": its own estimate of\nthe corpus tokens (words x 1.33 over the files it detects) divided by the\naverage size of its answers. The main ratio here divides the same corpus\nestimate, taken from `graphify benchmark` on the same commits\n(results/graphify_benchmark.json), by the average size of the Wingbox answer. Here the answers are the 100 impact answers of results/command.json,\neach one checked against the import statements (results/gold), so the ratio is\nreported next to how many answers were complete.",
  "repos": [
   {
    "repo": "chrome-devtools-mcp",
@@ -8,13 +8,11 @@
    "questions": 20,
    "complete_answers": 20,
    "avg_answer_tokens": 596,
-   "ratio": 1154,
-   "graphify": {
-    "corpus_tokens": 320266,
-    "avg_query_tokens": 2380,
-    "ratio": 134.6,
-    "wingbox_ratio_on_graphify_corpus": 537
-   }
+   "own_estimate_ratio": 1154,
+   "graphify_corpus_tokens": 320266,
+   "ratio": 537,
+   "graphify_avg_query_tokens": 2380,
+   "graphify_ratio": 134.6
   },
   {
    "repo": "agent-browser",
@@ -23,13 +21,11 @@
    "questions": 20,
    "complete_answers": 20,
    "avg_answer_tokens": 166,
-   "ratio": 9327,
-   "graphify": {
-    "corpus_tokens": 701066,
-    "avg_query_tokens": 1789,
-    "ratio": 391.9,
-    "wingbox_ratio_on_graphify_corpus": 4233
-   }
+   "own_estimate_ratio": 9327,
+   "graphify_corpus_tokens": 701066,
+   "ratio": 4233,
+   "graphify_avg_query_tokens": 1789,
+   "graphify_ratio": 391.9
   },
   {
    "repo": "claudes-c-compiler",
@@ -38,13 +34,11 @@
    "questions": 20,
    "complete_answers": 20,
    "avg_answer_tokens": 272,
-   "ratio": 7468,
-   "graphify": {
-    "corpus_tokens": 627533,
-    "avg_query_tokens": 1560,
-    "ratio": 402.3,
-    "wingbox_ratio_on_graphify_corpus": 2308
-   }
+   "own_estimate_ratio": 7468,
+   "graphify_corpus_tokens": 627533,
+   "ratio": 2308,
+   "graphify_avg_query_tokens": 1560,
+   "graphify_ratio": 402.3
   },
   {
    "repo": "fastapi",
@@ -53,7 +47,11 @@
    "questions": 20,
    "complete_answers": 20,
    "avg_answer_tokens": 1412,
-   "ratio": 837
+   "own_estimate_ratio": 837,
+   "graphify_corpus_tokens": 2046400,
+   "ratio": 1449,
+   "graphify_avg_query_tokens": 1462,
+   "graphify_ratio": 1399.7
   },
   {
    "repo": "immich-server",
@@ -62,7 +60,11 @@
    "questions": 20,
    "complete_answers": 20,
    "avg_answer_tokens": 1451,
-   "ratio": 802
+   "own_estimate_ratio": 802,
+   "graphify_corpus_tokens": 539466,
+   "ratio": 372,
+   "graphify_avg_query_tokens": 1300,
+   "graphify_ratio": 415.0
   }
  ]
 }

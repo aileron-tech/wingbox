@@ -137,6 +137,16 @@ python3 -I benchmarks/impact/tools/time_builds.py ~/wingbox-bench           # te
 
 ## Context size (the `graphify benchmark` measure)
 
-`tools/context_ratio.py` divides the estimated tokens of each repository's source by the average size of the impact answers above, the same kind of number as `graphify benchmark` ("Nx fewer tokens per query"). Results in `results/context_ratio.json`: an impact answer is 802x (immich server) to 9,327x (agent-browser) smaller than the source, and all 100 answers are complete. On the three repositories where Graphify 0.9.110 was run (`graphify benchmark`, same commits, its own corpus estimate), Graphify reports 134.6x, 391.9x and 402.3x; Wingbox's answers on that same corpus estimate give 537x, 4,233x and 2,308x. The two tools answer different questions (Graphify: five fixed questions per repository, not graded; Wingbox: the impact of 20 files per repository, each checked against the import statements), so this compares answer size, not quality.
+`graphify benchmark` reports "Nx fewer tokens per query": its estimate of the corpus tokens divided by the average size of its answers. `tools/context_ratio.py` divides the same corpus estimate, taken from `graphify benchmark` 0.9.110 on the same commits (`results/graphify_benchmark.json`, code-only graphs), by the average size of the Wingbox impact answers above. Results in `results/context_ratio.json`:
 
-    python3 tools/context_ratio.py <folder with the checkouts> [graphify.json]
+| Repository | Corpus (Graphify's estimate) | Wingbox | Graphify | Wingbox answers complete |
+|---|---|---|---|---|
+| agent-browser | 701,066 | 4,233x | 391.9x | 20 of 20 |
+| claudes-c-compiler | 627,533 | 2,308x | 402.3x | 20 of 20 |
+| fastapi | 2,046,400 | 1,449x | 1,399.7x | 20 of 20 |
+| chrome-devtools-mcp | 320,266 | 537x | 134.6x | 20 of 20 |
+| immich-server | 539,466 | 372x | 415.0x | 20 of 20 |
+
+The two tools answer different questions: Graphify five fixed questions per repository, not graded; Wingbox the impact of 20 files per repository, each answer checked against the import statements. So this compares answer size on one corpus count, not answer quality. The script also keeps an independent corpus estimate (characters / 4 over the source files, without vendored bundles and minified files) for reference.
+
+    python3 tools/context_ratio.py <folder with the checkouts> results/graphify_benchmark.json
