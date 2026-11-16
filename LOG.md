@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-16 - README: the earlier repository is named without a link
+
+### Changes
+- `README.md`: the timeline item "published as the codespaces skill" no longer links to the earlier repository.
+
+### Motivation
+- The earlier repository is archived and is not maintained; the project lives here and on wingbox.dev.
+
 ## 2026-11-16 - version 0.2.5: Rust paths through other crates and test crates
 
 ### Changes
