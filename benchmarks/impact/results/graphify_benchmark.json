@@ -1,0 +1,3 @@
+{"agent-browser": {"corpus_tokens": 701066, "avg_query_tokens": 1789},
+ "chrome-devtools-mcp": {"corpus_tokens": 320266, "avg_query_tokens": 2380},
+ "claudes-c-compiler": {"corpus_tokens": 627533, "avg_query_tokens": 1560}}
