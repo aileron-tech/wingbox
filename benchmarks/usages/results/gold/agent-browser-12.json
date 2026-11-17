@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "agent-browser-12",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/screenshot.rs",
+  "name": "take_screenshot",
+  "kind": "function",
+  "line": 98,
+  "col": 13
+ },
+ "files": [
+  "cli/src/native/actions.rs"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/screenshot/take_screenshot().",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    7066,
+    34
+   ],
+   [
+    "cli/src/native/actions.rs",
+    12281,
+    30
+   ]
+  ]
+ }
+}

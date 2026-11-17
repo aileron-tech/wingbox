@@ -1,0 +1,105 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-17",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "tests/mocks.ts",
+  "name": "createMockDialog",
+  "kind": "function",
+  "line": 456,
+  "col": 16
+ },
+ "files": [
+  "tests/McpPage.test.ts",
+  "tests/tools/input.test.ts",
+  "tests/tools/pages.test.ts",
+  "tests/utils/WaitForHelper.test.ts"
+ ],
+ "references": 16,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 tests/`mocks.ts`/createMockDialog().",
+  "sites": [
+   [
+    "tests/McpPage.test.ts",
+    28,
+    3
+   ],
+   [
+    "tests/McpPage.test.ts",
+    2423,
+    22
+   ],
+   [
+    "tests/McpPage.test.ts",
+    2435,
+    22
+   ],
+   [
+    "tests/tools/input.test.ts",
+    28,
+    3
+   ],
+   [
+    "tests/tools/input.test.ts",
+    453,
+    30
+   ],
+   [
+    "tests/tools/input.test.ts",
+    479,
+    30
+   ],
+   [
+    "tests/tools/input.test.ts",
+    569,
+    30
+   ],
+   [
+    "tests/tools/input.test.ts",
+    1218,
+    30
+   ],
+   [
+    "tests/tools/input.test.ts",
+    1494,
+    30
+   ],
+   [
+    "tests/tools/input.test.ts",
+    1534,
+    30
+   ],
+   [
+    "tests/tools/input.test.ts",
+    1572,
+    30
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    27,
+    3
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    322,
+    30
+   ],
+   [
+    "tests/utils/WaitForHelper.test.ts",
+    14,
+    3
+   ],
+   [
+    "tests/utils/WaitForHelper.test.ts",
+    37,
+    33
+   ],
+   [
+    "tests/utils/WaitForHelper.test.ts",
+    54,
+    31
+   ]
+  ]
+ }
+}

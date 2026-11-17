@@ -1,0 +1,48 @@
+{
+ "question": {
+  "id": "immich-server-02",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/controllers/library.controller.ts",
+  "name": "LibraryController",
+  "kind": "class",
+  "line": 19,
+  "col": 13
+ },
+ "files": [
+  "src/controllers/index.ts",
+  "src/controllers/library.controller.spec.ts"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/controllers/`library.controller.ts`/LibraryController#",
+  "sites": [
+   [
+    "src/controllers/index.ts",
+    20,
+    10
+   ],
+   [
+    "src/controllers/index.ts",
+    69,
+    3
+   ],
+   [
+    "src/controllers/library.controller.spec.ts",
+    2,
+    10
+   ],
+   [
+    "src/controllers/library.controller.spec.ts",
+    7,
+    10
+   ],
+   [
+    "src/controllers/library.controller.spec.ts",
+    12,
+    33
+   ]
+  ]
+ }
+}

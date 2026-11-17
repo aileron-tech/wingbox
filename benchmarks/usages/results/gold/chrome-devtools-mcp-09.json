@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-09",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/ToolDefinition.ts",
+  "name": "BrowserlessContext",
+  "kind": "type",
+  "line": 412,
+  "col": 12
+ },
+ "files": [
+  "src/McpContext.ts"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`ToolDefinition.ts`/BrowserlessContext#",
+  "sites": [
+   [
+    "src/McpContext.ts",
+    51,
+    8
+   ],
+   [
+    "src/McpContext.ts",
+    143,
+    45
+   ]
+  ]
+ }
+}

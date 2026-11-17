@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-11",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/memory.ts",
+  "name": "takeHeapSnapshot",
+  "kind": "variable",
+  "line": 56,
+  "col": 13
+ },
+ "files": [
+  "tests/tools/memory.test.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`memory.ts`/takeHeapSnapshot.",
+  "sites": [
+   [
+    "tests/tools/memory.test.ts",
+    15,
+    3
+   ],
+   [
+    "tests/tools/memory.test.ts",
+    56,
+    15
+   ],
+   [
+    "tests/tools/memory.test.ts",
+    75,
+    13
+   ]
+  ]
+ }
+}

@@ -1,0 +1,63 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-01",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/LogpointManager.ts",
+  "name": "LogpointManager",
+  "kind": "class",
+  "line": 179,
+  "col": 13
+ },
+ "files": [
+  "src/McpPage.ts",
+  "tests/McpPage.test.ts"
+ ],
+ "references": 10,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/`LogpointManager.ts`/LogpointManager#",
+  "sites": [
+   [
+    "src/McpPage.ts",
+    20,
+    9
+   ],
+   [
+    "src/McpPage.ts",
+    217,
+    22
+   ],
+   [
+    "src/McpPage.ts",
+    467,
+    35
+   ],
+   [
+    "tests/McpPage.test.ts",
+    15,
+    9
+   ],
+   [
+    "tests/McpPage.test.ts",
+    2818,
+    37
+   ],
+   [
+    "tests/McpPage.test.ts",
+    2828,
+    13
+   ],
+   [
+    "tests/McpPage.test.ts",
+    2846,
+    16
+   ],
+   [
+    "tests/McpPage.test.ts",
+    2847,
+    32
+   ]
+  ]
+ }
+}

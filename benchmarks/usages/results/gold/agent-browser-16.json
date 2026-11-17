@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "agent-browser-16",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/webmcp.rs",
+  "name": "cancel_error",
+  "kind": "function",
+  "line": 630,
+  "col": 7
+ },
+ "files": [
+  "cli/src/native/actions.rs"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/webmcp/cancel_error().",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    10653,
+    28
+   ]
+  ]
+ }
+}

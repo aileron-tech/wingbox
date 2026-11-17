@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "fastapi-18",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "tests/benchmarks/utils.py",
+  "name": "ROUTE_COUNT",
+  "kind": "variable",
+  "line": 7,
+  "col": 0
+ },
+ "files": [
+  "tests/benchmarks/test_openapi.py",
+  "tests/memory_benchmarks/test_openapi.py"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `tests.benchmarks.utils`/ROUTE_COUNT.",
+  "sites": [
+   [
+    "tests/benchmarks/test_openapi.py",
+    6,
+    5
+   ],
+   [
+    "tests/benchmarks/test_openapi.py",
+    26,
+    34
+   ],
+   [
+    "tests/memory_benchmarks/test_openapi.py",
+    6,
+    5
+   ],
+   [
+    "tests/memory_benchmarks/test_openapi.py",
+    26,
+    34
+   ]
+  ]
+ }
+}

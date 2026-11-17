@@ -1,0 +1,113 @@
+{
+ "question": {
+  "id": "agent-browser-02",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/connection.rs",
+  "name": "Response",
+  "kind": "struct",
+  "line": 37,
+  "col": 11
+ },
+ "files": [
+  "cli/src/main.rs",
+  "cli/src/output.rs"
+ ],
+ "references": 26,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/connection/Response#",
+  "sites": [
+   [
+    "cli/src/main.rs",
+    41,
+    88
+   ],
+   [
+    "cli/src/main.rs",
+    157,
+    49
+   ],
+   [
+    "cli/src/main.rs",
+    349,
+    41
+   ],
+   [
+    "cli/src/main.rs",
+    414,
+    45
+   ],
+   [
+    "cli/src/main.rs",
+    419,
+    15
+   ],
+   [
+    "cli/src/main.rs",
+    422,
+    6
+   ],
+   [
+    "cli/src/main.rs",
+    1281,
+    39
+   ],
+   [
+    "cli/src/main.rs",
+    1777,
+    37
+   ],
+   [
+    "cli/src/main.rs",
+    1785,
+    35
+   ],
+   [
+    "cli/src/main.rs",
+    1994,
+    25
+   ],
+   [
+    "cli/src/main.rs",
+    2456,
+    62
+   ],
+   [
+    "cli/src/main.rs",
+    2474,
+    57
+   ],
+   [
+    "cli/src/main.rs",
+    2975,
+    20
+   ],
+   [
+    "cli/src/output.rs",
+    4,
+    24
+   ],
+   [
+    "cli/src/output.rs",
+    914,
+    34
+   ],
+   [
+    "cli/src/output.rs",
+    922,
+    40
+   ],
+   [
+    "cli/src/output.rs",
+    942,
+    34
+   ],
+   [
+    "cli/src/output.rs",
+    2058,
+    25
+   ]
+  ]
+ }
+}

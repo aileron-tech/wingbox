@@ -1,0 +1,117 @@
+{
+ "question": {
+  "id": "agent-browser-10",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/flow/replay.rs",
+  "name": "replay_commands",
+  "kind": "function",
+  "line": 8,
+  "col": 7
+ },
+ "files": [
+  "cli/src/native/flow/mod.rs"
+ ],
+ "references": 20,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/flow/replay/replay_commands().",
+  "sites": [
+   [
+    "cli/src/native/flow/mod.rs",
+    3021,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    3029,
+    13
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    3033,
+    17
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    3853,
+    17
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4128,
+    17
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4163,
+    17
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4209,
+    19
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4219,
+    19
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4356,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4371,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4382,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4620,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4948,
+    21
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    4954,
+    30
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    5145,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    5153,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    5319,
+    17
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    5322,
+    20
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    6146,
+    20
+   ]
+  ]
+ }
+}

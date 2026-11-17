@@ -1,0 +1,42 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-05",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/arm/linker/types.rs",
+  "name": "arm_should_replace_extra",
+  "kind": "function",
+  "line": 91,
+  "col": 7
+ },
+ "files": [
+  "src/backend/arm/linker/input.rs"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/arm/linker/types/arm_should_replace_extra().",
+  "sites": [
+   [
+    "src/backend/arm/linker/input.rs",
+    11,
+    34
+   ],
+   [
+    "src/backend/arm/linker/input.rs",
+    28,
+    93
+   ],
+   [
+    "src/backend/arm/linker/input.rs",
+    33,
+    98
+   ],
+   [
+    "src/backend/arm/linker/input.rs",
+    79,
+    67
+   ]
+  ]
+ }
+}

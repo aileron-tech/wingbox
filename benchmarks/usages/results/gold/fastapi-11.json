@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "fastapi-11",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "fastapi/_compat/v2.py",
+  "name": "get_missing_field_error",
+  "kind": "function",
+  "line": 406,
+  "col": 4
+ },
+ "files": [
+  "fastapi/_compat/__init__.py",
+  "fastapi/dependencies/utils.py"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `fastapi._compat.v2`/get_missing_field_error().",
+  "sites": [
+   [
+    "fastapi/_compat/__init__.py",
+    33,
+    17
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    43,
+    5
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    837,
+    27
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    1257,
+    31
+   ]
+  ]
+ }
+}

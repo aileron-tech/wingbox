@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-09",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/settings/app03/config.py",
+  "name": "Settings",
+  "kind": "class",
+  "line": 4,
+  "col": 6
+ },
+ "files": [
+  "docs_src/settings/app03/main.py"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.settings.app03.config`/Settings#",
+  "sites": [
+   [
+    "docs_src/settings/app03/main.py",
+    13,
+    19
+   ],
+   [
+    "docs_src/settings/app03/main.py",
+    17,
+    43
+   ]
+  ]
+ }
+}

@@ -1,0 +1,59 @@
+{
+ "question": {
+  "id": "agent-browser-13",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/tab_binding.rs",
+  "name": "TabBinding",
+  "kind": "struct",
+  "line": 26,
+  "col": 11
+ },
+ "files": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/e2e_tests.rs",
+  "cli/src/native/parity_tests.rs"
+ ],
+ "references": 18,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/tab_binding/TabBinding#",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    722,
+    49
+   ],
+   [
+    "cli/src/native/actions.rs",
+    3872,
+    32
+   ],
+   [
+    "cli/src/native/e2e_tests.rs",
+    14658,
+    69
+   ],
+   [
+    "cli/src/native/parity_tests.rs",
+    786,
+    36
+   ],
+   [
+    "cli/src/native/parity_tests.rs",
+    792,
+    10
+   ],
+   [
+    "cli/src/native/parity_tests.rs",
+    827,
+    42
+   ],
+   [
+    "cli/src/native/parity_tests.rs",
+    832,
+    10
+   ]
+  ]
+ }
+}

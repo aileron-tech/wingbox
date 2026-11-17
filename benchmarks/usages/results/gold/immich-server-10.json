@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "immich-server-10",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/enum.ts",
+  "name": "ImageFormatSchema",
+  "kind": "variable",
+  "line": 616,
+  "col": 13
+ },
+ "files": [
+  "src/dtos/config.dto.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/`enum.ts`/ImageFormatSchema.",
+  "sites": [
+   [
+    "src/dtos/config.dto.ts",
+    15,
+    3
+   ],
+   [
+    "src/dtos/config.dto.ts",
+    97,
+    13
+   ],
+   [
+    "src/dtos/config.dto.ts",
+    378,
+    21
+   ]
+  ]
+ }
+}

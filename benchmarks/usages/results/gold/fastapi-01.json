@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "fastapi-01",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/bigger_applications/app/internal/admin.py",
+  "name": "router",
+  "kind": "variable",
+  "line": 3,
+  "col": 0
+ },
+ "files": [
+  "docs_src/bigger_applications/app/main.py"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.bigger_applications.app.internal.admin`/router.",
+  "sites": [
+   [
+    "docs_src/bigger_applications/app/main.py",
+    13,
+    11
+   ]
+  ]
+ }
+}

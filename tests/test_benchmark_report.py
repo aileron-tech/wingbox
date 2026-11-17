@@ -10,12 +10,17 @@ from pathlib import Path
 BENCHMARK = Path(__file__).resolve().parents[1] / "benchmarks" / "impact"
 COMPARISON = Path(__file__).resolve().parents[1] / "benchmarks" / "graphify"
 PHP_BENCHMARK = Path(__file__).resolve().parents[1] / "benchmarks" / "php"
+USAGES_BENCHMARK = Path(__file__).resolve().parents[1] / "benchmarks" / "usages"
 LOCAL_PATH = re.compile(r'(?:^|["\s:=])/(?:Users|home|private|tmp|var)/')
 
 
 def load(relative: str):
     """A benchmark script as a module, loaded by path like the other scripts of the repository."""
-    path = BENCHMARK / relative
+    return load_script(BENCHMARK / relative)
+
+
+def load_script(path: Path):
+    """A script as a module, loaded by path with its folder on the import path."""
     sys.path.insert(0, str(path.parent))
     try:
         spec = importlib.util.spec_from_file_location(path.stem, path)
@@ -41,7 +46,7 @@ class BenchmarkReportTest(unittest.TestCase):
     def test_committed_benchmark_files_name_no_path_of_the_machine_that_ran_them(self) -> None:
         """/* REQ-BENCH-002: benchmark results, reference lists, logs and scripts must not contain absolute paths of a local machine. */"""
         offenders = []
-        for folder in (BENCHMARK, COMPARISON):
+        for folder in (BENCHMARK, COMPARISON, USAGES_BENCHMARK):
             for path in sorted(folder.rglob("*")):
                 if path.is_file() and path.suffix in {".json", ".txt", ".md", ".py", ".sh", ".log"}:
                     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -150,6 +155,25 @@ class BenchmarkReportTest(unittest.TestCase):
         runs[-1] = dict(runs[-1], graph={"files": 3, "nodes": 7, "edges": 5})
         with self.assertRaises(SystemExit):
             module.summarise(runs)
+
+    def test_usages_report_is_the_output_of_its_report_script(self) -> None:
+        """/* REQ-BENCH-011: benchmarks/usages/README.md must equal what its make_report.py writes from benchmarks/usages/results. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            written = Path(directory) / "README.md"
+            subprocess.run(
+                [sys.executable, "-I", str(USAGES_BENCHMARK / "make_report.py"), str(USAGES_BENCHMARK / "results"), str(written)],
+                check=True,
+                capture_output=True,
+            )
+            self.assertEqual(written.read_text(encoding="utf-8"), (USAGES_BENCHMARK / "README.md").read_text(encoding="utf-8"))
+
+    def test_a_use_site_is_scored_by_file_and_line(self) -> None:
+        """/* REQ-BENCH-012: a use site counts as found when a tool names its file and line, whatever column it gives, so tools that print no column are scored on the same sites. */"""
+        usages = load_script(USAGES_BENCHMARK / "usages.py")
+        reference = {("a.py", 3, 5), ("a.py", 3, 9), ("b.py", 7, 1)}
+        named = {("a.py", 3, None), ("c.py", 1, None)}
+        scored = usages.score_sites(named, reference)
+        self.assertEqual((scored["right"], scored["missing"], scored["outside"]), (1, 1, 1))
 
     def test_a_rust_path_accepts_the_modules_it_passes_through(self) -> None:
         """/* REQ-BENCH-007: for a Rust path crate::a::b the file of module a must be accepted for the file that wrote the path, and not required. */"""

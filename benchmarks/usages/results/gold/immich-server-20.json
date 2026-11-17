@@ -1,0 +1,122 @@
+{
+ "question": {
+  "id": "immich-server-20",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "test/utils.ts",
+  "name": "mockDuplex",
+  "kind": "variable",
+  "line": 560,
+  "col": 13
+ },
+ "files": [
+  "src/services/database-backup.service.spec.ts"
+ ],
+ "references": 20,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 test/`utils.ts`/mockDuplex.",
+  "sites": [
+   [
+    "src/services/database-backup.service.spec.ts",
+    10,
+    56
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    169,
+    64
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    199,
+    64
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    260,
+    59
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    265,
+    59
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    271,
+    59
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    272,
+    59
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    286,
+    24
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    308,
+    59
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    726,
+    64
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    778,
+    68
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    779,
+    68
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    781,
+    16
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    842,
+    68
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    843,
+    68
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    845,
+    16
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    893,
+    59
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    907,
+    30
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    908,
+    30
+   ],
+   [
+    "src/services/database-backup.service.spec.ts",
+    909,
+    30
+   ]
+  ]
+ }
+}

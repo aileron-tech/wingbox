@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-04",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/decorators.ts",
+  "name": "EventConfig",
+  "kind": "type",
+  "line": 143,
+  "col": 12
+ },
+ "files": [
+  "src/repositories/event.repository.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/`decorators.ts`/EventConfig#",
+  "sites": [
+   [
+    "src/repositories/event.repository.ts",
+    6,
+    10
+   ],
+   [
+    "src/repositories/event.repository.ts",
+    193,
+    37
+   ]
+  ]
+ }
+}

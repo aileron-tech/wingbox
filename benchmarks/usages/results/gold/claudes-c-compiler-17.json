@@ -1,0 +1,33 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-17",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/x86/linker/link.rs",
+  "name": "link_shared",
+  "kind": "function",
+  "line": 208,
+  "col": 7
+ },
+ "files": [
+  "src/backend/common.rs",
+  "src/backend/x86/linker/mod.rs"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/x86/linker/link/link_shared().",
+  "sites": [
+   [
+    "src/backend/common.rs",
+    707,
+    30
+   ],
+   [
+    "src/backend/x86/linker/mod.rs",
+    30,
+    15
+   ]
+  ]
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-02",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/arm/assembler/encoder/fp_scalar.rs",
+  "name": "encode_fneg",
+  "kind": "function",
+  "line": 82,
+  "col": 14
+ },
+ "files": [
+  "src/backend/arm/assembler/encoder/mod.rs"
+ ],
+ "references": 1,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/arm/assembler/encoder/fp_scalar/encode_fneg().",
+  "sites": [
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    407,
+    18
+   ]
+  ]
+ }
+}

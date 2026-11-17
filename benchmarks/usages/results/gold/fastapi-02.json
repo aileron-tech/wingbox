@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-02",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/events/tutorial003.py",
+  "name": "fake_answer_to_everything_ml_model",
+  "kind": "function",
+  "line": 6,
+  "col": 4
+ },
+ "files": [
+  "tests/test_tutorial/test_events/test_tutorial003.py"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.events.tutorial003`/fake_answer_to_everything_ml_model().",
+  "sites": [
+   [
+    "tests/test_tutorial/test_events/test_tutorial003.py",
+    6,
+    5
+   ],
+   [
+    "tests/test_tutorial/test_events/test_tutorial003.py",
+    14,
+    53
+   ]
+  ]
+ }
+}

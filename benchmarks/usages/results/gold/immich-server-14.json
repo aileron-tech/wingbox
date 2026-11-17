@@ -1,0 +1,117 @@
+{
+ "question": {
+  "id": "immich-server-14",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/repositories/workflow.repository.ts",
+  "name": "WorkflowRepository",
+  "kind": "class",
+  "line": 18,
+  "col": 13
+ },
+ "files": [
+  "src/repositories/index.ts",
+  "src/services/base.service.ts",
+  "test/medium.factory.ts",
+  "test/medium/specs/services/workflow.service.spec.ts",
+  "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+  "test/utils.ts"
+ ],
+ "references": 18,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/repositories/`workflow.repository.ts`/WorkflowRepository#",
+  "sites": [
+   [
+    "src/repositories/index.ts",
+    59,
+    10
+   ],
+   [
+    "src/repositories/index.ts",
+    120,
+    3
+   ],
+   [
+    "src/services/base.service.ts",
+    67,
+    10
+   ],
+   [
+    "src/services/base.service.ts",
+    140,
+    3
+   ],
+   [
+    "src/services/base.service.ts",
+    206,
+    35
+   ],
+   [
+    "test/medium.factory.ts",
+    73,
+    10
+   ],
+   [
+    "test/medium.factory.ts",
+    554,
+    10
+   ],
+   [
+    "test/medium.factory.ts",
+    623,
+    10
+   ],
+   [
+    "test/medium/specs/services/workflow.service.spec.ts",
+    7,
+    10
+   ],
+   [
+    "test/medium/specs/services/workflow.service.spec.ts",
+    20,
+    12
+   ],
+   [
+    "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+    18,
+    10
+   ],
+   [
+    "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+    43,
+    9
+   ],
+   [
+    "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+    81,
+    32
+   ],
+   [
+    "test/medium/specs/workflow/workflow-core-plugin.spec.ts",
+    303,
+    37
+   ],
+   [
+    "test/utils.ts",
+    79,
+    10
+   ],
+   [
+    "test/utils.ts",
+    302,
+    13
+   ],
+   [
+    "test/utils.ts",
+    396,
+    24
+   ],
+   [
+    "test/utils.ts",
+    470,
+    49
+   ]
+  ]
+ }
+}

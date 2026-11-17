@@ -1,0 +1,42 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-05",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/telemetry/metricsRegistry.ts",
+  "name": "validateEnumHomogeneity",
+  "kind": "function",
+  "line": 22,
+  "col": 16
+ },
+ "files": [
+  "tests/telemetry/metricsRegistry.test.ts"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/telemetry/`metricsRegistry.ts`/validateEnumHomogeneity().",
+  "sites": [
+   [
+    "tests/telemetry/metricsRegistry.test.ts",
+    13,
+    3
+   ],
+   [
+    "tests/telemetry/metricsRegistry.test.ts",
+    22,
+    22
+   ],
+   [
+    "tests/telemetry/metricsRegistry.test.ts",
+    25,
+    23
+   ],
+   [
+    "tests/telemetry/metricsRegistry.test.ts",
+    31,
+    9
+   ]
+  ]
+ }
+}

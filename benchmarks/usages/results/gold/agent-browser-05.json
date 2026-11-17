@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "agent-browser-05",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/flow/mod.rs",
+  "name": "may_become_candidate",
+  "kind": "function",
+  "line": 676,
+  "col": 14
+ },
+ "files": [
+  "cli/src/native/flow/recorder.rs"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/flow/may_become_candidate().",
+  "sites": [
+   [
+    "cli/src/native/flow/recorder.rs",
+    9,
+    5
+   ],
+   [
+    "cli/src/native/flow/recorder.rs",
+    533,
+    67
+   ]
+  ]
+ }
+}

@@ -1,0 +1,38 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-18",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/frontend/preprocessor/utils.rs",
+  "name": "is_ident_start",
+  "kind": "function",
+  "line": 10,
+  "col": 7
+ },
+ "files": [
+  "src/frontend/preprocessor/includes.rs",
+  "src/frontend/preprocessor/pipeline.rs"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/frontend/preprocessor/utils/is_ident_start().",
+  "sites": [
+   [
+    "src/frontend/preprocessor/includes.rs",
+    167,
+    23
+   ],
+   [
+    "src/frontend/preprocessor/pipeline.rs",
+    15,
+    20
+   ],
+   [
+    "src/frontend/preprocessor/pipeline.rs",
+    594,
+    13
+   ]
+  ]
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-19",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/frontend/sema/type_checker.rs",
+  "name": "enum_constant_type",
+  "kind": "function",
+  "line": 39,
+  "col": 7
+ },
+ "files": [
+  "src/frontend/sema/analysis.rs"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/frontend/sema/type_checker/enum_constant_type().",
+  "sites": [
+   [
+    "src/frontend/sema/analysis.rs",
+    738,
+    47
+   ]
+  ]
+ }
+}

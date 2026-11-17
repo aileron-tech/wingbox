@@ -1,0 +1,58 @@
+{
+ "question": {
+  "id": "agent-browser-01",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/connection.rs",
+  "name": "INTERNAL_DAEMON_SHUTDOWN_ACTION",
+  "kind": "constant",
+  "line": 25,
+  "col": 17
+ },
+ "files": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/daemon.rs"
+ ],
+ "references": 8,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/connection/INTERNAL_DAEMON_SHUTDOWN_ACTION.",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    13,
+    41
+   ],
+   [
+    "cli/src/native/actions.rs",
+    2721,
+    18
+   ],
+   [
+    "cli/src/native/actions.rs",
+    3098,
+    18
+   ],
+   [
+    "cli/src/native/actions.rs",
+    24062,
+    55
+   ],
+   [
+    "cli/src/native/daemon.rs",
+    21,
+    24
+   ],
+   [
+    "cli/src/native/daemon.rs",
+    672,
+    31
+   ],
+   [
+    "cli/src/native/daemon.rs",
+    935,
+    32
+   ]
+  ]
+ }
+}

@@ -1,0 +1,113 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-06",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/elf/constants.rs",
+  "name": "PT_DYNAMIC",
+  "kind": "constant",
+  "line": 108,
+  "col": 10
+ },
+ "files": [
+  "src/backend/arm/linker/elf.rs",
+  "src/backend/arm/linker/emit_dynamic.rs",
+  "src/backend/arm/linker/emit_shared.rs",
+  "src/backend/i686/linker/emit.rs",
+  "src/backend/i686/linker/shared.rs",
+  "src/backend/i686/linker/types.rs",
+  "src/backend/linker_common/parse_shared.rs",
+  "src/backend/riscv/linker/emit_exec.rs",
+  "src/backend/riscv/linker/emit_shared.rs",
+  "src/backend/x86/linker/elf.rs",
+  "src/backend/x86/linker/emit_exec.rs",
+  "src/backend/x86/linker/emit_shared.rs"
+ ],
+ "references": 16,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/elf/constants/PT_DYNAMIC.",
+  "sites": [
+   [
+    "src/backend/arm/linker/elf.rs",
+    16,
+    64
+   ],
+   [
+    "src/backend/arm/linker/emit_dynamic.rs",
+    440,
+    25
+   ],
+   [
+    "src/backend/arm/linker/emit_shared.rs",
+    630,
+    25
+   ],
+   [
+    "src/backend/i686/linker/emit.rs",
+    900,
+    46
+   ],
+   [
+    "src/backend/i686/linker/shared.rs",
+    905,
+    37
+   ],
+   [
+    "src/backend/i686/linker/types.rs",
+    14,
+    14
+   ],
+   [
+    "src/backend/linker_common/parse_shared.rs",
+    10,
+    16
+   ],
+   [
+    "src/backend/linker_common/parse_shared.rs",
+    211,
+    22
+   ],
+   [
+    "src/backend/linker_common/parse_shared.rs",
+    442,
+    22
+   ],
+   [
+    "src/backend/riscv/linker/emit_exec.rs",
+    19,
+    23
+   ],
+   [
+    "src/backend/riscv/linker/emit_exec.rs",
+    812,
+    30
+   ],
+   [
+    "src/backend/riscv/linker/emit_shared.rs",
+    20,
+    22
+   ],
+   [
+    "src/backend/riscv/linker/emit_shared.rs",
+    485,
+    33
+   ],
+   [
+    "src/backend/x86/linker/elf.rs",
+    17,
+    14
+   ],
+   [
+    "src/backend/x86/linker/emit_exec.rs",
+    621,
+    29
+   ],
+   [
+    "src/backend/x86/linker/emit_shared.rs",
+    635,
+    25
+   ]
+  ]
+ }
+}

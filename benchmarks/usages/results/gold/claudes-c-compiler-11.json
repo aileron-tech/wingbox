@@ -1,0 +1,39 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-11",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/linker_common/archive.rs",
+  "name": "load_thin_archive_elf64",
+  "kind": "function",
+  "line": 109,
+  "col": 7
+ },
+ "files": [
+  "src/backend/arm/linker/input.rs",
+  "src/backend/linker_common/mod.rs",
+  "src/backend/x86/linker/input.rs"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/linker_common/archive/load_thin_archive_elf64().",
+  "sites": [
+   [
+    "src/backend/arm/linker/input.rs",
+    33,
+    31
+   ],
+   [
+    "src/backend/linker_common/mod.rs",
+    110,
+    39
+   ],
+   [
+    "src/backend/x86/linker/input.rs",
+    31,
+    31
+   ]
+  ]
+ }
+}

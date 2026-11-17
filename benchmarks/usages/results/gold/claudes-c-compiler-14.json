@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-14",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/riscv/assembler/parser.rs",
+  "name": "SizeExpr",
+  "kind": "enum",
+  "line": 79,
+  "col": 9
+ },
+ "files": [
+  "src/backend/riscv/assembler/elf_writer.rs"
+ ],
+ "references": 8,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/riscv/assembler/parser/SizeExpr#",
+  "sites": [
+   [
+    "src/backend/riscv/assembler/elf_writer.rs",
+    15,
+    90
+   ],
+   [
+    "src/backend/riscv/assembler/elf_writer.rs",
+    639,
+    21
+   ],
+   [
+    "src/backend/riscv/assembler/elf_writer.rs",
+    642,
+    21
+   ]
+  ]
+ }
+}

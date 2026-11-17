@@ -1,0 +1,118 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-07",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/telemetry/watchdog/ClearcutSender.ts",
+  "name": "ClearcutSender",
+  "kind": "class",
+  "line": 42,
+  "col": 13
+ },
+ "files": [
+  "src/telemetry/watchdog/main.ts",
+  "tests/telemetry/watchdog/ClearcutSender.test.ts"
+ ],
+ "references": 19,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/telemetry/watchdog/`ClearcutSender.ts`/ClearcutSender#",
+  "sites": [
+   [
+    "src/telemetry/watchdog/main.ts",
+    15,
+    9
+   ],
+   [
+    "src/telemetry/watchdog/main.ts",
+    116,
+    22
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    14,
+    9
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    37,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    61,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    81,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    109,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    125,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    140,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    155,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    170,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    185,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    203,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    221,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    260,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    315,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    358,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    394,
+    24
+   ],
+   [
+    "tests/telemetry/watchdog/ClearcutSender.test.ts",
+    425,
+    24
+   ]
+  ]
+ }
+}

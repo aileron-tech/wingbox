@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-16",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/utils/network.ts",
+  "name": "validateNetworkUrl",
+  "kind": "function",
+  "line": 55,
+  "col": 16
+ },
+ "files": [
+  "src/NetworkOverrideManager.ts",
+  "tests/utils/network.test.ts"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/utils/`network.ts`/validateNetworkUrl().",
+  "sites": [
+   [
+    "src/NetworkOverrideManager.ts",
+    14,
+    3
+   ],
+   [
+    "src/NetworkOverrideManager.ts",
+    244,
+    7
+   ],
+   [
+    "tests/utils/network.test.ts",
+    14,
+    3
+   ],
+   [
+    "tests/utils/network.test.ts",
+    21,
+    9
+   ]
+  ]
+ }
+}

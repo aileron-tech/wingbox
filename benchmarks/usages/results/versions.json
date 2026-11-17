@@ -1,0 +1,12 @@
+{
+ "wingbox": "0.5.1",
+ "codegraph": "1.6.2",
+ "graphify": "0.9.110",
+ "typescript": "6.0.3",
+ "scip-typescript": "0.6.0",
+ "scip-python": "0.6.8",
+ "pyright": "1.1.414",
+ "rust-analyzer": "rust-analyzer 0.3.3105-standalone (b98172d80f 2026-11-01)",
+ "rust toolchain": "rustc 1.99.0 (b940084d7 2026-09-28)",
+ "date": "2026-11-17"
+}

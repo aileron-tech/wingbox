@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "fastapi-17",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "scripts/prepare_release.py",
+  "name": "update_version_file",
+  "kind": "function",
+  "line": 55,
+  "col": 4
+ },
+ "files": [
+  "tests/test_prepare_release.py"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `scripts.prepare_release`/update_version_file().",
+  "sites": [
+   [
+    "tests/test_prepare_release.py",
+    14,
+    5
+   ],
+   [
+    "tests/test_prepare_release.py",
+    42,
+    19
+   ],
+   [
+    "tests/test_prepare_release.py",
+    54,
+    9
+   ]
+  ]
+ }
+}

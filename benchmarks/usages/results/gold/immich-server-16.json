@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "immich-server-16",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/utils/asset.util.ts",
+  "name": "onBeforeLink",
+  "kind": "variable",
+  "line": 145,
+  "col": 13
+ },
+ "files": [
+  "src/services/asset-media.service.ts",
+  "src/services/asset.service.ts"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/utils/`asset.util.ts`/onBeforeLink.",
+  "sites": [
+   [
+    "src/services/asset-media.service.ts",
+    34,
+    27
+   ],
+   [
+    "src/services/asset-media.service.ts",
+    158,
+    15
+   ],
+   [
+    "src/services/asset.service.ts",
+    48,
+    3
+   ],
+   [
+    "src/services/asset.service.ts",
+    95,
+    13
+   ]
+  ]
+ }
+}

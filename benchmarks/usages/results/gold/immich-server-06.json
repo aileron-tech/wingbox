@@ -1,0 +1,54 @@
+{
+ "question": {
+  "id": "immich-server-06",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/dtos/album.dto.ts",
+  "name": "MapAlbumDto",
+  "kind": "type",
+  "line": 219,
+  "col": 12
+ },
+ "files": [
+  "src/repositories/album.repository.ts",
+  "src/services/album.service.ts",
+  "src/services/notification.service.ts"
+ ],
+ "references": 7,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/dtos/`album.dto.ts`/MapAlbumDto#",
+  "sites": [
+   [
+    "src/repositories/album.repository.ts",
+    7,
+    30
+   ],
+   [
+    "src/repositories/album.repository.ts",
+    178,
+    14
+   ],
+   [
+    "src/services/album.service.ts",
+    10,
+    3
+   ],
+   [
+    "src/services/album.service.ts",
+    360,
+    40
+   ],
+   [
+    "src/services/notification.service.ts",
+    3,
+    10
+   ],
+   [
+    "src/services/notification.service.ts",
+    494,
+    12
+   ]
+  ]
+ }
+}

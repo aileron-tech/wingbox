@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-04",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/graphql_/tutorial001.py",
+  "name": "app",
+  "kind": "variable",
+  "line": 24,
+  "col": 0
+ },
+ "files": [
+  "tests/test_tutorial/test_graphql/test_tutorial001.py"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.graphql_.tutorial001`/app.",
+  "sites": [
+   [
+    "tests/test_tutorial/test_graphql/test_tutorial001.py",
+    13,
+    43
+   ],
+   [
+    "tests/test_tutorial/test_graphql/test_tutorial001.py",
+    18,
+    23
+   ]
+  ]
+ }
+}

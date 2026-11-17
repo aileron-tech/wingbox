@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "immich-server-13",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/repositories/search.repository.ts",
+  "name": "AssetDuplicateResult",
+  "kind": "interface",
+  "line": 182,
+  "col": 17
+ },
+ "files": [
+  "src/services/duplicate.service.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/repositories/`search.repository.ts`/AssetDuplicateResult#",
+  "sites": [
+   [
+    "src/services/duplicate.service.ts",
+    8,
+    10
+   ],
+   [
+    "src/services/duplicate.service.ts",
+    380,
+    22
+   ],
+   [
+    "src/services/duplicate.service.ts",
+    385,
+    37
+   ]
+  ]
+ }
+}

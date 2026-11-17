@@ -1,0 +1,90 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-06",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/telemetry/transformation.ts",
+  "name": "stripUnderscoreBeforeNumber",
+  "kind": "function",
+  "line": 157,
+  "col": 16
+ },
+ "files": [
+  "src/telemetry/ClearcutLogger.ts",
+  "src/telemetry/flagUtils.ts",
+  "src/telemetry/metricsRegistry.ts",
+  "tests/telemetry/transformation.test.ts"
+ ],
+ "references": 14,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/telemetry/`transformation.ts`/stripUnderscoreBeforeNumber().",
+  "sites": [
+   [
+    "src/telemetry/ClearcutLogger.ts",
+    21,
+    3
+   ],
+   [
+    "src/telemetry/ClearcutLogger.ts",
+    199,
+    31
+   ],
+   [
+    "src/telemetry/ClearcutLogger.ts",
+    269,
+    15
+   ],
+   [
+    "src/telemetry/flagUtils.ts",
+    10,
+    9
+   ],
+   [
+    "src/telemetry/flagUtils.ts",
+    23,
+    10
+   ],
+   [
+    "src/telemetry/flagUtils.ts",
+    49,
+    27
+   ],
+   [
+    "src/telemetry/flagUtils.ts",
+    92,
+    27
+   ],
+   [
+    "src/telemetry/metricsRegistry.ts",
+    15,
+    3
+   ],
+   [
+    "src/telemetry/metricsRegistry.ts",
+    119,
+    13
+   ],
+   [
+    "tests/telemetry/transformation.test.ts",
+    18,
+    3
+   ],
+   [
+    "tests/telemetry/transformation.test.ts",
+    220,
+    7
+   ],
+   [
+    "tests/telemetry/transformation.test.ts",
+    224,
+    7
+   ],
+   [
+    "tests/telemetry/transformation.test.ts",
+    228,
+    7
+   ]
+  ]
+ }
+}

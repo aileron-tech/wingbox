@@ -1,0 +1,33 @@
+{
+ "question": {
+  "id": "agent-browser-20",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/session_settings/store.rs",
+  "name": "orphan_sessions",
+  "kind": "function",
+  "line": 302,
+  "col": 7
+ },
+ "files": [
+  "cli/src/main.rs",
+  "cli/src/session_settings/mod.rs"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/session_settings/store/orphan_sessions().",
+  "sites": [
+   [
+    "cli/src/main.rs",
+    1305,
+    37
+   ],
+   [
+    "cli/src/session_settings/mod.rs",
+    28,
+    41
+   ]
+  ]
+ }
+}

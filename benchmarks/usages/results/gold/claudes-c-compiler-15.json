@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-15",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/riscv/linker/input.rs",
+  "name": "resolve_archives",
+  "kind": "function",
+  "line": 204,
+  "col": 7
+ },
+ "files": [
+  "src/backend/riscv/linker/link.rs"
+ ],
+ "references": 1,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/riscv/linker/input/resolve_archives().",
+  "sites": [
+   [
+    "src/backend/riscv/linker/link.rs",
+    95,
+    12
+   ]
+  ]
+ }
+}

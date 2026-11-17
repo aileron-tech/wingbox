@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-03",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/database.ts",
+  "name": "AlbumUser",
+  "kind": "type",
+  "line": 32,
+  "col": 12
+ },
+ "files": [
+  "src/dtos/album.dto.ts"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/`database.ts`/AlbumUser#",
+  "sites": [
+   [
+    "src/dtos/album.dto.ts",
+    3,
+    10
+   ],
+   [
+    "src/dtos/album.dto.ts",
+    220,
+    16
+   ]
+  ]
+ }
+}

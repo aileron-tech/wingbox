@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-07",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/response_cookies/tutorial001.py",
+  "name": "app",
+  "kind": "variable",
+  "line": 4,
+  "col": 0
+ },
+ "files": [
+  "tests/test_tutorial/test_response_cookies/test_tutorial001.py"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.response_cookies.tutorial001`/app.",
+  "sites": [
+   [
+    "tests/test_tutorial/test_response_cookies/test_tutorial001.py",
+    3,
+    51
+   ],
+   [
+    "tests/test_tutorial/test_response_cookies/test_tutorial001.py",
+    5,
+    21
+   ]
+  ]
+ }
+}

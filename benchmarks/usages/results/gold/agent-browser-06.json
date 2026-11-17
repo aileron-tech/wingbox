@@ -1,0 +1,38 @@
+{
+ "question": {
+  "id": "agent-browser-06",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/flow/mod.rs",
+  "name": "list_flows",
+  "kind": "function",
+  "line": 1944,
+  "col": 7
+ },
+ "files": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/flow/hint.rs"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/flow/list_flows().",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    10523,
+    51
+   ],
+   [
+    "cli/src/native/actions.rs",
+    13077,
+    38
+   ],
+   [
+    "cli/src/native/flow/hint.rs",
+    33,
+    21
+   ]
+  ]
+ }
+}

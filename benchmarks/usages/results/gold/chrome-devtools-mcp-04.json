@@ -1,0 +1,78 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-04",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/formatters/HeapSnapshotFormatter.ts",
+  "name": "formatName",
+  "kind": "function",
+  "line": 34,
+  "col": 16
+ },
+ "files": [
+  "src/McpResponse.ts",
+  "tests/formatters/HeapSnapshotFormatter.test.ts"
+ ],
+ "references": 27,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/formatters/`HeapSnapshotFormatter.ts`/formatName().",
+  "sites": [
+   [
+    "src/McpResponse.ts",
+    25,
+    3
+   ],
+   [
+    "src/McpResponse.ts",
+    1453,
+    30
+   ],
+   [
+    "src/McpResponse.ts",
+    1544,
+    30
+   ],
+   [
+    "src/McpResponse.ts",
+    1567,
+    28
+   ],
+   [
+    "src/McpResponse.ts",
+    1613,
+    21
+   ],
+   [
+    "tests/formatters/HeapSnapshotFormatter.test.ts",
+    14,
+    3
+   ],
+   [
+    "tests/formatters/HeapSnapshotFormatter.test.ts",
+    59,
+    26
+   ],
+   [
+    "tests/formatters/HeapSnapshotFormatter.test.ts",
+    65,
+    26
+   ],
+   [
+    "tests/formatters/HeapSnapshotFormatter.test.ts",
+    71,
+    9
+   ],
+   [
+    "tests/formatters/HeapSnapshotFormatter.test.ts",
+    78,
+    9
+   ],
+   [
+    "tests/formatters/HeapSnapshotFormatter.test.ts",
+    85,
+    9
+   ]
+  ]
+ }
+}
