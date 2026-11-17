@@ -68,9 +68,13 @@ add("")
 add("For a file X: every file that depends on X directly or through one other file, where \"A depends on B\" means that A imports B. "
     "It is what a developer or an agent asks before changing X.")
 add("")
-add("Reference lists come from resolvers that share no code with Wingbox, all in `tools/`: Python's `ast` (`py_edges.py`; on FastAPI its "
-    "pairs equal the import graph of grimp, `results/fastapi.grimp_check.json`), an own TypeScript resolver (`ts_resolve.py`) and an own Rust "
-    "resolver (`rust_resolve.py`).")
+grimp = load("fastapi.grimp_check.json")
+loaded = grimp.get("reference_only_loaded_by_name", [])
+add("Reference lists come from resolvers that share no code with Wingbox, all in `tools/`: Python's `ast` (`py_edges.py`; on FastAPI the "
+    "pairs of its import statements equal the import graph of grimp, `results/fastapi.grimp_check.json`"
+    + (f"; it also counts a module loaded by a literal name, `importlib.import_module(\"a.b\")` or `__import__(\"a.b\")`, which grimp does not "
+       f"read: {len(loaded)} pair on FastAPI" if loaded else "")
+    + "), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`).")
 add("")
 add("Three kinds of file are accepted when an answer names them and are not required: in Python a package `__init__.py` executed on the way "
     "to the imported module; in TypeScript a file that imports the compiled output of X, which `tsconfig.json` maps back to X through `outDir` "
@@ -160,6 +164,9 @@ for row in edges:
 if any(row["wrong"] or row["missing"] for row in edges):
     add("")
 add("The graph holds more edges than the code requires where it also records accepted ones (see \"The question\").")
+if versions.get("edge_test_python"):
+    add("")
+    add(f"The Python rows were {versions['edge_test_python']}.")
 add("")
 if build:
     info = build["machine"]

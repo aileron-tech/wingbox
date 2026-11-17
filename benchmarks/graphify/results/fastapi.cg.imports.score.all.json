@@ -1,19 +1,19 @@
 {
  "label": "fastapi: codegraph imports",
  "scope": "(whole tree)",
- "reference_pairs": 1801,
+ "reference_pairs": 1802,
  "tool_edges": 2407,
  "strict": {
   "right": 1133,
   "of_them_implied_package_init": 5,
   "precision": 0.4707,
-  "recall": 0.6263
+  "recall": 0.626
  },
  "either": {
   "right": 2317,
   "precision": 0.9626,
   "found": 1768,
-  "recall": 0.9817
+  "recall": 0.9811
  },
  "tool_edges_not_in_code": [
   [
@@ -8057,6 +8057,10 @@
    "fastapi/__init__.py"
   ],
   [
+   "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
+   "docs_src/generate_clients/tutorial004.py"
+  ],
+  [
    "tests/test_tutorial/test_opentelemetry/test_tutorial001.py",
    "docs_src/opentelemetry/tutorial001.py"
   ],
@@ -8273,6 +8277,10 @@
   [
    "tests/test_tutorial/test_events/test_tutorial002.py",
    "docs_src/events/tutorial002.py"
+  ],
+  [
+   "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
+   "docs_src/generate_clients/tutorial004.py"
   ],
   [
    "tests/test_tutorial/test_opentelemetry/test_tutorial001.py",

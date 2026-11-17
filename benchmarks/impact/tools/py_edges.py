@@ -19,6 +19,9 @@ Rules (those of the Python import system, applied statically):
     module (`import a.b.c` runs a/__init__.py and a/b/__init__.py; `from a.b import x`
     with x a submodule runs a/b/__init__.py). An edge to such a file is a true
     dependency; it is accepted when a tool has it and not required when it has not;
+  - a module loaded by name at run time counts like `import <name>` when the name is a
+    string literal: `importlib.import_module("a.b")`, `import_module("a.b")` (imported
+    from importlib) and `__import__("a.b")`; a name built at run time is not followed;
   - a name that resolves to nothing in the tree is external (stdlib, third party).
 No code of the tree is executed.
 """
@@ -191,6 +194,20 @@ def ancestors(target: str) -> list[str]:
     return found
 
 
+def loaded_name(node: ast.Call) -> str | None:
+    """The module a call loads by a literal name: importlib.import_module("a.b"), import_module("a.b"),
+    __import__("a.b"); None for any other call or a name that is not a string literal."""
+    func = node.func
+    called = func.attr if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name) and func.value.id == "importlib" \
+        else func.id if isinstance(func, ast.Name) else None
+    if called not in ("import_module", "__import__") or not node.args:
+        return None
+    first = node.args[0]
+    if not isinstance(first, ast.Constant) or not isinstance(first.value, str) or not first.value or first.value.startswith("."):
+        return None
+    return first.value
+
+
 refs = []
 implied: set[tuple[str, str]] = set()
 external = 0
@@ -199,7 +216,16 @@ for path in files:
     if tree is None:
         continue
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
+        if isinstance(node, ast.Call) and loaded_name(node) is not None:
+            name = loaded_name(node)
+            target, _ = resolve_absolute(path, name.split("."))
+            if target is None:
+                external += 1
+                continue
+            refs.append({"frm": path, "to": target, "to_followed": target, "line": node.lineno,
+                         "stmt": f"{ast.unparse(node.func)}({name!r})", "kind": "import-call"})
+            implied.update((path, init) for init in ancestors(target))
+        elif isinstance(node, ast.Import):
             for alias in node.names:
                 dotted = alias.name.split(".")
                 target, _ = resolve_absolute(path, dotted)

@@ -273,7 +273,7 @@ no model inside any of the tools):
 | Test | Wingbox | Graphify | CodeGraph | OntoIndex |
 |---|---|---|---|---|
 | Exact list of dependent files, five questions | 5 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
-| File dependencies of FastAPI against its 1,801 import pairs, wrong / missing | 0 / 0 | 19 / 16 | 106 / 24 | 22 / 117 |
+| File dependencies of FastAPI against its 1,802 import pairs, wrong / missing | 0 / 0 | 19 / 17 | 106 / 25 | 22 / 118 |
 | Tokens a coding agent spends per answer (built-in search alone: 59,367) | 23,768 | 109,071 | 81,151 | 78,070 |
 | Cost per answer in that test, USD (built-in search alone: 0.075) | 0.021 | 0.095 | 0.070 | 0.075 |
 | Answer quality in that test, F1 (built-in search alone: 0.999) | 1.000 | 0.997 | 0.993 | 0.977 |

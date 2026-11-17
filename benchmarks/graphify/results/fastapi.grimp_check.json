@@ -13,6 +13,12 @@
  "grimp_only_explained_as_implied_package_init": [],
  "grimp_only_unexplained": [],
  "reference_only": [],
+ "reference_only_loaded_by_name": [
+  [
+   "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
+   "docs_src/generate_clients/tutorial004.py"
+  ]
+ ],
  "modules_without_file": [
   "docs_src",
   "docs_src.opentelemetry",

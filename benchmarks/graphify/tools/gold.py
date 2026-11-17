@@ -6,7 +6,7 @@ For every question: the files that depend on the target directly, and the files 
 on one of those (two hops). The edges never come from Wingbox or Graphify:
   TypeScript  tools/ts_resolve.py    (<work>/out/<repo>.ts_refs.json)
   Rust        tools/rust_resolve.py  (<work>/out/<repo>.rust_refs.json)
-  Python      tools/py_edges.py      (<work>/out/fastapi.ref.json), equal to grimp on FastAPI
+  Python      tools/py_edges.py      (<work>/out/fastapi.ref.json); its import statements equal grimp on FastAPI
 Writes <work>/bench/gold/<id>.json. With a second argument, exits 1 when a computed list
 differs from the committed one.
 """
@@ -24,7 +24,7 @@ questions = json.load(open(os.path.join(here, "..", "questions.json")))
 SOURCES = {
     "typescript": "tools/ts_resolve.py (own TypeScript resolver)",
     "rust": "tools/rust_resolve.py (own Rust resolver)",
-    "python": "tools/py_edges.py (Python ast), equal to grimp 3.20 on FastAPI",
+    "python": "tools/py_edges.py (Python ast); its import statements equal grimp 3.20 on FastAPI",
 }
 
 

@@ -2,5 +2,6 @@
  "wingbox": "wingbox 0.2.3",
  "date": "2026-11-16",
  "agent_wingbox": "0.2.1",
- "agent_note": "the 100 answers of `wingbox impact` are identical in 0.2.1, 0.2.2 and 0.2.3"
+ "agent_note": "the 100 answers of `wingbox impact` are identical in 0.2.1, 0.2.2 and 0.2.3",
+ "edge_test_python": "run again with Wingbox 0.9.1 on 2026-11-17, when `tools/py_edges.py` started to count modules loaded by a literal name (`importlib.import_module`, `__import__`)"
 }

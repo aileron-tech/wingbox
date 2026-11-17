@@ -139,6 +139,16 @@ def reference(work: str, repo: str, language: str) -> tuple[set[tuple[str, str]]
     return required, required | {tuple(pair) for pair in data["implied_pairs"]}
 
 
+def drawn_from(work: str, repo: str, language: str, required: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """The edges whose targets the questions are drawn from: in Python those of import statements, so that the
+    question set stays the one drawn before the reference also counted modules loaded by a literal name
+    (`importlib.import_module("a.b")`, added 2026-11-17). Those edges are in the gold of every question."""
+    if language != "python":
+        return required
+    data = json.load(open(os.path.join(work, "out", repo + ".ref.json")))
+    return {(ref["frm"], ref["to"]) for ref in data["refs"] if ref.get("kind") != "import-call"}
+
+
 def two_hops(edges: set[tuple[str, str]], target: str) -> tuple[set[str], set[str]]:
     dependents: dict[str, set[str]] = collections.defaultdict(set)
     for source, destination in edges:
@@ -162,7 +172,7 @@ def sample(work: str) -> None:
     for repo, language in REPOS:
         required, accepted = reference(work, repo, language)
         root = os.path.join(work, "bench", "plain", repo)
-        imported = sorted({destination for source, destination in required
+        imported = sorted({destination for source, destination in drawn_from(work, repo, language, required)
                            if source != destination and os.path.isfile(os.path.join(root, destination))})
         chosen = sorted(rng.sample(imported, SAMPLE_PER_REPO))
         rows = []

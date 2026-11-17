@@ -13,7 +13,7 @@ Wingbox 0.2.3 from PyPI, run of 2026-11-16. This file is written by `make_report
 
 For a file X: every file that depends on X directly or through one other file, where "A depends on B" means that A imports B. It is what a developer or an agent asks before changing X.
 
-Reference lists come from resolvers that share no code with Wingbox, all in `tools/`: Python's `ast` (`py_edges.py`; on FastAPI its pairs equal the import graph of grimp, `results/fastapi.grimp_check.json`), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`).
+Reference lists come from resolvers that share no code with Wingbox, all in `tools/`: Python's `ast` (`py_edges.py`; on FastAPI the pairs of its import statements equal the import graph of grimp, `results/fastapi.grimp_check.json`; it also counts a module loaded by a literal name, `importlib.import_module("a.b")` or `__import__("a.b")`, which grimp does not read: 1 pair on FastAPI), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`).
 
 Three kinds of file are accepted when an answer names them and are not required: in Python a package `__init__.py` executed on the way to the imported module; in TypeScript a file that imports the compiled output of X, which `tsconfig.json` maps back to X through `outDir` and `rootDir`; in Rust a file whose path passes through the module of X to reach a deeper module (`crate::x::y`). In each case a change of X can reach the file, and a reader of the import statements may or may not count it.
 
@@ -66,13 +66,15 @@ Every module dependency of the Wingbox graph against every import statement of t
 | chrome-devtools-mcp | TypeScript | 901 | 919 | 0 | 1 |
 | agent-browser, Rust sources | Rust | 391 | 391 | 0 | 0 |
 | claudes-c-compiler | Rust | 1,462 | 1,462 | 0 | 0 |
-| FastAPI, whole tree | Python | 1,801 | 1,818 | 0 | 0 |
+| FastAPI, whole tree | Python | 1,802 | 1,819 | 0 | 0 |
 | FastAPI, the fastapi/ package | Python | 124 | 130 | 0 | 0 |
 | nanoGPT, minGPT, micrograd | Python | 15 | 15 | 0 | 0 |
 
 - chrome-devtools-mcp, missing: `src/third_party/index.ts` -> `src/third_party/lighthouse-devtools-mcp-bundle.d.ts`
 
 The graph holds more edges than the code requires where it also records accepted ones (see "The question").
+
+The Python rows were run again with Wingbox 0.9.1 on 2026-11-17, when `tools/py_edges.py` started to count modules loaded by a literal name (`importlib.import_module`, `__import__`).
 
 ## Test 4. Building the graph
 

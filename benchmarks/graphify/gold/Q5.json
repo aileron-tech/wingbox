@@ -4,7 +4,7 @@
   "repo": "fastapi",
   "file": "fastapi/sse.py"
  },
- "source": "tools/py_edges.py (Python ast), equal to grimp 3.20",
+ "source": "tools/py_edges.py (Python ast); its import statements equal grimp 3.20 on FastAPI",
  "direct": [
   "docs_src/server_sent_events/tutorial001.py",
   "docs_src/server_sent_events/tutorial002.py",

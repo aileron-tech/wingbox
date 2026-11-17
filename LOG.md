@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.9.1: Homebrew installs, and a Python reference that counts modules loaded by name
+
+### Changes
+- `src/wingbox/update.py`: `homebrew_keg(prefix)`; inside a keg (`.../Cellar/wingbox/<version>/`) `choose_method` returns `homebrew-install` with `brew upgrade wingbox` and runs no installer (REQ-UPDATE-012, written first). Checked with the built wheel in a simulated keg; `wingbox install` started through the `bin/wingbox` link records that link in the hooks.
+- `benchmarks/*/tools/py_edges.py`: literal `importlib.import_module("a.b")`, `import_module("a.b")` and `__import__("a.b")` count as pairs (REQ-BENCH-013); questions are still drawn from files reached by an import statement, so the 100 questions and their reference lists are identical (REQ-BENCH-014). FastAPI, whole tree: 1,801 pairs / 1,818 edges / 0 wrong / 0 missing becomes 1,802 / 1,819 / 0 / 0; the comparison's FastAPI rows of the other tools are scored again from their saved edges (one more missing pair each). The build-time tables keep 1,818: that is the edge count of the builds that were timed.
+- Version 0.9.1 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`.
+
+### Motivation
+- Wingbox installs with Homebrew since today (tap `aileron-tech/wingbox`, which follows PyPI by itself); an upgrade inside the keg by another installer would change files Homebrew owns.
+- The maintainer approved the reference change: the graph's extra FastAPI edge is a real dependency that the reference did not read.
+- The Rust item edges prepared for this version are not in it: with them the impact benchmark's Rust answers no longer equal the present reference lists, and the maintainer decides on the reference before that is released.
+
 ## 2026-11-17 - Version 0.9.0: Wingbox writes only to .wingbox/ and your own settings; the install list; refresh after git
 
 ### Changes

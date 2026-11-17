@@ -4,7 +4,7 @@
   "repo": "fastapi",
   "file": "fastapi/openapi/models.py"
  },
- "source": "tools/py_edges.py (Python ast), equal to grimp 3.20",
+ "source": "tools/py_edges.py (Python ast); its import statements equal grimp 3.20 on FastAPI",
  "direct": [
   "fastapi/openapi/utils.py",
   "fastapi/param_functions.py",
