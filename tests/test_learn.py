@@ -2,6 +2,8 @@
 import fnmatch
 import io
 import os
+import shlex
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -124,7 +126,11 @@ class LearnTest(unittest.TestCase):
         """/* REQ-LEARN-006: run by a person (--human or a terminal), learn asks the style of each part among its candidates (score and a one-line description; Enter keeps the closest), then one question per open folder with its files and imports (an invalid layer is asked again); it records the answers like an agent's, and at the end offers to open .wingbox/config.yaml in $VISUAL or $EDITOR. --yes takes the closest style and the guesses without asking and opens nothing. */"""
         marker = self.root / "opened.txt"
         saved = dict(os.environ)
-        os.environ["EDITOR"] = f"touch {marker}"
+        # The editor is this Python with a script that leaves a marker: it runs the same on every system.
+        opener = self.root / "opener.py"
+        opener.write_text(f"import pathlib\npathlib.Path({str(marker)!r}).write_text('x')\n", encoding="utf-8")
+        parts = [sys.executable, str(opener)]
+        os.environ["EDITOR"] = subprocess.list2cmdline(parts) if os.name == "nt" else shlex.join(parts)
         os.environ.pop("VISUAL", None)
         try:
             status, text = _run(["learn", "--human"], self.root, "\nkitchen\ninfra\ny\n")
@@ -245,3 +251,15 @@ class LearnModeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EditorCommandTest(unittest.TestCase):
+    def test_the_editor_setting_becomes_an_argument_list_on_every_system(self) -> None:
+        """/* REQ-LEARN-014: $VISUAL/$EDITOR becomes an argument list: POSIX shell words on macOS and Linux; on Windows a quoted program path with spaces and backslashes stays whole, and notepad is used when nothing is set; elsewhere nothing set means no editor. */"""
+        self.assertEqual(["code", "--wait"], cli.editor_command("code --wait", windows=False))
+        self.assertEqual([], cli.editor_command("", windows=False))
+        self.assertEqual(["notepad"], cli.editor_command("", windows=True))
+        self.assertEqual(
+            [r"C:\Program Files\Notepad++\notepad++.exe", "-multiInst"],
+            cli.editor_command(r'"C:\Program Files\Notepad++\notepad++.exe" -multiInst', windows=True),
+        )

@@ -23,8 +23,8 @@ install added: stamped skill folders, the marked blocks, the hook entries.
 from __future__ import annotations
 
 import json
+import ntpath
 import os
-import shlex
 import shutil
 from dataclasses import dataclass
 from typing import Literal, Mapping, Optional, Union
@@ -346,8 +346,23 @@ def _hook_entry(command: str, timeout: int, windows: bool) -> dict:
     shell, so neither Git Bash nor PowerShell quoting matters (code.claude.com/docs/en/hooks)."""
     if not windows:
         return {"type": "command", "command": command, "timeout": timeout}
-    program, *args = shlex.split(command, posix=True) if '"' in command else command.split()
+    program, args = _split_windows_command(command)
+    # A project-scope command (`wingbox hook pre-search`, committed and shared) stays a shell command that
+    # bash and PowerShell both run; only a global install names an absolute program.
+    if not ntpath.isabs(program):
+        return {"type": "command", "command": command, "timeout": timeout}
     return {"type": "command", "command": program, "args": args, "timeout": timeout}
+
+
+def _split_windows_command(command: str) -> tuple[str, list[str]]:
+    """Program and arguments of a command line written by subprocess.list2cmdline: the program may be
+    quoted (a path with spaces); backslashes are path separators, never escapes."""
+    command = command.strip()
+    if command.startswith('"'):
+        end = command.find('"', 1)
+        return command[1:end], command[end + 1:].split()
+    program, *args = command.split()
+    return program, args
 
 
 def hook_group(command: str, windows: bool = os.name == "nt") -> dict:

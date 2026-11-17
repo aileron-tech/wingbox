@@ -332,7 +332,7 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     if isinstance(context_result, builder.Err):
         return NotApplicable("module ID collision")
     context = context_result.value
-    old_ids = {os.path.join(root, fragment.path): node_id for node_id, fragment in stored.items()}
+    old_ids = {os.path.join(root, *fragment.path.split("/")): node_id for node_id, fragment in stored.items()}
     for path, node_id in context.path_to_id.items():
         if path in old_ids and old_ids[path] != node_id:
             return NotApplicable(f"module ID of {os.path.relpath(path, root)} changed")

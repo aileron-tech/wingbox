@@ -6,6 +6,7 @@ for people. Nothing else decides what a command reports.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Union
@@ -67,8 +68,10 @@ def _value_text(value: Value) -> str:
 
 
 def _shorten(value: str, home: str) -> str:
-    if home and (value == home or value.startswith(home.rstrip("/") + "/")):
-        return "~" + value[len(home.rstrip("/")):]
+    """A path under home as ~/..., written with / on every system (C:\\Users\\me\\.claude -> ~/.claude)."""
+    posix_value, posix_home = value.replace(os.sep, "/"), home.replace(os.sep, "/").rstrip("/")
+    if home and (posix_value == posix_home or posix_value.startswith(posix_home + "/")):
+        return "~" + posix_value[len(posix_home):]
     return value
 
 

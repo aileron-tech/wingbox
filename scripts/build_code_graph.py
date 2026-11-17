@@ -4397,7 +4397,7 @@ def project_architecture(
         {node["id"]: names_by_path.get(node["path"], frozenset()) for node in nodes if node.get("path")},
         plan_paths,
         read_baseline_sexp(baseline_text),
-        _node_capabilities(root, nodes, {os.path.relpath(r.path, root): r.content_hash for r in results}),
+        _node_capabilities(root, nodes, {os.path.relpath(r.path, root).replace(os.sep, "/"): r.content_hash for r in results}),
         read_capability_baseline(baseline_text),
     )
     return Ok((architecture, plan.value))

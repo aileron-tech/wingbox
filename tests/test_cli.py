@@ -21,17 +21,18 @@ SPEC.loader.exec_module(wingbox_cli)
 class WingboxCommandArgumentsTest(unittest.TestCase):
     def test_build_uses_the_current_directory_by_default(self) -> None:
         """/* REQ-CLI-001: `wingbox build` without a path must build the current directory. */"""
-        self.assertEqual(wingbox_cli.build_arguments([], "/work/project"), ["--root", "/work/project"])
+        # Expected paths in the system's own form: \work\project on Windows.
+        self.assertEqual(wingbox_cli.build_arguments([], "/work/project"), ["--root", os.path.normpath("/work/project")])
 
     def test_build_resolves_a_relative_project_path_and_keeps_options(self) -> None:
         """/* REQ-CLI-002: `wingbox build PATH` must pass an absolute --root and keep the builder options. */"""
         self.assertEqual(
             wingbox_cli.build_arguments(["services/api", "--full", "--exclude-dir", "generated"], "/work"),
-            ["--root", "/work/services/api", "--full", "--exclude-dir", "generated"],
+            ["--root", os.path.normpath("/work/services/api"), "--full", "--exclude-dir", "generated"],
         )
         self.assertEqual(
             wingbox_cli.build_arguments(["--root", "/abs/project", "--lsp"], "/work"),
-            ["--root", "/abs/project", "--lsp"],
+            ["--root", os.path.normpath("/abs/project"), "--lsp"],
         )
 
     def test_query_path_options_are_resolved_against_the_current_directory(self) -> None:
@@ -40,7 +41,8 @@ class WingboxCommandArgumentsTest(unittest.TestCase):
             wingbox_cli.absolutize_path_options(
                 ["impact", "src/app.py", "--map", ".wingbox/index.sexp", "--root", "."], "/work/project"
             ),
-            ["impact", "src/app.py", "--map", "/work/project/.wingbox/index.sexp", "--root", "/work/project"],
+            ["impact", "src/app.py", "--map", os.path.normpath("/work/project/.wingbox/index.sexp"), "--root",
+             os.path.normpath("/work/project")],
         )
 
     def test_scripts_directory_falls_back_to_the_checkout(self) -> None:

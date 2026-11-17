@@ -226,7 +226,7 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(SKILL_FILES["SKILL.md"], skill.read_bytes())
         lines = [facts.fact_sexp(fact) for fact in result]
         self.assertEqual(["(update-from 0.2.4)", "(update-method pipx)", "(update-to 0.2.5)"], lines[:3])
-        self.assertIn(f"(update-refreshed {skill.parent} :what skill :assistant (claude-code))", lines)
+        self.assertIn(f"(update-refreshed {facts.atom(str(skill.parent))} :what skill :assistant (claude-code))", lines)
         self.assertIn("pipx upgrade wingbox", stubs.called())
 
 
@@ -258,7 +258,7 @@ class OldLayoutWarningTest(unittest.TestCase):
         kept.update(self.leave_old_files(self.recorded))
         installed = [install.Installed("project", str(self.recorded), ("claude-code",))]
         warnings = update.old_layout_warnings(str(self.project / "src"), installed)
-        self.assertEqual([fact.args[0] for fact in warnings], [str(self.project), str(self.recorded)])
+        self.assertEqual([fact.args[0] for fact in warnings], [self.project.as_posix(), self.recorded.as_posix()])
         self.assertEqual(warnings[0].get("old-files"), self.OLD + ("wingbox-out/",))
         line = update.warning_text(warnings[0], color=False)
         self.assertEqual(

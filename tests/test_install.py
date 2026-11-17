@@ -80,8 +80,9 @@ class GlobalInstallTest(InstallTestCase):
             self.assertEqual(1, text.count(install.BEGIN_MARKER))
             self.assertIn("wingbox impact <file>", text)
         settings = json.loads((self.home / ".claude" / "settings.json").read_text())
+        # The entry is a shell command, or on Windows the program and its arguments apart (exec form).
         self.assertEqual(
-            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 10}]}],
+            [install.hook_group(HOOK_COMMAND)],
             settings["hooks"]["PreToolUse"],
         )
         self.assertFalse((self.home / ".gemini").exists())
@@ -101,16 +102,11 @@ class GlobalInstallTest(InstallTestCase):
         self.run_command("install")
         self.run_command("install")
         hooks = json.loads(settings_path.read_text())["hooks"]
-        self.assertEqual(
-            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 10}]}],
-            hooks["PreToolUse"],
-        )
+        self.assertEqual([install.hook_group(HOOK_COMMAND)], hooks["PreToolUse"])
         self.assertEqual(
             [
                 {"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]},
-                {"matcher": "Edit|Write|MultiEdit", "hooks": [
-                    {"type": "command", "command": "/opt/tools/bin/wingbox hook dirty", "timeout": 5}
-                ]},
+                install.dirty_group(HOOK_COMMAND),
             ],
             hooks["PostToolUse"],
         )
@@ -298,8 +294,9 @@ class InstallOutputTest(InstallTestCase):
         self.assertEqual(0, status)
         lines = output.getvalue().splitlines()
         skill_path = self.home / ".claude" / "skills" / "wingbox"
-        self.assertIn(f"(install-wrote {skill_path} :what skill :assistant (claude-code) :version {cli._version()})", lines)
-        self.assertIn(f"(install-wrote {self.home / '.claude' / 'settings.json'} :what hook :assistant (claude-code))", lines)
+        # facts.atom quotes a path that holds backslashes (Windows), so the expectation is built the same way.
+        self.assertIn(f"(install-wrote {facts.atom(str(skill_path))} :what skill :assistant (claude-code) :version {cli._version()})", lines)
+        self.assertIn(f"(install-wrote {facts.atom(str(self.home / '.claude' / 'settings.json'))} :what hook :assistant (claude-code))", lines)
 
         text = io.StringIO()
         with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), redirect_stdout(text):

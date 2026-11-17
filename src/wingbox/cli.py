@@ -1117,14 +1117,29 @@ def _offer_editor(path: str) -> None:
 
     if _ask(f"\nOpen {path} in your editor for a final look? [y/N]: ", "n").lower() not in ("y", "yes"):
         return
-    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
-    if not editor:
+    command = editor_command(os.environ.get("VISUAL") or os.environ.get("EDITOR") or "", os.name == "nt")
+    if not command:
         print(f"no editor set (EDITOR or VISUAL); the file is {path}")
         return
     try:
-        subprocess.run([*shlex.split(editor), path], check=False)
+        subprocess.run([shutil.which(command[0]) or command[0], *command[1:], path], check=False)
     except OSError as error:
-        print(f"[wingbox] ERROR: cannot start {editor}: {error}", file=sys.stderr)
+        print(f"[wingbox] ERROR: cannot start {command[0]}: {error}", file=sys.stderr)
+
+
+def editor_command(editor: str, windows: bool) -> list[str]:
+    """The editor as an argument list: POSIX shell words, or on Windows a path that may hold spaces and
+    backslashes (quoted parts kept whole); notepad when nothing is set on Windows."""
+    import shlex
+
+    editor = editor.strip()
+    if not editor:
+        return ["notepad"] if windows else []
+    if not windows:
+        return shlex.split(editor)
+    if os.path.isfile(editor):
+        return [editor]
+    return [part.strip('"') for part in shlex.split(editor, posix=False)]
 
 
 def write_outputs(root: str, graph_path: str) -> OutputsResult:
