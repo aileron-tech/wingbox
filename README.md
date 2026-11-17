@@ -1,14 +1,16 @@
 # Wingbox: Code Graph and Blast Radius Analysis for AI Coding Agents
 
+<!-- mcp-name: io.github.aileron-tech/wingbox -->
+
 ![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
 > **Give your coding agent a map of your codebase. Half the cost, no missed files.**
 >
-> On 55 questions in five public repositories an agent with Wingbox gave the
-> complete list of dependent files in 55 of 55, at half the cost of its own
-> search (48 of 55): [benchmarks](benchmarks/impact/README.md).
+> Your agent sees every file a change touches before it edits, so it no longer
+> forgets a fix. Half the cost of its own search: [benchmarks](benchmarks/impact/README.md).
 >
-> Wingbox builds a local **code graph** of your repository so that AI coding
+> Wingbox builds a local **code graph** (a code knowledge graph made by static
+> parsing, with no model) of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture
 > boundaries and the **blast radius** of a change before editing code.
 > It works as an agent skill in Claude Code, Codex, Gemini CLI, Cursor and
@@ -429,7 +431,8 @@ platform/frontend  route-tree (Vercel)   1.00   container
   - move platform/frontend/src/app/llm/model-pools/_parts/pool-providers.tsx from the feature layer to ui ...
 crates/engine      Rust crate, no layer style   -   component
 
-wrote .wingbox/config.yaml (edit it, then: wingbox build)
+wrote .wingbox/config.yaml
+next: wingbox learn settles the open points (run by a coding agent it is the agent's task, asking you when the code does not tell; in a terminal it asks you), then wingbox build
 ```
 
 - **Parts.** A part starts at a folder that holds a manifest (`package.json`,
@@ -941,6 +944,14 @@ Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 dependent files, nearest first; add `--all` for every file. `boundaries` reports
 an import of TypeScript types only apart from the violations: the compiler
 erases it, but a change of the type still reaches the importing file.
+`boundaries` prints `boundaries-ok` only when every part with files was
+checked. A part whose own rule files were not read (or without a determined
+style) comes first as `(boundaries-not-checked :part . :reason
+declared-rules-not-read :files (.dependency-cruiser.js) :files-in-part 1177)`,
+and `(boundaries-partial :checked N :not-checked M)` replaces `ok`. Exit
+status: 2 when a part's declared rules were not read, 1 when a violation was
+found, 0 otherwise; REPORT.md, `wingbox advice` and the MCP `boundaries` tool
+say the same.
 
 Pass `--map` and `--root` (see [Running the scripts from a clone](#running-the-scripts-from-a-clone))
 when the graph is outside the current directory and its parents.

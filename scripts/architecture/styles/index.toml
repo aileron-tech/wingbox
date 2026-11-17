@@ -1,7 +1,7 @@
 # Wingbox architecture rules, schema 1.
 # One file per architecture style; this file holds what all of them share.
-# The files are data: the tool reads them, a project may copy one into its
-# repository and edit it to state its own architecture.
+# The files are data: the tool reads them; a style file of the same name in
+# $HOME/.wingbox/styles/ replaces the built-in one.
 
 schema = 1
 styles = ["layered", "onion-clean", "hexagonal", "mvc", "nestjs", "microkernel", "route-tree", "feature-sliced"]

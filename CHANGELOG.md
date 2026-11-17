@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.6.1 - 2026-11-17
+
+### Changes
+
+- The MCP server can be listed in the MCP Registry: `server.json` at the root
+  names the PyPI package and starts it with `wingbox mcp`, and the README
+  carries the ownership line the registry checks.
+
+### Fixes
+
+- `wingbox boundaries` no longer prints `boundaries-ok` for parts that were not
+  checked. A part whose declared rules were not read (a dependency-cruiser or
+  import-linter configuration this version cannot read), whose style is
+  undetermined or that has no layer style comes first as
+  `(boundaries-not-checked :part . :reason declared-rules-not-read :files
+  (.dependency-cruiser.js) :files-in-part 1177)`, and `(boundaries-partial
+  :checked N :not-checked M)` replaces `ok`. Exit status 2 when a part's
+  declared rules were not read, 1 when a violation was found, 0 otherwise.
+  REPORT.md, `wingbox advice` and the MCP `boundaries` tool say the same.
+- `wingbox init` no longer tells people to edit `.wingbox/config.yaml`: it
+  names the next step, `wingbox learn`, which settles the open points (the
+  coding agent's task, asking the operator when the code does not tell, or
+  questions in a terminal), then `wingbox build`. The command help, the
+  README example and the style library notes say the same.
+
 ## 0.6.0 - 2026-11-17
 
 ### Changes

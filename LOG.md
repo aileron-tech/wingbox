@@ -1,5 +1,34 @@
 # Completion Log
 
+## 2026-11-17 - version 0.6.1: boundaries never passes a part it did not check
+
+### Changes
+- `pyproject.toml` and `WINGBOX_VERSION` of `.github/workflows/map-request.yml`: 0.6.1; the plugin manifests follow the release tag later.
+- `CHANGELOG.md`: `## 0.6.1 - 2026-11-17` with two fixes: boundaries no longer prints ok for parts whose declared rules were not read; init names the next step instead of "edit it".
+- `README.md`: the lead of the top block says "Your agent sees every file a change touches before it edits, so it no longer forgets a fix. Half the cost of its own search", as the site does now.
+- Why: the maintainer asked to ship the false-pass fix at once, with the init wording fix.
+
+## 2026-11-17 - boundaries says which parts it did not check
+
+### Changes
+- `scripts/code_graph_search.py`: `not_checked_parts` (parts with files and no rule that was read or determined: declared-rules-not-read, style-undetermined, no-layer-style, too-few-files) and `not_checked_text`; `cmd_boundaries` prints `boundaries-not-checked` first, `boundaries-partial` instead of `boundaries-ok`, and returns the exit status (2 not checked because declared rules were not read, 1 violation, capability violation or pattern break, 0 otherwise); `advice_items` gives such parts the same reason.
+- `scripts/architecture/facts.py`: `(arch-declared-unread <part> <file> :reason ...)` for every rule file of a part that was not read.
+- `src/wingbox/overview.py`: REPORT.md names the parts that were not checked in Key findings and in Boundary violations; `src/wingbox/cli.py`: `wingbox advice` prints `not checked: part . - declared rules not read (...)`.
+- Docs: README, SKILL.md, references/sexp-notation.md (facts and exit status).
+- Tests: REQ-BCOV-001..006 (`tests/test_boundaries_coverage.py`); REQ-CLI-012 now expects not-checked for an undetermined part instead of ok.
+- Why: on dirac (its own checker reports 73 violations), kopf and marumie, whose rule files 0.6.0 does not read, `boundaries` printed `(boundaries-ok :checked N)`: a false pass for audit evidence.
+
+## 2026-11-17 - init names the next step instead of "edit it"
+
+### Changes
+- `scripts/architecture/init.py`: `NEXT_STEP`, printed after `wrote .wingbox/config.yaml` (also by the new-project init in `src/wingbox/cli.py`): `wingbox learn` settles the open points, then `wingbox build`.
+- Wording of the same rule in the `wingbox init` help, the `config.py` docstring, the `index.toml` note and the README example.
+- Tests: REQ-CLI-008, REQ-NEW-002 and the init printer test assert the next step and that no message says "edit it".
+- Why: the maintainer's rule that people do not edit the layer configuration by hand; the agent settles it, a terminal user answers questions.
+
+### Verification
+- test_architecture, test_cli, test_new_project, test_learn, test_plugins: 88 OK (Python 3.12).
+
 ## 2026-11-17 - version 0.6.0: architecture styles, layer config through the agent, capability rules
 
 ### Changes

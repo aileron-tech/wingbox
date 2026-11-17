@@ -107,6 +107,7 @@ class Overview:
     advice: tuple[AdviceInfo, ...] = ()
     known_violations: tuple[ViolationInfo, ...] = ()   # rule breaks a baseline already lists
     quiet_parts: tuple[tuple[str, str], ...] = ()   # parts without advice and why
+    not_checked: tuple[tuple[str, str, int], ...] = ()   # (part, reason in words, files) of parts no rule checked
     capability_breaks: tuple[CapabilityInfo, ...] = ()   # what a file does that its layer may not
     pattern_breaks: tuple[CapabilityInfo, ...] = ()      # pattern checks of the style the code does not follow
 
@@ -246,6 +247,10 @@ def build_overview(graph: Any, search: Any, project: str, advice: Any = None) ->
             for item in advice_items
         ),
         quiet_parts=tuple(quiet_parts),
+        not_checked=tuple(
+            (item.part, search.not_checked_text(item, "`"), item.count)
+            for item in search.not_checked_parts(graph, set(graph.nodes))
+        ),
         violation_candidates=len(
             {(item.source, item.target) for item in infos if item not in type_only_crossings}
             - {(item.source, item.target) for item in ruled}
@@ -450,6 +455,10 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         "## Key findings",
         "",
     ]
+    lines += [
+        f"- Not checked: part {_code(part)} - {reason}; {_plural(count, 'file')} without a boundary check."
+        for part, reason, count in view.not_checked
+    ]
     if widest:
         lines.append(
             f"- A change to {_code(widest.file)} reaches {_number(widest.within_two_hops)} of "
@@ -514,6 +523,12 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         lines.append("No module depends on another one in this graph.")
 
     lines += ["", "## Boundary violations", ""]
+    if view.not_checked:
+        lines += [
+            f"Not checked: part {_code(part)} - {reason}; {_plural(count, 'file')}. "
+            "The counts below cover only the parts that were checked."
+            for part, reason, count in view.not_checked
+        ] + [""]
     if view.violations:
         lines += [
             "Dependencies that cross a boundary in the wrong direction, by the rules of the style of their part "

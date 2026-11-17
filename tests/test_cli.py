@@ -139,13 +139,15 @@ class WingboxInitTest(unittest.TestCase):
         _layered_project(self.root)
 
     def test_init_prints_the_styles_and_writes_the_config(self) -> None:
-        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build), creates nothing else, and ends with the line to edit it, then build. */"""
+        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build), creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
         before = {path for path in self.root.rglob("*")}
         status, text = _run(["init", str(self.root)])
         self.assertEqual(0, status, text)
         self.assertIn("layered (Martin Fowler)   1.00   container", text)
         self.assertIn("routes/ 4", text)
-        self.assertTrue(text.rstrip().endswith("wrote .wingbox/config.yaml (edit it, then: wingbox build)"), text)
+        self.assertIn("wrote .wingbox/config.yaml\nnext: wingbox learn settles the open points", text)
+        self.assertTrue(text.rstrip().endswith("then wingbox build"), text)
+        self.assertNotIn("edit it", text)
         config = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("    style: layered", config)
         self.assertIn("      api: [routes]", config)
@@ -221,7 +223,7 @@ class WingboxBuildArchitectureTest(unittest.TestCase):
         self.assertIn("layered: folder routes/ -\\u003e api", page)
 
     def test_build_follows_the_config_and_an_undetermined_part_has_no_violations(self) -> None:
-        """/* REQ-CLI-012: with .wingbox/config.yaml, build takes styles and folders from it (match config); a part marked undetermined gets no layers from folder rules and no boundary violations. */"""
+        """/* REQ-CLI-012: with .wingbox/config.yaml, build takes styles and folders from it (match config); a part marked undetermined gets no layers from folder rules and no boundary violations, and boundaries says it was not checked instead of ok. */"""
         config = self.root / ".wingbox" / "config.yaml"
         config.parent.mkdir()
         config.write_text("parts:\n  .:\n    style: layered\n    layers:\n      api: [models]\n", encoding="utf-8")
@@ -231,7 +233,9 @@ class WingboxBuildArchitectureTest(unittest.TestCase):
         self.assertIn('(arch-part "." :style layered :state configured :origin config', graph)
         config.write_text("parts:\n  .:\n    style: undetermined\n", encoding="utf-8")
         self.assertEqual(0, _run(["build", str(self.root)])[0])
-        self.assertIn("(boundaries-ok :checked", self._boundaries())
+        boundaries = self._boundaries()
+        self.assertIn("(boundaries-not-checked :part . :reason style-undetermined", boundaries)
+        self.assertNotIn("(boundaries-ok", boundaries)
         self.assertNotRegex((self.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8"), r"\(layer \S+ (api|domain) ")
 
     def test_recommendations_reach_the_report_the_map_analyze_impact_and_init(self) -> None:
