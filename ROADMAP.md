@@ -10,6 +10,12 @@ What is being built next. Items move to the [Changelog](CHANGELOG.md) when they 
 
 ## Next
 
+- **Propose the layers, then hold them:** for a project that has no declared layers, `wingbox align --learn` proposes a full layer table (layers lowest first, folder patterns, the few files pinned to another layer than their folder suggests) from the graph and the architecture library, for a person to edit. Once accepted, the layers are held the way large monorepos hold them by hand today:
+  - a check that fails on any new upward import, run locally and in CI;
+  - a list of the existing upward imports in `.wingbox/baseline.sexp` that may only shrink: a fixed one must be removed from the list, a new one can be added only on purpose;
+  - required imports that can never become exceptions (an entry point must bind its ports);
+  - optionally one TypeScript project (or package) per layer, with a check that every file sits in the project its layer names;
+  - export of the same rules to the tools a team already runs: CodeRabbit review instructions and ast-grep rules, and a dependency-cruiser configuration.
 - **Confidence on every edge:** each dependency carries how it was found (resolved from the import, inferred, or ambiguous), so an agent knows which links to trust.
 - **A short verdict before an edit:** `SAFE`, `CAUTION` or `DANGEROUS` for a file, from its blast radius and the layers it touches, with capped lists and counts of what was left out.
 - **Failed queries say so:** a query that could not finish is marked as failed, so it never reads as "nothing depends on this".
