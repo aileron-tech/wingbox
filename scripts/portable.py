@@ -1,0 +1,117 @@
+"""What differs between Windows, macOS and Linux, in one place. Everything else calls these helpers.
+
+- file locks: `lock` / `unlock` on an open file (fcntl.flock, or msvcrt.locking on Windows); the system
+  releases them when the process ends;
+- a detached child process: `detached_process_options` (a new session, or a new process group without a
+  console on Windows);
+- atomic replacement: `replace` retries a moment when Windows refuses to replace a file another process
+  holds open; `fsync_directory` is a no-op where a folder cannot be opened;
+- the start method of worker processes: `start_method` (as before: fork for the resolution workers where
+  it exists, the system default for parsing; WINGBOX_START_METHOD overrides it, which the tests use to run
+  the Windows path, spawn, anywhere);
+- text streams: `utf8_streams` makes stdout and stderr write UTF-8 and replace what they cannot encode.
+
+Standard library only: the build scripts import it before anything else.
+"""
+from __future__ import annotations
+
+import multiprocessing
+import os
+import sys
+import time
+from typing import IO, Any
+
+WINDOWS = os.name == "nt"
+_REPLACE_ATTEMPTS = 20
+_REPLACE_PAUSE = 0.05
+
+
+def lock(handle: IO[Any], blocking: bool = True) -> bool:
+    """Take the exclusive lock of an open file; False when another process holds it and blocking is off."""
+    if WINDOWS:
+        import msvcrt
+
+        while True:
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                return True
+            except OSError:
+                if not blocking:
+                    return False
+                time.sleep(_REPLACE_PAUSE)
+    import fcntl
+
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        return True
+    except BlockingIOError:
+        return False
+
+
+def unlock(handle: IO[Any]) -> None:
+    if WINDOWS:
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    import fcntl
+
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def detached_process_options() -> dict[str, Any]:
+    """Popen options for a child that outlives its parent and is not tied to its console or session."""
+    if WINDOWS:
+        import subprocess
+
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS, "close_fds": True}
+    return {"start_new_session": True, "close_fds": True}
+
+
+def replace(source: str, target: str) -> None:
+    """os.replace, retried a moment while Windows reports the target in use by another process."""
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if not WINDOWS or attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_PAUSE)
+
+
+def fsync_directory(directory: str) -> None:
+    """Make a rename in directory durable where the system allows opening a folder (not on Windows)."""
+    if WINDOWS:
+        return
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def start_method(prefer_fork: bool = False) -> str:
+    """The start method of worker processes. WINGBOX_START_METHOD overrides it (the tests run the Windows
+    path anywhere with spawn). Otherwise: fork where it exists when prefer_fork (the resolution workers
+    share the parent's context that way), else the system's default method (spawn on Windows and macOS)."""
+    available = multiprocessing.get_all_start_methods()
+    wanted = os.environ.get("WINGBOX_START_METHOD", "")
+    if wanted in available:
+        return wanted
+    if prefer_fork and "fork" in available:
+        return "fork"
+    return multiprocessing.get_start_method(allow_none=True) or available[0]
+
+
+def utf8_streams() -> None:
+    """stdout and stderr write UTF-8, and replace what they cannot encode, whatever the console code page."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass   # a stream that was already written to binary or closed keeps its settings

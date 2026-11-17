@@ -17,7 +17,7 @@ Model: dirty marking plus a lazy refresh.
 
 This module is imported by the hooks: it reads and writes small JSON files and
 calls stat; it never imports the builder. Writes are atomic (temporary file and
-rename) and serialised by a lock file (`fcntl.flock`, released by the kernel
+rename) and serialised by a lock file (`portable.lock`, released by the system
 when its process dies, so a crashed writer leaves no stale lock).
 
 Settings (environment):
@@ -32,7 +32,6 @@ Settings (environment):
 """
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import sys
@@ -300,7 +299,7 @@ def write_json_atomic(path: str, value: object) -> None:
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, separators=(",", ":"))
-        os.replace(temporary, path)
+        _portable().replace(temporary, path)
     except BaseException:
         try:
             os.unlink(temporary)
@@ -317,6 +316,13 @@ def read_state(root: str) -> State:
     return decode_state(raw)
 
 
+def _portable():
+    """scripts/portable.py: the platform differences (locks, detached processes, atomic replace)."""
+    from wingbox.cli import load_script
+
+    return load_script("portable")
+
+
 def write_state(root: str, state: State) -> None:
     write_json_atomic(_state_file(root, STATE_NAME), encode_state(state))
 
@@ -326,11 +332,12 @@ def state_lock(root: str) -> Iterator[None]:
     """Serialise read-modify-write of the state between processes."""
     os.makedirs(state_directory(root), exist_ok=True)
     with open(_state_file(root, LOCK_NAME), "a+", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        portable = _portable()
+        portable.lock(handle)
         try:
             yield
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            portable.unlock(handle)
 
 
 def update_state(root: str, change) -> State:
@@ -700,11 +707,10 @@ def refresh_running(root: str) -> bool:
     except OSError:
         return False
     with handle:
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        portable = _portable()
+        if not portable.lock(handle, blocking=False):
             return True
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        portable.unlock(handle)
     return False
 
 
@@ -733,8 +739,7 @@ def start_refresh(root: str) -> "subprocess.Popen":
             stderr=log,
             cwd=root,
             env=environment,
-            start_new_session=True,
-            close_fds=True,
+            **_portable().detached_process_options(),
         )
 
 

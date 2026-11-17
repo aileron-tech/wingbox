@@ -18,11 +18,12 @@ import subprocess
 import sys
 
 
-def run_git(cmd: str, cwd: str | None = None) -> list[str]:
-    """Run a git command and return output lines."""
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
+def run_git(arguments: list[str], cwd: str | None = None) -> list[str]:
+    """Run git with an argument list (no shell) and return its output lines, decoded as UTF-8."""
+    result = subprocess.run(["git", *arguments], capture_output=True, text=True, encoding="utf-8",
+                            errors="replace", cwd=cwd)
     if result.returncode != 0:
-        print(f"Error running: {cmd}", file=sys.stderr)
+        print(f"Error running: git {' '.join(arguments)}", file=sys.stderr)
         print(result.stderr, file=sys.stderr)
         sys.exit(1)
     return result.stdout.strip().split("\n") if result.stdout.strip() else []
@@ -45,7 +46,7 @@ def build_parent_child_map(
     """Build a map of commit -> leftmost parent and parent -> children."""
     print("Building commit graph...", file=sys.stderr)
 
-    commits = run_git("git rev-list --all --reflog --parents", cwd=cwd)
+    commits = run_git(["rev-list", "--all", "--reflog", "--parents"], cwd=cwd)
 
     parent_map: dict[str, str] = {}
     children_map: dict[str, list[str]] = {}

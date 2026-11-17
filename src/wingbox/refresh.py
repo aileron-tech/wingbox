@@ -14,7 +14,6 @@ of a project at a time, whoever starts it):
 from __future__ import annotations
 
 import dataclasses
-import fcntl
 import os
 import sys
 import time
@@ -102,8 +101,9 @@ def main(args: list[str]) -> int:
     with open(freshness.refresh_lock_path(root), "a+", encoding="utf-8") as refresh_lock, open(
         builder._lock_path(root), "a+", encoding="utf-8"
     ) as build_lock:
-        fcntl.flock(refresh_lock.fileno(), fcntl.LOCK_EX)
-        fcntl.flock(build_lock.fileno(), fcntl.LOCK_EX)  # waits for a `wingbox build` in progress
+        portable = cli.load_script("portable")
+        portable.lock(refresh_lock)
+        portable.lock(build_lock)  # waits for a `wingbox build` in progress
         return refresh(root)
 
 
