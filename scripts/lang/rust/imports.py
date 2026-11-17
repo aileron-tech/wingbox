@@ -6,7 +6,7 @@ import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
+from typing import Callable, Mapping
 
 from ..discovery import is_excluded_path, retained_directory_names
 from ..interface import DiscoveryExclusions, FileResult
@@ -334,3 +334,92 @@ class BoundRustLanguage:
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
         return ()
+
+    def resolve_named_imports(
+        self,
+        result: FileResult,
+        results: Mapping[str, FileResult],
+        resolve: Callable[[str, str], str | None] | None = None,
+    ) -> tuple[dict[str, frozenset[str]], int]:
+        """Files that define the names this file imports through a module facade, and how many names could not
+        be followed.
+
+        `use crate::m::{A, B}` (or `m::A` after `use crate::m`) where m re-exports its children (`pub use child::*`,
+        `pub use child::A`, also `pub(crate)` and through a grandchild) depends on the child that defines A: that
+        edge carries the relation "item" (the file names an item of the module; `impact` follows it like any import,
+        unlike the entity-level "reexport" of refs). A glob import `use crate::m::*` gives "item" and "candidate" to
+        the children whose items the body names. A name the facade itself defines, or one in an inline module of it,
+        stays with the facade. A name no file defines (made by a macro, behind #[path] or cfg) is counted; its
+        importer keeps the facade edge, which is always kept. `resolve` is the resolver to ask (a traced one during
+        a graph update); results are the parse results by module ID."""
+        resolve = resolve or self.resolve_import
+        found: dict[str, set[str]] = {}
+        not_followed = 0
+        for spec in result.imports:
+            target = resolve(spec, result.path)
+            named = self._named_item(spec, result.path, target, resolve) if target is not None else None
+            if named is None:
+                continue
+            definer = self._definer(target, named, results, resolve, set())
+            if definer is None:
+                not_followed += 1
+            elif definer != target:
+                found.setdefault(definer, set()).add("item")
+        used = {use["path"][0] for use in result.uses if len(use["path"]) == 1 and "module" not in use}
+        for binding in result.bindings:
+            if binding.get("name") != "*" or binding.get("export"):
+                continue
+            facade = resolve(str(binding.get("module", "")), result.path)
+            if facade is None:
+                continue
+            for name in sorted(used):
+                definer = self._definer(facade, name, results, resolve, set())
+                if definer is not None and definer != facade:
+                    found.setdefault(definer, set()).update(("item", "candidate"))
+        return {target: frozenset(relations) for target, relations in found.items()}, not_followed
+
+    @staticmethod
+    def _named_item(
+        spec: str, source: str, target: str, resolve: Callable[[str, str], str | None]
+    ) -> str | None:
+        """The item a path names after the module it resolves to (crate::m::A -> A), or None for a module path or
+        a name inside an inline module of the target file."""
+        segments = [segment for segment in spec.split("::") if segment]
+        for count in range(1, len(segments)):
+            if resolve("::".join(segments[:count]), source) == target:
+                name = segments[count]
+                inline_module = count < len(segments) - 1 and name[:1].islower()
+                return None if inline_module else name
+        return None
+
+    def _definer(
+        self,
+        module: str,
+        name: str,
+        results: Mapping[str, FileResult],
+        resolve: Callable[[str, str], str | None],
+        seen: set[str],
+    ) -> str | None:
+        """The module that defines name as module sees it: module itself, or the file a `pub use` leads to."""
+        if module in seen:
+            return None
+        seen.add(module)
+        result = results.get(module)
+        if result is None:
+            return None
+        if any(entity["name"] == name for entity in result.entities):
+            return module
+        for binding in result.bindings:
+            if not binding.get("export"):
+                continue
+            original, local, source = binding.get("name", ""), binding.get("local", ""), binding.get("module", "")
+            if original == "*":
+                child = resolve(source, result.path)
+                found = self._definer(child, name, results, resolve, seen) if child is not None else None
+                if found is not None:
+                    return found
+            elif local == name and original:
+                child = resolve(f"{source}::{original}", result.path)
+                if child is not None and child != module:
+                    return self._definer(child, original, results, resolve, seen)
+        return None
