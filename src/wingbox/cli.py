@@ -1574,19 +1574,11 @@ def _run(argv: Optional[list[str]] = None) -> int:
         return mcp_server.main(rest, cwd)
     if command == "init":
         return _init(rest, cwd)
-    if command == "advice":
-        return _advice_command(rest, cwd)
-    if command == "align":
-        return _align_command(rest, cwd)
-    if command == "compare":
+    if command in _ARCHITECTURE_COMMANDS:
+        # They read the graph like the query commands: bring it up to date first, or say it is stale.
+        _refresh_before_query([command, *rest], cwd)
         load_script("architecture")
-        return _compare_command(rest, cwd)
-    if command == "learn":
-        load_script("architecture")
-        return _learn_command(rest, cwd)
-    if command == "place":
-        load_script("architecture")
-        return _place_command(rest, cwd)
+        return _ARCHITECTURE_COMMANDS[command](rest, cwd)
     if command == "infra":
         sys.argv = ["wingbox infra"] + absolutize_path_options(rest, cwd)
         load_script("build_infra_topology").main()
@@ -1594,6 +1586,15 @@ def _run(argv: Optional[list[str]] = None) -> int:
     query = absolutize_path_options(args, cwd)
     _refresh_before_query(query, cwd)
     return int(load_script("code_graph_search").main(query))
+
+
+_ARCHITECTURE_COMMANDS = {
+    "advice": lambda rest, cwd: _advice_command(rest, cwd),
+    "align": lambda rest, cwd: _align_command(rest, cwd),
+    "compare": lambda rest, cwd: _compare_command(rest, cwd),
+    "learn": lambda rest, cwd: _learn_command(rest, cwd),
+    "place": lambda rest, cwd: _place_command(rest, cwd),
+}
 
 
 def _refresh_before_query(args: list[str], cwd: str) -> None:

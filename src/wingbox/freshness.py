@@ -369,6 +369,7 @@ class Snapshot:
     config_patterns: tuple[tuple[str, str], ...]  # (prefix, suffix) of names such as tsconfig.*.json
     skip_dirs: frozenset[str]
     root: str = ""  # the folder the graph was built from
+    data_folders: frozenset[str] = frozenset()  # folders of module loaders: their JSON, YAML, TOML files count
 
 
 def decode_snapshot(raw: object) -> Optional[Snapshot]:
@@ -387,6 +388,7 @@ def decode_snapshot(raw: object) -> Optional[Snapshot]:
             config_patterns=tuple((str(pair[0]), str(pair[1])) for pair in raw.get("config_patterns", ())),
             skip_dirs=frozenset(raw.get("skip_dirs", ())),
             root=str(raw.get("root", "")),
+            data_folders=frozenset(str(folder) for folder in raw.get("data_folders", ())),
         )
     except (TypeError, ValueError, IndexError):
         return None
@@ -402,6 +404,7 @@ def encode_snapshot(snapshot: Snapshot) -> dict:
         "root": snapshot.root,
         "files": {path: list(value) for path, value in sorted(snapshot.files.items())},
         "directories": dict(sorted(snapshot.directories.items())),
+        "data_folders": sorted(snapshot.data_folders),
     }
 
 
@@ -416,6 +419,20 @@ def write_snapshot(root: str, snapshot: Snapshot) -> None:
 def is_config_name(snapshot: Snapshot, name: str) -> bool:
     return name in snapshot.config_names or any(
         name.startswith(prefix) and name.endswith(suffix) for prefix, suffix in snapshot.config_patterns
+    )
+
+
+DATA_SUFFIXES = (".json", ".yaml", ".yml", ".toml")
+
+
+def is_tracked_path(snapshot: Snapshot, relative: str) -> bool:
+    """A file the graph depends on: a tracked name, a file of the last build, or a configuration
+    file beside a module loader (the names its registry loads)."""
+    folder, _, name = relative.rpartition("/")
+    return (
+        relative in snapshot.files
+        or is_tracked_name(snapshot, name)
+        or (folder in snapshot.data_folders and name.endswith(DATA_SUFFIXES))
     )
 
 
@@ -473,7 +490,7 @@ def _new_entries(
                 if child not in directories:
                     directories[child] = _directory_time(entry.path)
                     _new_entries(root, child, snapshot, files, directories)
-            elif entry.is_file(follow_symlinks=False) and child not in snapshot.files and is_tracked_name(snapshot, entry.name):
+            elif entry.is_file(follow_symlinks=False) and child not in snapshot.files and is_tracked_path(snapshot, child):
                 files[child] = _signature(entry.path)
         except OSError:
             continue
@@ -516,7 +533,7 @@ def with_outside_changes(snapshot: Snapshot, changes: OutsideChanges) -> Snapsho
             directories[path] = seen
     return Snapshot(
         files, directories, snapshot.extensions, snapshot.config_names, snapshot.config_patterns, snapshot.skip_dirs,
-        snapshot.root,
+        snapshot.root, snapshot.data_folders,
     )
 
 
@@ -573,7 +590,7 @@ def run_post_edit(stdin_text: str) -> None:
     if relative is None or relative.split("/", 1)[0] in _NOT_TRACKED:
         return
     snapshot = read_snapshot(root)
-    if snapshot is not None and not is_tracked_name(snapshot, os.path.basename(relative)):
+    if snapshot is not None and not is_tracked_path(snapshot, relative):
         return
     assert isinstance(payload, dict)
     if _reported_failure(payload) and not _changed_on_disk(root, relative, snapshot):

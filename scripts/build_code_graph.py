@@ -117,7 +117,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
-from typing import Any, Callable, Generic, Mapping, Optional, Sequence, TypeVar
+from typing import Any, Callable, Generic, Iterable, Mapping, Optional, Sequence, TypeVar
 from urllib.parse import quote, unquote
 
 try:
@@ -132,7 +132,7 @@ try:
             language_for_name,
             language_for_result,
         )
-        from .lang.config_values import ConfigValues, read_config_values
+        from .lang.config_values import CONFIG_SUFFIXES, ConfigValues, read_config_values
         from .lang.purpose import infer_purpose, scan_root
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
@@ -166,7 +166,7 @@ try:
             language_for_name,
             language_for_result,
         )
-        from lang.config_values import ConfigValues, read_config_values
+        from lang.config_values import CONFIG_SUFFIXES, ConfigValues, read_config_values
         from lang.purpose import infer_purpose, scan_root
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
@@ -434,6 +434,9 @@ class TreeSnapshot:
 
     files: dict[str, tuple[int, int]] = field(default_factory=dict)
     directories: dict[str, int] = field(default_factory=dict)
+    # Folders of Python module loaders: their JSON, YAML and TOML files name the modules a registry
+    # loads (registry-wires), so a change to one of them changes the graph.
+    data_folders: set[str] = field(default_factory=set)
 
 
 def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str], root: str) -> str:
@@ -452,9 +455,31 @@ def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str], root
             "skip_dirs": sorted(skip_directories),
             "files": {path: list(value) for path, value in sorted(snapshot.files.items())},
             "directories": dict(sorted(snapshot.directories.items())),
+            "data_folders": sorted(snapshot.data_folders),
         },
         separators=(",", ":"),
     )
+
+
+def loader_folders(root: str, results: Iterable[FileResult]) -> set[str]:
+    """Folders (relative, with /) of the files that load modules by a name read at run time."""
+    folders = {os.path.relpath(os.path.dirname(result.path), root).replace(os.sep, "/") for result in results if result.module_loads}
+    return {"" if folder == "." else folder for folder in folders}
+
+
+def record_loader_configs(root: str, snapshot: TreeSnapshot, results: Iterable[FileResult]) -> None:
+    """Add the configuration files beside each module loader, and its folder, to the snapshot."""
+    for folder in sorted(loader_folders(root, results)):
+        snapshot.data_folders.add(folder)
+        directory = os.path.join(root, *folder.split("/")) if folder else root
+        try:
+            entries = sorted(os.scandir(directory), key=lambda entry: entry.name)
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.name.endswith(CONFIG_SUFFIXES) and entry.is_file(follow_symlinks=False):
+                status = entry.stat(follow_symlinks=False)
+                snapshot.files[f"{folder}/{entry.name}" if folder else entry.name] = (status.st_mtime_ns, status.st_size)
 
 
 def discover_files(
@@ -4286,6 +4311,7 @@ def _run_build(options: BuilderOptions) -> int:
     if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
     if options.snapshot_path and snapshot is not None:
+        record_loader_configs(root, snapshot, all_results)
         os.makedirs(os.path.dirname(options.snapshot_path), exist_ok=True)
         _atomic_write_text(options.snapshot_path, snapshot_json(snapshot, options.skip_directories, root))
 

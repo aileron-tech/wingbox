@@ -160,6 +160,14 @@
 
 ### Fixes
 
+- `wingbox advice`, `align`, `place`, `learn` and `compare` bring the graph up
+  to date before they read it, as the query commands do, and print the same
+  stale or unconfirmed fact when they cannot.
+- A change to a JSON, YAML or TOML file beside a Python module loader (the
+  names its registry loads) marks the graph out of date, through the edit hook
+  and the comparison with the last build; the next query rebuilds the
+  registry-wires edges.
+
 - Advice the user accepted is never hidden as ignored; the decisions store
   logs one line per build plus changes of state instead of a line per open
   item; with a `.wingbox/config.yaml` the config wins over learned folders, and

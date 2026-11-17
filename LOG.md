@@ -1,5 +1,18 @@
 # Completion Log
 
+## 2026-11-17 - architecture commands read a fresh graph; loader configs keep it fresh
+
+### Changes
+- `src/wingbox/cli.py`: advice, align, compare, learn and place go through `_refresh_before_query`, the step the query commands use (refresh, or the stale or unconfirmed fact on stderr).
+- `scripts/build_code_graph.py`: `TreeSnapshot.data_folders` and `record_loader_configs`: the snapshot of a build lists the JSON, YAML and TOML files beside each Python module loader and the loader's folder.
+- `src/wingbox/freshness.py`: `Snapshot.data_folders`, `is_tracked_path` (a file of the last build, a tracked name, or a configuration file in a loader folder) for the PostToolUse hook and for new files found by the comparison with the snapshot.
+- `scripts/graph_update.py`: a changed loader configuration makes the partial update step aside, so the refresh rebuilds and the registry-wires edges follow the new names.
+- Tests REQ-FRESH-035..039 (`tests/test_architecture_freshness.py`).
+- Why: the two gaps named in the capability-rules report; the maintainer asked to treat them as bugs.
+
+### Verification
+- tests/test_architecture_freshness.py, test_freshness, test_graph_update, test_project_folder, test_learn, test_cli: 77 OK (Python 3.12).
+
 ## 2026-11-17 - Find-usages benchmark: Wingbox, CodeGraph and Graphify on 100 symbols
 
 ### Changes
