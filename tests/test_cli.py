@@ -352,7 +352,7 @@ class WingboxNestEntryPointsTest(unittest.TestCase):
 
 class WingboxDecisionsTest(unittest.TestCase):
     def test_three_builds_follow_learn_and_reject(self) -> None:
-        """/* REQ-CLI-018: across builds, .wingbox/decisions.sexp logs the advice given, a created folder as followed, a file moved elsewhere as done differently with the layer learned for that folder (the next build labels it :learned-from), and `wingbox advice reject` hides an item from `wingbox advice`. */"""
+        """/* REQ-CLI-018: across builds of a project whose .wingbox/decisions.sexp was started (by init, learn, align --learn or advice), the file logs the advice given, a created folder as followed, a file moved elsewhere as done differently with the layer learned for that folder (the next build labels it :learned-from), and `wingbox advice reject` hides an item from `wingbox advice`. */"""
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name).resolve()
@@ -362,6 +362,9 @@ class WingboxDecisionsTest(unittest.TestCase):
             (root / "src" / "services" / f"services{index}.ts").write_text(
                 f"import {{ PATHS }} from '../routes/paths';\nexport const services{index} = PATHS;\n", encoding="utf-8"
             )
+        # The log is started by the project's setup (init, learn, align --learn, advice); here it starts empty.
+        (root / ".wingbox").mkdir(exist_ok=True)
+        (root / ".wingbox" / "decisions.sexp").write_text("", encoding="utf-8")
         self.assertEqual(0, _run(["build", str(root)])[0])
         store = root / ".wingbox" / "decisions.sexp"
         first = store.read_text(encoding="utf-8")
