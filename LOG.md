@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-17 - Search hook: a hint without a graph, smart case
+
+### Changes
+- `src/wingbox/hook.py`: in a source repository (a git work tree or a folder with a project manifest, holding files of a supported language within four levels and 5,000 entries) without `.wingbox/index.sexp`, the search hook answers `(wingbox-no-graph :root <root> :hint ...)` once per session and repository; the mark is a file under `~/.wingbox/hook-hints` (pruned after 7 days), nothing is written into the project and nothing is built. No hint in the home folder, outside a repository or in a repository of documents. REQ-INSTALL-025..027; REQ-FRESH-026 and REQ-FRESH-032 now expect the hint (they asserted the silence that was the reported bug), and the freshness and project-folder tests run with a temporary home.
+- Grep patterns use smart case (no upper-case letter outside escapes: ignore case; Grep's `-i`: always ignore case); the longest-word retry follows the same case. REQ-INSTALL-024.
+- Why: the maintainer's session read four files in a repository without a graph and the hook said nothing, so the agent never learned Wingbox was there; and `subscription` found nothing in the hook while `wingbox quick subscription` matched 17 modules.
+- Measured on fastapi without a graph: the no-graph check takes 2.3 ms in the hook (first hint) and 1.4 ms when already told; the whole hook process 0.27 s, as before (Python start).
+
 ## 2026-11-17 - Version 0.8.0: Claude Desktop extension
 
 ### Changes
