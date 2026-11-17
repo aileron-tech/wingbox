@@ -33,7 +33,8 @@ pinned to the commit of the latest release tag, which uv fetches and builds on f
 parser dependencies come from PyPI). Claude Code starts `uvx` with no shell, so this works on
 macOS, Linux and Windows alike. The hooks run uvx offline: they never download anything, and
 when uv or its copy of Wingbox is missing they fail without blocking the tool call. In Codex the
-MCP server is `wingbox mcp` from your PATH, so install the command.
+MCP server runs the same pinned release through `uvx` (`wingbox mcp --build-missing`: the first
+question in a repository without a graph builds it), so the Codex plugin needs uv too.
 
 ## Install
 

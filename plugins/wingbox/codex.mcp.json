@@ -1,8 +1,15 @@
 {
   "mcpServers": {
     "wingbox": {
-      "command": "wingbox",
-      "args": ["mcp"]
+      "command": "uvx",
+      "args": [
+        "--quiet",
+        "--from",
+        "git+https://github.com/aileron-tech/wingbox@a1acef73acf26ebcdda435eb55685f6b1f00e6ce",
+        "wingbox",
+        "mcp",
+        "--build-missing"
+      ]
     }
   }
 }

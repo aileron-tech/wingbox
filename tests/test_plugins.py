@@ -94,7 +94,7 @@ class ClaudePluginTest(unittest.TestCase):
 
 class CodexPluginTest(unittest.TestCase):
     def test_manifest(self) -> None:
-        """/* REQ-PLUGIN-011: the Codex manifest `.codex-plugin/plugin.json` must name the plugin wingbox at the version of pyproject.toml, declare ./skills/ and ./codex.mcp.json (not .mcp.json, which the Claude plugin directory reads as a second, shadowed server), require a local executor, and give the listing fields within the directory limits (display name and subtitle at most 30 characters, at most three starter prompts of 128 characters, square icons that exist); `codex.mcp.json` must start `wingbox mcp` from PATH so that it runs in the session folder. */"""
+        """/* REQ-PLUGIN-011: the Codex manifest `.codex-plugin/plugin.json` must name the plugin wingbox at the version of pyproject.toml, declare ./skills/ and ./codex.mcp.json (not .mcp.json, which the Claude plugin directory reads as a second, shadowed server), require a local executor, and give the listing fields within the directory limits (display name and subtitle at most 30 characters, at most three starter prompts of 128 characters, square icons that exist); `codex.mcp.json` must start the pinned release with `uvx --quiet --from <pin> wingbox mcp --build-missing` and no `cwd`, so that it runs in the session folder without a `wingbox` on PATH. */"""
         manifest = load(PLUGIN / ".codex-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
         self.assertEqual(manifest["version"], PLUGIN_VERSION)
@@ -120,7 +120,10 @@ class CodexPluginTest(unittest.TestCase):
             self.assertEqual(width, height)
         self.assertFalse((PLUGIN / "hooks" / "hooks.json").exists(), "Codex loads hooks/hooks.json by default")
         servers = load(PLUGIN / "codex.mcp.json")["mcpServers"]
-        self.assertEqual(servers, {"wingbox": {"command": "wingbox", "args": ["mcp"]}})
+        source = "git+https://github.com/aileron-tech/wingbox@" + PIN.findall(CLAUDE_MANIFEST.read_text(encoding="utf-8"))[0]
+        self.assertEqual(
+            servers, {"wingbox": {"command": "uvx", "args": ["--quiet", "--from", source, "wingbox", "mcp", "--build-missing"]}}
+        )
 
     def test_marketplace(self) -> None:
         """/* REQ-PLUGIN-012: `.agents/plugins/marketplace.json` must list wingbox from the local path ./plugins/wingbox with an install policy, an authentication policy and a category, so that `codex plugin marketplace add aileron-tech/wingbox` offers it. */"""
@@ -177,6 +180,7 @@ class SkillCopyTest(unittest.TestCase):
             self.assertEqual(load(plugin / ".codex-plugin" / "plugin.json")["version"], "9.8.7")
             text = (plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
             self.assertEqual(PIN.findall(text), [fake] * 3)   # both hooks and the MCP server
+            self.assertEqual(PIN.findall((plugin / "codex.mcp.json").read_text(encoding="utf-8")), [fake])
 
 
 class NoGitTest(unittest.TestCase):
@@ -226,12 +230,12 @@ class ReleaseTagTest(unittest.TestCase):
 
 class PinTest(unittest.TestCase):
     def test_every_uvx_command_is_pinned_to_a_release_commit(self) -> None:
-        """/* REQ-PLUGIN-005: every uvx command of the Claude Code manifest (both hooks and the MCP server) must name the source as a literal git URL pinned to the same full 40-character commit (the Claude plugin directory refuses a PyPI version, a variable or a short commit as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
+        """/* REQ-PLUGIN-005: every uvx command of the plugins (both hooks and the MCP server of Claude Code, the MCP server of Codex) must name the source as a literal git URL pinned to the same full 40-character commit (the Claude plugin directory refuses a PyPI version, a variable or a short commit as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
         text = CLAUDE_MANIFEST.read_text(encoding="utf-8")
         self.assertNotIn("wingbox==", text)
         self.assertNotIn("$", text.replace("${CLAUDE_PLUGIN_ROOT}", ""))
-        commits = PIN.findall(text)
-        self.assertEqual(len(commits), 3)
+        commits = PIN.findall(text) + PIN.findall((PLUGIN / "codex.mcp.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(commits), 4)   # the hooks and the MCP server of Claude Code, the MCP server of Codex
         self.assertEqual(len(set(commits)), 1)
         tags = subprocess.run(["git", "-C", str(REPO), "tag", "--points-at", commits[0]], capture_output=True, text=True).stdout.split()
         if subprocess.run(["git", "-C", str(REPO), "tag", "--list", "v*"], capture_output=True, text=True).stdout.strip():
