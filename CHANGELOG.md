@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.1 - 2026-11-17
+
+### Fixes
+
+- Inside a Homebrew install `wingbox update` changes nothing and names `brew upgrade wingbox` (it
+  chose `uv pip` when uv was on PATH and would have upgraded the package behind Homebrew's back).
+  Wingbox installs with Homebrew from the tap: `brew install aileron-tech/wingbox/wingbox`.
+- The Python reference of the benchmarks counts a module loaded by a literal name
+  (`importlib.import_module("a.b")`, `__import__("a.b")`) like an import. FastAPI: 1,802 import
+  pairs, Wingbox 1,819 edges, 0 wrong, 0 missing (it was 1,801 pairs; the graph had found the extra
+  dependency since 0.6.0). The impact questions and their reference lists are unchanged; the
+  comparison's FastAPI rows are scored again for every tool.
+
 ## 0.9.0 - 2026-11-17
 
 Wingbox writes in two places only: a repository's `.wingbox/` folder and your
