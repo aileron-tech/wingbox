@@ -838,3 +838,11 @@
 ### Motivation
 - Errors seen in a real session on 0.4.0; maintainer: ".code_graph.sexp -> .wingbox/index.sexp", "все файлы должны быть в каталоге .wingbox", "ничего удалять не надо", "никаких совместимостей", "выпускай сразу версию потом".
 
+## 2026-11-17 - Release 0.5.1
+
+### Changes
+- Version 0.5.1: Dart and Flutter (#47), the grammar as the opt-in extra `wingbox[dart]`. The map-request workflow builds with 0.5.1.
+
+### Motivation
+- The maintainer: "да" to releasing Dart as 0.5.1.
+
