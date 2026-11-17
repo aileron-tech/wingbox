@@ -1,4 +1,4 @@
-"""MCP server for Wingbox: `wingbox mcp [--root DIR]`.
+"""MCP server for Wingbox: `wingbox mcp [--root DIR] [--build-missing]`.
 
 Serves the code graph of one repository to an MCP client over stdio:
 newline-delimited JSON-RPC 2.0 on stdin and stdout, logs on stderr, no network.
@@ -17,12 +17,18 @@ The loaded graph is kept between calls and reloaded when the file changes.
 Before each tool reads it, the graph is brought up to date with the files
 changed since it was built (freshness.ensure_graph_fresh); an answer from a
 graph that may miss changes starts with `(wingbox-graph-stale ...)`.
+
+With --build-missing (the Claude Desktop extension passes it, for the folder
+the user picked) the server starts `wingbox build DIR` in a child process when
+DIR has no graph; tool calls wait for it up to WINGBOX_FIRST_BUILD_WAIT seconds
+and then say that the first build is still running.
 """
 from __future__ import annotations
 
 import io
 import json
 import os
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -52,11 +58,14 @@ LIST_TTL_MS = 3_600_000
 BUILD_LOG_TAIL = 15
 MAX_DEPTH = 50
 
-USAGE = """usage: wingbox mcp [--root DIR]
+FIRST_BUILD_WAIT_SECONDS = 45   # below the usual 60 s tool-call limit of MCP clients
+
+USAGE = """usage: wingbox mcp [--root DIR] [--build-missing]
 
 Run the Wingbox MCP server on stdio for the repository at DIR (default: the
-current directory). An MCP client starts this command; see the README section
-"Use from an MCP client"."""
+current directory). With --build-missing it builds the code graph of DIR in the
+background when there is none. An MCP client starts this command; see the README
+section "Use from an MCP client"."""
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +194,8 @@ def find_graph(root: str) -> Optional[str]:
 @dataclass
 class Server:
     root: str
+    _first_build: Optional[subprocess.Popen] = field(default=None, repr=False)
+    _first_build_started: float = 0.0
     _cache_key: Optional[tuple[str, int, int]] = None
     _cache_graph: Any = None
     _search: Any = field(default=None, repr=False)
@@ -194,7 +205,43 @@ class Server:
             self._search = cli.load_script("code_graph_search")
         return self._search
 
+    def start_first_build(self) -> None:
+        """Build the graph of root in a child process when root has none (--build-missing)."""
+        if freshness.find_project(self.root) is not None:
+            return
+        print(f"[wingbox] no code graph in {self.root}: building it", file=sys.stderr)
+        self._first_build_started = time.monotonic()
+        self._first_build = subprocess.Popen(
+            [sys.executable, "-m", "wingbox", "build", self.root],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=sys.stderr,
+        )
+
+    def first_build_message(self) -> Optional[str]:
+        """None once no first build runs; else waits for it a moment and says why there is no answer yet."""
+        builder = self._first_build
+        if builder is None:
+            return None
+        try:
+            status = builder.wait(timeout=float(os.environ.get("WINGBOX_FIRST_BUILD_WAIT", FIRST_BUILD_WAIT_SECONDS)))
+        except subprocess.TimeoutExpired:
+            elapsed = int(time.monotonic() - self._first_build_started)
+            return (f"Wingbox is building the code graph of {self.root} for the first time ({elapsed} s so far; "
+                    "a large repository can take several minutes). Call the tool again in a minute.")
+        self._first_build = None
+        if status != 0:
+            return f"The first build of the code graph of {self.root} failed (status {status}). Call the build tool to see why."
+        return None
+
+    def stop_first_build(self) -> None:
+        """When the client closes the server: stop a first build still running (the next start begins again)."""
+        if self._first_build is not None and self._first_build.poll() is None:
+            self._first_build.terminate()
+            self._first_build.wait()
+
     def graph(self) -> GraphResult:
+        waiting = self.first_build_message()
+        if waiting is not None:
+            return GraphMissing(waiting)
         project = freshness.find_project(self.root)
         if project is None:
             return GraphMissing(f"No .wingbox/ in {self.root} or its parents: call the build tool first.")
@@ -248,6 +295,9 @@ def _query(
 
 
 def _run_build(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
+    waiting = server.first_build_message()
+    if waiting is not None:
+        return ToolAnswer((waiting,), is_error=True)
     argv = ["build", freshness.find_project(server.root) or server.root]
     if arguments.get("full"):
         argv.append("--full")
@@ -691,6 +741,9 @@ def parse_root(args: list[str], cwd: str) -> tuple[Optional[str], Optional[str]]
     root = cwd
     index = 0
     while index < len(args):
+        if args[index] == "--build-missing":
+            index += 1
+            continue
         if args[index] == "--root" and index + 1 < len(args):
             root = os.path.normpath(os.path.join(cwd, args[index + 1]))
             index += 2
@@ -716,9 +769,13 @@ def main(args: list[str], cwd: str) -> int:
     os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
     sys.stdout = sys.stderr
     print(f"[wingbox] MCP server {cli._version()} on stdio for {root}", file=sys.stderr)
+    server = Server(root)
     try:
-        return serve(Server(root), sys.stdin.buffer, protocol)
+        if "--build-missing" in args:
+            server.start_first_build()
+        return serve(server, sys.stdin.buffer, protocol)
     except KeyboardInterrupt:
         return 0
     finally:
+        server.stop_first_build()
         protocol.close()

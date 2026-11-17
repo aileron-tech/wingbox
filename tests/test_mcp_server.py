@@ -86,11 +86,11 @@ def _make_shop(root: Path) -> None:
 class McpSession:
     """Run `python -m wingbox mcp` on a list of input lines and collect what it writes."""
 
-    def __init__(self, root: Path, lines: list[str]) -> None:
-        environment = dict(os.environ)
+    def __init__(self, root: Path, lines: list[str], extra: tuple[str, ...] = (), env: dict[str, str] | None = None) -> None:
+        environment = dict(os.environ, **(env or {}))
         environment["PYTHONPATH"] = str(SOURCE) + os.pathsep + environment.get("PYTHONPATH", "")
         completed = subprocess.run(
-            [sys.executable, "-m", "wingbox", "mcp", "--root", str(root)],
+            [sys.executable, "-m", "wingbox", "mcp", "--root", str(root), *extra],
             input="".join(line + "\n" for line in lines).encode("utf-8"),
             capture_output=True,
             env=environment,
@@ -253,6 +253,33 @@ class McpProtocolTest(unittest.TestCase):
         result = session.reply(2)["result"]
         self.assertTrue(result["isError"])
         self.assertIn("call the build tool first", _texts(session.reply(2))[0])
+
+    def test_with_build_missing_the_first_query_builds_the_graph(self) -> None:
+        """/* REQ-MCP-015: `wingbox mcp --root DIR --build-missing` (what the Claude Desktop extension starts) builds the graph of DIR in the background when it has none; a tool call waits for that build up to WINGBOX_FIRST_BUILD_WAIT seconds (default 45) and then answers from the new graph. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})], ("--build-missing",))
+        result = session.reply(2)["result"]
+        self.assertFalse(result["isError"], _texts(session.reply(2)))
+        self.assertIn("shop/checkout", _texts(session.reply(2))[0])
+        self.assertTrue((self.root / ".wingbox" / "index.sexp").is_file())
+
+    def test_a_first_build_longer_than_the_wait_is_reported_not_hung(self) -> None:
+        """/* REQ-MCP-016: when the first build takes longer than WINGBOX_FIRST_BUILD_WAIT seconds (a large repository), a tool call returns at once with a tool error that says the graph of DIR is being built for the first time and to call again shortly; the build goes on in the background. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})], ("--build-missing",),
+                             {"WINGBOX_FIRST_BUILD_WAIT": "0"})
+        result = session.reply(2)["result"]
+        self.assertTrue(result["isError"])
+        self.assertIn("is building the code graph", _texts(session.reply(2))[0])
+        self.assertIn("Call the tool again", _texts(session.reply(2))[0])
+
+    def test_without_build_missing_nothing_is_built(self) -> None:
+        """/* REQ-MCP-017: without --build-missing the server never builds on its own (the plugin starts it in whatever folder the session runs in); an unknown argument exits 2 with the usage. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
+        self.assertTrue(session.reply(2)["result"]["isError"])
+        self.assertFalse((self.root / ".wingbox").exists())
+        self.assertEqual(2, McpSession(self.root, [], ("--bogus",)).returncode)
 
     def test_malformed_input_gets_json_rpc_errors_and_the_server_keeps_running(self) -> None:
         """/* REQ-MCP-006: malformed JSON must get -32700, a message that is not a request object -32600, and the server must go on answering the next request. */"""

@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-17 - Claude Desktop extension (MCP Bundle)
+
+### Changes
+- `tools/build_mcpb.py`: builds `dist/wingbox-<version>.mcpb` deterministically (sorted entries, fixed times): `manifest.json` (manifest 0.4, server type `uv`, tools generated from `mcp_server.TOOLS`, a required `repository` directory setting passed as `--root`, platforms darwin, win32 and linux), a `pyproject.toml` pinning `wingbox==<version>`, `src/server.py` (runs `wingbox mcp`), the plugin icon and LICENSE.
+- `tools/mcpb/`: the MCPB manifest schema v0.4, copied unchanged from github.com/modelcontextprotocol/mcpb at commit 70fe3b3 (2026-04-22), with its source in SOURCE.txt.
+- `src/wingbox/mcp_server.py`: `--build-missing` starts `wingbox build` in a child process when the root has no graph; tool calls wait up to `WINGBOX_FIRST_BUILD_WAIT` seconds (default 45) and otherwise answer that the first build is running; the child is stopped when the client closes the server.
+- Tests: REQ-MCPB-001..004 (`tests/test_mcpb.py`: schema validation with a small draft-07 validator, tools equal to `tools/list` over stdio, version, archive contents and determinism); REQ-MCP-015..017.
+- Why: the maintainer asked for a Claude Desktop extension due 20/11.
+- Verification: `npx @anthropic-ai/mcpb@2.1.2 validate` and `pack` pass; the bundle started on macOS with the manifest's command (`uv run --directory <bundle> src/server.py --root <project> --build-missing`, the dependency pointed at this checkout) answered `tools/list` (18 tools) and `impact` after building the graph on first use.
+
 ## 2026-11-17 - Version 0.7.2: documents
 
 - The maintainer found the README's title and several sections out of date (old tagline, the two-tool comparison of an early run, no find-usages section, no operating systems). The README was rewritten in #80; PyPI shows it only with a release, hence 0.7.2.
