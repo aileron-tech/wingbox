@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.8.2: Windows console windows, concurrent refreshes, update without pip, a clean git status
+
+### Changes
+- `scripts/portable.py`: `detached_process_options` starts the refresh with `CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW` and a hidden STARTUPINFO instead of `DETACHED_PROCESS` (Microsoft's process creation flags: CREATE_NO_WINDOW is ignored with DETACHED_PROCESS or CREATE_NEW_CONSOLE; a detached process has no console, so each console child gets a new one); `hidden_process_options` for every captured child (git in git_ignore and diff_functions, the installers of update, the MCP server's first build, the language server). Test REQ-PORT-011 on windows-latest: with DETACHED_PROCESS the children report a console window that is visible (handle 197000, visible true), with the fix none has a window; REQ-PORT-012.
+- `src/wingbox/refresh.py`: a refresh re-reads the state under the lock and ends at once when nothing is marked (another refresh published the marks while it waited). Cause of "build ... for 0 changed files": with nothing marked the refresh fell through to the build branch. Tests REQ-FRESH-041 (two hooks at once), REQ-FRESH-042 (no change: under 100 ms, no build).
+- `src/wingbox/update.py`: `has_pip()`; without pip `uv pip install --python <python> --upgrade wingbox` (latest version from `uv pip install --dry-run --upgrade --reinstall-package wingbox`), without uv a `no-pip` message with the commands to run. REQ-UPDATE-010, 011.
+- `.wingbox/.gitignore` lists itself; a build appends to `decisions.sexp` only when it or `config.yaml` exists. REQ-FRESH-043; REQ-FRESH-030 changed: the generated `.gitignore` is ignored and `decisions.sexp` is not created by a plain build (the requirement changed with this report).
+- README: the `.wingbox/` table and one paragraph on which files appear in git; FAQ on `wingbox-graph-stale` after a branch switch, measured: FastAPI 0.115.0 to 0.118.0 (402 of 1,142 Python files) redoes 1,006 of 1,152 modules in a partial update without its limits, 4.6 s against 5.5 s for a full build and 5.6 s for the incremental one, so the limits stay.
+- Version 0.8.2 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`.
+- Why: the report of a test on Windows 11 in issue #48.
+
 ## 2026-11-17 - Version 0.8.1: init on a small repository
 
 ### Changes
