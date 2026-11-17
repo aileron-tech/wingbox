@@ -75,6 +75,9 @@ def _call(identifier, name, arguments):
 
 
 def _make_shop(root: Path) -> None:
+    """A small Python repository (a git work tree: a folder in no repository is never built, REQ-MCP-019)."""
+    if not (root / ".git").exists():
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
     (root / "shop").mkdir()
     (root / "shop" / "__init__.py").write_text("", encoding="utf-8")
     (root / "shop" / "pricing.py").write_text("def total(items):\n    return sum(items)\n", encoding="utf-8")
@@ -280,6 +283,35 @@ class McpProtocolTest(unittest.TestCase):
         self.assertTrue(session.reply(2)["result"]["isError"])
         self.assertFalse((self.root / ".wingbox").exists())
         self.assertEqual(2, McpSession(self.root, [], ("--bogus",)).returncode)
+
+    def test_two_servers_started_together_build_once_without_an_error(self) -> None:
+        """/* REQ-MCP-018: two `wingbox mcp --build-missing` started at the same moment on a repository without a graph (Claude Desktop starts its server twice) run one build: the other server says `[wingbox] a build is already running: waiting for it`, no line contains ERROR, and both answer impact from the graph. */"""
+        _make_shop(self.root)
+        environment = dict(os.environ, PYTHONPATH=str(SOURCE) + os.pathsep + os.environ.get("PYTHONPATH", ""))
+        lines = "".join(line + "\n" for line in [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
+        servers = [
+            subprocess.Popen([sys.executable, "-m", "wingbox", "mcp", "--root", str(self.root), "--build-missing"],
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, cwd=str(self.root))
+            for _ in range(2)
+        ]
+        outputs = [server.communicate(lines.encode("utf-8"), timeout=300) for server in servers]
+        logs = "".join(err.decode("utf-8") for _out, err in outputs)
+        self.assertNotIn("ERROR", logs)
+        self.assertEqual(1, logs.count("building it"), logs)
+        self.assertIn("[wingbox] a build is already running: waiting for it", logs)
+        for out, _err in outputs:
+            reply = next(json.loads(line) for line in out.decode("utf-8").splitlines() if json.loads(line).get("id") == 2)
+            self.assertFalse(reply["result"]["isError"], reply)
+            self.assertIn("shop/checkout", reply["result"]["content"][0]["text"])
+
+    def test_a_folder_that_is_no_repository_is_never_built(self) -> None:
+        """/* REQ-MCP-019: started with --build-missing in a folder that is in no source repository (no .git or project manifest with source files, as when an app starts the server in the home folder), the server builds nothing and every tool answers that there is no repository here. */"""
+        (self.root / "notes.txt").write_text("hello\n", encoding="utf-8")
+        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "notes.txt"}), _call(3, "build", {})], ("--build-missing",))
+        for identifier in (2, 3):
+            text = _texts(session.reply(identifier))[0]
+            self.assertIn("No repository here", text)
+        self.assertFalse((self.root / ".wingbox").exists())
 
     def test_malformed_input_gets_json_rpc_errors_and_the_server_keeps_running(self) -> None:
         """/* REQ-MCP-006: malformed JSON must get -32700, a message that is not a request object -32600, and the server must go on answering the next request. */"""

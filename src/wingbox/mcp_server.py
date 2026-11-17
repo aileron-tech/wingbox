@@ -25,11 +25,13 @@ and then say that the first build is still running.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
@@ -196,6 +198,10 @@ class Server:
     root: str
     _first_build: Optional[subprocess.Popen] = field(default=None, repr=False)
     _first_build_started: float = 0.0
+    _first_build_lock: Any = field(default=None, repr=False)
+    _repository: str = ""
+    _waiting: bool = False
+    _no_repository: bool = False
     _cache_key: Optional[tuple[str, int, int]] = None
     _cache_graph: Any = None
     _search: Any = field(default=None, repr=False)
@@ -206,32 +212,94 @@ class Server:
         return self._search
 
     def start_first_build(self) -> None:
-        """Build the graph of root in a child process when root has none (--build-missing)."""
+        """Build the graph of root's repository in a child process when it has none (--build-missing).
+
+        Nothing is built in a folder that is in no source repository (an app may start the server in the
+        home folder). Two servers started together build once: the first takes the first-build lock, the
+        other waits for its graph; a `wingbox build` already running is waited for the same way."""
         if freshness.find_project(self.root) is not None:
             return
-        print(f"[wingbox] no code graph in {self.root}: building it", file=sys.stderr)
+        from pathlib import Path
+
+        from wingbox import hook
+
+        repository = hook.source_repository(self.root, str(Path.home()))
+        if repository is None:
+            self._no_repository = True
+            return
+        self._repository = repository
         self._first_build_started = time.monotonic()
+        self._try_first_build()
+
+    def _try_first_build(self) -> bool:
+        """Start the first build unless another one runs; True when one was started here."""
+        helpers = freshness.portable()
+        builder = cli.load_script("build_code_graph")
+        lock_path = os.path.join(tempfile.gettempdir(), "wingbox-first-build-"
+                                 + hashlib.sha256(self._repository.encode("utf-8")).hexdigest()[:20] + ".lock")
+        handle = open(lock_path, "a+", encoding="utf-8")
+        if not helpers.lock(handle, blocking=False) or self._lock_busy(builder._lock_path(self._repository)):
+            handle.close()
+            if not self._waiting:
+                print("[wingbox] a build is already running: waiting for it", file=sys.stderr)
+            self._waiting = True
+            return False
+        print(f"[wingbox] no code graph in {self._repository}: building it", file=sys.stderr)
+        self._first_build_lock = handle   # held until the build ends: the lock of the other servers
         self._first_build = subprocess.Popen(
-            [sys.executable, "-m", "wingbox", "build", self.root],
+            [sys.executable, "-m", "wingbox", "build", self._repository],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=sys.stderr,
-            **freshness.portable().hidden_process_options(),
+            **helpers.hidden_process_options(),
         )
+        self._waiting = False
+        return True
+
+    @staticmethod
+    def _lock_busy(path: str) -> bool:
+        helpers = freshness.portable()
+        try:
+            with open(path, "a+", encoding="utf-8") as handle:
+                if helpers.lock(handle, blocking=False):
+                    helpers.unlock(handle)
+                    return False
+                return True
+        except OSError:
+            return False
 
     def first_build_message(self) -> Optional[str]:
-        """None once no first build runs; else waits for it a moment and says why there is no answer yet."""
+        """None once no first build runs or is waited for; else waits a moment and says why there is no answer yet."""
+        if self._no_repository:
+            return (f"No repository here: {self.root} is in no source repository (no .git and no project manifest "
+                    "with source files), so Wingbox has nothing to map. Open a repository and ask again.")
+        deadline = time.monotonic() + float(os.environ.get("WINGBOX_FIRST_BUILD_WAIT", FIRST_BUILD_WAIT_SECONDS))
+        while self._waiting:
+            if freshness.find_project(self.root) is not None:
+                self._waiting = False
+                return None
+            if self._try_first_build():
+                break
+            if time.monotonic() >= deadline:
+                return self._building_message()
+            time.sleep(0.2)
         builder = self._first_build
         if builder is None:
             return None
         try:
-            status = builder.wait(timeout=float(os.environ.get("WINGBOX_FIRST_BUILD_WAIT", FIRST_BUILD_WAIT_SECONDS)))
+            status = builder.wait(timeout=max(0.0, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
-            elapsed = int(time.monotonic() - self._first_build_started)
-            return (f"Wingbox is building the code graph of {self.root} for the first time ({elapsed} s so far; "
-                    "a large repository can take several minutes). Call the tool again in a minute.")
+            return self._building_message()
         self._first_build = None
+        if self._first_build_lock is not None:
+            self._first_build_lock.close()
+            self._first_build_lock = None
         if status != 0:
             return f"The first build of the code graph of {self.root} failed (status {status}). Call the build tool to see why."
         return None
+
+    def _building_message(self) -> str:
+        elapsed = int(time.monotonic() - self._first_build_started)
+        return (f"Wingbox is building the code graph of {self.root} for the first time ({elapsed} s so far; "
+                "a large repository can take several minutes). Call the tool again in a minute.")
 
     def stop_first_build(self) -> None:
         """When the client closes the server: stop a first build still running (the next start begins again)."""
@@ -245,6 +313,13 @@ class Server:
             return GraphMissing(waiting)
         project = freshness.find_project(self.root)
         if project is None:
+            from pathlib import Path
+
+            from wingbox import hook
+
+            if hook.source_repository(self.root, str(Path.home())) is None:
+                return GraphMissing(f"No repository here: {self.root} is in no source repository (no .git and no "
+                                    "project manifest with source files), so Wingbox has nothing to map.")
             return GraphMissing(f"No .wingbox/ in {self.root} or its parents: call the build tool first.")
         path = freshness.graph_path(project)
         fresh = freshness.ensure_graph_fresh(project, freshness.refresh_wait())
