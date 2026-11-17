@@ -14,7 +14,8 @@ sys.path.insert(0, str(REPO / "src"))
 from wingbox import cli, facts, install  # noqa: E402
 
 SKILL_FILES = cli.read_skill_files(cli.skill_directory(str(REPO / "src" / "wingbox")))
-HOOK_COMMAND = "/opt/tools/bin/wingbox hook pre-search"
+HOOK_PROGRAM = ("/opt/tools/bin/wingbox",)
+OLD_HOOK_COMMAND = "/opt/tools/bin/wingbox hook pre-search"   # the shell form written before 0.7.1
 
 
 def snapshot(root: Path) -> dict[str, bytes]:
@@ -47,7 +48,7 @@ class InstallTestCase(unittest.TestCase):
             cwd=str(cwd or self.project),
             version="9.9.9",
             skill_files=SKILL_FILES,
-            hook_command=HOOK_COMMAND,
+            hook_program=HOOK_PROGRAM,
         )
 
     def run_command(self, command: str, *args: str, cwd: Path | None = None) -> list[facts.Fact]:
@@ -82,7 +83,7 @@ class GlobalInstallTest(InstallTestCase):
         settings = json.loads((self.home / ".claude" / "settings.json").read_text())
         # The entry is a shell command, or on Windows the program and its arguments apart (exec form).
         self.assertEqual(
-            [install.hook_group(HOOK_COMMAND)],
+            [install.hook_group(HOOK_PROGRAM)],
             settings["hooks"]["PreToolUse"],
         )
         self.assertFalse((self.home / ".gemini").exists())
@@ -96,17 +97,17 @@ class GlobalInstallTest(InstallTestCase):
         """/* REQ-FRESH-011: install must add one PostToolUse group on Edit|Write|MultiEdit running `<same program> hook dirty`; installing over a settings file from an older install (search hook only, timeout 5) must leave exactly one Wingbox group per event, and uninstall must remove both. */"""
         settings_path = self.home / ".claude" / "settings.json"
         settings_path.write_text(json.dumps({"hooks": {
-            "PreToolUse": [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 5}]}],
+            "PreToolUse": [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": OLD_HOOK_COMMAND, "timeout": 5}]}],
             "PostToolUse": [{"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]}],
         }}) + "\n")
         self.run_command("install")
         self.run_command("install")
         hooks = json.loads(settings_path.read_text())["hooks"]
-        self.assertEqual([install.hook_group(HOOK_COMMAND)], hooks["PreToolUse"])
+        self.assertEqual([install.hook_group(HOOK_PROGRAM)], hooks["PreToolUse"])
         self.assertEqual(
             [
                 {"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]},
-                install.dirty_group(HOOK_COMMAND),
+                install.dirty_group(HOOK_PROGRAM),
             ],
             hooks["PostToolUse"],
         )
@@ -237,7 +238,7 @@ class GlobalInstallTest(InstallTestCase):
 
 class ProjectInstallTest(InstallTestCase):
     def test_project_install_writes_into_the_repository(self) -> None:
-        """/* REQ-INSTALL-010: `wingbox install --project` must write .claude/skills/wingbox, .claude/settings.json with the bare `wingbox hook pre-search` command, and the block in CLAUDE.md and AGENTS.md of the repository root, also from a subfolder. */"""
+        """/* REQ-INSTALL-010: `wingbox install --project` must write .claude/skills/wingbox, .claude/settings.json with the hooks in exec form on the bare program (`"command": "wingbox"`, `"args": ["hook", "pre-search"]`, resolved on PATH on every system), and the block in CLAUDE.md and AGENTS.md of the repository root, also from a subfolder. */"""
         (self.home / ".claude").mkdir()
         (self.home / ".codex").mkdir()
         sub = self.project / "src" / "app"
@@ -246,7 +247,8 @@ class ProjectInstallTest(InstallTestCase):
         self.assertTrue((self.project / ".claude" / "skills" / "wingbox" / "SKILL.md").is_file())
         self.assertTrue((self.project / ".agents" / "skills" / "wingbox" / "SKILL.md").is_file())
         settings = json.loads((self.project / ".claude" / "settings.json").read_text())
-        self.assertEqual("wingbox hook pre-search", settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"])
+        entry = settings["hooks"]["PreToolUse"][0]["hooks"][0]
+        self.assertEqual(("wingbox", ["hook", "pre-search"], "continue"), (entry["command"], entry["args"], entry["onFailure"]))
         for name in ("CLAUDE.md", "AGENTS.md"):
             self.assertIn(install.BEGIN_MARKER, (self.project / name).read_text())
         self.assertFalse((self.home / ".claude" / "skills").exists())

@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.7.1: hooks and MCP server without Git Bash on Windows
+
+### Changes
+- `plugins/wingbox/.claude-plugin/plugin.json`: both hooks run `uvx --offline --quiet --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox hook ...` and the MCP server `uvx --quiet --from ... wingbox mcp`, in exec form with no shell; the hooks carry `"onFailure": "continue"`. `scripts/wingbox-run` and its four sh tests are removed.
+- `tools/sync_plugin.py`: the pin lives in the Claude Code manifest (three literal 40-character commits, one per uvx command); the fallback without tags reads it there.
+- `src/wingbox/install.py`, `cli.py`: one hook form on every system and scope, exec form with `onFailure: continue`; `Machine.hook_program` is the program and its leading arguments (`global_hook_program`), the project scope uses `("wingbox",)`; `is_wingbox_hook` still recognises the shell form of 0.7.0 and earlier.
+- `tools/check_hooks.py` and a CI step on all nine cells: install the checkout into a virtual environment, build a project whose folder name holds a space and non-ASCII letters, run `wingbox install` and `wingbox install --project`, take the plugin manifest with the pin replaced by the checkout, and run every entry as Claude Code does (resolved with `shutil.which`, a real `.exe` required on Windows, `shell=False`, Git for Windows removed from `PATH` there), with a Grep and an Edit hook input; the search hooks must name the defining module.
+- Docs: README, plugin README, AGENTS.md, SECURITY.md, docs/store/README.md; version 0.7.1 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`.
+- Why: the maintainer relayed that the reporter of #48 needs the hooks to run under PowerShell or cmd; in 0.7.0 the plugin's hooks and MCP server needed the `sh` of Git for Windows.
+- Measured on this Mac (immich graph, search hook, median of 5): installed `wingbox` through the old launcher 0.41 s, `uvx --offline` direct 0.80 s; with only uv installed the old launcher already ran the same `uvx --offline`. `uvx` with a full-commit pin still contacts api.github.com when online (uv 0.6.6), so the hooks keep `--offline`; the MCP server, which starts first in a session, fetches.
+
 ## 2026-11-17 - Version 0.7.0: native Windows support (issue #48)
 
 ### Changes

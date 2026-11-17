@@ -23,7 +23,6 @@ install added: stamped skill folders, the marked blocks, the hook entries.
 from __future__ import annotations
 
 import json
-import ntpath
 import os
 import shutil
 from dataclasses import dataclass
@@ -51,7 +50,10 @@ RECORD_RELATIVE = os.path.join(".wingbox", "installed.sexp")
 def _join(base: str, *relatives: str) -> str:
     """base joined with paths written with / (".claude/skills", "references/x.md"), in the system's form."""
     return os.path.join(base, *(part for relative in relatives for part in relative.split("/")))
-PROJECT_HOOK_COMMAND = f"wingbox {HOOK_SUBCOMMAND}"
+# The program of a hook and its leading arguments, before `hook pre-search` / `hook dirty`:
+# ("/abs/path/wingbox",) or (python, "-m", "wingbox.cli") for a global install, ("wingbox",) for a project.
+HookProgram = tuple[str, ...]
+PROJECT_HOOK_PROGRAM: HookProgram = ("wingbox",)
 
 ALWAYS_ON_BLOCK = f"""{BEGIN_MARKER}
 ## Wingbox code graph
@@ -149,7 +151,7 @@ class Machine:
     cwd: str
     version: str
     skill_files: Mapping[str, bytes]
-    hook_command: str
+    hook_program: HookProgram
 
 
 @dataclass(frozen=True)
@@ -325,7 +327,8 @@ def remove_block(text: str) -> EditResult:
 
 
 def is_wingbox_hook(entry: object) -> bool:
-    """A hook entry Wingbox wrote: shell form (`... hook pre-search`) or exec form (`args` apart)."""
+    """A hook entry Wingbox wrote: exec form (`args` ending in `hook pre-search` or `hook dirty`), or the
+    shell form of versions before 0.7.1 (`... hook pre-search` in `command`)."""
     if not isinstance(entry, dict) or entry.get("type") != "command":
         return False
     command = entry.get("command")
@@ -336,41 +339,27 @@ def is_wingbox_hook(entry: object) -> bool:
     return "wingbox" in line and line.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
 
 
-def dirty_command(command: str) -> str:
-    """The PostToolUse command that goes with a search hook command: same program, `hook dirty`."""
-    return command[: -len(HOOK_SUBCOMMAND)] + DIRTY_SUBCOMMAND if command.endswith(HOOK_SUBCOMMAND) else command
+def _hook_entry(program: HookProgram, subcommand: str, timeout: int) -> dict:
+    """A hook entry in exec form on every system: Claude Code starts the program found on PATH (or at its
+    absolute path) with `args` as the argument vector and no shell, so it needs neither Git Bash nor
+    PowerShell on Windows; `onFailure: continue` lets the tool call go ahead when the program is missing,
+    fails or times out (code.claude.com/docs/en/hooks, "Exec form and shell form", "Block the action
+    when a hook fails")."""
+    return {
+        "type": "command",
+        "command": program[0],
+        "args": [*program[1:], *subcommand.split()],
+        "timeout": timeout,
+        "onFailure": "continue",
+    }
 
 
-def _hook_entry(command: str, timeout: int, windows: bool) -> dict:
-    """A hook entry. On Windows in exec form (`command` + `args`): Claude Code starts the program without a
-    shell, so neither Git Bash nor PowerShell quoting matters (code.claude.com/docs/en/hooks)."""
-    if not windows:
-        return {"type": "command", "command": command, "timeout": timeout}
-    program, args = _split_windows_command(command)
-    # A project-scope command (`wingbox hook pre-search`, committed and shared) stays a shell command that
-    # bash and PowerShell both run; only a global install names an absolute program.
-    if not ntpath.isabs(program):
-        return {"type": "command", "command": command, "timeout": timeout}
-    return {"type": "command", "command": program, "args": args, "timeout": timeout}
+def hook_group(program: HookProgram) -> dict:
+    return {"matcher": HOOK_MATCHER, "hooks": [_hook_entry(program, HOOK_SUBCOMMAND, HOOK_TIMEOUT_SECONDS)]}
 
 
-def _split_windows_command(command: str) -> tuple[str, list[str]]:
-    """Program and arguments of a command line written by subprocess.list2cmdline: the program may be
-    quoted (a path with spaces); backslashes are path separators, never escapes."""
-    command = command.strip()
-    if command.startswith('"'):
-        end = command.find('"', 1)
-        return command[1:end], command[end + 1:].split()
-    program, *args = command.split()
-    return program, args
-
-
-def hook_group(command: str, windows: bool = os.name == "nt") -> dict:
-    return {"matcher": HOOK_MATCHER, "hooks": [_hook_entry(command, HOOK_TIMEOUT_SECONDS, windows)]}
-
-
-def dirty_group(command: str, windows: bool = os.name == "nt") -> dict:
-    return {"matcher": DIRTY_MATCHER, "hooks": [_hook_entry(dirty_command(command), DIRTY_TIMEOUT_SECONDS, windows)]}
+def dirty_group(program: HookProgram) -> dict:
+    return {"matcher": DIRTY_MATCHER, "hooks": [_hook_entry(program, DIRTY_SUBCOMMAND, DIRTY_TIMEOUT_SECONDS)]}
 
 
 def _stripped_groups(groups: list) -> list:
@@ -415,9 +404,9 @@ def _wingbox_entry_count(groups: list) -> int:
     )
 
 
-def merge_hook(settings: dict, command: str) -> dict:
+def merge_hook(settings: dict, program: HookProgram) -> dict:
     """Settings with exactly one Wingbox group per hook event (search and edit); other hooks and settings are kept."""
-    wanted = {"PreToolUse": hook_group(command), "PostToolUse": dirty_group(command)}
+    wanted = {"PreToolUse": hook_group(program), "PostToolUse": dirty_group(program)}
     hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
     if all(
         isinstance(hooks.get(event), list) and group in hooks[event] and _wingbox_entry_count(hooks[event]) == 1
@@ -638,7 +627,7 @@ def install(options: Options, machine: Machine) -> list[Fact]:
     if not assistants:
         return [make_fact("install-failed", reason="no assistant configuration folder found; name one with --assistant")]
     payload = skill_payload(machine.skill_files, machine.version)
-    command = machine.hook_command if scope.kind == "global" else PROJECT_HOOK_COMMAND
+    command = machine.hook_program if scope.kind == "global" else PROJECT_HOOK_PROGRAM
     facts: list[Fact] = []
     targets = plan_targets(scope, assistants)
     missing = missing_folders(scope, targets)

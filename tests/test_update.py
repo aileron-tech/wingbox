@@ -201,7 +201,7 @@ class UpgradeTest(unittest.TestCase):
         stubs.add("pipx", PIPX_LIST + '\nif args[:1] == ["upgrade"]: out("upgraded package wingbox"); sys.exit(0)')
         home = stubs.folder / "home"
         (home / ".claude").mkdir(parents=True)
-        machine = install.Machine(str(home), str(home), "0.2.4", SKILL_FILES, "wingbox hook pre-search")
+        machine = install.Machine(str(home), str(home), "0.2.4", SKILL_FILES, ("wingbox",))
         options = install.parse_arguments("install", [])
         assert isinstance(options, install.Options)
         install.install(options, machine)

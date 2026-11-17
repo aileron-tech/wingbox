@@ -68,7 +68,6 @@ this off; a stale graph is then reported as such.
 from __future__ import annotations
 
 import os
-import shlex
 import shutil
 import sys
 from dataclasses import dataclass
@@ -173,22 +172,12 @@ def read_skill_files(directory: str) -> dict[str, bytes]:
     return files
 
 
-def global_hook_command(argv0: str, python: str) -> str:
-    """The hook command for a global install: the absolute `wingbox` program, else this Python."""
+def global_hook_program(argv0: str, python: str) -> tuple[str, ...]:
+    """The program of the hooks of a global install: the absolute `wingbox` program, else this Python."""
     name = os.path.basename(argv0).lower()
     program = os.path.abspath(argv0) if name in ("wingbox", "wingbox.exe") and os.path.isfile(argv0) else None
-    return global_hook_command_for(program or shutil.which("wingbox"), python, os.name == "nt")
-
-
-def global_hook_command_for(program: Optional[str], python: str, windows: bool) -> str:
-    """The command line of the search hook: POSIX shell quoting, or Windows quoting (install writes it
-    in exec form there, program and arguments apart)."""
-    parts = [program, "hook", "pre-search"] if program else [python, "-m", "wingbox.cli", "hook", "pre-search"]
-    if windows:
-        import subprocess
-
-        return subprocess.list2cmdline(parts)
-    return " ".join(shlex.quote(part) for part in parts)
+    program = program or shutil.which("wingbox")
+    return (program,) if program else (python, "-m", "wingbox.cli")
 
 
 def _platform() -> ModuleType:
@@ -1112,7 +1101,6 @@ def _questionnaire(parts, by_path, part_task, library, accept: bool) -> tuple:
 
 def _offer_editor(path: str) -> None:
     """At the end of the questionnaire: open the config in $VISUAL or $EDITOR for a final look."""
-    import shlex
     import subprocess
 
     if _ask(f"\nOpen {path} in your editor for a final look? [y/N]: ", "n").lower() not in ("y", "yes"):
@@ -1493,7 +1481,7 @@ def _machine(cwd: str):
         cwd=cwd,
         version=_version(),
         skill_files=read_skill_files(skill_directory(_PACKAGE_DIR)),
-        hook_command=global_hook_command(sys.argv[0], sys.executable),
+        hook_program=global_hook_program(sys.argv[0], sys.executable),
     )
 
 

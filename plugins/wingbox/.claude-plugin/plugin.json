@@ -38,13 +38,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh",
+            "command": "uvx",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+              "--offline",
+              "--quiet",
+              "--from",
+              "git+https://github.com/aileron-tech/wingbox@8481a35b08c3078d8f898c52dd5f679206bbdd2d",
+              "wingbox",
               "hook",
               "pre-search"
             ],
-            "timeout": 10
+            "timeout": 10,
+            "onFailure": "continue"
           }
         ]
       }
@@ -55,13 +60,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh",
+            "command": "uvx",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+              "--offline",
+              "--quiet",
+              "--from",
+              "git+https://github.com/aileron-tech/wingbox@8481a35b08c3078d8f898c52dd5f679206bbdd2d",
+              "wingbox",
               "hook",
               "dirty"
             ],
-            "timeout": 5
+            "timeout": 5,
+            "onFailure": "continue"
           }
         ]
       }
@@ -69,9 +79,12 @@
   },
   "mcpServers": {
     "wingbox": {
-      "command": "sh",
+      "command": "uvx",
       "args": [
-        "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+        "--quiet",
+        "--from",
+        "git+https://github.com/aileron-tech/wingbox@8481a35b08c3078d8f898c52dd5f679206bbdd2d",
+        "wingbox",
         "mcp"
       ]
     }

@@ -3,7 +3,6 @@ import json
 import os
 import re
 import shutil
-import stat
 import struct
 import subprocess
 import sys
@@ -15,7 +14,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN = REPO / "plugins" / "wingbox"
-LAUNCHER = PLUGIN / "scripts" / "wingbox-run"
+CLAUDE_MANIFEST = PLUGIN / ".claude-plugin" / "plugin.json"
 VERSION = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 # The plugin follows the latest release tag (tools/sync_plugin.py), which lags pyproject.toml
 # between a version bump and its tag.
@@ -38,15 +37,9 @@ def png_size(path: Path) -> tuple[int, int]:
     return struct.unpack(">II", data[16:24])
 
 
-def fake_command(folder: Path, name: str, body: str) -> None:
-    path = folder / name
-    path.write_text("#!/bin/sh\n" + body + "\n", encoding="utf-8")
-    path.chmod(0o755)
-
-
 class ClaudePluginTest(unittest.TestCase):
     def test_manifest(self) -> None:
-        """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs the launcher with `hook pre-search`, and an MCP server that runs the launcher with `mcp`, both through `sh` in exec form (`command` sh, the launcher path and the arguments in `args`: no shell parses the plugin path, and a missing `sh` on Windows without Git Bash cannot block a tool call), every path under ${CLAUDE_PLUGIN_ROOT} existing in the plugin. */"""
+        """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs `uvx --offline --quiet --from <pin> wingbox hook pre-search` and an MCP server that runs `uvx --quiet --from <pin> wingbox mcp`, both in exec form (`command` uvx, a real executable on every system, and the arguments in `args`: no shell, so no sh, Git Bash or PowerShell is needed), the hooks with `"onFailure": "continue"` so a missing uvx never blocks a tool call, and no file of the plugin started as a script. */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
         self.assertEqual(manifest["version"], PLUGIN_VERSION)
@@ -63,23 +56,27 @@ class ClaudePluginTest(unittest.TestCase):
         (group,) = manifest["hooks"]["PreToolUse"]
         self.assertEqual(group["matcher"], "Grep|Glob|Read")
         (hook,) = group["hooks"]
-        # the directory asks that a script be started through its interpreter
-        self.assertEqual(hook["command"], "sh")
-        self.assertEqual(hook["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "hook", "pre-search"])
+        source = "git+https://github.com/aileron-tech/wingbox@" + PIN.findall(json.dumps(manifest))[0]
+        self.assertEqual(
+            hook,
+            {"type": "command", "command": "uvx", "args": ["--offline", "--quiet", "--from", source, "wingbox", "hook", "pre-search"],
+             "timeout": 10, "onFailure": "continue"},
+        )
         server = manifest["mcpServers"]["wingbox"]
-        self.assertEqual(server["command"], "sh")
-        self.assertEqual(server["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "mcp"])
-        for path in re.findall(r"\$\{CLAUDE_PLUGIN_ROOT\}/([^\"'\\ ]+)", json.dumps(manifest)):
-            self.assertTrue((PLUGIN / path).is_file(), path)
+        self.assertEqual(server, {"command": "uvx", "args": ["--quiet", "--from", source, "wingbox", "mcp"]})
+        self.assertNotIn("${CLAUDE_PLUGIN_ROOT}", json.dumps(manifest))
+        self.assertFalse((PLUGIN / "scripts").exists())
 
     def test_edit_hook(self) -> None:
-        """/* REQ-FRESH-012: the Claude Code manifest must carry one PostToolUse hook on Edit|Write|MultiEdit that runs the launcher with `hook dirty` through `sh` in exec form, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
+        """/* REQ-FRESH-012: the Claude Code manifest must carry one PostToolUse hook on Edit|Write|MultiEdit that runs `uvx --offline --quiet --from <pin> wingbox hook dirty` in exec form with `"onFailure": "continue"`, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
         (group,) = manifest["hooks"]["PostToolUse"]
         self.assertEqual(group["matcher"], "Edit|Write|MultiEdit")
         (hook,) = group["hooks"]
-        self.assertEqual(hook["command"], "sh")
-        self.assertEqual(hook["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "hook", "dirty"])
+        self.assertEqual(hook["command"], "uvx")
+        self.assertEqual(hook["args"][:3], ["--offline", "--quiet", "--from"])
+        self.assertEqual(hook["args"][4:], ["wingbox", "hook", "dirty"])
+        self.assertEqual((hook["timeout"], hook["onFailure"]), (5, "continue"))
         (search,) = manifest["hooks"]["PreToolUse"]
         self.assertEqual(search["hooks"][0]["timeout"], 10)
 
@@ -152,7 +149,7 @@ class SkillCopyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_sync_repairs_drift(self) -> None:
-        """/* REQ-PLUGIN-004: after SKILL.md or the version in pyproject.toml changes, `tools/sync_plugin.py --check` must exit 1 and name each stale file, and `tools/sync_plugin.py` must rewrite the skill copy and the version in both manifests and the launcher. */"""
+        """/* REQ-PLUGIN-004: after SKILL.md or the version in pyproject.toml changes, `tools/sync_plugin.py --check` must exit 1 and name each stale file, and `tools/sync_plugin.py` must rewrite the skill copy, the version in both manifests and the pinned commit of every uvx command. */"""
         with tempfile.TemporaryDirectory() as tmp:
             copy = Path(tmp) / "repo"
             for name in ("SKILL.md", "LICENSE", "pyproject.toml"):
@@ -169,7 +166,7 @@ class SkillCopyTest(unittest.TestCase):
             self.addCleanup(os.environ.pop, "WINGBOX_RELEASE", None)
             check = subprocess.run([sys.executable, script, "--check"], capture_output=True, text=True)
             self.assertEqual(check.returncode, 1)
-            for stale in ("skills/wingbox/SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "scripts/wingbox-run"):
+            for stale in ("skills/wingbox/SKILL.md", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
                 self.assertIn(stale, check.stdout)
             subprocess.run([sys.executable, script], check=True, capture_output=True)
             self.assertEqual(subprocess.run([sys.executable, script, "--check"], capture_output=True).returncode, 0)
@@ -177,13 +174,13 @@ class SkillCopyTest(unittest.TestCase):
             self.assertTrue((plugin / "skills" / "wingbox" / "SKILL.md").read_text(encoding="utf-8").endswith("New line.\n"))
             self.assertEqual(load(plugin / ".claude-plugin" / "plugin.json")["version"], "9.8.7")
             self.assertEqual(load(plugin / ".codex-plugin" / "plugin.json")["version"], "9.8.7")
-            self.assertEqual(set(PIN.findall((plugin / "scripts" / "wingbox-run").read_text(encoding="utf-8"))), {fake})
-            self.assertTrue(os.access(plugin / "scripts" / "wingbox-run", os.X_OK))
+            text = (plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+            self.assertEqual(PIN.findall(text), [fake] * 3)   # both hooks and the MCP server
 
 
 class NoGitTest(unittest.TestCase):
     def test_check_without_git(self) -> None:
-        """/* REQ-PLUGIN-016: in a copy of the repository without .git or tags (a source archive, a shallow CI clone) `tools/sync_plugin.py --check` must pass, keeping the release the launcher already pins. */"""
+        """/* REQ-PLUGIN-016: in a copy of the repository without .git or tags (a source archive, a shallow CI clone) `tools/sync_plugin.py --check` must pass, keeping the release the manifest already pins. */"""
         with tempfile.TemporaryDirectory() as tmp:
             copy = Path(tmp) / "repo"
             copy.mkdir()
@@ -197,69 +194,18 @@ class NoGitTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
-class LauncherTest(unittest.TestCase):
-    def run_launcher(self, path: str, *args: str, stdin: str = "") -> subprocess.CompletedProcess:
-        return subprocess.run(
-            ["/bin/sh", str(LAUNCHER), *args],
-            input=stdin,
-            capture_output=True,
-            text=True,
-            env={"PATH": path, "HOME": os.environ.get("HOME", "/tmp")},
-        )
-
-    def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.bin = Path(tmp.name)
-        self.path = f"{self.bin}:/usr/bin:/bin"
-
-    def test_version_and_mode(self) -> None:
-        """/* REQ-PLUGIN-005: the launcher must be executable and pin uvx to a full 40-character commit of the repository (the Claude plugin directory refuses a PyPI version as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
-        if os.name != "nt":   # Windows has no executable bit; the mode is kept in the Git index
-            self.assertTrue(LAUNCHER.stat().st_mode & stat.S_IXUSR)
-        text = LAUNCHER.read_text(encoding="utf-8")
+class PinTest(unittest.TestCase):
+    def test_every_uvx_command_is_pinned_to_a_release_commit(self) -> None:
+        """/* REQ-PLUGIN-005: every uvx command of the Claude Code manifest (both hooks and the MCP server) must name the source as a literal git URL pinned to the same full 40-character commit (the Claude plugin directory refuses a PyPI version, a variable or a short commit as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
+        text = CLAUDE_MANIFEST.read_text(encoding="utf-8")
         self.assertNotIn("wingbox==", text)
-        commits = sorted(set(PIN.findall(text)))
-        self.assertEqual(len(commits), 1)
-        self.assertNotIn("$SOURCE", text)   # the directory reads the pin from the literal command
+        self.assertNotIn("$", text.replace("${CLAUDE_PLUGIN_ROOT}", ""))
+        commits = PIN.findall(text)
+        self.assertEqual(len(commits), 3)
+        self.assertEqual(len(set(commits)), 1)
         tags = subprocess.run(["git", "-C", str(REPO), "tag", "--points-at", commits[0]], capture_output=True, text=True).stdout.split()
         if subprocess.run(["git", "-C", str(REPO), "tag", "--list", "v*"], capture_output=True, text=True).stdout.strip():
             self.assertTrue(any(re.fullmatch(r"v\d+\.\d+\.\d+", t) for t in tags), tags)
-
-    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
-    def test_installed_command_first(self) -> None:
-        """/* REQ-PLUGIN-006: with `wingbox` on PATH the launcher must run it with the given arguments and pass its output and exit code through, even when uvx is present. */"""
-        fake_command(self.bin, "wingbox", 'echo "wingbox $*"; exit 3')
-        fake_command(self.bin, "uvx", 'echo "uvx $*"')
-        result = self.run_launcher(self.path, "mcp", "--root", "x")
-        self.assertEqual((result.stdout, result.returncode), ("wingbox mcp --root x\n", 3))
-
-    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
-    def test_uvx_fallback(self) -> None:
-        """/* REQ-PLUGIN-007: without `wingbox` on PATH the launcher must run `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox <arguments>`; the hook goes through uvx offline only. */"""
-        fake_command(self.bin, "uvx", 'echo "uvx $*"')
-        source = "git+https://github.com/aileron-tech/wingbox@" + PIN.findall(LAUNCHER.read_text(encoding="utf-8"))[0]
-        result = self.run_launcher(self.path, "mcp")
-        self.assertEqual(result.stdout, f"uvx --quiet --from {source} wingbox mcp\n")
-        result = self.run_launcher(self.path, "hook", "pre-search")
-        self.assertEqual(result.stdout, f"uvx --offline --quiet --from {source} wingbox hook pre-search\n")
-
-    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
-    def test_neither_available(self) -> None:
-        """/* REQ-PLUGIN-008: without `wingbox` and uvx the launcher must exit 127 with a message naming `pipx install wingbox`, and the hook must print nothing and exit 0. */"""
-        result = self.run_launcher(self.path, "mcp")
-        self.assertEqual(result.returncode, 127)
-        self.assertIn("pipx install wingbox", result.stderr)
-        self.assertEqual(result.stdout, "")
-        result = self.run_launcher(self.path, "hook", "pre-search", stdin='{"tool_name": "Grep"}')
-        self.assertEqual((result.stdout, result.stderr, result.returncode), ("", "", 0))
-
-    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
-    def test_hook_never_blocks(self) -> None:
-        """/* REQ-PLUGIN-009: when uvx fails in the hook (exit code 2 would block the tool call in Claude Code) the launcher must print nothing and exit 0. */"""
-        fake_command(self.bin, "uvx", 'echo "error: offline" >&2; exit 2')
-        result = self.run_launcher(self.path, "hook", "pre-search")
-        self.assertEqual((result.stdout, result.stderr, result.returncode), ("", "", 0))
 
 
 class PluginFolderTest(unittest.TestCase):

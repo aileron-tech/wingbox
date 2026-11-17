@@ -305,12 +305,12 @@ or `/plugin marketplace add aileron-tech/wingbox`, then
 `/plugin install wingbox@aileron-tech` (from a shell:
 `claude plugin marketplace add aileron-tech/wingbox` and
 `claude plugin install wingbox@aileron-tech`). The skill is `/wingbox:wingbox`.
-The plugin runs the installed `wingbox` command; without it, and with `uv`
-installed, it runs `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`,
-pinned to the commit of the latest release tag, which uv fetches on first use. The search hook never downloads and
-stays silent while neither is available. The plugin starts its launcher with `sh`; on Windows that is the
-`sh` of Git for Windows. Without it, use `pipx install wingbox` and `wingbox install` instead of the
-plugin: the hooks it writes start `wingbox.exe` directly, with no shell.
+The Claude Code plugin needs [uv](https://docs.astral.sh/uv/): its MCP server and hooks run
+`uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`, pinned to the commit of
+the latest release tag, which uv fetches on first use. Claude Code starts `uvx` directly, with no
+shell, so the plugin works the same on macOS, Linux and Windows, with or without Git for Windows.
+The hooks run `uvx --offline`: they never download, and while uv is missing or has not fetched
+Wingbox yet they fail without blocking the search or the edit (`"onFailure": "continue"`).
 
 Codex:
 
@@ -618,9 +618,12 @@ home directory (`%USERPROFILE%` on Windows): `~/.claude`, `~/.codex`, `~/.gemini
 - **The Claude Code hooks** are a `PreToolUse` entry with the matcher
   `Grep|Glob|Read` in `~/.claude/settings.json` (`.claude/settings.json` with
   `--project`) that runs `wingbox hook pre-search`, and a `PostToolUse` entry
-  with the matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`. On Windows a global
-  install writes them in exec form (`"command"` the full path of `wingbox.exe`, `"args"`
-  `["hook", "pre-search"]`), which Claude Code starts without Git Bash or PowerShell. When the project has a
+  with the matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`. Both are written in
+  exec form (`"command"` the program, `"args"` `["hook", "pre-search"]`) with
+  `"onFailure": "continue"`: Claude Code starts the program with no shell, so the hooks work on
+  Windows with or without Git Bash, and a missing program never blocks a tool call. A global
+  install names the full path of the `wingbox` program (`wingbox.exe` on Windows); `--project`
+  names `wingbox`, found on `PATH` (install it with pipx or uv). When the project has a
   graph, the search hook adds a few lines of context to the search: the modules and
   definitions that match the pattern with their direct dependents, or for a
   file its dependents and the hint to run `wingbox impact`. It answers in

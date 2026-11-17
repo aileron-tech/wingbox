@@ -120,7 +120,7 @@ Plugin bundle. Repository `aileron-tech/wingbox`, plugin path
 | README of at least 40 words and a license in the plugin folder | ready (`plugins/wingbox/README.md`, `LICENSE`, `license: MIT`) |
 | No symlinks, submodules, LFS, system files; every file the plugin runs inside the plugin folder; no top-level `bin/` | ready (tested) |
 | Directory listing fields `icon`, `documentationUrl`, `supportUrl`, `privacyPolicyUrl` in `plugin.json` | ready; the privacy URL resolves once this branch is merged |
-| Launcher pinned to a full commit (`uvx --from git+https://github.com/aileron-tech/wingbox@<40-char commit>`, the release tag's commit; a PyPI version alone is refused as a pin) | ready |
+| Every `uvx` command of the manifest pinned to a full commit (`uvx --from git+https://github.com/aileron-tech/wingbox@<40-char commit>`, the release tag's commit; a PyPI version alone is refused as a pin) | ready |
 | Software Directory Policy 5E: every MCP tool carries annotations (`title`, `readOnlyHint`, `destructiveHint`; also `idempotentHint`, `openWorldHint`) | ready (tested, REQ-MCP-011): `build` is the only tool that is not read-only, none is destructive or open-world |
 | Policy 5C: tool names under 64 characters | ready (tested, REQ-MCP-012) |
 | Software Directory Terms: a mechanism to receive vulnerability reports | ready: [SECURITY.md](../../SECURITY.md), GitHub private vulnerability reporting enabled |
@@ -129,8 +129,8 @@ Plugin bundle. Repository `aileron-tech/wingbox`, plugin path
 
 Expected review outcome: the version is "held for a reviewer", not blocked.
 The portal always holds a plugin that runs a pinned `uvx` package (finding
-"Runs a pinned npx or uvx package") and a hook or MCP script that uses a
-launcher ("Scripts the validator couldn't follow"). Wingbox cannot avoid it:
+"Runs a pinned npx or uvx package"). Since 0.7.1 the hooks and the MCP server
+start `uvx` directly, with no launcher script. Wingbox cannot avoid the uvx finding:
 the plugin needs the Python package and its tree-sitter parsers. Hooks and the
 local MCP server load in Claude Code and Cowork; claude.ai chat loads only the
 skill.
@@ -151,8 +151,7 @@ python3 tools/build_openai_plugin.py          # writes dist/, or --out DIR
 
 Both use the Codex layout (`.codex-plugin/plugin.json` at the archive root),
 which `codex plugin add` installs. Neither holds the Claude Code manifest, the
-hook or the launcher: the directory refuses lifecycle hooks, and Codex does
-not need the launcher. Their README.md is
+hooks: the directory refuses lifecycle hooks. Their README.md is
 [openai-package-README.md](openai-package-README.md), which describes only
 what the package holds. `requires_local_executor: true` (top level of the
 Codex manifest, as the desktop-only page says for that layout) marks them
