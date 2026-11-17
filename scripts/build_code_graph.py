@@ -1163,6 +1163,13 @@ class _TracedLanguage:
             self._trace.specs.add(str(imported_name.get("original", "")))
         return self._bound.resolve_additional_imports(result)
 
+    def resolve_named_imports(
+        self, result: FileResult, results: Mapping[str, FileResult]
+    ) -> tuple[Mapping[str, frozenset[str]], int]:
+        # The resolver is this traced one: every module name asked, also those of the facades, is recorded.
+        named = getattr(self._bound, "resolve_named_imports", None)
+        return named(result, results, self.resolve_import) if named is not None else ({}, 0)
+
 
 class _TracedResults(Mapping[str, FileResult]):
     """The parse results of the graph; records which modules are read."""
@@ -1377,6 +1384,16 @@ def _module_facts(
         )
         if target_id and target_id != node_id:
             resolved_imports.setdefault(target_id, set()).add(relation["relation"])
+    # Rust: the files that define names imported through a module facade (`pub use child::*`); the facade edge
+    # stays. A file the module also imports directly keeps its plain edge.
+    if hasattr(bound_language, "resolve_named_imports"):
+        named, not_followed = bound_language.resolve_named_imports(r, id_to_result)
+        plain = set(resolved_imports)
+        for target_id, relations in sorted(named.items()):
+            if target_id != node_id and target_id not in plain:
+                resolved_imports.setdefault(target_id, set()).update(relations)
+        if not_followed:
+            node["unfollowed_names"] = not_followed   # counted in the build log, not written to the graph
 
     local_entities = {entity["name"] for entity in r.entities}
     for relation in r.relations:
@@ -1686,6 +1703,10 @@ def assemble_graph(
         fragment = fragments[node_id]
         nodes.append(dict(fragment.node))
         edges.extend(fragment.edges)
+    unfollowed = sum(node.pop("unfollowed_names", 0) for node in nodes)
+    if unfollowed:
+        print(f"[code-graph] Rust: {unfollowed} imported name(s) not followed to a definition (made by a macro, behind "
+              "#[path] or cfg); their importers keep the edge to the module facade", file=sys.stderr)
 
     referenced = {
         (edge["source"].split("::")[0], edge["target"])
