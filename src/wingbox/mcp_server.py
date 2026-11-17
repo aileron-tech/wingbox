@@ -214,6 +214,7 @@ class Server:
         self._first_build = subprocess.Popen(
             [sys.executable, "-m", "wingbox", "build", self.root],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=sys.stderr,
+            **freshness.portable().hidden_process_options(),
         )
 
     def first_build_message(self) -> Optional[str]:

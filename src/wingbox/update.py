@@ -106,6 +106,14 @@ class Environment:
     refresh: Callable[[Installed], list[Fact]]  # `wingbox install` of the new version for one record entry
 
 
+
+def _hidden() -> dict:
+    """Options that start a child without a console window on Windows (scripts/portable.py)."""
+    from wingbox import freshness
+
+    return freshness.portable().hidden_process_options()
+
+
 def parse_arguments(args: list[str]) -> Union[Options, UsageError]:
     check = dry_run = sexp = False
     for argument in args:
@@ -266,7 +274,7 @@ def run_installer(command: tuple[str, ...]) -> Ran:
     try:
         completed = subprocess.run(
             [program, *command[1:]], capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=_INSTALLER_TIMEOUT_SECONDS, check=False,
+            timeout=_INSTALLER_TIMEOUT_SECONDS, check=False, **_hidden(),
         )
     except FileNotFoundError:
         return Ran(127, f"{command[0]}: not found")
@@ -295,7 +303,7 @@ def refresh_installed(python: str, package_parent: str, entry: Installed) -> lis
     try:
         completed = subprocess.run(
             command, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd, env=environment,
-            timeout=_INSTALLER_TIMEOUT_SECONDS, check=False,
+            timeout=_INSTALLER_TIMEOUT_SECONDS, check=False, **_hidden(),
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         return [make_fact("update-failed", entry.root, reason=f"refresh: {error}")]

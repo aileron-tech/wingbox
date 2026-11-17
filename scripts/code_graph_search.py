@@ -3064,12 +3064,14 @@ def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
         result = subprocess.run(
             ["git", "-c", "core.quotepath=off", "diff", "--unified=0", ref],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=git_cwd,
+            **portable.hidden_process_options(),
         )
         if result.returncode != 0:
             # Try as a commit ref
             result = subprocess.run(
                 ["git", "-c", "core.quotepath=off", "diff", "--unified=0", ref, "HEAD"],
                 capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=git_cwd,
+                **portable.hidden_process_options(),
             )
             if result.returncode != 0:
                 print(f"(error git-diff-failed {_q(result.stderr.strip())})")

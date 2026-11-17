@@ -2,8 +2,8 @@ r"""What differs between Windows, macOS and Linux, in one place. Everything else
 
 - file locks: `lock` / `unlock` on an open file (fcntl.flock, or msvcrt.locking on Windows); the system
   releases them when the process ends;
-- a detached child process: `detached_process_options` (a new session, or a new process group without a
-  console on Windows);
+- a detached child process: `detached_process_options` (a new session, or on Windows a new process group
+  with a console that has no window), and `hidden_process_options` for every other child Wingbox starts;
 - atomic replacement: `replace` retries a moment when Windows refuses to replace a file another process
   holds open; `fsync_directory` is a no-op where a folder cannot be opened;
 - the start method of worker processes: `start_method` (as before: fork for the resolution workers where
@@ -68,12 +68,43 @@ def unlock(handle: IO[Any]) -> None:
 
 
 def detached_process_options() -> dict[str, Any]:
-    """Popen options for a child that outlives its parent and is not tied to its console or session."""
+    """Popen options for a child that outlives its parent and is not tied to its console or session.
+
+    Windows: a new process group with a console of its own that has no window (CREATE_NO_WINDOW), not
+    DETACHED_PROCESS: a detached process has no console at all, so each console program it starts (git, a
+    spawn worker) gets a new, visible console window. A console without a window is inherited by those
+    children instead. CREATE_NO_WINDOW is ignored together with DETACHED_PROCESS or CREATE_NEW_CONSOLE, so
+    neither is used. The child keeps running when the hook that started it ends (Windows does not end a
+    process with its parent); its own console also keeps it apart from the hook's console.
+    """
     if WINDOWS:
         import subprocess
 
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS, "close_fds": True}
+        return {
+            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
+            "startupinfo": _hidden_startupinfo(),
+            "close_fds": True,
+        }
     return {"start_new_session": True, "close_fds": True}
+
+
+def hidden_process_options() -> dict[str, Any]:
+    """Popen options for a short child whose output is captured (git, an installer, a build): on Windows it
+    runs without a console window even when this process has no console; nothing elsewhere."""
+    if not WINDOWS:
+        return {}
+    import subprocess
+
+    return {"creationflags": subprocess.CREATE_NO_WINDOW, "startupinfo": _hidden_startupinfo()}
+
+
+def _hidden_startupinfo() -> Any:
+    import subprocess
+
+    info = subprocess.STARTUPINFO()
+    info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    info.wShowWindow = subprocess.SW_HIDE
+    return info
 
 
 def replace(source: str, target: str) -> None:

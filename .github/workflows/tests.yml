@@ -4,7 +4,7 @@ name: tests
 
 on:
   push:
-    branches: [main, windows-support, windows-powershell, mcpb-extension, github-action, fix-init-small-repo]
+    branches: [main, windows-support, windows-powershell, mcpb-extension, github-action, fix-init-small-repo, windows-console-and-refresh]
   pull_request:
 
 permissions:

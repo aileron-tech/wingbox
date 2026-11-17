@@ -4,6 +4,11 @@ import os
 import subprocess
 from dataclasses import dataclass
 
+try:
+    from . import portable
+except ImportError:  # loaded as a top-level script module
+    import portable
+
 
 @dataclass(frozen=True)
 class GitIgnoreLoaded:
@@ -53,6 +58,7 @@ def _repository_root(root: str) -> _RepositoryRootResult:
             text=True,
             encoding="utf-8",
             errors="replace",
+            **portable.hidden_process_options(),
         )
     except OSError as error:
         return _RepositoryRootUnavailable(f"could not run Git: {error}")
@@ -172,6 +178,7 @@ def _ignored_candidates(repository_root: str, candidates: frozenset[str]) -> Git
             check=False,
             env=_git_environment(),
             input=standard_input,
+            **portable.hidden_process_options(),
         )
     except OSError as error:
         return GitIgnoreUnavailable(f"could not run git check-ignore: {error}")
@@ -206,6 +213,7 @@ def _tracked_paths(repository_root: str) -> GitIgnoreLoadResult:
             capture_output=True,
             check=False,
             env=_git_environment(),
+            **portable.hidden_process_options(),
         )
     except OSError as error:
         return GitIgnoreUnavailable(f"could not run git ls-files: {error}")
