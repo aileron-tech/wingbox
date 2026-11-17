@@ -23,8 +23,9 @@ Goals:
 
 1. Propose a complete layer table for a project without one, from the graph and the architecture library, and settle the unclear points with the coding agent (and, through it, with the operator) - not by asking a person to edit files.
 2. Hold the accepted layers: fail on a new upward import, keep the existing ones visible in a list that can only shrink, and never let a required rule become an exception.
-3. Work the same locally, in an agent's hooks and in CI, with no network and no model.
-4. Export the same rules to the tools a team already runs: CodeRabbit (review instructions and ast-grep rules) and dependency-cruiser.
+3. Check what a layer does, not only what it imports: SQL in the repository (DAO) layer and not in controllers or services, outbound HTTP in adapters, no web framework in the domain, and the other placement rules of clean architecture styles.
+4. Work the same locally, in an agent's hooks and in CI, with no network and no model.
+5. Export the same rules to the tools a team already runs: CodeRabbit (review instructions and ast-grep rules) and dependency-cruiser.
 
 Non-goals:
 
@@ -115,11 +116,43 @@ A part with declared rules skips steps 1 to 4: its rules are read as they are.
 - Type-only imports are reported apart: the compiler erases them, but a change of the type still reaches the importer.
 - The check reads the graph that the freshness hooks keep current, so in an agent session it answers within the hook's time budget; in CI it runs after `wingbox build`.
 
-### 4.4 Optional: one project per layer
+### 4.4 What a layer may do: capability rules
+
+The direction of imports is not the whole architecture. Layered, clean and hexagonal styles also say what kind of work belongs where: SQL lives in the repository (DAO) layer and is not run from controllers or services; outbound HTTP lives in adapters; the domain does not import the web framework; configuration is read in one place. Wingbox checks these as capabilities.
+
+A capability is something a file does that the parser can see without running the code:
+
+| Capability | What counts (examples) |
+|---|---|
+| `sql` | a string literal that starts with a SQL statement passed to a call (`execute`, `query`, `raw`), a query-builder chain, a session or entity-manager query |
+| `db-client` | an import of a database driver or ORM client (psycopg, SQLAlchemy, Prisma, Knex, Drizzle, TypeORM, ActiveRecord, Eloquent, JDBC, Entity Framework) |
+| `http-client` | outbound HTTP (requests, httpx, fetch, axios, HttpClient) |
+| `framework` | web framework imports and decorators (FastAPI, Express, NestJS, Spring, Rails controllers) |
+| `env` | reading the environment (`os.environ`, `process.env`) |
+| `filesystem`, `process` | file I/O; starting processes |
+
+Each style of the architecture library states where a capability is allowed, and the config can change it:
+
+```yaml
+    capabilities:
+      sql: {allowed_in: [repository, infra]}
+      db-client: {allowed_in: [repository, infra]}
+      http-client: {allowed_in: [infra]}
+      framework: {forbidden_in: [domain]}
+      env: {allowed_in: [config]}
+```
+
+- `wingbox check` reports a capability outside its layers with the line that shows it:
+  `(capability-violation src/services/order.ts :capability sql :layer service :allowed (repository infra) :line 42 :evidence "db.query(\"SELECT ...\")")`.
+- The same shrinking baseline applies, and the same exports: an ast-grep rule per capability and layer path, so a review tool flags `db.query(...)` added to a controller.
+- A few pattern checks of the chosen style ride on the same data: a controller that calls a repository and skips the service; a domain entity that imports the ORM; a service that builds an HTTP response.
+- Detection is by syntax (imports, call names, string literals). What it finds carries its evidence; what it only suspects (a query built in a variable and run elsewhere) is listed as a candidate, not a violation. SQL assembled at run time or hidden behind a helper in another package is outside what static parsing sees, and the report says so.
+
+### 4.5 Optional: one project per layer
 
 When a team splits its build into compiler projects (TypeScript project references, packages), `wingbox check --projects` verifies that every source file is in exactly the project its layer names and that each project references only lower layers. Wingbox does not create the projects.
 
-### 4.5 Export
+### 4.6 Export
 
 - `wingbox export coderabbit`: per layer, a `reviews.path_instructions` entry (what the layer is, what it may and may not import, how many files depend on it), and ast-grep rules that flag a forbidden import per language, written under `.wingbox/coderabbit/`; an existing `.coderabbit.yaml` is never overwritten, the block to merge is printed.
 - `wingbox export dependency-cruiser`: the same table and baseline as a dependency-cruiser configuration, for teams that already run it.
@@ -128,6 +161,7 @@ When a team splits its build into compiler projects (TypeScript project referenc
 
 - A fixture monorepo per language with a known table: the proposal places every folder as expected; the check passes; adding one upward import fails it; removing a baselined import without `--update` fails it.
 - A public repository with a declared table: reading it gives exactly the project's own known upward imports (this already holds on one repository: the same 112 of 112).
+- Capabilities: fixtures per language with SQL in a repository (passes), the same query moved to a controller or a service (fails with the line), a framework import in a domain file (fails), a query built in a variable (candidate).
 - Exports: the generated dependency-cruiser config, run by dependency-cruiser, reports the same upward imports as `wingbox check`; the ast-grep rules match the same imports on fixtures.
 - Determinism: the same code gives the same proposal and the same baseline, byte for byte.
 
