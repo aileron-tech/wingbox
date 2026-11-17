@@ -79,6 +79,8 @@ class HookOnABuiltGraphTest(unittest.TestCase):
                 "from shop.pricing import order_total\n\n\ndef pay(items):\n    return order_total(items)\n",
                 encoding="utf-8",
             )
+        (root / "shop" / "plans.py").write_text("class Subscription:\n    pass\n", encoding="utf-8")
+        (root / "shop" / "billing.py").write_text("from shop.plans import Subscription\n\n\ndef renew(s: Subscription):\n    return s\n", encoding="utf-8")
         with redirect_stdout(io.StringIO()):
             status = cli.main(["build", str(root)])
         assert status == 0
@@ -103,6 +105,16 @@ class HookOnABuiltGraphTest(unittest.TestCase):
         """/* REQ-INSTALL-017: a Grep pattern written for source lines (`def\\s+order_total`) must be answered for its longest word when the pattern itself names nothing in the graph. */"""
         context = _context(hook.run_pre_search(_payload("Grep", self.root, pattern="def\\s+order_total\\("), "/"))
         self.assertIn("(definition order_total ", context)
+
+    def test_a_grep_pattern_matches_with_smart_case(self) -> None:
+        """/* REQ-INSTALL-024: the Grep hint uses smart case, as the command line matches without case: a pattern with no upper-case letter (escapes such as \\s do not count) matches without case, a pattern with an upper-case letter matches with case, and the tool's case-insensitive flag (-i) always matches without case. */"""
+        def context(pattern: str, **flags: object) -> str:
+            return _context(hook.run_pre_search(_payload("Grep", self.root, pattern=pattern, **flags), "/"))
+
+        for pattern in ("subscription", "Subscription", "class\\s+subscription", "subscr.*tion"):
+            self.assertIn("(definition Subscription ", context(pattern), pattern)
+        self.assertEqual("", context("SUBSCRIPTION"))
+        self.assertIn("(definition Subscription ", context("SUBSCRIPTION", **{"-i": True}))
 
     def test_a_read_names_the_dependents_of_the_file_and_the_impact_command(self) -> None:
         """/* REQ-INSTALL-018: the pre-search hook on Read must give the module of the file, its direct dependents and the `wingbox impact` hint; a file outside the graph gives nothing. */"""

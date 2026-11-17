@@ -96,6 +96,12 @@ class Definition:
 # Input
 # ---------------------------------------------------------------------------
 
+def smart_case(pattern: str, ignore_case_flag: bool) -> bool:
+    """Whether a Grep pattern matches without case: the tool's -i flag, or no upper-case letter in the
+    pattern outside its escapes (\\S, \\W, \\D do not count), as `wingbox quick` and ripgrep's smart case do."""
+    return ignore_case_flag or not any(char.isupper() for char in re.sub(r"\\.", "", pattern))
+
+
 def _compile(pattern: str, ignore_case: bool) -> "re.Pattern[str]":
     flags = re.IGNORECASE if ignore_case else 0
     try:
@@ -135,7 +141,7 @@ def read_query(payload: object, cwd: str) -> tuple[Optional[Query], str]:
         return None, base
     under = start if path else ""
     if tool == "Grep":
-        return PatternQuery(_compile(pattern, bool(tool_input.get("-i"))), pattern, under), start
+        return PatternQuery(_compile(pattern, smart_case(pattern, bool(tool_input.get("-i")))), pattern, under), start
     if tool == "Glob":
         keyword = _glob_keyword(pattern)
         if len(keyword) < 3:
@@ -310,7 +316,7 @@ def _search_word(query: PatternQuery) -> Optional["re.Pattern[str]"]:
     longest = max(words, key=len)
     if longest == query.shown:
         return None
-    return re.compile(re.escape(longest), re.IGNORECASE)
+    return re.compile(re.escape(longest), query.regex.flags & re.IGNORECASE)
 
 
 def _matches(graph: LightGraph, regex: "re.Pattern[str]", under: str) -> tuple[list[str], list[Definition], bool]:

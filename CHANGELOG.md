@@ -14,6 +14,12 @@
   (`WINGBOX_FIRST_BUILD_WAIT`) and otherwise says that the first build is
   still running.
 
+### Fixes
+
+- The search hook matches a Grep pattern with smart case, as `wingbox quick`
+  does: `subscription` now finds `Subscription`; a pattern with an upper-case
+  letter keeps its case, and Grep's `-i` always ignores it.
+
 ## 0.7.2 - 2026-11-17
 
 A release of the documents; the tool behaves as in 0.7.1.
