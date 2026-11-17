@@ -1,5 +1,23 @@
 """Command-line entry point for Wingbox.
 
+    wingbox init [PATH] [--force] [--sexp] [--synonyms] [--language L --style S --yes --scaffold]
+                                            Detect the parts of a repository and the architecture style of each,
+                                            print the candidates and write .wingbox/config.yaml (kept if present
+                                            unless --force); edit it, then run wingbox build
+    wingbox advice [--sexp] [--learned]     The open recommendations (or what was learned from past ones);
+    wingbox advice accept|reject <id> [--reason TEXT]   record the decision in .wingbox/decisions.sexp
+    wingbox align [PART] [--to STYLE] [--learn] [--sexp]
+                                            Architecture gaps of each part against its style (or another one);
+                                            --learn writes learned folders to .wingbox/config.yaml and the rest
+                                            to .wingbox/baseline.sexp
+    wingbox place "<what>" [--part PART] [--sexp]
+                                            The layer and folder for new code, by the placement rules of the style
+    wingbox compare [--sexp]                The parts of a monorepo side by side per language: styles, layers,
+                                            differences, and advice for a part that deviates from the majority
+    wingbox learn [PART] [--agent|--human] [--sexp] [--again] [--yes]
+                                            A coding agent gets a task: read the folders the style cannot place and
+                                            answer in a fixed format; a person gets the deterministic learning to confirm
+    wingbox learn --apply [FILE]            Validate the agent's answer (stdin or FILE) and record it in .wingbox/
     wingbox build [PATH] [build options]    Build the code graph of a project (default: current directory)
                                             into PATH/.wingbox/: index.sexp, REPORT.md and map.html
     wingbox open [PATH]                     Open .wingbox/map.html of the project in the browser
@@ -35,6 +53,11 @@ is the file agents query. REPORT.md and map.html say the same thing to a
 person: the report in text, the map as an interactive page that opens in a
 browser without a network connection. .wingbox/.gitignore keeps the generated
 files out of git; the whole folder can be ignored as well.
+
+.wingbox/config.yaml states the architecture style of each part of the
+repository; `wingbox build` reads it when present. It, decisions.sexp,
+learned.sexp and baseline.sexp are written by people or agents and stay
+visible to git.
 
 Query commands, the MCP tools and the search hook bring the graph up to date
 before they read it: the files changed since the last build (marked by the
@@ -175,6 +198,859 @@ def _version() -> str:
         return "0+unknown"
 
 
+def _store(root: str) -> tuple[str, str]:
+    """(path of .wingbox/decisions.sexp, its text or "")."""
+    load_script("architecture")
+    from architecture.decisions import STORE_FILE
+
+    path = os.path.join(root, STORE_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return path, handle.read()
+    except FileNotFoundError:
+        return path, ""
+
+
+def _prepare_wingbox(root: str) -> None:
+    """Create ROOT/.wingbox/ with the .gitignore of the builder (it leaves the files people decide on visible)."""
+    load_script("build_code_graph").prepare_wingbox_directory(root)
+
+
+def _append(path: str, lines: list[str]) -> Optional[str]:
+    if not lines:
+        return None
+    try:
+        _prepare_wingbox(os.path.dirname(os.path.dirname(path)))
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("\n".join(lines) + "\n")
+    except OSError as error:
+        return f"cannot write {path}: {error}"
+    return None
+
+
+def _learned_removed_by_config(root: str, store, today: str) -> list[str]:
+    """`learned-layer` folders that .wingbox/config.yaml does not list: the config undid them."""
+    from architecture.config import ConfigOk, read_config
+    from architecture.library import load_library
+    from architecture.repository import text_reader
+    from architecture.sexp import q
+
+    if not store.learned:
+        return []
+    config = read_config(text_reader(root), load_library())
+    if not isinstance(config, ConfigOk):
+        return []
+    listed = {(part.path, folder) for part in config.parts for _layer, folders in part.layers for folder in folders}
+    return [
+        f"(learned-removed {q(item.part)} {q(item.folder)} :by config :at {today})"
+        for item in store.learned if (item.part, item.folder) not in listed
+    ]
+
+
+def record_decisions(root: str, graph_path: str, advice: tuple) -> list | str:
+    """Log the advice of this build and the outcome of the open advice in .wingbox/decisions.sexp;
+    return the advice still worth showing, best first (or an error)."""
+    import hashlib
+
+    builder = load_script("build_code_graph")
+    from architecture.decisions import read_store, reconcile, visible
+    from architecture.repository import list_files
+
+    path, text = _store(root)
+    with open(graph_path, "rb") as handle:
+        graph_hash = hashlib.sha256(handle.read()).hexdigest()[:12]
+    paths = list_files(root, frozenset(builder.SKIP_DIRS), frozenset())
+    store = read_store(text)
+    lines = reconcile(store, advice, paths, date.today().isoformat(), graph_hash)
+    lines += _learned_removed_by_config(root, store, date.today().isoformat())
+    error = _append(path, lines)
+    if error:
+        return error
+    return visible(read_store(text + "\n".join(lines)), advice)
+
+
+def _advice_command(args: list[str], cwd: str) -> int:
+    """`wingbox advice [--sexp] [--learned]`, `wingbox advice accept|reject <id> [--reason TEXT]`."""
+    load_script("architecture")
+    from architecture.advice import to_sexp
+    from architecture.decisions import read_store, user_outcome, visible
+    from architecture.sexp import q
+
+    root = _find_root(cwd)
+    if root is None:
+        _no_project(cwd)
+        return 1
+    path, text = _store(root)
+    store = read_store(text)
+    if args and args[0] in ("accept", "reject"):
+        if len(args) < 2:
+            print(f"[wingbox] ERROR: wingbox advice {args[0]} <id> [--reason TEXT]", file=sys.stderr)
+            return 2
+        reason = args[args.index("--reason") + 1] if "--reason" in args and args.index("--reason") + 1 < len(args) else ""
+        line = user_outcome(store, args[1], args[0] == "accept", reason, date.today().isoformat())
+        if line is None:
+            print(f"[wingbox] ERROR: no advice with id {args[1]} in {path}", file=sys.stderr)
+            return 1
+        error = _append(path, [line])
+        if error:
+            print(f"[wingbox] ERROR: {error}", file=sys.stderr)
+            return 1
+        print(line)
+        return 0
+    sexp = "--sexp" in args
+    if "--learned" in args:
+        for item in store.learned:
+            fact = f"(learned-layer {q(item.part)} {q(item.folder)} {item.layer} :from {item.source})"
+            print(fact if sexp else f"{item.part}: folder {item.folder}/ is {item.layer} (learned from {item.source})")
+        if not store.learned:
+            print("(learned-none)" if sexp else "Nothing learned yet.")
+        return 0
+    search = load_script("code_graph_search")
+    graph = search.CodeGraph()
+    loaded = graph.load(_graph_file(root), root)
+    if isinstance(loaded, search.MapLoadErr):
+        print(f"[wingbox] ERROR: {loaded.error}", file=sys.stderr)
+        return 1
+    advice, quiet = search.advice_items(graph)
+    for item in visible(store, advice):
+        print(to_sexp(item) if sexp else f"{item.id}  {item.kind}  {item.target}\n  {item.reason} [{item.style}: {item.rule}]")
+    if sexp:
+        for part, why in quiet:
+            print(f"(advice-none {q(part)} :reason {q(why)})")
+    elif quiet:
+        print(f"no advice for {len(quiet)} parts without a determined style: {', '.join(part for part, _ in quiet)}")
+    return 0
+
+
+def _find_root(cwd: str) -> Optional[str]:
+    """The project at or above cwd: the nearest folder whose .wingbox/ holds the graph."""
+    from wingbox import freshness
+
+    return freshness.find_project(cwd)
+
+
+def _no_project(cwd: str) -> None:
+    from wingbox import freshness
+
+    print(f"[wingbox] ERROR: {freshness.no_project_message(cwd)}", file=sys.stderr)
+
+
+def _graph_file(root: str) -> str:
+    """The code graph of the project at root (.wingbox/index.sexp)."""
+    from wingbox import freshness
+
+    return freshness.graph_path(root)
+
+
+def _atom(text: str) -> str:
+    import re
+
+    load_script("architecture")
+    from architecture.sexp import q
+
+    return text if re.fullmatch(r"[A-Za-z0-9_./@+-]+", text) else q(text)
+
+
+def _align_command(args: list[str], cwd: str) -> int:
+    """`wingbox align [PART] [--to STYLE] [--learn] [--sexp]`: gaps, migration view, learning."""
+    import dataclasses
+
+    load_script("architecture")
+    from architecture import align
+    from architecture.advice import PartRules
+    from architecture.config import CONFIG_FILE, render_config
+    from architecture.facts import BASELINE_FILE
+    from architecture.library import load_library
+    from architecture.plan import LayerFolder, RepositoryPlan
+    from architecture.sexp import q
+    from architecture.words import normalise
+
+    sexp, learn = "--sexp" in args, "--learn" in args
+    to_style = args[args.index("--to") + 1] if "--to" in args and args.index("--to") + 1 < len(args) else ""
+    rest = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--to")]
+    root = _find_root(cwd)
+    if root is None:
+        _no_project(cwd)
+        return 1
+    search = load_script("code_graph_search")
+    graph = search.CodeGraph()
+    loaded = graph.load(_graph_file(root), root)
+    if isinstance(loaded, search.MapLoadErr):
+        print(f"[wingbox] ERROR: {loaded.error}", file=sys.stderr)
+        return 1
+    library = load_library()
+    target = library.style(to_style) if to_style else None
+    if to_style and target is None:
+        print(f"[wingbox] ERROR: unknown style {to_style}", file=sys.stderr)
+        return 2
+    parts, modules, _dependents, dependencies = search.architecture_inputs(graph)
+    project_baseline = {pair: file for pair, file in graph.known.items() if file != BASELINE_FILE}
+    type_only = frozenset(
+        (source, target) for source, targets in dependencies.items() for target in targets
+        if search.is_type_only_import(graph, source, target)
+    )
+    facts: list[str] = []
+    learned_layers: dict[str, list] = {}
+    baseline_lines: list[str] = []
+    bases: dict[str, object] = {}
+    learn_context = _learn_context(root, library) if learn and target is None else None
+    for part in parts:
+        if rest and part.path not in rest:
+            continue
+        if not part.denies:
+            facts.append(f"(align-none {q(part.path)} :reason {q(f'style {part.style} ({part.state}): no rules to align with')})")
+            continue
+        rules, mapping, layers = part, None, tuple(sorted(part.ranks, key=lambda l: (-part.ranks[l], l)))
+        label = f":style {part.style}"
+        if target is not None:
+            mapping = target.mapping_from(part.style)
+            if mapping is None:
+                facts.append(f"(align-none {q(part.path)} :reason {q(f'no mapping from {part.style} to {target.id}')})")
+                continue
+            rules = PartRules(part.path, target.id, part.state, {l.id: l.rank for l in target.layers},
+                              {(d.source, d.target): (d.reason, d.severity, d.fix) for d in target.denies})
+            layers = tuple(l.id for l in target.layers)
+            label = f":style {target.id} :from {part.style}"
+        result = align.align_part(rules, modules, dependencies, layers, mapping, type_only)
+        facts.append(
+            f"(align-part {q(part.path)} {label} :placed {result.placed} :files {result.files} "
+            f":following {result.following} :dependencies {result.dependencies} "
+            f":present {q(' '.join(result.layers_present))} :missing {q(' '.join(result.layers_missing))})"
+        )
+        for gap in result.gaps:
+            example = f" :example {q(gap.example)}" if gap.example else ""
+            facts.append(f"(align-gap {q(part.path)} :kind {gap.kind} :target {q(gap.target)} :count {gap.count}{example})")
+        if not learn or target is not None:
+            continue
+        if part.style == "declared":
+            facts.append(f"(align-learned-none {q(part.path)} :reason {q('declared rules: nothing is guessed, the baseline comes from them')})")
+            learned = ()
+        else:
+            learned = _learn_part(part, library, modules, dependencies, learn_context, facts, bases)
+            learned_layers[part.path] = list(learned)
+        for entry in align.baseline(part, modules, dependencies, {i.folder: i.layer for i in learned}, project_baseline, type_only):
+            baseline_lines.append(
+                f"(baseline {q(entry.part)} {_atom(entry.source)} {_atom(entry.target)} :rule {q(entry.rule)} "
+                f":from {_atom(entry.origin) if entry.origin == 'align' else q(entry.origin)})"
+            )
+    if learn and target is None:
+        error = _write_learned(root, learned_layers, bases, sorted(set(baseline_lines)), facts)
+        if error:
+            print(f"[wingbox] ERROR: {error}", file=sys.stderr)
+            return 1
+    print("\n".join(facts) if sexp else _align_text(facts))
+    return 0
+
+
+def _align_text(facts: list[str]) -> str:
+    """The align facts for people."""
+    from architecture.sexp import keyword, parse, positional
+
+    lines: list[str] = []
+    for fact in facts:
+        t = parse(fact)
+        head, part = t[0], (positional(t) or ["."])[0]
+        if head == "align-part":
+            lines.append(f"{part}  {keyword(t, 'style')}{' (mapped from ' + keyword(t, 'from') + ')' if keyword(t, 'from') else ''}: "
+                         f"{keyword(t, 'placed')} of {keyword(t, 'files')} files placed, {keyword(t, 'following')} of "
+                         f"{keyword(t, 'dependencies')} dependencies follow the rules"
+                         + (f"; missing layers: {keyword(t, 'missing')}" if keyword(t, 'missing') else ""))
+        elif head == "align-gap":
+            kind, target, count = keyword(t, "kind"), keyword(t, "target"), keyword(t, "count")
+            if kind == "rule":
+                lines.append(f"  {target}: {count} breaks, e.g. {keyword(t, 'example')}")
+            elif kind == "unplaced-folder":
+                lines.append(f"  {target}/: {count} files without a layer")
+        elif head == "align-style":
+            lines.append(f"  closest style: {keyword(t, 'style')} {keyword(t, 'score')} "
+                         f"(runner-up {keyword(t, 'runner-up')} {keyword(t, 'runner-up-score')})")
+        elif head == "align-placed":
+            lines.append(f"  {keyword(t, 'layer')} (by the style): {keyword(t, 'folders')}")
+        elif head == "align-learned":
+            lines.append(f"  learned: {keyword(t, 'folder')}/ -> {keyword(t, 'layer')} ({keyword(t, 'by')}: {keyword(t, 'why')})")
+        elif head in ("align-none", "align-learned-none"):
+            lines.append(f"{part}: {keyword(t, 'reason')}")
+        elif head == "align-config-written":
+            lines.append(f"wrote {t[1]}")
+        elif head == "align-baseline":
+            lines.append(f"wrote {t[1]} ({keyword(t, 'entries')} known breaks; later builds report only new ones)")
+    return "\n".join(lines)
+
+
+def _learn_context(root: str, library) -> tuple:
+    """(plan, parts by path) of the repository, for learning."""
+    builder = load_script("build_code_graph")
+    from architecture.detect import split_parts
+    from architecture.repository import list_files
+
+    skip = frozenset(builder.SKIP_DIRS)
+    plan = builder.architecture_plan(root, skip, frozenset())
+    if isinstance(plan, builder.Err):
+        return None
+    paths = list_files(root, skip, frozenset())
+    return plan.value, {part.path: part for part in split_parts(paths, library, roots=plan.value.roots)}
+
+
+def _learn_part(part, library, modules, dependencies, context, facts: list[str], bases: dict) -> tuple:
+    """Closest style of the library as the base; the folders it does not place derived by names, patterns
+    and imports (architecture/learn.py)."""
+    import dataclasses
+
+    from architecture import align
+    from architecture.detect import judge
+    from architecture.learn import closest_style, derive, unplaced_folders
+    from architecture.plan import layer_folders
+    from architecture.sexp import q
+    from architecture.words import DEFAULT_SETTINGS
+
+    if context is None or part.path not in context[1]:
+        return ()
+    plan, by_path = context
+    files = by_path[part.path]
+    current = next((p for p in plan.parts if p.path == part.path), None)
+    closest = closest_style(judge(files, library))
+    if closest is None or current is None:
+        facts.append(f"(align-learned-none {q(part.path)} :reason {q('no style of the library scores on this part')})")
+        return ()
+    style = library.style(closest.style)
+    layers, routing = layer_folders(style, files, DEFAULT_SETTINGS, library)
+    base = dataclasses.replace(current, style=style.id, state="configured", layers=layers, routing_root=routing)
+    facts.append(
+        f"(align-style {q(part.path)} :style {style.id} :score {closest.score:.2f} :coverage {closest.coverage:.2f} "
+        f":runner-up {closest.runner_up} :runner-up-score {closest.runner_up_score:.2f})"
+    )
+    by_layer: dict[str, list[str]] = {}
+    for folder in layers:
+        by_layer.setdefault(folder.layer, []).append(folder.folder)
+    for layer, folders in by_layer.items():
+        facts.append(f"(align-placed {q(part.path)} :layer {layer} :folders {q(' '.join(folders))} :by style)")
+    by_imports = align.layers_by_imports(part, modules, dependencies)
+    derived = [d for d in (derive(folder, members, style, library, by_imports)
+                           for folder, members in unplaced_folders(base, files.files, library).items()) if d]
+    for item in derived:
+        facts.append(f"(align-learned {q(part.path)} :folder {q(item.folder)} :layer {item.layer} :by {item.by} :why {q(item.why)})")
+    if derived or style.id != current.style or current.origin != "config":
+        bases[part.path] = base
+    return tuple(align.Learned(part.path, d.folder, d.layer, f"{d.by}: {d.why}") for d in derived)
+
+
+def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[str], facts: list[str]) -> Optional[str]:
+    """Write the base style and the learned folders into .wingbox/config.yaml (with a comment) when
+    something changed, the baseline, and the decisions log."""
+    import dataclasses
+
+    builder = load_script("build_code_graph")
+    from architecture.config import CONFIG_FILE, render_config
+    from architecture.facts import BASELINE_FILE
+    from architecture.library import load_library
+    from architecture.plan import LayerFolder, RepositoryPlan
+    from architecture.repository import list_files
+    from architecture.sexp import q
+
+    skip = frozenset(builder.SKIP_DIRS)
+    plan = builder.architecture_plan(root, skip, frozenset())
+    if isinstance(plan, builder.Err):
+        return plan.error
+    parts = []
+    for part in plan.value.parts:
+        base = bases.get(part.path, part)
+        taught = tuple(LayerFolder(item.folder, item.layer, "learned", f"align: {item.why}", 0) for item in learned.get(part.path, []))
+        parts.append(dataclasses.replace(base, layers=taught + tuple(f for f in base.layers if f.match != "learned")))
+    library = load_library()
+    today = date.today().isoformat()
+    try:
+        _prepare_wingbox(root)
+        if bases:   # nothing learned and no style change: the config stays as it is
+            with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8") as handle:
+                handle.write(render_config(RepositoryPlan(tuple(parts), plan.value.roots), library, today,
+                                           list_files(root, skip, frozenset())))
+            facts.append(f"(align-config-written {q(CONFIG_FILE)})")
+        with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8") as handle:
+            handle.write(f"; written by wingbox align --learn on {today}: rule breaks known at that time\n")
+            handle.write("\n".join(baseline_lines) + ("\n" if baseline_lines else ""))
+    except OSError as error:
+        return str(error)
+    facts.append(f"(align-baseline {q(BASELINE_FILE)} :entries {len(baseline_lines)})")
+    path, _ = _store(root)
+    return _append(path, [
+        f"(learned-layer {q(part)} {q(item.folder)} {item.layer} :from align :at {today})"
+        for part, items in sorted(learned.items()) for item in items
+    ])
+
+
+def _place_command(args: list[str], cwd: str) -> int:
+    """`wingbox place "<what>" [--part PART] [--sexp]`: the layer and folder for new code."""
+    builder = load_script("build_code_graph")
+    from architecture.detect import is_source, is_test_file
+    from architecture.library import load_library
+    from architecture.place import choose_placement, place_declared
+    from architecture.repository import list_files
+    from architecture.sexp import q
+    from architecture.target import target_layout
+
+    sexp = "--sexp" in args
+    part_name = args[args.index("--part") + 1] if "--part" in args and args.index("--part") + 1 < len(args) else ""
+    words = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--part")]
+    if not words:
+        print('[wingbox] ERROR: wingbox place "<what you add>" [--part PART] [--sexp]', file=sys.stderr)
+        return 2
+    request = " ".join(words)
+    root = _find_root(cwd) or cwd
+    probe = cwd
+    while probe != os.path.dirname(probe) and not os.path.isfile(os.path.join(probe, ".wingbox", "config.yaml")):
+        probe = os.path.dirname(probe)
+    if os.path.isfile(os.path.join(probe, ".wingbox", "config.yaml")):
+        root = probe
+    skip = frozenset(builder.SKIP_DIRS)
+    plan = builder.architecture_plan(root, skip, frozenset())
+    if isinstance(plan, builder.Err):
+        print(f"[wingbox] ERROR: {plan.error}", file=sys.stderr)
+        return 1
+    library = load_library()
+    paths = list_files(root, skip, frozenset())
+    here = os.path.relpath(cwd, root).replace(os.sep, "/")
+    usable = [p for p in plan.value.parts if p.has_rules]
+    if part_name:
+        usable = [p for p in usable if p.path == part_name]
+    else:
+        inside = [p for p in usable if p.path == "." or here == p.path or here.startswith(p.path + "/")]
+        usable = sorted(inside, key=lambda p: (-len(p.path), p.path)) if inside else sorted(usable, key=lambda p: (-p.files, p.path))
+    if not usable:
+        return _say(f"(place-none {q(part_name or '.')} :reason {q('no part with rules: a determined style or declared rules')})", sexp)
+    part = usable[0]
+    prefix = "" if part.path == "." else part.path + "/"
+    part_files = [p for p in paths if p.startswith(prefix) and is_source(p) and not is_test_file(p[len(prefix):], library)]
+
+    def examples(folder: str) -> str:
+        inside = sorted(p for p in part_files if folder and p.startswith(folder + "/") and "/" not in p[len(folder) + 1:])
+        return " ".join(inside[:3])
+
+    if part.style == "declared":
+        found = place_declared(part, part_files, request)
+        if found is None:
+            return _say(f"(place-none {q(part.path)} :reason {q('no folder of the part shares a word with the request')})", sexp)
+        folder, layer = found
+        return _say(
+            f"(place {q(part.path)} :layer {layer} :folder {q(folder)} :present :style declared "
+            f":rule {q(part.declared.layers.file + ': layer ' + layer)} :may-import \"not stated\" :examples {q(examples(folder))})",
+            sexp,
+        )
+    style = library.style(part.style)
+    choice = choose_placement(style, request)
+    if choice is None:
+        return _say(f"(place-none {q(part.path)} :reason {q(f'no placement or layer word of {style.id} matches the request')})", sexp)
+    items = [i for i in target_layout(part, paths, library) if i.layer == choice.layer and not i.block]
+    present = next((i.present[0] for i in items if i.present), "")
+    folder = present or (items[0].folder if items else "")
+    if folder and part.path != ".":
+        folder = f"{part.path}/{folder}"
+    exists = bool(folder) and os.path.isdir(os.path.join(root, folder))   # an existing folder, empty or not, is not new
+    state = ":present" if present or exists else (":new" if folder else ":not-stated")
+    may = " ".join(choice.may_import) if choice.may_import is not None else "not stated"
+    where = f" :where {q(choice.where)}" if choice.where and " " in choice.where else ""
+    return _say(
+        f"(place {q(part.path)} :layer {choice.layer or '-'} :folder {q(folder)} {state} :style {style.id} "
+        f":rule {q('placement: ' + choice.what if choice.what else 'layer words of ' + style.id)} :may-import {q(may)}"
+        f"{where} :examples {q(examples(folder) if present else '')})",
+        sexp,
+    )
+
+
+def _say(fact: str, sexp: bool) -> int:
+    """Print a fact, or its text for people (the printer of `place`)."""
+    if sexp:
+        print(fact)
+        return 0
+    load_script("architecture")
+    from architecture.sexp import keyword, parse, positional
+
+    tokens = parse(fact)
+    if tokens[0] != "place":
+        print(f"no place: {keyword(tokens, 'reason')}")
+        return 0
+    folder = keyword(tokens, "folder") or "(no folder stated)"
+    state = "a new folder" if ":new" in tokens else ("" if ":present" in tokens else "no folder stated")
+    print(f"{folder}/  {keyword(tokens, 'layer')} layer of {keyword(tokens, 'style')}{', ' + state if state else ''}")
+    print(f"  because: {keyword(tokens, 'rule')}")
+    if keyword(tokens, "where"):
+        print(f"  where: {keyword(tokens, 'where')}")
+    print(f"  may import: {keyword(tokens, 'may-import')}")
+    if keyword(tokens, "examples"):
+        print(f"  like: {keyword(tokens, 'examples').replace(' ', ', ')}")
+    return 0
+
+
+def _compare_command(args: list[str], cwd: str) -> int:
+    """`wingbox compare [--sexp]`: the parts of a monorepo side by side, per language."""
+    builder = load_script("build_code_graph")
+    from architecture.advice import to_sexp
+    from architecture.compare import compare
+    from architecture.newproject import language_of
+    from architecture.sexp import q
+
+    root = cwd
+    probe = cwd
+    while probe != os.path.dirname(probe):
+        if os.path.isfile(os.path.join(probe, ".wingbox", "config.yaml")) or os.path.isfile(_graph_file(probe)):
+            root = probe
+            break
+        probe = os.path.dirname(probe)
+    plan = builder.architecture_plan(root, frozenset(builder.SKIP_DIRS), frozenset())
+    if isinstance(plan, builder.Err):
+        print(f"[wingbox] ERROR: {plan.error}", file=sys.stderr)
+        return 1
+    languages = {}
+    for part in plan.value.parts:
+        folder = os.path.join(root, part.path)
+        languages[part.path] = language_of(tuple(os.listdir(folder))) if os.path.isdir(folder) else None
+    parts, differences, advice = compare(plan.value.parts, {k: v for k, v in languages.items() if v})
+    sexp = "--sexp" in args
+    for item in parts:
+        line = f"(compare-part {q(item.part)} :language {item.language} :style {item.style} :layers {q(' '.join(item.layers))})"
+        print(line if sexp else f"{item.part:<30} {item.language:<11} {item.style:<15} {' '.join(item.layers)}")
+    for item in differences:
+        print(f"(compare-diff {item.language} :kind {item.kind} :detail {q(item.detail)})" if sexp
+              else f"  {item.language}: {item.kind}: {item.detail}")
+    for item in advice:
+        print(to_sexp(item) if sexp else f"  advice: {item.reason}")
+    return 0
+
+
+def _learn_command(args: list[str], cwd: str) -> int:
+    """`wingbox learn [PART] [--agent|--human] [--sexp] [--again] [--yes]`, `wingbox learn --apply [FILE]`."""
+    import hashlib
+
+    builder = load_script("build_code_graph")
+    from architecture import agent_learn
+    from architecture.detect import is_test_file, judge, split_parts
+    from architecture.learn import closest_style, derive, unplaced_folders
+    from architecture.library import load_library
+    from architecture.plan import layer_folders
+    from architecture.repository import list_files
+    from architecture.sexp import q
+    from architecture.words import DEFAULT_SETTINGS
+
+    sexp, again = "--sexp" in args, "--again" in args
+    apply_from = None
+    if "--apply" in args:
+        index = args.index("--apply")
+        apply_from = args[index + 1] if index + 1 < len(args) and not args[index + 1].startswith("--") else "-"
+    wanted = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--apply")]
+    mode = agent_learn.learn_mode(tuple(args), os.environ, sys.stdin.isatty(), sys.stdout.isatty())
+    root = _find_root(cwd)
+    if root is None:
+        _no_project(cwd)
+        return 1
+    library = load_library()
+    skip = frozenset(builder.SKIP_DIRS)
+    plan = builder.architecture_plan(root, skip, frozenset())
+    if isinstance(plan, builder.Err):
+        print(f"[wingbox] ERROR: {plan.error}", file=sys.stderr)
+        return 1
+    paths = list_files(root, skip, frozenset())
+    by_path = {part.path: part for part in split_parts(paths, library, roots=plan.value.roots)}
+    styled = [p for p in plan.value.parts if p.path in by_path and p.style not in ("declared", "none")
+              and (not wanted or p.path in wanted)]
+
+    def top_folders(files: tuple[str, ...]) -> dict[str, list[str]]:
+        found: dict[str, list[str]] = {}
+        for relative in files:
+            segments = relative.split("/")[:-1]
+            if segments and segments[0] == "src":
+                segments = segments[1:]
+            if segments:
+                found.setdefault(segments[0], []).append(relative)
+        return found
+
+    def folder_paths(files: tuple[str, ...]) -> dict[str, list[str]]:
+        """Every folder of the part below its source root (lib/hooks), with the files directly in it."""
+        found: dict[str, list[str]] = {}
+        for relative in files:
+            directory = relative.rsplit("/", 1)[0] if "/" in relative else ""
+            directory = directory[4:] if directory.startswith("src/") else ("" if directory == "src" else directory)
+            if directory:
+                found.setdefault(directory, []).append(relative)
+        return found
+
+    if apply_from is not None:
+        text = sys.stdin.read() if apply_from == "-" else open(os.path.join(cwd, apply_from), encoding="utf-8").read()
+        parts = {p.path: (p.style, frozenset(top_folders(by_path[p.path].files)) | frozenset(folder_paths(by_path[p.path].files)))
+                 for p in styled}
+        answer = agent_learn.parse_answer(text, parts, library)
+        if isinstance(answer, agent_learn.AnswerErr):
+            for error in answer.errors:
+                print(f"(learn-error {q(error)})" if sexp else f"error: {error}")
+            print("(learn-rejected :saved nothing)" if sexp else "The answer was rejected as a whole; nothing was saved. Fix it and send it again.")
+            return 2
+        return _learn_record(root, plan.value, answer.entries, mode, by_path, top_folders, library, sexp, "--verbose" in args)
+    print(f"(learn-mode {mode.mode} :because {q(mode.because)})" if sexp or mode.mode == "agent"
+          else f"learn: interactive ({mode.because}); inside a coding agent, /wingbox learn lets the agent read the code and decide the unclear folders")
+    if mode.mode == "human":
+        return _learn_human(root, args, library)
+    search = load_script("code_graph_search")
+    graph = search.CodeGraph()
+    graph.load(_graph_file(root), root)
+    known = agent_learn.read_learned(_read_text(os.path.join(root, agent_learn.LEARNED_FILE)))
+    file_module = {search.module_file(graph, module): module for module in graph.nodes}   # once: it probes the disk
+    tasks = []
+    for part in styled:
+        files = by_path[part.path]
+        closest = closest_style(judge(files, library))
+        if closest is None:
+            continue
+        style = library.style(closest.style)
+        layers, routing = layer_folders(style, files, DEFAULT_SETTINGS, library)
+        base = _replace(part, style=style.id, state="configured", layers=layers, routing_root=routing)
+        folders = top_folders(files.files)
+        unplaced = unplaced_folders(base, files.files, library)
+        weak = {f.folder: f"{f.match} of {f.via}" for f in layers if f.match in ("spelling", "synonym")}
+        prefix = "" if part.path == "." else part.path + "/"
+        infos, known_rows = [], []
+        # Nested folders whose files break a rule, or rest on a guess, at the deepest folder that holds them.
+        nested = folder_paths(files.files)
+        breaks: dict[str, int] = {}
+
+        module_path = {module: path for path, module in file_module.items()}
+
+        def nested_folder(module: str) -> str:
+            path = module_path.get(module, module)[len(prefix):]
+            directory = path.rsplit("/", 1)[0] if "/" in path else ""
+            return directory[4:] if directory.startswith("src/") else directory
+
+        for item in search.boundary_violations(graph, {m for m in graph.nodes if m.startswith(prefix) or part.path == "."}):
+            if item.part != part.path or item.known:
+                continue
+            for module in (item.source, item.target):
+                breaks[nested_folder(module)] = breaks.get(nested_folder(module), 0) + 1
+        for module in (m for m in graph.nodes if m.startswith(prefix) or part.path == "."):
+            label = search.module_label(graph, module)
+            if label.part == part.path and label.match in ("role", "synonym", "spelling"):
+                breaks.setdefault(nested_folder(module), 0)
+        asked = sorted(set(unplaced) | (set(weak) & set(folders)))
+        deep = sorted((f for f in breaks if f and f in nested and f not in asked), key=lambda f: (-breaks[f], f))
+        more = max(0, len(asked) + len(deep) - agent_learn.MAX_FOLDERS)
+        asked += deep[: max(0, agent_learn.MAX_FOLDERS - len(asked))]
+        for folder in asked:
+            members = folders.get(folder) or nested.get(folder, [])
+            seen = known.get((part.path, folder))
+            if seen and not again and not agent_learn.changed_a_lot(seen[2], len(members)):
+                known_rows.append((folder, seen[0], seen[1]))
+                continue
+            modules = [file_module[prefix + f] for f in members if prefix + f in file_module]
+            out_layers: dict[str, int] = {}
+            in_layers: dict[str, int] = {}
+            ids = set(modules)
+            for module in modules:
+                for target in search.module_dependencies(graph, module):
+                    if target not in ids:
+                        layer = search.module_label(graph, target).layer
+                        out_layers[layer] = out_layers.get(layer, 0) + 1
+                for source in search.module_dependents(graph, module):
+                    if source not in ids:
+                        layer = search.module_label(graph, source).layer
+                        in_layers[layer] = in_layers.get(layer, 0) + 1
+            guess = derive(folder.rsplit("/", 1)[-1], tuple(members), style, library, {})
+            infos.append(agent_learn.FolderInfo(
+                folder, tuple(prefix + f for f in sorted(m for m in members if not is_test_file(m, library))[:3]),
+                tuple(sorted(out_layers.items(), key=lambda kv: (-kv[1], kv[0]))),
+                tuple(sorted(in_layers.items(), key=lambda kv: (-kv[1], kv[0]))),
+                guess.layer if guess else "", weak.get(folder, ""), breaks.get(folder, 0),
+            ))
+        meanings = tuple(
+            (layer.id, "; ".join(p.what for p in style.placements if p.layer == layer.id) or layer.meaning or "-")
+            for layer in style.layers
+        )
+        placed: dict[str, list[str]] = {}
+        for f in layers:
+            placed.setdefault(f.layer, []).append(f.folder)
+        tasks.append(agent_learn.PartTask(part.path, style.id, closest.score, closest.runner_up, closest.runner_up_score,
+                                          meanings, tuple((k, tuple(v)) for k, v in placed.items()), tuple(infos), tuple(known_rows),
+                                          more))
+    facts = agent_learn.task_facts(tuple(tasks), "wingbox learn --apply < answer.sexp   (or: wingbox learn --apply answer.sexp)")
+    print("\n".join(facts) if sexp else agent_learn.task_text(facts), end="\n" if sexp else "")
+    return 0
+
+
+def _read_text(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read()
+    except FileNotFoundError:
+        return ""
+
+
+class _quiet:
+    """Silence stdout and stderr at the file descriptor level (the parser processes print there too)."""
+
+    def __init__(self, verbose: bool) -> None:
+        self.verbose = verbose
+        self.saved: list[int] = []
+
+    def __enter__(self) -> None:
+        if self.verbose:
+            return
+        sys.stdout.flush()
+        sys.stderr.flush()
+        null = os.open(os.devnull, os.O_WRONLY)
+        for fd in (1, 2):
+            self.saved.append(os.dup(fd))
+            os.dup2(null, fd)
+        os.close(null)
+        self.streams = (sys.stdout, sys.stderr)
+        self.sink = open(os.devnull, "w", encoding="utf-8")
+        sys.stdout = sys.stderr = self.sink
+
+    def __exit__(self, *exc: object) -> None:
+        if self.verbose:
+            return
+        sys.stdout, sys.stderr = self.streams
+        self.sink.close()
+        for fd, saved in zip((1, 2), self.saved):
+            os.dup2(saved, fd)
+            os.close(saved)
+
+
+def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_folders, library, sexp: bool,
+                  verbose: bool = False) -> int:
+    """Write an accepted answer: config (never over a user entry), learned.sexp, decisions, .gitignore; rebuild."""
+    from architecture import agent_learn
+    from architecture.config import CONFIG_FILE, ConfigOk, read_config, render_config
+    from architecture.detect import judge
+    from architecture.learn import closest_style
+    from architecture.plan import LayerFolder, RepositoryPlan
+    from architecture.repository import list_files, text_reader
+    from architecture.sexp import q
+
+    builder = load_script("build_code_graph")
+    config = read_config(text_reader(root), library)
+    stated = {(p.path, folder): layer for p in config.parts for layer, folders in p.layers for folder in folders} \
+        if isinstance(config, ConfigOk) else {}
+    today = date.today().isoformat()
+    out: list[str] = []
+    parts = []
+    for part in plan.parts:
+        mine = [e for e in entries if e.part == part.path]
+        style = next((e.value for e in mine if e.kind == "style"), part.style)
+        taught = []
+        for e in mine:
+            if e.kind != "layer":
+                continue
+            if (part.path, e.folder) in stated:
+                out.append(f"(learn-kept {q(part.path)} {q(e.folder)} {stated[(part.path, e.folder)]} :reason \"stated in {CONFIG_FILE}\")")
+                continue
+            taught.append(LayerFolder(e.folder, e.value, "learned", f"agent: {e.because}", 0))
+            out.append(f"(learn-learned {q(part.path)} {q(e.folder)} {e.value} :because {q(e.because)})")
+        if style != part.style:
+            out.append(f"(learn-style {q(part.path)} {style})")
+        parts.append(_replace(part, style=style, layers=tuple(taught) + tuple(f for f in part.layers if f.folder not in {t.folder for t in taught})))
+    styles = {}
+    for part in plan.parts:
+        files = by_path.get(part.path)
+        closest = closest_style(judge(files, library)) if files else None
+        styles[part.path] = (part.style, closest.score if closest else 0.0)
+    counts = {(e.part, e.folder): sum(1 for f in by_path[e.part].files
+                                      if f.startswith(e.folder + "/") or f.startswith("src/" + e.folder + "/"))
+              for e in entries if e.folder}
+    skip = frozenset(builder.SKIP_DIRS)
+    try:
+        _prepare_wingbox(root)
+        with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8") as handle:
+            handle.write(render_config(RepositoryPlan(tuple(parts), plan.roots), library, today, list_files(root, skip, frozenset())))
+        with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8") as handle:
+            handle.write("\n".join(agent_learn.learned_lines(entries, today, mode, styles, counts)) + "\n")
+    except OSError as error:
+        print(f"[wingbox] ERROR: {error}", file=sys.stderr)
+        return 1
+    _append(_store(root)[0], [
+        f"(learned-by-agent {q(e.part)} {q(e.folder)} {e.value} :because {q(e.because)} :mode {mode.mode} :at {today})"
+        for e in entries if e.kind == "layer" and (e.part, e.folder) not in stated
+    ])
+    with _quiet(verbose):
+        status = _build(build_arguments([root], root))
+    search = load_script("code_graph_search")
+    graph = search.CodeGraph()
+    graph.load(_graph_file(root), root)
+    breaks = search.boundary_violations(graph, set(graph.nodes))
+    violations = len({(b.source, b.target) for b in breaks if b.severity != "candidate" and not b.known
+                      and search._layer_is_certain(graph, b.source) and search._layer_is_certain(graph, b.target)
+                      and not search.is_type_only_import(graph, b.source, b.target)})
+    out.append(f"(learn-result :build {'ok' if status == 0 else 'failed'} :violations {violations})")
+    out.append(f"(learn-saved {q('.wingbox/')} :commit \"config.yaml learned.sexp decisions.sexp baseline.sexp\")")
+    if sexp:
+        print("\n".join(out))
+        return 0
+    from architecture.sexp import keyword, parse
+
+    for fact in out:
+        t = parse(fact)
+        if t[0] == "learn-learned":
+            print(f"learned {t[2]}/ -> {t[3]} ({keyword(t, 'because')})")
+        elif t[0] == "learn-kept":
+            print(f"kept {t[2]}/ -> {t[3]} ({keyword(t, 'reason')})")
+        elif t[0] == "learn-style":
+            print(f"style of {t[1]}: {t[2]}")
+        elif t[0] == "learn-result":
+            print(f"rebuilt: violations: {keyword(t, 'violations')}")
+        elif t[0] == "learn-saved":
+            print("saved in .wingbox/ - commit config.yaml, learned.sexp, decisions.sexp and baseline.sexp to share it")
+    return 0
+
+
+def _learn_human(root: str, args: list[str], library) -> int:
+    """A person in a terminal: the deterministic learning of align --learn, confirmed part by part."""
+    from architecture import agent_learn
+
+    search = load_script("code_graph_search")
+    graph = search.CodeGraph()
+    graph.load(_graph_file(root), root)
+    parts, modules, _dependents, dependencies = search.architecture_inputs(graph)
+    context = _learn_context(root, library)
+    facts: list[str] = []
+    bases: dict = {}
+    learned: dict = {}
+    for part in parts:
+        if part.denies and part.style != "declared":
+            items = _learn_part(part, library, modules, dependencies, context, facts, bases)
+            if items:
+                learned[part.path] = list(items)
+    print(_align_text(facts))
+    if not learned and not bases:
+        print("Nothing to learn.")
+        return 0
+    chosen = set(learned) | set(bases)
+    if "--yes" not in args:
+        everything = False
+        for part in sorted(chosen):
+            if everything:
+                continue
+            print(f"Apply what was learned for {part}? [y/n/a(ll)]: ", end="", flush=True)
+            answer = sys.stdin.readline().strip().lower()
+            if answer in ("a", "all"):
+                everything = True
+            elif answer not in ("y", "yes"):
+                chosen.discard(part)
+    if not chosen:
+        print("Nothing applied.")
+        return 0
+    error = _write_learned(root, {k: v for k, v in learned.items() if k in chosen},
+                           {k: v for k, v in bases.items() if k in chosen}, [], [])
+    if error:
+        print(f"[wingbox] ERROR: {error}", file=sys.stderr)
+        return 1
+    mode = agent_learn.Mode("human", "terminal", "")
+    entries = tuple(agent_learn.Entry("layer", part, item.folder, item.layer, item.why) for part in sorted(chosen)
+                    for item in learned.get(part, []))
+    try:
+        with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8") as handle:
+            handle.write("\n".join(agent_learn.learned_lines(entries, date.today().isoformat(), mode, {}, {})) + "\n")
+    except OSError as error:
+        print(f"[wingbox] ERROR: {error}", file=sys.stderr)
+        return 1
+    print(f"applied for: {', '.join(sorted(chosen)) or 'nothing'}; saved in .wingbox/ - commit config.yaml, learned.sexp, "
+          "decisions.sexp and baseline.sexp; run wingbox build")
+    return 0
+
+
 def write_outputs(root: str, graph_path: str) -> OutputsResult:
     """Write .wingbox/REPORT.md and .wingbox/map.html from a built code graph."""
     from wingbox import freshness, map_page, overview
@@ -184,7 +1060,10 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
     loaded = graph.load(graph_path, root)
     if isinstance(loaded, search.MapLoadErr):
         return OutputsFailed(f"cannot read {graph_path}: {loaded.error}")
-    view = overview.build_overview(graph, search, os.path.basename(os.path.normpath(root)) or root)
+    shown = record_decisions(root, graph_path, search.advice_items(graph)[0])
+    if isinstance(shown, str):
+        return OutputsFailed(shown)
+    view = overview.build_overview(graph, search, os.path.basename(os.path.normpath(root)) or root, advice=shown)
     generated = date.today().isoformat()
     report = freshness.report_path(root)
     page = freshness.map_path(root)
@@ -198,6 +1077,256 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
     except OSError as error:
         return OutputsFailed(f"cannot write {directory}: {error}")
     return OutputsWritten(report=report, page=page)
+
+
+@dataclass(frozen=True)
+class InitArguments:
+    root: str
+    force: bool
+    sexp: bool
+    synonyms: bool
+    language: str = ""
+    style: str = ""
+    yes: bool = False
+    scaffold: bool = False
+    details: bool = False
+
+
+def init_arguments(args: list[str], cwd: str) -> InitArguments | str:
+    """Arguments of `wingbox init [PATH] [--force] [--sexp] [--synonyms]`, or an error."""
+    flags = ("--force", "--sexp", "--synonyms", "--yes", "--scaffold", "--details")
+    values: dict[str, str] = {}
+    rest: list[str] = []
+    index = 0
+    while index < len(args):
+        if args[index] in ("--language", "--style"):
+            if index + 1 >= len(args):
+                return f"{args[index]} requires a value"
+            values[args[index]] = args[index + 1]
+            index += 2
+            continue
+        if args[index] not in flags:
+            rest.append(args[index])
+        index += 1
+    unknown = [argument for argument in rest if argument.startswith("-")]
+    if unknown:
+        return f"unknown option {unknown[0]}"
+    if len(rest) > 1:
+        return "init takes one PATH"
+    root = os.path.realpath(os.path.join(cwd, rest[0])) if rest else os.path.realpath(cwd)
+    if not os.path.isdir(root):
+        return f"{root} is not a directory"
+    return InitArguments(
+        root, "--force" in args, "--sexp" in args, "--synonyms" in args, values.get("--language", ""),
+        values.get("--style", ""), "--yes" in args, "--scaffold" in args, "--details" in args,
+    )
+
+
+def _graph_advice(root: str) -> tuple:
+    """Advice of the last build (move, fix-violation), when .wingbox/index.sexp exists."""
+    path = _graph_file(root)
+    if not os.path.isfile(path):
+        return ()
+    search = load_script("code_graph_search")
+    graph = search.CodeGraph()
+    loaded = graph.load(path, root)
+    if isinstance(loaded, search.MapLoadErr):
+        print(f"[wingbox] WARNING: {path} not read: {loaded.error}", file=sys.stderr)
+        return ()
+    return search.advice_items(graph)[0]
+
+
+def _home_defaults(library) -> dict[str, str]:
+    """language -> favourite style, from $HOME/.wingbox/config.yaml (`defaults:`)."""
+    path = os.path.join(os.path.expanduser("~"), ".wingbox", "config.yaml")
+    if not os.path.isfile(path):
+        return {}
+    try:
+        import yaml
+
+        with open(path, "r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+    except (OSError, ImportError, ValueError) as error:
+        print(f"[wingbox] WARNING: {path} not read: {error}", file=sys.stderr)
+        return {}
+    defaults = data.get("defaults", {}) if isinstance(data, dict) else {}
+    return {str(k): str(v) for k, v in defaults.items() if library.style(str(v)) is not None} if isinstance(defaults, dict) else {}
+
+
+def _siblings(root: str, library) -> tuple[dict[str, str], str]:
+    """(part -> style, language of each part) of the nearest parent repository with .wingbox/config.yaml."""
+    from architecture.config import ConfigOk, parse_config
+    from architecture.newproject import language_of
+
+    parent = os.path.dirname(root)
+    while parent != os.path.dirname(parent):
+        config = os.path.join(parent, ".wingbox", "config.yaml")
+        if os.path.isfile(config):
+            with open(config, "r", encoding="utf-8") as handle:
+                parsed = parse_config(handle.read(), library)
+            if not isinstance(parsed, ConfigOk):
+                return {}, parent
+            found = {}
+            for part in parsed.parts:
+                folder = os.path.join(parent, part.path)
+                names = tuple(os.listdir(folder)) if os.path.isdir(folder) else ()
+                if os.path.realpath(folder) != root:
+                    found[part.path] = (part.style, language_of(names))
+            return {p: v for p, v in found.items()}, parent
+        parent = os.path.dirname(parent)
+    return {}, ""
+
+
+def _init_new_project(parsed: "InitArguments", library) -> int:
+    """`wingbox init` in a folder without source files: choose a language and a style, write the config."""
+    from architecture.config import CONFIG_FILE, render_config
+    from architecture.newproject import LANGUAGES, choices
+    from architecture.plan import PartPlan, RepositoryPlan
+    from architecture.sexp import q
+    from architecture.target import target_layout
+
+    from architecture.newproject import language_of
+
+    interactive = sys.stdin.isatty()
+    language = parsed.language or language_of(tuple(os.listdir(parsed.root))) or ""
+    if not language and interactive:
+        print(f"Language of the new project ({', '.join(LANGUAGES)}): ", end="")
+        language = sys.stdin.readline().strip()
+    if not language:
+        print(f"(init-languages {q(' '.join(LANGUAGES))})")
+        print('(init-needs "--language LANGUAGE --style STYLE --yes")')
+        return 2
+    siblings, repo_root = _siblings(parsed.root, library)
+    same_language = {part: style for part, (style, lang) in siblings.items() if lang in (language, None)}
+    offered = choices(library, language, same_language, _home_defaults(library))
+    style_id, origin = parsed.style, "--style"
+    if not style_id and parsed.yes and offered:
+        style_id, origin = offered[0].style, offered[0].origin   # --yes takes the first choice (siblings, home, library)
+    if not style_id and interactive:
+        for number, choice in enumerate(offered, start=1):
+            style = library.style(choice.style)
+            note = f" ({choice.origin}: {choice.note})" if choice.note else (f" ({choice.origin})" if choice.origin != "library" else "")
+            print(f"  {number}. {choice.style}: {style.name if style else ''}{note}")
+        print("Style number [1]: ", end="")
+        answer = sys.stdin.readline().strip() or "1"
+        if not answer.isdigit() or not 1 <= int(answer) <= len(offered):
+            print(f"[wingbox] ERROR: no style number {answer}", file=sys.stderr)
+            return 2
+        style_id, origin = offered[int(answer) - 1].style, offered[int(answer) - 1].origin
+    if not style_id:
+        for number, choice in enumerate(offered, start=1):
+            style = library.style(choice.style)
+            note = f" :note {q(choice.note)}" if choice.note else ""
+            print(f"(init-choice {number} {choice.style} :language {language} :from {choice.origin}{note} "
+                  f":name {q(style.name if style else '')} :source {q(style.cite() if style else '')})")
+        print(f"(init-needs {q(f'--language {language} --style STYLE --yes')})")
+        return 2
+    style = library.style(style_id)
+    if style is None:
+        print(f"[wingbox] ERROR: unknown style {style_id}", file=sys.stderr)
+        return 2
+    # Inside a repository with a root .wingbox/config.yaml the new package is a part of that file.
+    in_repo = bool(repo_root) and os.path.isfile(os.path.join(repo_root, CONFIG_FILE))
+    base = repo_root if in_repo else parsed.root
+    part_path = os.path.relpath(parsed.root, base).replace(os.sep, "/") if in_repo else "."
+    config_path = os.path.join(base, CONFIG_FILE)
+    if not in_repo and os.path.exists(config_path) and not parsed.force:
+        print(f"(arch-config-kept {q(CONFIG_FILE)} :reason {q('the file exists; wingbox init --force rewrites it')})")
+        return 0
+    if interactive and not parsed.yes:
+        print(f"Write {style.id} for {part_path if in_repo else 'this project'} into {CONFIG_FILE}? [Y/n]: ", end="")
+        if sys.stdin.readline().strip().lower() not in ("", "y", "yes"):
+            return 1
+    parent = part_path.split("/")[-2] if "/" in part_path else ""
+    level = "component" if parent.lower() in {n.lower() for n in library.c4.component_folders} else "container"
+    part = PartPlan(path=part_path, kind=f"new {language} project", level=level, files=0, style=style.id, state="configured",
+                    origin="config", score=None, judgement=None, layers=(), routing_root=(), declared=None)
+    text = render_config(RepositoryPlan(parts=(part,), roots=("",)), library, date.today().isoformat(), (),
+                         with_target=True, chosen=origin)
+    try:
+        _prepare_wingbox(os.path.dirname(os.path.dirname(config_path)))
+        if in_repo:
+            with open(config_path, "r", encoding="utf-8") as handle:
+                existing = handle.read()
+            block = text.split("parts:\n", 1)[1]
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(existing.rstrip("\n") + "\n" + block)
+        else:
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+    except OSError as error:
+        print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
+        return 1
+    fact = (f"(init-new-project {q(part_path)} :language {language} :style {style.id} :from {q(origin)} "
+            f":level {level} :config {q(os.path.relpath(config_path, parsed.root))})")
+    print(fact if parsed.sexp else
+          f"{part_path if in_repo else 'new project'}: {style.id} ({origin}), {language}, {level}\n"
+          f"wrote {os.path.relpath(config_path, parsed.root)} (edit it, then: wingbox build)")
+    if parsed.scaffold:
+        for item in target_layout(_replace(part, path="."), (), library):
+            if "<" in item.folder:
+                continue
+            os.makedirs(os.path.join(parsed.root, item.folder), exist_ok=True)
+            print(f"(init-scaffold {q(item.folder)})" if parsed.sexp else f"created {item.folder}/")
+    return 0
+
+
+def _replace(item, **changes):
+    import dataclasses
+
+    return dataclasses.replace(item, **changes)
+
+
+def _init(args: list[str], cwd: str) -> int:
+    parsed = init_arguments(args, cwd)
+    if isinstance(parsed, str):
+        print(f"[wingbox] ERROR: {parsed}", file=sys.stderr)
+        return 2
+    root, force, sexp = parsed.root, parsed.force, parsed.sexp
+    builder = load_script("build_code_graph")
+    load_script("architecture")
+    from architecture.config import CONFIG_FILE, render_config
+    from architecture.init import init_facts, render_text
+    from architecture.library import load_library
+    from architecture.plan import detect_plan
+    from architecture.repository import list_files, text_reader
+    from architecture.sexp import q
+    from architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
+
+    skip = frozenset(builder.SKIP_DIRS)
+    ignored = builder.load_git_ignored_paths(root, skip)
+    if isinstance(ignored, builder.GitIgnoreUnavailable):
+        print(f"[wingbox] {builder._ignore_note(ignored.reason)}", file=sys.stderr)
+        ignored_paths: frozenset[str] = frozenset()
+    else:
+        ignored_paths = ignored.paths
+    library = load_library()
+    settings = SYNONYM_SETTINGS if parsed.synonyms else DEFAULT_SETTINGS
+    paths = list_files(root, skip, ignored_paths)
+    from architecture.detect import is_source
+
+    if not any(is_source(path) for path in paths):
+        return _init_new_project(parsed, library)
+    plan = detect_plan(paths, text_reader(root), library, settings)
+    config_path = os.path.join(root, CONFIG_FILE)
+    if os.path.exists(config_path) and not force:
+        config_line = f"(arch-config-kept {q(CONFIG_FILE)} :reason {q('the file exists; wingbox init --force rewrites it')})"
+    else:
+        try:
+            _prepare_wingbox(os.path.dirname(os.path.dirname(config_path)))
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write(render_config(plan, library, date.today().isoformat(), paths))
+        except OSError as error:
+            print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
+            return 1
+        config_line = f"(arch-config-written {q(CONFIG_FILE)})"
+    from architecture.decisions import read_store, visible
+
+    store = read_store(_store(root)[1])
+    facts = init_facts(plan, library, config_line, paths, _graph_advice(root), lambda items: visible(store, items),
+                       details=parsed.details)
+    print("\n".join(facts) if sexp else render_text(facts, library.index.min_source_files), end="\n" if sexp else "")
+    return 0
 
 
 def _build(arguments: list[str]) -> int:
@@ -390,6 +1519,21 @@ def _run(argv: Optional[list[str]] = None) -> int:
         from wingbox import mcp_server
 
         return mcp_server.main(rest, cwd)
+    if command == "init":
+        return _init(rest, cwd)
+    if command == "advice":
+        return _advice_command(rest, cwd)
+    if command == "align":
+        return _align_command(rest, cwd)
+    if command == "compare":
+        load_script("architecture")
+        return _compare_command(rest, cwd)
+    if command == "learn":
+        load_script("architecture")
+        return _learn_command(rest, cwd)
+    if command == "place":
+        load_script("architecture")
+        return _place_command(rest, cwd)
     if command == "infra":
         sys.argv = ["wingbox infra"] + absolutize_path_options(rest, cwd)
         load_script("build_infra_topology").main()

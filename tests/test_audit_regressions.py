@@ -383,18 +383,20 @@ class AuditRegressionTest(unittest.TestCase):
         self.assertEqual(graph._root, str(root))
 
     def test_backend_state_store_is_not_classified_as_ui(self) -> None:
-        """/* REQ-CS-012: store naming alone must not imply a UI boundary. */"""
-        backend_layer = code_graph_search._classify_layer(
-            "platform-api/src/messagesStore/messagesStore",
-            "state store",
-        )
-        frontend_layer = code_graph_search._classify_layer(
-            "app-service/web/src/calendar/store/calendar-store",
-            "state store",
-        )
+        """/* REQ-CS-012: store naming alone must not imply a UI boundary: neither the role "state store" nor a store folder makes a module UI. */"""
+        from scripts.architecture.labels import label_in_part
+        from scripts.architecture.library import load_library
+        from scripts.architecture.plan import LayerFolder, PartPlan
 
-        self.assertEqual(backend_layer, "other")
-        self.assertEqual(frontend_layer, "ui")
+        part = PartPlan(
+            path=".", kind="folder", level="container", files=2, style="layered", state="configured",
+            origin="config", score=None, judgement=None, routing_root=(), declared=None,
+            layers=(LayerFolder("components", "ui", "config", "", 0),),
+        )
+        library = load_library()
+        self.assertEqual("other", code_graph_search._classify_layer_by_purpose("state store"))
+        for path in ("platform-api/src/messagesStore/messagesStore.ts", "app-service/web/src/calendar/store/calendar-store.ts"):
+            self.assertNotEqual("ui", label_in_part(path, part, library).layer, path)
 
     def test_semantic_map_output_is_byte_deterministic(self) -> None:
         """/* REQ-CS-013: identical graphs must produce identical map bytes. */"""

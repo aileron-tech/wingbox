@@ -10,7 +10,7 @@ import json
 import os
 from dataclasses import dataclass
 
-from wingbox.overview import BLAST_RADIUS_DEPTH, LAYER_ORDER, Overview
+from wingbox.overview import BLAST_RADIUS_DEPTH, LAYER_ORDER, Overview, ViolationInfo
 
 _ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 _MARKERS = ("__WINGBOX_TITLE__", "__WINGBOX_DATA__", "__WINGBOX_D3_LICENSE__", "__WINGBOX_D3__")
@@ -36,16 +36,44 @@ def read_assets() -> MapAssets:
     )
 
 
+def _label_text(style: str, rule: str) -> str:
+    """What set the layer of a module: "layered: folder routes/ -> api"."""
+    return f"{style}: {rule}" if style not in ("-", "") else rule
+
+
+def _violation_text(violation: ViolationInfo) -> str:
+    known = f"; listed in {violation.known}" if violation.known else ""
+    return f"{violation.style}: {violation.rule}, {violation.reason}{known}"
+
+
+READABLE_RADIUS = 0.05
+
+
+def start_module(view: Overview) -> int:
+    """The file the map opens on: the most depended-on file whose 2-hop radius stays under 5 % of the
+    modules (a radius that paints half the graph says little); else the file with the widest radius."""
+    total = len(view.modules)
+    candidates = [(i, m) for i, m in enumerate(view.modules) if m.within_two_hops > 0 and m.layer != "test"]
+    readable = [(i, m) for i, m in candidates if m.within_two_hops < READABLE_RADIUS * total]
+    if readable:
+        return min(readable, key=lambda item: (-item[1].fan_in, -item[1].within_two_hops, item[0]))[0]
+    if candidates:
+        return min(candidates, key=lambda item: (-item[1].within_two_hops, -item[1].fan_in, item[0]))[0]
+    return -1
+
+
 def map_data(view: Overview, generated: str, tool_version: str) -> dict[str, object]:
     """The graph as the page reads it: modules by position, edges as index pairs."""
     position = {module.id: index for index, module in enumerate(view.modules)}
     layers = list(LAYER_ORDER) + sorted({module.layer for module in view.modules} - set(LAYER_ORDER))
-    reasons = sorted({violation.reason for violation in view.violations})
+    reasons = sorted({_violation_text(violation) for violation in view.violations})
+    label_rules = sorted({_label_text(module.style, module.rule) for module in view.modules})
     return {
         "project": view.project,
         "generated": generated,
         "version": tool_version,
         "depth": BLAST_RADIUS_DEPTH,
+        "start": start_module(view),
         "layers": layers,
         "layerCounts": [[layer, count] for layer, count in view.layers],
         "rules": [list(rule) for rule in view.boundary_rules],
@@ -53,6 +81,9 @@ def map_data(view: Overview, generated: str, tool_version: str) -> dict[str, obj
         "typeOnly": len({(item.source, item.target) for item in view.type_only_crossings}),
         "placed": [view.placed_by_path, view.placed_by_role, view.unplaced],
         "ruleReasons": reasons,
+        "labelRules": label_rules,
+        "parts": [[part.path, part.style, part.state, part.origin, part.level] for part in view.parts],
+        "advice": [[item.kind, item.target, item.reason, item.style, item.rule, item.evidence] for item in view.advice],
         "modules": [
             {
                 "file": module.file,
@@ -61,12 +92,13 @@ def map_data(view: Overview, generated: str, tool_version: str) -> dict[str, obj
                 "in": module.fan_in,
                 "out": module.fan_out,
                 "reach": module.within_two_hops,
+                "rule": label_rules.index(_label_text(module.style, module.rule)),
             }
             for module in view.modules
         ],
         "edges": [[position[edge.source], position[edge.target]] for edge in view.edges],
         "violations": [
-            [position[violation.source], position[violation.target], reasons.index(violation.reason)]
+            [position[violation.source], position[violation.target], reasons.index(_violation_text(violation))]
             for violation in view.violations
         ],
     }

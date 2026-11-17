@@ -281,7 +281,7 @@ function rebuild() {
   sim.nodes(nodes);
   linkForce.links(links);
   applyForces();
-  sim.alpha(0.9).restart();
+  settle(0.9);
 }
 
 // ---------- layers layout: one band per architecture layer ----------
@@ -370,6 +370,17 @@ function blastForce(alpha) {
     }
   }
 }
+// In the layers view the layout is brought to rest before it is drawn, so nothing
+// moves on screen; the graph view keeps its live settling.
+function settle(alpha) {
+  if (state.layout !== "layers") { sim.alpha(alpha).restart(); return; }
+  sim.stop();
+  sim.alpha(alpha);
+  for (let t = 0; t < 300 && sim.alpha() > 0.02; t++) sim.tick();
+  sim.alpha(0);
+  if (autoFit) fit(0);
+  requestDraw();
+}
 function applyForces() {
   const layers = state.layout === "layers";
   const radial = !layers && !!state.sel;
@@ -427,7 +438,7 @@ function select(key, quiet) {
     if (state.layout === "graph") { node.fx = node.x; node.fy = node.y; }
   }
   applyForces();
-  sim.alpha(Math.max(sim.alpha(), 0.55)).restart();
+  if (state.layout === "layers") requestDraw(); else sim.alpha(Math.max(sim.alpha(), 0.55)).restart();
   renderPanel(true);
   if (node && !quiet) focusOn(node);
   writeHash();
@@ -1129,7 +1140,7 @@ function setLayout(layout) {
   const root = state.sel && nodeByKey.get(state.sel.key);
   if (root) { if (layout === "graph") { root.fx = root.x; root.fy = root.y; } else { root.fx = null; root.fy = null; } }
   layoutBands(); applyForces();
-  sim.alpha(0.9).restart();
+  settle(0.9);
   state.spin = layout === "layers";
   autoFit = layout === "layers" || !state.sel; interacted = false;
   renderPills(); writeHash();
@@ -1142,7 +1153,7 @@ function setAllExpanded(open) {
 }
 function setDepth(depth) {
   state.depth = depth;
-  if (state.sel) { state.sel.t0 = performance.now(); projectSelection(); applyForces(); sim.alpha(0.6).restart(); const n = nodeByKey.get(state.sel.key); if (n) focusOn(n); }
+  if (state.sel) { state.sel.t0 = performance.now(); projectSelection(); applyForces(); settle(0.6); const n = nodeByKey.get(state.sel.key); if (n) focusOn(n); }
   renderPills(); renderPanel(); writeHash(); requestDraw();
 }
 
@@ -1199,7 +1210,7 @@ function selectionCard() {
   const card = el("div", { class: "card" },
     el("button", { class: "close", type: "button", "aria-label": "Clear selection", text: "esc ×", onclick: () => select(null) }),
     el("div", { class: "name", text: file }),
-    el("div", { class: "meta", text: isModule ? `${layerName(node.i)} layer / ${MODS[node.i].lang || "source"}` : `package / ${plural(node.count, "module")} / double-click it to open` }),
+    el("div", { class: "meta", text: isModule ? `${layerName(node.i)} layer (${DATA.labelRules[MODS[node.i].rule]}) / ${MODS[node.i].lang || "source"}` : `package / ${plural(node.count, "module")} / double-click it to open` }),
     el("div", { class: "stats" },
       el("div", { class: "stat" }, el("b", { text: fmt(direct) }), el("span", { text: "direct dependents" })),
       el("div", { class: "stat" }, el("b", { text: `${fmt(sel.total)} (${share(sel.total)})` }), el("span", { text: `within ${plural(state.depth, "hop")}` })),
@@ -1249,7 +1260,7 @@ function matrix() {
     const key = MODS[s].layer + ">" + MODS[t].layer;
     counts.set(key, (counts.get(key) || 0) + 1);
   }
-  const denied = new Map(DATA.rules.map(([from, to, reason]) => [from + ">" + to, reason]));
+  const denied = new Map(DATA.rules.map(([part, style, from, to, reason]) => [from + ">" + to, style + ": " + reason]));
   const short = (name) => name.slice(0, 4);
   const head = el("tr", {}, el("th", { text: "from \\ to" }), present.map((l) => el("th", { title: LAYERS[l], text: short(LAYERS[l]) })));
   const body = present.map((from) => el("tr", {}, el("th", { text: LAYERS[from] }), present.map((to) => {
@@ -1271,7 +1282,7 @@ function renderPanel(toTop) {
   parts.push(el("h2", { text: state.color === "packages" ? "Packages" : "Architecture layers" }), legend());
   const table = matrix();
   if (table) parts.push(el("h2", { text: "Dependencies between layers" }), table,
-    el("div", { class: "note", text: `Rows depend on columns. A red cell is a pair of layers that a default rule forbids; a dependency in it is a violation when it imports code, not only types, and both layers are set by folders. The rules place ${share(DATA.placed[0] + DATA.placed[1])} of the modules: ${fmt(DATA.placed[0])} by folder, ${fmt(DATA.placed[1])} by a guess from the role of the file.` }));
+    el("div", { class: "note", text: `Rows depend on columns. A red cell is a pair of layers that a rule of a part's style forbids; a dependency in it is a violation when both ends are in that part, it imports code, not only types, and both layers are set by rules. The rules place ${share(DATA.placed[0] + DATA.placed[1])} of the modules: ${fmt(DATA.placed[0])} by folder, ${fmt(DATA.placed[1])} by a guess from the role of the file.` }));
   parts.push(el("h2", { text: "Boundary violations" }));
   if (DATA.violations.length) {
     for (const [s, t, rule] of DATA.violations.slice(0, 30)) {
@@ -1332,10 +1343,7 @@ resize();
 rebuild();
 renderPills(); renderPanel(true);
 const wanted = opts.select && opts.select !== "none" ? MODS.findIndex((m) => m.file === opts.select) : -1;
-const first = wanted >= 0 ? wanted
-  : opts.select === "none" ? -1
-  : MODS.reduce((best, m, i) => (m.reach > 0 && layerName(i) !== "test"
-    && (best < 0 || m.reach > MODS[best].reach || (m.reach === MODS[best].reach && m.in > MODS[best].in)) ? i : best), -1);
+const first = wanted >= 0 ? wanted : opts.select === "none" ? -1 : DATA.start;
 if (first >= 0) {
   setTimeout(() => { if (!interacted || wanted >= 0) selectModule(first); }, REDUCED ? 0 : Math.min(2600, 900 + nodes.length * 2));
 }

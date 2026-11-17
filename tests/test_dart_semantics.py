@@ -364,7 +364,7 @@ class DartPurposeTest(unittest.TestCase):
 
 class DartLayerTest(unittest.TestCase):
     def test_flutter_folder_rules_place_dart_modules(self) -> None:
-        """/* REQ-DARTLAYER-008: Flutter feature, core, config and test folders set the layer from the path. */"""
+        """/* REQ-DARTLAYER-008: Flutter feature, core, config and test folders set the layer from the path (the label rules of a layered part). */"""
         cases = {
             "lib/features/orders/presentation/orders_page": "ui",
             "lib/features/orders/presentation/widgets/order_tile": "ui",
@@ -379,10 +379,13 @@ class DartLayerTest(unittest.TestCase):
             "integration_test/helpers": "test",
         }
 
+        graph = code_graph_search.CodeGraph()
+        for path in cases:
+            graph.nodes[path] = code_graph_search.Node(path, "dart", "")
         self.assertEqual(
             cases,
             {
-                path: code_graph_search._classify_layer(path)
+                path: code_graph_search.module_layer(graph, path)
                 for path in cases
             },
         )

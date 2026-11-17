@@ -79,16 +79,18 @@ class ProjectFolderTest(unittest.TestCase):
         self.assertNotIn("code_graph", completed.stdout + completed.stderr)
 
     def test_the_generated_files_are_ignored_by_git_and_files_a_person_writes_are_not(self) -> None:
-        """/* REQ-FRESH-030: the build must write .wingbox/.gitignore so that git ignores every generated file of the folder and keeps files a person writes there (config.yaml). */"""
+        """/* REQ-FRESH-030: the build must write .wingbox/.gitignore so that git ignores every generated file of the folder and keeps the files people and agents decide on (config.yaml, learned.sexp, baseline.sexp, and decisions.sexp, the advice log the build appends to). */"""
         self.build()
-        (self.root / ".wingbox" / "config.yaml").write_text("rules: []\n", encoding="utf-8")
+        kept = (".wingbox/config.yaml", ".wingbox/learned.sexp", ".wingbox/baseline.sexp", ".wingbox/decisions.sexp", ".wingbox/.gitignore")
+        for name in ("config.yaml", "learned.sexp", "baseline.sexp"):
+            (self.root / ".wingbox" / name).write_text("; written by hand\n", encoding="utf-8")
         listed = subprocess.run(
             ["git", "-C", str(self.root), "status", "--porcelain", "--untracked-files=all", ".wingbox"],
             capture_output=True, text=True, check=True,
         ).stdout.split()
-        self.assertIn(".wingbox/config.yaml", listed)
-        self.assertIn(".wingbox/.gitignore", listed)
-        self.assertEqual([], [name for name in listed if name.startswith(".wingbox/") and name not in (".wingbox/config.yaml", ".wingbox/.gitignore")])
+        for name in kept:
+            self.assertIn(name, listed)
+        self.assertEqual([], [name for name in listed if name.startswith(".wingbox/") and name not in kept])
 
     def test_a_query_from_a_subfolder_finds_the_project(self) -> None:
         """/* REQ-FRESH-031: a query run in a subfolder of the project must find .wingbox/index.sexp in a parent folder and answer from it. */"""

@@ -12,6 +12,272 @@
 - A TypeScript `new S(...)` is a site of class S: SCIP files it under the constructor symbol.
 - Every tool is asked for its whole list (`--all`, `--limit 1000000`); tokens are characters of the text answer / 4, as in the other benchmarks. No timing: accuracy and answer size only.
 - CodeGraph runs with the environment of `benchmarks/graphify/run.sh` (private HOME, no daemon, no watcher). Graphify has no find-usages command; `affected` is the nearest and is reported at both depths.
+## 2026-11-17 - rebased on main 0.5.1: the graph is .wingbox/index.sexp
+
+### Changes
+- History: the ToCS commit replayed on main 0.5.1 (cd45cdd), then the 22 architecture commits since 0.2.7 squashed into one on top of it (previous head 544910b).
+- Paths: the builder, the search script and the CLI commands init, advice, align, place, learn and compare use main's helpers (`freshness.find_project`, `freshness.graph_path`, `freshness.no_project_message`, `build_code_graph.index_path`, `prepare_wingbox_directory`); my `GRAPH_FILE`, `OUTPUT_FILE`, `INDEX_DIRECTORY`, `_graph_root` and the `.gitignore` writer of `agent_learn` are gone; `--output` stays refused as on main.
+- `.wingbox/.gitignore` is main's: `config.yaml`, `decisions.sexp`, `learned.sexp` and `baseline.sexp` match none of its patterns (REQ-LEARN-005, REQ-FRESH-030 check it); `init` now writes the `.gitignore` with the config.
+- `build_code_graph.project_architecture()`: the architecture facts of a graph, called by `_run_build` and by `graph_update.update_graph`, so a partially updated graph equals a build (updates use the default matching, without `--synonyms`).
+- Registry edges of the ToCS commit are made in `assemble_graph`, with the other facts that need every module; a pipeline flag replaces the fragment's data-flow edge by a copy.
+- Main's path classifier (`_classify_layer_fallback`, `_is_test_path`, `_classify_dart_layer_by_path`) is replaced by label rules: `labels.flutter_layer` for `.dart` files, a Dart `state store` role is service, `integration_test` is a test folder, layered.toml gets `livewire` (ui), `listeners` and `policies` (service). REQ-DARTLAYER-008 and REQ-PHP-017 ask `module_layer` instead of `_classify_layer`.
+- `benchmarks/tocs/tocs_score.py` reads `.wingbox/index.sexp`, or `.code_graph.sexp` of the 0.2.4 build that run.sh scores as "before".
+
+### Verification
+- Full suite: 474 tests OK on Python 3.12 and 3.11.
+- Graphs against main 0.5.1 built on the same copies: edges identical on immich (11,032), univer (68,252) and archestra (98,459); fastapi 2,813 -> 2,814, the one new edge an `importlib.import_module("docs_src.generate_clients.tutorial004")` literal of a test (the ToCS change).
+- archestra acceptance (benchmarks/architecture/acceptance_archestra.py): all checks ok; backend upward imports 112 found, 112 in the project's baseline, 0 extra, 0 missing. boundaries: immich 0 violations (8 type-only, 15 candidates), fastapi and univer 0, archestra 59 violations + 92 known (frontend violations as before the rebase).
+
+### Open
+- The architecture commands (advice, align, place, learn, compare) read the graph as it is; the query commands refresh it first.
+- A change of the JSON, YAML or TOML file beside a Python registry loader does not mark the graph stale.
+
+## 2026-11-16 - learn asks about nested folders; a quiet apply
+
+### Changes
+- `wingbox learn`: nested folders whose files take part in rule breaks or rest on a role or synonym guess, at the deepest folder holding them, most breaks first, capped at 25 per part (`learn-more` counts the rest); example files leave tests out; a file -> module map computed once (the task on archestra took minutes, now 11 s). Answers may name folder paths (`lib/hooks`), validated against the part; `labels.py`: a folder path in the part's layers decides for the files below it, the longest path first. `--apply` silences the rebuild, Python streams and parser processes' descriptors, unless `--verbose`.
+- Tests: REQ-LEARN-009, 010.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13.
+- archestra frontend: the task listed 25 folders (8 more counted). Answered after reading: five `app/.../_parts` folders that components import -> ui, `lib/hooks` and `lib/auth` -> state, `app/connection`, `app/settings`, `app/chat` unknown (they hold route files). Applied: frontend violations 59 -> 34, candidates 23 -> 16, type-only 34 -> 28; backend unchanged (92 known).
+
+## 2026-11-16 - `wingbox learn`: the coding agent reads, Wingbox records
+
+### Changes
+- `scripts/architecture/agent_learn.py` (new): who runs it (flags, verified agent variables, terminals), the task facts and text, strict answer validation, `learned.sexp` lines and reading, the folder-changed rule. CLI: `wingbox learn` (agent task or human confirmation), `wingbox learn --apply [FILE]` (validate, write config with `learned by agent:`, keep user entries, learned.sexp, decisions, `.wingbox/.gitignore`, rebuild, counts). Library: layer meaning. Config: the agent comment.
+- Docs: README, SKILL (`/wingbox learn`), CHANGELOG, `references/sexp-notation.md`. Tests: REQ-LEARN-001 to 008.
+
+### Decisions
+- Agent variables used: `CLAUDECODE=1` (seen in the environment of Claude Code's Bash tool) and `GEMINI_CLI=1` (set in gemini-cli-core's shellExecutionService for shell commands). Codex (`CODEX_THREAD_ID`, `CODEX_SANDBOX` appear in its binary) and Cursor (`CURSOR_AGENT` appears in its bundle) were not seen set for a command, so they are left to the terminal test.
+- "Most files new" is read as: the folder has more than twice the files it had when learned.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13.
+- immich (fresh copy, nestjs 1.00): the task listed bin, commands, emails, workers with files and imports; answered after reading them: commands api, emails infra, workers module, bin unknown (build-time scripts); applied; violations 0 -> 0, candidates 15 -> 15; `place "a new REST endpoint for albums"` -> src/controllers.
+- archestra frontend (route-tree 1.00): every top folder is placed by the style; the task says so and asks nothing; violations unchanged (59).
+
+## 2026-11-16 - a feature named after tests is not a test folder
+
+### Changes
+- `detect.is_test_file`: a folder is a test folder when its name starts with test, tests, spec, specs or e2e; `openappa-policy-tests/` (a route of archestra) is not. REQ-ARCH-034 updated.
+
+### Verification
+- archestra after a cached rebuild (51 s): backend breaks of layers.mjs 112 of 112 again (the word rule had made one source a test file); full suite green on 3.11, 3.12, 3.13.
+
+## 2026-11-16 - rebased on main 0.2.7; hook and MCP server read .wingbox/graph.sexp
+
+### Changes
+- Branch rebased on origin/main c74f890 (0.2.7): the CHANGELOG keeps main's versions and adds this branch under `## Unreleased`.
+- `src/wingbox/hook.py`, `src/wingbox/mcp_server.py`, `src/wingbox/install.py`, README, SKILL: the graph is `.wingbox/graph.sexp` only (main added these with the old name as a second choice); the MCP server reads files relative to the folder above `.wingbox/`. Tests REQ-INSTALL-016, 019, 022 and REQ-MCP-004 follow the new location.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (300 tests).
+
+## 2026-11-16 - cached rebuilds no longer resolve imports again (finding 12)
+
+### Changes
+- `scripts/build_code_graph.py`: `build_graph` resolves the import specifiers of a file once and passes them to `_imports_types_only`, which resolved every specifier again for each imported module (510,463 calls on univer). Test: REQ-CS-060.
+
+### Motivation
+- A rebuild with 0 changed files took longer than a cold build (archestra 93-128 s against 81 s; univer too). A profile of the cached univer rebuild: `build_graph` 79 s, of which `_imports_types_only` 49 s.
+
+### Verification
+- univer cached rebuild 46.3 s (before: 69.7 s); edge set identical (64,228). Cold builds parse in parallel, which is why they were faster than a cached rebuild that waited on the serial graph build.
+
+## 2026-11-16 - monorepo packages, output for people (findings 7, 13)
+
+### Changes
+- CLI `init` in an empty package: joins the root `.wingbox/config.yaml` when the repository has one (level component under packages/), language from the manifest, `--yes` takes the first choice, text output unless `--sexp`. `init --details`; summary facts `arch-target-summary`, `advice-summary`. `align` text printer; `place` text printer, existing empty folders present; one `advice` line for parts without advice; advice items unique per id; "not read: it states no layer order"; tie note for undetermined parts; plain note outside git. README init example from a real run.
+- Tests: REQ-NEW-006, REQ-CLI-024, REQ-ARCH-041.
+
+### Verification
+- Full suite green (259 tests).
+
+## 2026-11-16 - learning by the style library; place; align and boundaries agree (findings 1, 3, 8, 11)
+
+### Changes
+- `scripts/architecture/learn.py` (new): closest style of the library as the base, unplaced folders derived by suffix, name (another style), imports. `align.layers_by_imports` replaces `learn_part` (no restatement reviews). CLI: `align --learn` prints `align-style`, `align-placed`, `align-learned :by`, writes the config only when the base or the learned folders change. Align counts breaks like `boundaries` (composition roots, type-only, candidate rules).
+- `place.py`: layer words and file patterns scored with the placement texts, plural folding, prefix matching, ties to the layer's own words; `place_declared`. CLI `place`: declared parts, the part of the current folder, examples, `:where` for prose, `not stated`, a text printer.
+- The build prints the architecture source; `architecture_plan` is quiet (place, align, compare no longer print a build line).
+- Tests: REQ-ARCH-030 rewritten, REQ-ARCH-039, 040, REQ-CLI-019 updated, REQ-CLI-023.
+
+### Motivation
+- The maintainer: learning matches the library of architectures, takes the closest one, and derives the rest by names and patterns.
+
+### Verification
+- Full suite green (256 tests). immich (fresh copy): closest style nestjs 1.00 (runner-up layered 1.00, settled by nest-cli.json); placed by the style: api controllers, middleware; service services; infra migrations, repositories; domain dtos; shared utils, shared; derived: bin api (imports), commands, emails (imports), workers service (name in layered). `place "a new REST endpoint for albums"` answers src/controllers before and after learning.
+
+## 2026-11-16 - findings of an independent run (1, 2, 4, 5, 6, 9, 10)
+
+### Changes
+- `decisions.py`: `build-run` lines, ignored logged once at the threshold (no per-build lines), accepted never ignored, `learned-removed`. `plan.apply_learned(from_config=True)` applies nothing; the CLI records learned folders the config does not list.
+- `target.py`: the style's own folder first among the present folders of a layer; domain blocks only with a domain layer and domain code (new projects get the whole layout); snake_case block folders in Python, Rust, Go, Ruby, Elixir.
+- `detect.is_test_file`: folder words test, tests, spec, specs, e2e. `labels.py`: shared/common inside a layer folder takes the enclosing layer. Search and overview: the type-only import decides the pair.
+- Tests: REQ-ARCH-032 to 038, REQ-CLI-022; REQ-ARCH-027 updated to the new logging.
+
+### Motivation
+- An independent tester ran the branch as a coding agent would; these are its findings 1, 2, 4, 5, 6, 9 and 10.
+
+### Verification
+- Full suite green (253 tests).
+
+## 2026-11-16 - the map stops trembling; a readable first selection
+
+### Changes
+- `src/wingbox/assets/map_template.html`: `settle(alpha)` (layers view: stop the simulation, tick it to rest, at most 300 ticks or alpha < 0.02, set alpha 0, fit, draw once; graph view: live settling as before), called by rebuild, setLayout and the hops change; `select` only redraws in the layers view. Ported from the wingbox-site fix b360e32. The first selection comes from `DATA.start`.
+- `src/wingbox/map_page.py`: `start_module`: the most depended-on file whose 2-hop radius is under 5 % of the modules, else the widest radius (the former rule).
+- Tests: REQ-OUT-017, REQ-OUT-018.
+
+### Motivation
+- The maintainer: the 3D demo "looks scary and trembles": every load, click and hops change restarted the force layout and 2,000+ files drifted for seconds; the first selection on archestra painted half the graph amber.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13.
+- Headless Chrome on the archestra map (7,980 modules), layers view, one page load: canvas checksum and node positions identical at 1, 2, 4, 6 and 8 s, with and without a selection. The map now opens on platform/backend/src/middleware/audit-log-hook.ts (128 direct dependents, 169 within 2 hops, 2 %).
+
+## 2026-11-16 - README: "complete list" only with --all
+
+### Changes
+- `README.md`: the two sentences that say `impact` returns the complete list of dependents now say `--all`; without it, `impact` names at most 200 dependents and gives the complete counts.
+
+### Motivation
+- The coordinator: "complete list" must hold only with `--all`.
+
+## 2026-11-16 - `wingbox compare`
+
+### Changes
+- `scripts/architecture/compare.py` (new); CLI `wingbox compare [--sexp]`. Docs: README, SKILL, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-CMP-001 (`tests/test_compare.py`).
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13.
+
+## 2026-11-16 - init in an empty folder, $HOME defaults, monorepo siblings
+
+### Changes
+- `scripts/architecture/newproject.py` (new): language of a folder, choices in precedence order. Style files: `languages`. `library.py`: `$HOME/.wingbox/styles` overrides. `target.py`: a new project's source root is src/. `config.py`: target for a new part, `# chosen:` comment. CLI: the empty-folder path of `init` (`--language`, `--style`, `--yes`, `--scaffold`).
+- Docs: README, SKILL, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-NEW-001 to 005 (`tests/test_new_project.py`).
+
+### Decisions
+- Precedence: declared rules > project config > siblings > `$HOME` favourite > library; the first two decide existing parts, so a new project's choices start at siblings. The `$HOME` favourite is used for new projects only.
+- Without a terminal and without `--style`, init exits 2 after printing the choices.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13.
+
+## 2026-11-16 - `wingbox place`
+
+### Changes
+- `scripts/architecture/place.py` (new), `[[placement]]` read by the library, CLI `wingbox place "<what>" [--part PART] [--sexp]`. Docs: README, SKILL, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-ARCH-031 (`tests/test_place.py`), REQ-CLI-021.
+
+### Decisions
+- Matching is by shared words with the placement texts (plural folded, small words dropped); the vector table is not used here, in line with its benchmark.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13.
+
+## 2026-11-16 - `wingbox align`
+
+### Changes
+- `scripts/architecture/align.py` (new): gaps of a part, learning (unplaced folders placed by the dependency graph; review of restatements whose folder name states the current layer), baseline. `library.py`: `[from.<style>]` mappings. Search: `architecture_inputs` shared by advice and align; `violation-known` for pairs in a baseline, `:known` in the summary. Report: known breaks listed apart. Builder: reads `.wingbox/baseline.sexp`. CLI: `wingbox align [PART] [--to STYLE] [--learn] [--sexp]`.
+- Docs: README, SKILL, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-ARCH-029, 030 (`tests/test_align.py`), REQ-CLI-019, 020; summaries now carry `:known`.
+
+### Decisions
+- A pair a baseline lists is not counted as a violation anywhere (boundaries, report, advice); it is printed as `violation-known`.
+- Learning never restates a folder: a better layer for a mapped folder is only listed with `:needs-review`.
+- MIN_LAYER_SHARE 5 %, a learned folder needs 2 files.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (236 tests).
+
+## 2026-11-16 - decisions store and `wingbox advice`
+
+### Changes
+- `scripts/architecture/decisions.py` (new): read the log, reconcile a run (given, followed, done differently with a learned layer, ignored), user decisions, what is still shown and in which order, learned layers. `plan.apply_learned`: learned folders come before the style's words; labels say "learned from <id>", graph facts `:learned-from`.
+- `src/wingbox/cli.py`: `wingbox build` reconciles the store and writes only the visible advice into REPORT.md and the map; `wingbox advice [--sexp] [--learned]`, `wingbox advice accept|reject <id> [--reason TEXT]`; `init` shows only visible advice.
+- Docs: README, SKILL, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-ARCH-027, 028, REQ-CLI-018.
+
+### Decisions
+- The store is reconciled by `wingbox build` only (not by `init`), so that a build followed by an init does not count an ignored run twice.
+- IGNORED_RUNS = 3.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (231 tests).
+
+## 2026-11-16 - recommendations
+
+### Changes
+- `scripts/architecture/advice.py` (new): move, fix-violation and missing-folder advice with stable ids. Style files: a `fix` text per deny rule; declared parts get "move the imported code down, the importing code up, or invert". Graph facts `(arch-rank)`, `(arch-target)`, `:fix`. Search: `advice_items`, advice lines in `analyze` and `impact`. REPORT.md "Recommendations", map `advice`. `init`: advice per part (missing folders; move and fix from the last build when a graph exists).
+- Docs: README, SKILL, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-ARCH-025, 026, REQ-CLI-017.
+
+### Motivation
+- The maintainer: Wingbox itself gives the recommendations, from the style files' rules and placement, each naming style, rule and evidence.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (228 tests). Counts on the four repositories: in the acceptance entry below.
+
+## 2026-11-16 - target layout with the domain building blocks
+
+### Changes
+- `styles/index.toml`: `[domain_blocks]` (seven blocks with their meaning and source). Every style file: `[target]` (layer -> folder, further folders, where the domain blocks live, a note).
+- `scripts/architecture/target.py` (new): present or proposed folders of a part. `init.py`: `(arch-target ...)` facts and a "target: N of M folders present; missing: ..." line. `config.py`: `target:` entries written and validated.
+- Docs: README, CHANGELOG, `references/sexp-notation.md`. Tests: REQ-ARCH-023, 024; REQ-CLI-008 checks the target in the config and that nothing else is created.
+
+### Motivation
+- The maintainer asked that the system propose the full architecture of the domain tier at once; the coordinator fixed where each style keeps the blocks.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (225 tests).
+
+## 2026-11-16 - word vectors off by default (`--synonyms`)
+
+### Changes
+- `words.py`: `DEFAULT_SETTINGS` has no synonym step, `SYNONYM_SETTINGS` has it. `wingbox init --synonyms`, `wingbox build --synonyms` (builder option) turn it on for the folder -> layer mapping; detection never uses it.
+- README, SKILL, CHANGELOG, benchmarks/architecture/README.
+- Tests: REQ-ARCH-022, REQ-CLI-016.
+
+### Motivation
+- The coordinator asked to measure vectors as a last step only and to ship them off unless they help. The benchmark's `+vectors` variant already was the last step (it only sees names that dictionaries and Levenshtein leave unmatched): unmatched 77.5 % -> 75.0 %, accuracy 76.2 % -> 75.4 % on the held-out half. It does not help, so it is off by default.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (223 tests). `benchmarks/architecture/run.sh` results unchanged.
+
+## 2026-11-16 - false positives on NestJS entry points, utilities and route-tree frontends
+
+### Changes
+- `styles/index.toml`: `[composition_roots] imports` (NestFactory, nest-commander). `layered.toml`, `nestjs.toml`: the shared rules give candidates (`severity = "candidate"`), shared -> infra with the reason "utility depends on infrastructure; move it to services or invert". `route-tree.toml`: state file patterns, shared -> ui/state candidates.
+- `labels.py`: composition root by import, CQRS words read as domain only with the CQRS overlay, private folders at the routing root are ui. `plan.py`, `config.py`: `overlays` per part (written to and read from `.wingbox/config.yaml`). `library.py`: rule severity, CQRS role words. Builder: the imported names of each file reach the labels. Search: `:severity candidate` rules give `violation-candidate`; a file nothing imports that imports a composition root is an entry point.
+- Tests: REQ-ARCH-019 to 021, REQ-CLI-015.
+
+### Motivation
+- The maintainer's review of the immich and archestra rows: nest-commander commands read as CQRS commands, worker bootstraps importing the app module, utilities calling repositories (real, but a move or an inversion, not a layer break), app-wide private folders and query modules of a Next.js frontend.
+
+### Verification
+- Full suite green on 3.11, 3.12, 3.13 (221 tests); edge sets of the four copies unchanged.
+- immich server: 0 violations, 8 type-only (each an `import` of a type: AssetStats, AuthRequest, PersonId, ArgOf/EmitEvent, ImmichReadStream, PluginMethodSearchResponse, the search repository types), 17 candidates (utils and services/shared importing repositories, read in the source).
+- archestra frontend: of 20 sampled rows of 104, 13 real (a shared component or lib module imports code inside one route), 1 debatable (a lib hook imports a dialog component), 6 wrong (2 imports of app/_parts, 4 query or hook modules in lib read as utilities). After the fixes: 59 violations, 24 candidates, 14 type-only. Backend unchanged: 93 violations and 20 type-only, all in the project's baseline.
+
+## 2026-11-16 - `wingbox init`, architecture styles per part, index files in .wingbox/
+
+### Changes
+- `scripts/architecture/` (new): `styles/*.toml` (the style library: index, layered, onion-clean, hexagonal, mvc, nestjs, microkernel, route-tree, feature-sliced, cqrs, c4, infra), `library.py` (typed TOML), `words.py` (normalise, Levenshtein moved here from the search script, word-vector synonyms), `detect.py` (parts, scores, decision, C4 level, declared rule files), `declared.py` (dependency-cruiser layer tables, known-exception baselines), `plan.py`, `config.py` (`.wingbox/config.yaml`), `labels.py` (layer + style + rule of a file), `facts.py` (graph facts), `init.py` (init facts and their text printer), `sexp.py`, `repository.py`, `vectors/` (GloVe table, 3 MB).
+- `src/wingbox/cli.py`: `wingbox init`. `scripts/build_code_graph.py`: `.wingbox/graph.sexp`, `.wingbox/cache.json`, architecture plan (config or detection), `(arch-part)`, `(arch-deny)`, `(arch-known)`, `(layer ... :style :rule :match)` facts. `scripts/code_graph_search.py`: labels from the graph (a graph without architecture facts is read with the layered style), boundary rules per part, `:part :style :rule [:known]` on `boundaries`, `layers`, `analyze`; the old substring classifier is gone. `src/wingbox/overview.py`, `map_page.py`, the map template: style and rule of every label and violation, Architecture section.
+- `benchmarks/architecture/` (new): labels, expected styles, path lists, `evaluate.py`, `run.sh`, `build_vectors.py`, results, README.
+- Docs: README (init section, outputs, FAQ on vectors), SKILL command table, `references/sexp-notation.md`, `.gitignore`, `.dockerignore`, Dockerfile comment, CHANGELOG.
+- Tests: REQ-ARCH-001 to 018, REQ-CLI-008 to 014; tests that used `.code_graph.sexp` or the removed classifier now use `.wingbox/` and the style labels.
+
+### Motivation
+- The maintainer agreed `wingbox init` and asked that layers and boundary rules come from the architecture style of each part, named with its source, after the 0.2 folder rules labelled a Next.js route folder `gateways` as infrastructure and read the plug-in folders of an editor monorepo (`commands`, `menu`) as backend layers (84 false rows). The style knowledge comes from the rule files written for the maintainer; a project that declares its own rules is judged by them.
+
+### Verification
+- Full suite green on Python 3.12, 3.11 and 3.13 (217 tests).
+- Real repositories (copies, read-only; before = base commit 3399813, after = this branch, both `--full`): edge sets identical on all four (fastapi 2,474, immich server 11,008, univer 64,228, archestra 90,870).
+- univer: 42 packages microkernel, 7 none, 1 undetermined; violations 84 -> 0.
+- archestra: backend declared by `layers.mjs` (22 layers read), frontend route-tree, the rest none; `app/mcp/gateways/gateway-tools.ts` is route code (feature), `platform/shared/index.ts` other instead of config. Backend: 93 violations and 20 type-only crossings by the declared order, every one in the project's `layers.known-upward-imports.json`, and all 112 entries of that file found; of the 19 backend rows of 0.2.5, 2 are in that baseline. Frontend: 104 violations by the route-tree rules (shared components and lib importing route code, lib importing lib/hooks).
+- immich server: detected nestjs (`nest-cli.json`); 29 violations and 8 type-only instead of 0 and 6: 18 utils -> repositories (rule "shared code imports a layer that uses it", new in the rule files), 9 nest-commander `*.command.ts` read as CQRS commands (domain) by nestjs.toml, worker bootstraps importing `app.module`. Migrations are infra. With `style: layered` the 0.2 rules give 1 violation (a worker bootstrap) and 6 type-only; the shared rule adds the rest.
+- fastapi: none, no layers, 0 violations.
+- `benchmarks/architecture/run.sh`: word vectors 75.4 % against 76.2 % for dictionaries + Levenshtein on the held-out half; detection 31 of 33 parts (30 with vectors).
+
 ## 2026-11-16 - modules loaded at run time, and the Theory of Code Space benchmark
 
 ### Changes

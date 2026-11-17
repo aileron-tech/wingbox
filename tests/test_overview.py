@@ -240,14 +240,14 @@ class OverviewTest(unittest.TestCase):
         self.assertIn("| Modules | 5 |", report)
         self.assertIn("| Dependencies between modules | 7 |", report)
         self.assertIn("| Boundary violations | 1 |", report)
-        self.assertIn("| `shop/utils/money.py` | shared | 3 | 4 |", report)
+        self.assertIn("| `shop/utils/money.py` | shared (layered: folder utils/ -> shared) | 3 | 4 |", report)
         self.assertIn(
-            "| `shop/domain/order.py` (domain) | `shop/db/order_repo.py` (infra) | domain imports infrastructure directly |",
+            "| `shop/domain/order.py` (domain) | `shop/db/order_repo.py` (infra) | layered: domain -> infra, domain imports infrastructure directly |",
             report,
         )
         self.assertIn("- `shop/api/orders.py` (api), depends on 1 module", report)
         self.assertIn("wingbox impact shop/utils/money.py", report)
-        self.assertIn("inferred from paths and file roles", report)
+        self.assertIn("by the rules of the style of their part", report)
         self.assertNotIn("(impact", report)
 
     def test_map_page_is_a_single_offline_file_with_the_graph_data(self) -> None:
@@ -265,11 +265,40 @@ class OverviewTest(unittest.TestCase):
         self.assertEqual(1, len(data["violations"]))
         self.assertEqual("shop/utils/money.py", data["modules"][4]["file"])
         self.assertEqual([3, 0, 4], [data["modules"][4][key] for key in ("in", "out", "reach")])
-        self.assertIn(["domain", "infra", "domain imports infrastructure directly"], data["rules"])
+        self.assertIn([".", "layered", "domain", "infra", "domain imports infrastructure directly"], data["rules"])
+        self.assertEqual("layered: folder utils/ -> shared", data["labelRules"][data["modules"][4]["rule"]])
         self.assertEqual([5, 0, 0], data["placed"])
         self.assertEqual(0, data["candidates"])
         self.assertIn("https://d3js.org v7", page)
         self.assertIsNone(re.search(r'<(script|link|img)[^>]+(src|href)="https?://', page))
+
+    def test_the_layers_view_is_brought_to_rest_before_it_is_drawn(self) -> None:
+        """/* REQ-OUT-017: in the layers view the map settles the force layout synchronously before drawing (rebuild, layout change and hops change call settle), and choosing a file only redraws: nothing drifts on screen; the graph view keeps its live settling. */"""
+        template = map_page.read_assets().template
+        settle = template[template.index("function settle("):template.index("function applyForces(")]
+        self.assertIn('if (state.layout !== "layers") { sim.alpha(alpha).restart(); return; }', settle)
+        self.assertIn("sim.stop();", settle)
+        self.assertIn("for (let t = 0; t < 300 && sim.alpha() > 0.02; t++) sim.tick();", settle)
+        select = template[template.index("function select("):template.index("function", template.index("function select(") + 10)]
+        self.assertIn('if (state.layout === "layers") requestDraw(); else sim.alpha(Math.max(sim.alpha(), 0.55)).restart();', select)
+        for name in ("function rebuild(", "function setLayout(", "function setDepth("):
+            body = template[template.index(name):template.index("\n}\n", template.index(name))]
+            self.assertIn("settle(", body, name)
+            self.assertNotIn(".restart()", body, name)
+
+    def test_the_map_opens_on_a_file_with_a_readable_blast_radius(self) -> None:
+        """/* REQ-OUT-018: the map opens on the most depended-on file whose 2-hop radius stays under 5 % of the modules; when none qualifies, on the file with the widest radius. */"""
+        view = self._overview()
+        modules = tuple(
+            overview.ModuleInfo(id=f"m{i}", file=f"src/m{i}.py", lang="py", layer="service", layer_basis="path",
+                                fan_in=fan_in, fan_out=0, within_two_hops=reach)
+            for i, (fan_in, reach) in enumerate([(50, 60)] + [(3, 4)] + [(9, 4)] + [(1, 1)] * 97)
+        )
+        data = map_page.map_data(dataclasses.replace(view, modules=modules, edges=(), violations=()), "2026-11-16", "9.9.9")
+        self.assertEqual(2, data["start"])
+        wide = tuple(dataclasses.replace(m, within_two_hops=60) for m in modules[:3])
+        data = map_page.map_data(dataclasses.replace(view, modules=wide, edges=(), violations=()), "2026-11-16", "9.9.9")
+        self.assertEqual(0, data["start"])
 
     def test_map_data_escapes_closing_script_tags(self) -> None:
         """/* REQ-OUT-005: a module name containing </script> must not break out of the embedded data. */"""
@@ -287,6 +316,14 @@ class OverviewTest(unittest.TestCase):
         self.assertNotIn("<script>alert(2)", page)
 
 
+def _layered(paths: dict[str, str]) -> dict[str, str]:
+    """Layers of module IDs in a graph without architecture facts: one part, the layered style."""
+    graph = code_graph_search.CodeGraph()
+    for module, lang in paths.items():
+        graph.nodes[module] = code_graph_search.Node(module, lang, "general module")
+    return {module: code_graph_search.module_layer(graph, module) for module in paths}
+
+
 class LayerRulesTest(unittest.TestCase):
     def test_top_level_folders_and_test_file_names_are_recognised(self) -> None:
         """/* REQ-OUT-008: layer rules must apply to top-level folders and must mark test files as tests first. */"""
@@ -302,7 +339,7 @@ class LayerRulesTest(unittest.TestCase):
             "src/components/Button": "ui",
             "src/contest/latest": "other",
         }
-        self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})
+        self.assertEqual(cases, _layered({path: "ts" for path in cases}))
 
     def test_migrations_and_seeds_are_infrastructure_even_under_a_schema_folder(self) -> None:
         """/* REQ-OUT-013: a migration or seed file is infrastructure wherever its folder lies; a schema folder around it does not make it domain. */"""
@@ -312,18 +349,26 @@ class LayerRulesTest(unittest.TestCase):
             "src/schema/tables/asset.table": "domain",
             "db/migrations/0001_initial": "infra",
         }
-        self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})
+        self.assertEqual(cases, _layered({path: "ts" for path in cases}))
 
-    def test_a_file_named_like_a_layer_folder_belongs_to_that_layer(self) -> None:
-        """/* REQ-OUT-015: a file named like a layer folder (types.ts, models.py) and the index file of such a folder (controllers/index.ts is the module src/controllers) belong to that layer. */"""
-        cases = {
-            "src/controllers": "api",
-            "src/types": "shared",
-            "app/models": "domain",
-            "pkg/openapi/models": "domain",
-            "src/contest/latest": "other",
-        }
-        self.assertEqual(cases, {path: code_graph_search._classify_layer(path) for path in cases})
+    def test_a_folder_names_a_layer_a_file_name_does_not(self) -> None:
+        """/* REQ-OUT-015: the index file of a layer folder (controllers/index.ts is the module src/controllers) belongs to that layer; a file named like a layer folder (types.ts, models.py) does not, and a name that only contains a layer word (class3, utils3d/s3) is not that layer. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ("src/controllers/index.ts", "src/types.ts", "app/models.py", "src/class3.ts", "s3/bucket.ts"):
+                (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative).write_text("", encoding="utf-8")
+            graph = code_graph_search.CodeGraph()
+            graph._root = str(root)
+            for module, lang in (("src/controllers", "ts"), ("src/types", "ts"), ("app/models", "py"),
+                                 ("src/class3", "ts"), ("s3/bucket", "ts")):
+                graph.nodes[module] = code_graph_search.Node(module, lang, "general module")
+            layers = {module: code_graph_search.module_layer(graph, module) for module in graph.nodes}
+        self.assertEqual(
+            {"src/controllers": "api", "src/types": "other", "app/models": "other", "src/class3": "other",
+             "s3/bucket": "other"},
+            layers,
+        )
 
     def test_a_python_package_init_takes_the_layer_of_its_package(self) -> None:
         """/* REQ-OUT-016: a Python `__init__.py` is its package: it takes the layer of its folder, or, when no folder rule applies, the layer where most modules of the package are; what it re-exports never decides its layer. */"""

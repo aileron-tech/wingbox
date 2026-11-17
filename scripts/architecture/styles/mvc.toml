@@ -1,0 +1,91 @@
+schema = 1
+id = "mvc"
+name = "Model-view-controller (web framework convention)"
+kind = "style"
+languages = ["ruby", "python", "php", "csharp", "java"]                 # languages a new project may choose this style for
+wins_over = ["layered"]
+summary = "The web framework's own split: models hold data and rules, views render, controllers receive requests and choose a view. Rails, Django (model-template-view), Laravel, ASP.NET MVC, Spring MVC."
+
+[[sources]]
+title = "GUI Architectures"
+author = "Martin Fowler"
+year = 2006
+url = "https://martinfowler.com/eaaDev/uiArchs.html"
+[[sources]]
+title = "Getting Started with Rails"
+author = "Rails Guides"
+url = "https://guides.rubyonrails.org/getting_started.html"
+
+[detect]
+[[detect.groups]]
+id = "model"
+weight = 3
+required = true
+names = ["models"]
+files = ["models.py"]
+[[detect.groups]]
+id = "view"
+weight = 3
+required = true
+names = ["views", "templates"]
+files = ["views.py", "*.erb", "*.haml", "*.slim", "*.blade.php", "*.cshtml", "*.jinja", "*.jinja2"]
+[[detect.groups]]
+id = "controller"
+weight = 3
+required = true
+names = ["controllers"]
+files = ["views.py", "urls.py"]
+note = "In Django the file views.py plays the controller and templates/ the view."
+[[detect.against]]
+weight = 2
+all_of = [["services"], ["repositories", "repository"]]
+
+[[layers]]
+id = "controller"
+rank = 2
+folders = ["controllers"]
+files = ["views.py", "urls.py"]
+[[layers]]
+id = "view"
+rank = 1
+folders = ["views", "templates", "helpers"]
+files = ["*.erb", "*.haml", "*.slim", "*.blade.php", "*.cshtml", "*.jinja", "*.jinja2"]
+[[layers]]
+id = "model"
+rank = 0
+folders = ["models"]
+files = ["models.py"]
+
+[rules]
+[[rules.deny]]
+from = "model"
+to = ["controller", "view"]
+reason = "a model depends on a controller or a view"
+fix = "move the code {source} needs out of {target_folder}/ into the model or a helper next to the models"
+[[rules.deny]]
+from = "view"
+to = "controller"
+reason = "a view depends on a controller"
+fix = "pass what the view needs from the controller as data"
+
+[[placement]]
+what = "data, validation, business rule"
+layer = "model"
+may_import = []
+[[placement]]
+what = "request handling, choice of the response"
+layer = "controller"
+may_import = ["model", "view"]
+[[placement]]
+what = "rendering"
+layer = "view"
+may_import = ["model"]
+
+[advice]
+new_code = ["Keep controllers thin: a rule that would be repeated in two controllers belongs to a model or to a service object next to the models."]
+refactoring = ["A model that builds a response or reads the request: move that code to the controller."]
+
+[target]
+layers = { model = "models", view = "views", controller = "controllers" }
+domain = "models"
+note = "The framework keeps the domain in models/; value objects, services and specifications go next to the models."

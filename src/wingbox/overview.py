@@ -28,6 +28,8 @@ class ModuleInfo:
     fan_in: int            # modules that depend on this one directly
     fan_out: int           # modules this one depends on directly
     within_two_hops: int   # modules reached by a change, up to BLAST_RADIUS_DEPTH hops
+    style: str = "-"       # architecture style of the module's part that set the layer
+    rule: str = ""         # the rule that set the layer ("folder routes/ -> api")
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,34 @@ class ViolationInfo:
     target_layer: str
     kind: str
     reason: str
+    part: str = "."
+    style: str = "-"
+    rule: str = ""
+    known: str = ""        # baseline file of the project that already lists the pair
+    severity: str = "violation"   # candidate: the rule gives candidates only
+
+
+@dataclass(frozen=True)
+class PartInfo:
+    path: str
+    style: str
+    state: str
+    origin: str
+    level: str
+    files: int
+    source: str
+
+
+@dataclass(frozen=True)
+class AdviceInfo:
+    id: str
+    part: str
+    kind: str        # move | fix-violation | missing-folder
+    target: str
+    reason: str
+    style: str
+    rule: str
+    evidence: str
 
 
 @dataclass(frozen=True)
@@ -56,12 +86,16 @@ class Overview:
     layers: tuple[tuple[str, int], ...]
     languages: tuple[tuple[str, int], ...]
     entity_count: int
-    boundary_rules: tuple[tuple[str, str, str], ...]   # (source layer, target layer, reason)
+    boundary_rules: tuple[tuple[str, str, str, str, str], ...]   # (part, style, source layer, target layer, reason)
     violation_candidates: int   # rule breaks where a layer is only a guess from the file role
     placed_by_path: int         # modules whose layer comes from their folders
     placed_by_role: int         # modules whose layer is a guess from the file role
     unplaced: int               # modules no layer rule applies to
     type_only_crossings: tuple[ViolationInfo, ...] = ()   # imports of types only across a layer boundary
+    parts: tuple[PartInfo, ...] = ()
+    advice: tuple[AdviceInfo, ...] = ()
+    known_violations: tuple[ViolationInfo, ...] = ()   # rule breaks a baseline already lists
+    quiet_parts: tuple[tuple[str, str], ...] = ()   # parts without advice and why
 
 
 def _layer_rank(layer: str) -> int:
@@ -84,7 +118,7 @@ def _is_generated(module: ModuleInfo) -> bool:
     return module.lang == "dart" and module.id.rsplit("/", 1)[-1].endswith((".g", ".freezed"))
 
 
-def build_overview(graph: Any, search: Any, project: str) -> Overview:
+def build_overview(graph: Any, search: Any, project: str, advice: Any = None) -> Overview:
     """Summarise a loaded CodeGraph.
 
     `search` is the code_graph_search module: it owns the layer rules, the
@@ -118,16 +152,19 @@ def build_overview(graph: Any, search: Any, project: str) -> Overview:
         second.discard(module_id)
         return len(first) + len(second)
 
+    labels = {module_id: search.module_label(graph, module_id) for module_id in module_ids}
     modules = tuple(
         ModuleInfo(
             id=module_id,
             file=search.module_file(graph, module_id),
             lang=graph.module_lang(module_id),
-            layer=search.module_layer(graph, module_id),
+            layer=labels[module_id].layer,
             layer_basis=search.module_layer_basis(graph, module_id),
             fan_in=len(dependents[module_id]),
             fan_out=len(dependencies[module_id]),
             within_two_hops=within_hops(module_id),
+            style=labels[module_id].style,
+            rule=labels[module_id].rule,
         )
         for module_id in module_ids
     )
@@ -137,30 +174,48 @@ def build_overview(graph: Any, search: Any, project: str) -> Overview:
         for target, kind in sorted(dependencies[module_id].items())
     )
     basis = {module.id: module.layer_basis for module in modules}
-    rule_breaks = sorted(set(search.boundary_violations(graph, known)))
-    # A rule break counts only when both layers come from folders or the file type. A layer guessed from the
-    # role of a file is too weak a ground to call a dependency a violation.
-    # An import of types only is erased at build time: listed apart, never a violation.
-    type_only_pairs = {
-        (source, target)
-        for source, target, _, _, kind, _ in rule_breaks
-        if kind == "imports" and search.is_type_only_import(graph, source, target)
-    }
-    infos = tuple(
-        ViolationInfo(
-            source=source, target=target, source_layer=source_layer,
-            target_layer=target_layer, kind=kind, reason=reason,
-        )
-        for source, target, source_layer, target_layer, kind, reason in rule_breaks
+    rule_breaks = sorted(
+        search.boundary_violations(graph, known), key=lambda item: (item.source, item.target, item.kind)
     )
+    # A rule break counts only when both layers come from rules (folders, file type, declared layers). A layer
+    # guessed from the role of a file is too weak a ground to call a dependency a violation.
+    # An import of types only is erased at build time: listed apart, never a violation.
+    infos = tuple(dict.fromkeys(
+        ViolationInfo(
+            source=item.source, target=item.target, source_layer=item.source_layer,
+            target_layer=item.target_layer, kind=item.kind, reason=item.reason,
+            part=item.part, style=item.style, rule=item.rule, known=item.known, severity=item.severity,
+        )
+        for item in rule_breaks
+    ))
+    type_only_pairs = {
+        (item.source, item.target) for item in infos if search.is_type_only_import(graph, item.source, item.target)
+    }
     type_only_crossings = tuple(
         item for item in infos if item.kind == "imports" and (item.source, item.target) in type_only_pairs
     )
-    violations = tuple(
+    infos = tuple(item for item in infos if (item.source, item.target) not in type_only_pairs or item.kind == "imports")
+    ruled = tuple(
         item
         for item in infos
-        if item not in type_only_crossings and basis.get(item.source) == "path" and basis.get(item.target) == "path"
+        if item not in type_only_crossings and item.severity != "candidate"
+        and basis.get(item.source) == "path" and basis.get(item.target) == "path"
     )
+    # A pair listed in a baseline (the project's own, or .wingbox/baseline.sexp) is known, not counted.
+    violations = tuple(item for item in ruled if not item.known)
+    known_violations = tuple(item for item in ruled if item.known)
+    parts = tuple(
+        PartInfo(
+            path=path, style=values.get("style", "-"), state=values.get("state", ""),
+            origin=values.get("origin", ""), level=values.get("level", ""),
+            files=int(values.get("files", "0")) if values.get("files", "0").isdigit() else 0,
+            source=values.get("source", ""),
+        )
+        for path, values in sorted(graph.arch_parts.items())
+    )
+    advice_items, quiet_parts = search.advice_items(graph)
+    if advice is not None:
+        advice_items = advice   # what the decisions store still shows, best first
     layer_counts = _count([module.layer for module in modules])
     language_counts = _count([module.lang or "unknown" for module in modules])
     return Overview(
@@ -171,11 +226,18 @@ def build_overview(graph: Any, search: Any, project: str) -> Overview:
         layers=tuple(sorted(layer_counts.items(), key=lambda item: (_layer_rank(item[0]), item[0]))),
         languages=tuple(sorted(language_counts.items(), key=lambda item: (-item[1], item[0]))),
         entity_count=sum(len(entities) for entities in graph.entities.values()),
-        boundary_rules=tuple(search.BOUNDARY_DENY_RULES),
+        boundary_rules=tuple(search.boundary_rules(graph)),
+        parts=parts,
+        advice=tuple(
+            AdviceInfo(item.id, item.part, item.kind, item.target, item.reason, item.style, item.rule, item.evidence)
+            for item in advice_items
+        ),
+        quiet_parts=tuple(quiet_parts),
         violation_candidates=len(
             {(item.source, item.target) for item in infos if item not in type_only_crossings}
-            - {(item.source, item.target) for item in violations}
+            - {(item.source, item.target) for item in ruled}
         ),
+        known_violations=known_violations,
         type_only_crossings=type_only_crossings,
         placed_by_path=sum(1 for module in modules if module.layer_basis == "path"),
         placed_by_role=sum(1 for module in modules if module.layer_basis == "role"),
@@ -243,6 +305,74 @@ def _code(text: str) -> str:
     return "`" + _cell(text).replace("`", "'") + "`"
 
 
+def _layer_cell(module: ModuleInfo) -> str:
+    if module.layer in ("other", "test") or module.style in ("-", ""):
+        return module.layer
+    return f"{module.layer} ({_cell(module.style)}: {_cell(module.rule)})"
+
+
+def _rule_text(item: ViolationInfo) -> str:
+    known = f"; listed in {item.known}" if item.known else ""
+    return f"{item.style}: {item.rule}, {item.reason}{known}"
+
+
+def _parts_section(view: Overview) -> list[str]:
+    """One row per part: its C4 level, style and where the style comes from."""
+    if not view.parts:
+        return ["No architecture facts in this graph."]
+    lines = [
+        "Each part of the repository (a folder with its own manifest) is judged by one style. The style comes "
+        "from `.wingbox/config.yaml` (`config`), from rules the part declares itself (`declared`) or from "
+        "the folder names (`detected`); a part whose style is not determined gets no layers and no "
+        "boundary rules.",
+        "",
+        "| Part | Level | Style | State | From | Files |",
+        "|---|---|---|---|---|---:|",
+    ]
+    for part in sorted(view.parts, key=lambda item: (-item.files, item.path)):
+        if part.state == "not-judged":
+            continue
+        lines.append(
+            f"| {_code(part.path)} | {part.level} | {part.style} | {part.state} | {part.origin} | {_number(part.files)} |"
+        )
+    small = [part.path for part in view.parts if part.state == "not-judged"]
+    if small:
+        lines += ["", f"Not judged (too few source files): {', '.join(_code(path) for path in sorted(small))}."]
+    return lines
+
+
+_TOP_ADVICE = 30
+
+
+def _recommendations(view: Overview) -> list[str]:
+    """What the style of each part says to create, move or fix."""
+    lines: list[str] = []
+    if view.advice:
+        counts = _count([item.kind for item in view.advice])
+        lines += [
+            "What the style of each part (or the rules it declares) says to do: "
+            + ", ".join(f"{_number(counts.get(kind, 0))} {label}" for kind, label in
+                        (("move", "files to move"), ("fix-violation", "imports to fix"),
+                         ("missing-folder", "folders of the target layout to create when needed")))
+            + ". `wingbox advice` lists them for agents.",
+            "",
+            "| Kind | Target | Advice | Style and rule | Evidence |",
+            "|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {item.kind} | {_code(item.target)} | {_cell(item.reason)} | {_cell(item.style)}: {_cell(item.rule)} "
+            f"| {_cell(item.evidence)} |"
+            for item in view.advice[:_TOP_ADVICE]
+        ]
+        if len(view.advice) > _TOP_ADVICE:
+            lines += ["", f"Showing {_TOP_ADVICE} of {_number(len(view.advice))}."]
+    else:
+        lines.append("No recommendation.")
+    if view.quiet_parts:
+        lines += ["", "No advice for: " + ", ".join(f"{_code(part)} ({_cell(why)})" for part, why in view.quiet_parts) + "."]
+    return lines
+
+
 def render_report(view: Overview, generated: str, tool_version: str) -> str:
     """REPORT.md: what the code graph says about the project, for a person."""
     files = {module.id: module.file for module in view.modules}
@@ -253,8 +383,8 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
     widest = widest_blast_radius(view)
     candidates_note = (
         f" {_plural(view.violation_candidates, 'more candidate')} "
-        f"{'rests' if view.violation_candidates == 1 else 'rest'} on a guessed layer and "
-        f"{'is' if view.violation_candidates == 1 else 'are'} not counted."
+        f"({'rests' if view.violation_candidates == 1 else 'rest'} on a guessed layer or on a rule that gives "
+        f"candidates) {'is' if view.violation_candidates == 1 else 'are'} not counted."
         if view.violation_candidates else ""
     )
     lines: list[str] = [
@@ -293,10 +423,17 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         "| Languages | " + ", ".join(f"{lang} {_number(count)}" for lang, count in view.languages) + " |",
         f"| Boundary violations | {_number(len(view.violations))} |",
         "",
+        "## Architecture",
+        "",
+    ]
+    lines += _parts_section(view)
+    lines += [
+        "",
         "## Architecture layers",
         "",
-        "Each module is assigned to a layer from its folders; when no folder rule applies, from the role "
-        "of the file, which is a guess. `other` holds the modules no rule applies to.",
+        "Each module takes a layer of the style of its part: from its folders (or the rules the part declares); "
+        "when no rule applies in a layered part, from the role of the file, which is a guess. A part without a "
+        "determined style gives no layers. `other` holds the modules no rule applies to.",
         "",
         "| Layer | Modules | Share |",
         "|---|---:|---:|",
@@ -312,11 +449,11 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
             f"\"Within {BLAST_RADIUS_DEPTH} hops\" counts the modules that depend on it "
             "directly or through one other module.",
             "",
-            f"| File | Layer | Direct dependents | Within {BLAST_RADIUS_DEPTH} hops |",
+            f"| File | Layer (style: rule) | Direct dependents | Within {BLAST_RADIUS_DEPTH} hops |",
             "|---|---|---:|---:|",
         ]
         lines += [
-            f"| {_code(module.file)} | {module.layer} | {_number(module.fan_in)} | {_number(module.within_two_hops)} |"
+            f"| {_code(module.file)} | {_layer_cell(module)} | {_number(module.fan_in)} | {_number(module.within_two_hops)} |"
             for module in top
         ]
     else:
@@ -325,17 +462,17 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
     lines += ["", "## Boundary violations", ""]
     if view.violations:
         lines += [
-            "Dependencies that cross an architecture boundary in the wrong direction, by the default "
-            "layer rules. Only pairs where both layers come from folders or from the file type (a `.tsx` component is UI) are listed; layers are inferred "
-            "from paths and file roles, so read each line before acting on it.",
+            "Dependencies that cross a boundary in the wrong direction, by the rules of the style of their part "
+            "(or the rules the part declares). Only pairs where both layers come from rules (folders, file "
+            "patterns, declared layers) are listed; read each line before acting on it.",
             "",
-            "| From | To | Rule broken |",
+            "| From | To | Style and rule |",
             "|---|---|---|",
         ]
         lines += [
             f"| {_code(files.get(item.source, item.source))} ({item.source_layer}) "
             f"| {_code(files.get(item.target, item.target))} ({item.target_layer}) "
-            f"| {_cell(item.reason)} |"
+            f"| {_cell(_rule_text(item))} |"
             for item in view.violations[:_TOP_VIOLATIONS]
         ]
         if len(view.violations) > _TOP_VIOLATIONS:
@@ -348,11 +485,21 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         lines.append(
             f"None found by the layer rules, which place {_share(placed, module_count)} of the modules."
         )
+    if view.known_violations:
+        known = len({(item.source, item.target) for item in view.known_violations})
+        baselines = sorted({item.known for item in view.known_violations})
+        lines += [
+            "",
+            f"{_plural(known, 'more rule break')} {'is' if known == 1 else 'are'} listed in a baseline "
+            f"({', '.join(_code(b) for b in baselines)}) and not counted: `wingbox boundaries all` prints them as "
+            "`violation-known`.",
+        ]
     if view.violation_candidates:
         lines += [
             "",
             f"{_plural(view.violation_candidates, 'more candidate')} where a layer is only guessed from "
-            "the role of a file: `wingbox boundaries all` lists them.",
+            "the role of a file, or where the rule gives candidates (a utility that depends on a layer that "
+            "uses it): `wingbox boundaries all` lists them.",
         ]
 
     if view.type_only_crossings:
@@ -374,6 +521,8 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         if count > _TOP_VIOLATIONS:
             lines += ["", f"Showing {_TOP_VIOLATIONS} of {_number(count)}. Full list: `wingbox boundaries all`."]
 
+    lines += ["", "## Recommendations", ""]
+    lines += _recommendations(view)
     lines += ["", "## Where to start reading", ""]
     if starts:
         lines.append("Files that nothing else depends on and that pull in the most modules:")

@@ -130,8 +130,10 @@ class LayerRulesFromRealRepositoriesTest(unittest.TestCase):
             layers,
         )
         self.assertEqual("path", basis)
-        self.assertEqual("other", search._classify_layer("cli/src/native/browser"))
-        self.assertEqual("config", search._classify_layer("scripts/release"))
+        for module, expected in (("cli/src/native/browser", "other"), ("scripts/release", "config")):
+            alone = search.CodeGraph()
+            alone.nodes[module] = search.Node(module, "ts", "general module")
+            self.assertEqual(expected, search.module_layer(alone, module), module)
 
     def test_boundaries_separates_folder_based_violations_from_guesses(self) -> None:
         """/* REQ-CS-050: `boundaries` must print a violation only when both layers are certain; a pair that rests on a guessed layer is a candidate. */"""
@@ -148,7 +150,7 @@ class LayerRulesFromRealRepositoriesTest(unittest.TestCase):
         self.assertEqual(1, sum(line.startswith("(violation ") for line in lines), lines)
         self.assertTrue(any(line.startswith("(violation src/domain/order web/components/label ") for line in lines), lines)
         self.assertTrue(any(line.startswith("(violation-candidate src/domain/order pkg/ledger ") for line in lines), lines)
-        self.assertIn("(boundaries-summary :violations 1 :type-only 0 :candidates 1 :checked 6)", lines)
+        self.assertIn("(boundaries-summary :violations 1 :known 0 :type-only 0 :candidates 1 :checked 6)", lines)
 
 
 class ImpactTargetTest(unittest.TestCase):
@@ -483,7 +485,7 @@ class TypeOnlyImportTest(unittest.TestCase):
         self.assertTrue(
             any(line.startswith("(violation-type-only src/dtos/stats.dto src/repositories/asset.repository ") for line in lines), lines
         )
-        self.assertIn("(boundaries-summary :violations 1 :type-only 1 :candidates 0 :checked 3)", lines)
+        self.assertIn("(boundaries-summary :violations 1 :known 0 :type-only 1 :candidates 0 :checked 3)", lines)
 
     def test_the_summary_counts_file_pairs_not_lines(self) -> None:
         """/* REQ-CS-058: `boundaries-summary` must count pairs of files, as the report does; a pair that is printed once per relation (imports and data-flow) counts once. */"""
@@ -511,7 +513,7 @@ class TypeOnlyImportTest(unittest.TestCase):
             lines = output.getvalue().splitlines()
 
         self.assertEqual(2, sum(line.startswith("(violation ") for line in lines), lines)
-        self.assertIn("(boundaries-summary :violations 1 :type-only 0 :candidates 0 :checked 2)", lines)
+        self.assertIn("(boundaries-summary :violations 1 :known 0 :type-only 0 :candidates 0 :checked 2)", lines)
 
 
 class AnswerSizeTest(unittest.TestCase):

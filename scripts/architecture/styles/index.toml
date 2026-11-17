@@ -1,0 +1,116 @@
+# Wingbox architecture rules, schema 1.
+# One file per architecture style; this file holds what all of them share.
+# The files are data: the tool reads them, a project may copy one into its
+# repository and edit it to state its own architecture.
+
+schema = 1
+styles = ["layered", "onion-clean", "hexagonal", "mvc", "nestjs", "microkernel", "route-tree", "feature-sliced"]
+overlays = ["cqrs"]          # judged next to a style, never instead of one
+models = ["c4"]              # levels of the system, judged for the whole repository
+infra = ["infra"]            # infrastructure and operations code, judged for the whole repository and joined to the C4 containers
+
+[matching]
+# A name matches a whole folder name, never a part of one: "gateways" matches
+# the folder gateways/, not api-gateways-old/ and not a file gateways.ts.
+# Before comparing, a folder name is lowercased and "-", "_" are dropped
+# ("use-cases", "use_cases", "UseCases" are the same name), and a dotted
+# folder is read by its last word ("Shop.Domain" is "domain").
+unit = "path-segment"
+# When several folders of a path name a layer, the one nearest to the file
+# decides: routes/proxy/utils/x.ts is a utility, services/auth/dto/y.ts a DTO.
+folder_choice = "nearest"
+normalise = ["lowercase", "drop:-_", "last-dotted-word"]
+
+[parts]
+# A repository is judged part by part. A part starts at a folder that holds
+# one of these files and ends where a nested part starts.
+manifests = ["package.json", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod", "Gemfile", "composer.json", "*.sln", "settings.gradle", "settings.gradle.kts", "pom.xml", "mix.exs"]
+# Nested build files of one application are not new parts.
+not_a_boundary = ["*.csproj", "build.gradle", "build.gradle.kts"]
+min_source_files = 12        # smaller parts are not judged
+
+[ignored]
+# Left out before anything is counted.
+folders = ["node_modules", "vendor", "dist", "build", "out", "target", "bin", "obj", "coverage", "generated", "gen", "migrations", "docs", "examples", "e2e"]
+tests = ["test", "tests", "spec", "specs", "testing", "mocks", "fixtures"]   # folders (matched as "__tests__" too)
+test_files = ["*.test.*", "*.spec.*", "*_test.*", "test_*.py", "*Test.java", "*Tests.cs", "*Test.cs"]
+
+[decision]
+# A style is a candidate for a part when its score reaches candidate_score and
+# the folders that gave the evidence hold at least min_coverage of the part's
+# source files. The style is "determined" when the best candidate leads the
+# next one by lead; otherwise the part is reported as "not determined" with
+# its candidates, and no boundary violation is stated for it.
+candidate_score = 0.6
+min_coverage = 0.25
+lead = 0.15
+# A style may name general styles it wins over (wins_over): when both are
+# candidates and the specific one scores at least as high, the general one is dropped.
+# Styles that name each other in compatible_with may both hold for one part
+# (a framework convention inside a ring structure): both are reported as determined.
+# decisive_files of a style, found at the root of a part, settle that style.
+states = ["determined", "candidates", "not determined"]
+
+[declared_rules]
+# A project that states its own architecture rules is read from those rules
+# first; the styles below are only a guess for projects that state none.
+# When one of these files is found, the report names it and compares its own
+# findings with what the project already declares.
+files = [".dependency-cruiser.*", "dependency-cruiser.config.*", "layers.mjs", "layers.js", "layers.json", ".importlinter", "tach.toml", "deptrac.yaml", "deptrac.yml", "packwerk.yml", "package.yml", "nx.json", "arkit.json", ".arkit.json", "archunit.properties", "*ArchTest.java", "*ArchitectureTest.java", "*ArchitectureTests.cs", "*ArchTests.cs", "wingbox.toml"]
+manifest_fields = ["pyproject.toml:tool.importlinter", "pyproject.toml:tool.tach", "setup.cfg:importlinter", ".eslintrc*:boundaries", "eslint.config.*:boundaries", ".golangci.yml:depguard"]
+known_exceptions = ["layers.known-upward-imports.json", ".dependency-cruiser-known-violations.json", "deptrac.baseline.yaml"]
+
+[composition_roots]
+# Files that wire the application together may import every layer.
+files = ["main.*", "program.*", "startup.*", "bootstrap.*", "container.*", "composition*.*", "app.module.*", "dependencyinjection.*", "wire.go", "index.ts@root"]
+# A file that imports one of these names starts the application, whatever its name
+# ("module:name"): a Nest bootstrap, a nest-commander CLI command.
+imports = ["@nestjs/core:NestFactory", "nest-commander:Command", "nest-commander:CommandRunner", "nest-commander:CommandFactory", "nest-commander:SubCommand"]
+# A file that nothing imports and that imports a composition root is an entry point too (a worker bootstrap).
+
+[domain_blocks]
+# The building blocks of the domain tier. Each style's [target] says where they live.
+# Sources: Eric Evans, "Domain-Driven Design: Tackling Complexity in the Heart of Software", 2003;
+# Vaughn Vernon, "Implementing Domain-Driven Design", 2013.
+[[domain_blocks.blocks]]
+id = "entities"
+folder = "entities"
+names = ["entities", "entity"]
+is = "objects defined by their identity, not by their attributes"
+source = "Eric Evans, Domain-Driven Design, 2003, chapter 5"
+[[domain_blocks.blocks]]
+id = "value-objects"
+folder = "value-objects"
+names = ["value-objects", "valueobjects", "values"]
+is = "immutable objects defined only by their attributes (money, address)"
+source = "Eric Evans, Domain-Driven Design, 2003, chapter 5"
+[[domain_blocks.blocks]]
+id = "aggregates"
+folder = "aggregates"
+names = ["aggregates", "aggregate"]
+is = "clusters of entities and value objects changed together through one root"
+source = "Eric Evans, Domain-Driven Design, 2003, chapter 6; Vaughn Vernon, Implementing Domain-Driven Design, 2013, chapter 10"
+[[domain_blocks.blocks]]
+id = "domain-events"
+folder = "events"
+names = ["events", "domain-events", "domainevents"]
+is = "facts that happened in the domain, named in the past tense"
+source = "Vaughn Vernon, Implementing Domain-Driven Design, 2013, chapter 8"
+[[domain_blocks.blocks]]
+id = "domain-services"
+folder = "services"
+names = ["services", "domain-services", "domainservices"]
+is = "operations of the domain that belong to no single entity"
+source = "Eric Evans, Domain-Driven Design, 2003, chapter 5"
+[[domain_blocks.blocks]]
+id = "repository-interfaces"
+folder = "repositories"
+names = ["repositories", "repository", "ports"]
+is = "interfaces through which the domain loads and stores aggregates; implemented outside the domain"
+source = "Eric Evans, Domain-Driven Design, 2003, chapter 6"
+[[domain_blocks.blocks]]
+id = "specifications"
+folder = "specifications"
+names = ["specifications", "specification", "specs", "rules", "policies"]
+is = "predicates that state a business rule and can be combined"
+source = "Eric Evans and Martin Fowler, Specifications, 1997; Eric Evans, Domain-Driven Design, 2003, chapter 9"

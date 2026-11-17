@@ -1,0 +1,168 @@
+schema = 1
+id = "layered"
+name = "Layered architecture (presentation, service, data, model)"
+kind = "style"
+languages = ["any"]                 # languages a new project may choose this style for
+summary = "Code is split by technical role into horizontal layers; an upper layer calls the layer below it. This is the convention Wingbox 0.2 has built in."
+
+[[sources]]
+title = "Patterns of Enterprise Application Architecture, chapter 1 Layering"
+author = "Martin Fowler"
+year = 2002
+[[sources]]
+title = "PresentationDomainDataLayering"
+author = "Martin Fowler"
+year = 2015
+url = "https://martinfowler.com/bliki/PresentationDomainDataLayering.html"
+[[sources]]
+title = "Service Layer"
+author = "Randy Stafford, in Fowler's catalog"
+year = 2002
+url = "https://martinfowler.com/eaaCatalog/serviceLayer.html"
+
+[detect]
+[[detect.groups]]
+id = "presentation"
+weight = 2
+required = true
+names = ["controllers", "controller", "routes", "api", "handlers", "resolvers", "endpoints", "rest", "http"]
+[[detect.groups]]
+id = "service"
+weight = 3
+required = true
+names = ["services", "service", "managers", "business", "logic"]
+[[detect.groups]]
+id = "data"
+weight = 2
+names = ["repositories", "repository", "repo", "dao", "daos", "db", "database", "persistence", "store", "stores"]
+[[detect.groups]]
+id = "model"
+weight = 2
+names = ["models", "model", "entities", "entity", "dtos", "dto", "schemas", "schema", "types"]
+# A part that has the rings of an onion is not plainly layered.
+[[detect.against]]
+weight = 3
+all_of = [["domain", "core"], ["application", "usecases", "interactors"], ["infrastructure", "infra"]]
+[[detect.against]]
+weight = 3
+all_of = [["ports", "port"], ["adapters", "adapter"]]
+[[detect.against]]
+weight = 3
+all_of = [["models"], ["views", "templates"], ["controllers"]]    # the triad of a web framework: see mvc
+
+# rank: a layer may depend on layers with a LOWER rank (downwards) only.
+[[layers]]
+id = "ui"
+rank = 5
+folders = ["components", "pages", "views", "ui", "hooks", "templates", "screens", "viewmodels", "viewmodel", "livewire"]
+files = ["*.tsx", "*.jsx", "*.vue", "*.svelte"]
+[[layers]]
+id = "api"
+rank = 4
+folders = ["api", "routes", "controllers", "guards", "middleware", "middlewares", "interceptors", "pipes", "resolvers", "endpoints", "rest", "http"]
+[[layers]]
+id = "service"
+rank = 3
+folders = ["services", "service", "application", "handlers", "managers", "business", "jobs", "workers", "tasks", "listeners", "policies"]
+[[layers]]
+id = "infra"
+rank = 2
+folders = ["repositories", "repository", "db", "database", "infra", "infrastructure", "persistence", "adapters", "gateways", "clients", "dao", "daos", "queue", "storage", "cache", "migrations", "seeds", "seeders"]
+# migrations and seeds change the database: infrastructure, even below a schema folder (Wingbox 0.2 rule)
+[[layers]]
+id = "domain"
+rank = 1
+folders = ["domain", "entities", "models", "schemas", "schema", "dto", "dtos", "events", "commands", "queries", "enums"]
+[[layers]]
+id = "shared"
+rank = 0
+folders = ["common", "commons", "utils", "util", "lib", "helpers", "constants", "decorators", "mappers", "types", "interfaces", "shared"]
+[[layers]]
+id = "config"
+rank = 0
+folders = ["config", "configs", "env", "settings", "scripts"]
+
+[rules]
+direction = "downward"       # stated by the deny list below; kept equal to Wingbox 0.2
+[[rules.deny]]
+from = "domain"
+to = "infra"
+reason = "domain imports infrastructure directly"
+fix = "introduce an interface (a port) in the domain for what {source} needs from {target}, implement it in the infrastructure layer and inject it"
+[[rules.deny]]
+from = "domain"
+to = "api"
+reason = "domain imports API layer"
+fix = "move the code {source} needs out of {target_folder}/ into the domain or shared, and let the API layer import it from there"
+[[rules.deny]]
+from = "domain"
+to = "ui"
+reason = "domain imports UI layer"
+fix = "move the code {source} needs out of {target_folder}/ into the domain or shared; the UI imports the domain, not the reverse"
+[[rules.deny]]
+from = "ui"
+to = "infra"
+reason = "UI imports infrastructure directly"
+fix = "reach {target} through a service or a hook; the UI does not call infrastructure"
+[[rules.deny]]
+from = "service"
+to = "api"
+reason = "service imports API layer (inversion)"
+fix = "move the helper {target} out of {target_folder}/ into services/ or shared/, and let the route import it from there"
+[[rules.deny]]
+from = "infra"
+to = "api"
+reason = "infrastructure imports API layer"
+fix = "move what {source} needs out of {target_folder}/ into shared/ or the domain"
+# A utility that calls a layer acts as part of that layer: the dependency is real,
+# the fix is a move or an inversion, so these rules give candidates, not violations.
+[[rules.deny]]
+from = "shared"
+to = ["ui", "api", "service"]
+severity = "candidate"
+reason = "shared code imports a layer that uses it; move it to that layer or invert"
+fix = "move {source} into the layer of {target}, or pass {target} in as a parameter"
+[[rules.deny]]
+from = "shared"
+to = "infra"
+severity = "candidate"
+reason = "utility depends on infrastructure; move it to services or invert"
+fix = "move {source} into services/, or let it take what it needs from {target} as a parameter"
+
+[[placement]]
+what = "HTTP endpoint, route, controller, guard, middleware"
+layer = "api"
+may_import = ["service", "domain", "shared", "config"]
+[[placement]]
+what = "use case, business operation, background job"
+layer = "service"
+may_import = ["infra", "domain", "shared", "config"]
+[[placement]]
+what = "database access, external client, queue, storage"
+layer = "infra"
+may_import = ["domain", "shared", "config"]
+[[placement]]
+what = "entity, data transfer object, schema, enum"
+layer = "domain"
+may_import = ["shared"]
+[[placement]]
+what = "helper used by several layers"
+layer = "shared"
+may_import = []
+
+[advice]
+new_code = [
+  "Put a helper that a service needs next to the services or in shared, not under the routes folder: a service must not import the API layer.",
+  "A component fetches data through a service or a hook, not through a repository or a database client.",
+]
+refactoring = [
+  "A service imports a file under routes/: move the imported code to the service layer or to shared, and let the route import it from there.",
+  "A model imports a repository: pass the data in, or move the query to a repository that returns the model.",
+]
+
+[target]
+# The standard layout: one folder per layer (relative to the source root of the part),
+# and where the building blocks of the domain tier live (index.toml [domain_blocks]).
+layers = { ui = "components", api = "routes", service = "services", infra = "repositories", domain = "domain", shared = "shared", config = "config" }
+domain = "domain"
+note = "Repository interfaces in domain/repositories, their implementations in the infra layer."

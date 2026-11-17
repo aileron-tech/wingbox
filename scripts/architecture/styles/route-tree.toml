@@ -1,0 +1,112 @@
+schema = 1
+id = "route-tree"
+name = "Route-tree frontend (file-based routing)"
+kind = "style"
+languages = ["typescript", "javascript"]                 # languages a new project may choose this style for
+summary = "A web frontend whose folders under the routing root ARE the URL: Next.js app and pages routers, Remix, SvelteKit, Nuxt. A folder name inside the routing root is a URL segment and says nothing about a layer."
+
+[[sources]]
+title = "Next.js project structure and file conventions"
+author = "Vercel"
+url = "https://nextjs.org/docs/app/getting-started/project-structure"
+
+[detect]
+[[detect.groups]]
+id = "route-files"
+weight = 5
+required = true
+min = 3                      # at least three such files
+files = ["page.tsx", "page.jsx", "page.js", "page.ts", "layout.tsx", "layout.jsx", "layout.js", "route.ts", "route.js", "+page.svelte", "+layout.svelte", "+page.ts", "_app.tsx", "_app.jsx", "_app.js", "_document.tsx", "root.tsx"]
+[[detect.groups]]
+id = "routing-root"
+weight = 2
+names = ["app", "pages", "routes"]
+[[detect.groups]]
+id = "components"
+weight = 1
+names = ["components", "ui"]
+
+[routing_root]
+# Folders below these are URL segments: no folder rule of any style applies to them.
+# A private folder (name starting with "_") directly in the routing root is opted out of
+# routing and shared by the routes: its files are ui, not code of one route.
+folders = ["app", "pages", "routes"]
+route_files = ["page.*", "layout.*", "route.*", "loading.*", "error.*", "not-found.*", "template.*", "default.*", "+page.*", "+layout.*", "+server.*", "_app.*", "_document.*"]
+
+[[layers]]
+id = "route"
+rank = 4
+files_in_routing_root = ["page.*", "layout.*", "route.*", "loading.*", "error.*", "not-found.*", "template.*", "default.*", "+page.*", "+layout.*", "+server.*", "_app.*", "_document.*"]
+note = "The entry files of a URL."
+[[layers]]
+id = "feature"
+rank = 3
+rest_of_routing_root = true
+note = "Everything else inside the routing root: code that belongs to one route (colocated components, hooks, queries)."
+[[layers]]
+id = "ui"
+rank = 2
+folders = ["components", "ui", "widgets", "layouts"]
+outside_routing_root = true
+[[layers]]
+id = "state"
+rank = 1
+folders = ["hooks", "stores", "store", "context", "contexts", "providers", "queries", "mutations", "services", "api", "clients", "actions"]
+# Data fetching and state modules are state by their name, wherever they sit outside the routing root.
+files = ["*.query.ts", "*.query.tsx", "*.queries.ts", "*.mutation.ts", "*.mutations.ts", "*.store.ts", "*.context.tsx", "*.context.ts", "use-*.ts", "use-*.tsx"]
+outside_routing_root = true
+[[layers]]
+id = "shared"
+rank = 0
+folders = ["lib", "utils", "util", "helpers", "types", "constants", "config", "styles", "i18n"]
+outside_routing_root = true
+
+[rules]
+direction = "downward"
+[[rules.deny]]
+from = ["ui", "state", "shared"]
+to = "route"
+reason = "shared frontend code imports a route entry file"
+fix = "move what {source} needs out of the route file {target} into components/ or lib/"
+[[rules.deny]]
+from = ["ui", "state", "shared"]
+to = "feature"
+reason = "shared frontend code imports code that belongs to one route"
+fix = "move {target} out of the routing root into components/ or lib/, and import it from both places"
+# A utility module that renders or fetches is often a hook kept in lib/: a candidate to read, not a violation.
+[[rules.deny]]
+from = "shared"
+to = ["ui", "state"]
+severity = "candidate"
+reason = "a utility imports a component or state"
+fix = "move {source} next to the component or state it uses, or pass that in"
+[[rules.cross]]
+layer = "feature"
+between = "different top-level route folders"
+severity = "candidate"
+reason = "one route imports code that lives inside another route; move the shared part out of the routing root"
+
+[[placement]]
+what = "page, layout, route handler"
+layer = "route"
+where = "inside the routing root, named by the framework's file convention"
+[[placement]]
+what = "component, hook or query used by one route only"
+layer = "feature"
+where = "next to that route, inside its folder"
+[[placement]]
+what = "component used by several routes"
+layer = "ui"
+where = "components/ outside the routing root"
+[[placement]]
+what = "data fetching, global state"
+layer = "state"
+
+[advice]
+new_code = ["Start colocated: put a new component next to the route that uses it, and move it to components/ when a second route needs it."]
+refactoring = ["Route A imports from the folder of route B: move the imported file to components/ or lib/ and import it from both."]
+
+[target]
+layers = { route = "app", ui = "components", state = "lib/queries", shared = "lib" }
+domain = "lib/<feature>/model"
+note = "A frontend keeps business rules per feature, outside the routing root: lib/<feature>/model."

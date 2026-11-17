@@ -143,6 +143,14 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        from .architecture.config import ConfigErr, plan_from_config, read_config
+        from .architecture.facts import BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp
+        from .architecture.library import load_library
+        from .architecture.plan import RepositoryPlan, detect_plan
+        from .architecture.repository import list_files, text_reader
+        from .architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
+        from .architecture.decisions import STORE_FILE, learned_layers, read_store
+        from .architecture.plan import apply_learned
     else:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
@@ -166,6 +174,14 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        from architecture.config import ConfigErr, plan_from_config, read_config
+        from architecture.facts import BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp
+        from architecture.library import load_library
+        from architecture.plan import RepositoryPlan, detect_plan
+        from architecture.repository import list_files, text_reader
+        from architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
+        from architecture.decisions import STORE_FILE, learned_layers, read_store
+        from architecture.plan import apply_learned
 except ModuleNotFoundError as dependency_error:
     print(
         f"Error: missing Python dependency {dependency_error.name}. "
@@ -198,6 +214,7 @@ SKIP_DIRS = {
     ".ruff_cache",
     "target",
     "vendor",
+    ".wingbox",
     ".worktrees",
     ".ralphy-worktrees",
     ".ralphy-sandboxes",
@@ -952,6 +969,7 @@ def _imports_types_only(
     target_id: str,
     target: FileResult,
     bound_language: BoundLanguage,
+    resolved: Optional[Mapping[str, Optional[str]]] = None,
 ) -> bool:
     """True when source imports target for types only (TypeScript erases such an import).
 
@@ -962,10 +980,13 @@ def _imports_types_only(
     forms = source.import_forms
     if not forms:
         return False
+    # `resolved` (specifier -> module) is computed once per source file: resolving every import again for each
+    # target made a rebuild quadratic in the imports of a file.
     specifiers = {
         specifier
         for specifier in source.imports
-        if bound_language.resolve_import(specifier, source.path) == target_id
+        if (resolved[specifier] if resolved is not None and specifier in resolved
+            else bound_language.resolve_import(specifier, source.path)) == target_id
     }
     if not specifiers or any(specifier not in forms for specifier in specifiers):
         return False
@@ -3331,6 +3352,7 @@ def render_sexp(
     _root: str,
     mode: str,
     total_files: int,
+    architecture: Optional[GraphArchitecture] = None,
 ) -> str:
     """
     Write the code graph as flat S-expression facts with path-map compression.
@@ -3502,6 +3524,27 @@ def render_sexp(
             client = edge.get("client_entity", "")
             client_str = f" :client {client}" if client else ""
             lines.append(f"(http-calls {src} {tgt} :transport http{client_str})")
+
+    # -- Architecture: parts, their rules, and the layer of every module --
+    if architecture is not None:
+        lines.append("")
+        lines.append("; --- architecture ---")
+        lines.extend(architecture.part_lines)
+        for node in sorted_nodes:
+            labelled = architecture.labels.get(node["id"])
+            if labelled is None:
+                continue
+            part, label = labelled
+            lines.append(
+                f'(layer {path_to_sid[node["id"]]} {label.layer} :part "{_sexp_escape(part)}" :style {label.style} '
+                f':rule "{_sexp_escape(label.rule)}" :match {label.match}{" :composition-root" if label.root else ""}'
+                f'{_learned_from(label.rule)})'
+            )
+        for part, source, target, baseline in architecture.known:
+            if source in path_to_sid and target in path_to_sid:
+                lines.append(
+                    f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}")'
+                )
 
     # -- Violations (Gap 2 fix) --
     if violations:
@@ -3888,6 +3931,12 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
             "imports": imports,
         }, separators=(",", ":")) + "\n")
     return Ok(UsePositions(path, walked=len(to_walk), reused=len(indexed) - len(to_walk), resolved=len(to_resolve)))
+def _learned_from(rule: str) -> str:
+    """` :learned-from <id>` for a label that rests on the decisions store."""
+    marker = "(learned from "
+    if marker not in rule:
+        return ""
+    return " :learned-from " + rule.split(marker, 1)[1].split(")", 1)[0]
 
 
 def write_sexp(
@@ -3897,9 +3946,10 @@ def write_sexp(
     root: str,
     mode: str,
     total_files: int,
+    architecture: Optional[GraphArchitecture] = None,
 ) -> None:
     """Atomically publish a fully rendered code graph and its use positions."""
-    content = render_sexp(nodes, edges, root, mode, total_files)
+    content = render_sexp(nodes, edges, root, mode, total_files, architecture)
     _atomic_write_text(output_path, content)
     _atomic_write_text(uses_path(output_path), render_uses_sexp(nodes, "-", content, positions=True))
 
@@ -3920,12 +3970,13 @@ class BuilderOptions:
     fragments_path: Optional[str] = None  # write the fragment store there (partial updates)
     snapshot_path: Optional[str] = None  # write the snapshot of the tree there (change detection)
     keep_published: bool = False  # an automatic refresh: never replace a graph with modules by an empty one
+    synonyms: bool = False
 
 
 def _builder_usage() -> str:
     return (
         "usage: build_code_graph.py --root ABSOLUTE_PATH [--full] [--lsp] "
-        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...]\n"
+        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...] [--synonyms]\n"
         "Writes ROOT/.wingbox/index.sexp and the files that go with it."
     )
 
@@ -3949,6 +4000,7 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
     root_argument: Optional[str] = None
     full_rebuild = False
     use_lsp = False
+    synonyms = False
     lsp_timeout = LSP_REQUEST_TIMEOUT
     excluded_directories: set[str] = set()
 
@@ -3983,6 +4035,10 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
             use_lsp = True
             index += 1
             continue
+        if argument == "--synonyms":
+            synonyms = True
+            index += 1
+            continue
         return Err(f"unknown argument: {argument}")
 
     if root_argument is None:
@@ -4004,6 +4060,7 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
             use_lsp=use_lsp,
             lsp_timeout=lsp_timeout,
             skip_directories=frozenset(SKIP_DIRS | excluded_directories),
+            synonyms=synonyms,
         )
     )
 
@@ -4051,10 +4108,7 @@ def _run_build(options: BuilderOptions) -> int:
 
     git_ignore_result = load_git_ignored_paths(root, options.skip_directories)
     if isinstance(git_ignore_result, GitIgnoreUnavailable):
-        print(
-            f"[code-graph] WARNING: repository ignore rules unavailable: {git_ignore_result.reason}",
-            file=sys.stderr,
-        )
+        print(f"[code-graph] {_ignore_note(git_ignore_result.reason)}", file=sys.stderr)
         ignored_paths = frozenset()
     else:
         ignored_paths = git_ignore_result.paths
@@ -4186,6 +4240,15 @@ def _run_build(options: BuilderOptions) -> int:
         t_lsp = time.monotonic() - t_lsp_start
         print(f"[code-graph] LSP pass: {t_lsp:.2f}s")
 
+    built = project_architecture(root, exclusions, options.synonyms, all_results, nodes)
+    if isinstance(built, Err):
+        print(f"[code-graph] ERROR: {built.error}", file=sys.stderr)
+        return 2
+    architecture, plan = built.value
+    print(
+        "[code-graph] Architecture: .wingbox/config.yaml" if any(p.origin == "config" for p in plan.parts)
+        else f"[code-graph] Architecture: detected ({len(plan.parts)} parts); `wingbox init` writes it to .wingbox/config.yaml"
+    )
     new_cache = {result.path: _serialize_file_result(result) for result in all_results}
     if options.keep_published and not nodes and _published_modules(options.output_path):
         print(
@@ -4193,7 +4256,7 @@ def _run_build(options: BuilderOptions) -> int:
             file=sys.stderr,
         )
         return 1
-    map_content = render_sexp(nodes, edges, root, mode, len(all_results))
+    map_content = render_sexp(nodes, edges, root, mode, len(all_results), architecture)
     uses_content = (
         render_uses_sexp(nodes, symbol_key, map_content) if reused is None else reused_uses_text(reused, map_content)
     )
@@ -4241,6 +4304,64 @@ def _published_modules(path: str) -> bool:
             return any(line.startswith("(node ") for line in handle)
     except OSError:
         return False
+def project_architecture(
+    root: str,
+    exclusions: DiscoveryExclusions,
+    synonyms: bool,
+    results: Sequence[FileResult],
+    nodes: Sequence[dict],
+) -> Result[tuple[GraphArchitecture, RepositoryPlan], str]:
+    """The architecture facts of a graph (parts, layers, known violations) and the plan they come from.
+
+    A build and a partial update both call it, so the published graph is the same either way.
+    """
+    plan_paths = list_files(root, exclusions.directory_names, exclusions.paths)
+    plan = architecture_plan(root, exclusions.directory_names, exclusions.paths, synonyms, plan_paths)
+    if isinstance(plan, Err):
+        return plan
+    names_by_path = {
+        os.path.relpath(result.path, root): frozenset(
+            f"{item.get('module', '')}:{item.get('original', '')}"
+            for item in result.imported_names if isinstance(item, dict)
+        )
+        for result in results
+    }
+    architecture = graph_architecture(
+        plan.value, load_library(), {node["id"]: node["path"] for node in nodes if node.get("path")},
+        {node["id"]: names_by_path.get(node["path"], frozenset()) for node in nodes if node.get("path")},
+        plan_paths,
+        read_baseline_sexp(text_reader(root)(BASELINE_FILE) or ""),
+    )
+    return Ok((architecture, plan.value))
+
+
+def architecture_plan(
+    root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str], synonyms: bool = False,
+    listed: Optional[tuple[str, ...]] = None,
+) -> Result[RepositoryPlan, str]:
+    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection.
+
+    `synonyms` adds the word-vector step when folders are mapped to layers (`--synonyms`).
+    """
+    library = load_library()
+    settings = SYNONYM_SETTINGS if synonyms else DEFAULT_SETTINGS
+    paths = listed if listed is not None else list_files(root, skip_directories, ignored_paths)
+    read = text_reader(root)
+    config = read_config(read, library)
+    if isinstance(config, ConfigErr):
+        return Err(config.error)
+    learned = learned_layers(read_store(read(STORE_FILE) or ""))
+    if config is None:
+        plan = detect_plan(paths, read, library, settings)
+        return Ok(apply_learned(plan, learned))
+    return Ok(apply_learned(plan_from_config(config, paths, read, library, settings), learned, from_config=True))
+
+
+def _ignore_note(reason: str) -> str:
+    """One plain line when git gives no ignore rules (outside a git repository: expected, not a fault)."""
+    if "not a git repository" in reason:
+        return "not a git repository: .gitignore rules are not applied"
+    return f"WARNING: repository ignore rules unavailable: {reason}"
 
 
 def _lock_path(root: str) -> str:

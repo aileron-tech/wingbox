@@ -802,9 +802,11 @@ class CardTest
                 )
                 self.assertIsNotNone(result)
                 module_id = PHP_LANGUAGE.normalize_module_id(relative_path)
+                graph = code_graph_search.CodeGraph()
+                graph.nodes[module_id] = code_graph_search.Node(module_id, "php", result.purpose)
                 found[relative_path] = (
                     result.purpose,
-                    code_graph_search._classify_layer(module_id, result.purpose),
+                    code_graph_search.module_layer(graph, module_id),
                 )
 
         self.assertEqual(expected, found)

@@ -1,0 +1,70 @@
+schema = 1
+id = "microkernel"
+name = "Microkernel (plug-in) architecture"
+aliases = ["plugin", "plug-in"]
+kind = "style"
+languages = ["any"]                 # languages a new project may choose this style for
+wins_over = ["layered"]
+summary = "A small core and independent plug-ins that add features to it. The core knows nothing of a particular plug-in; a plug-in reaches the core and other plug-ins only through their public entry."
+
+[[sources]]
+title = "Software Architecture Patterns, chapter Microkernel Architecture"
+author = "Mark Richards"
+year = 2015
+publisher = "O'Reilly"
+
+[detect]
+note = "Judged for a part that IS a plug-in: it has an entry file named plugin at the top of its source. The host application is found by the C4 rules, as the component the plug-ins depend on."
+[[detect.groups]]
+id = "plugin-entry"
+weight = 4
+required = true
+files = ["plugin.ts", "plugin.tsx", "plugin.js", "plugin.py", "plugin.rs", "plugin.go", "extension.ts", "extension.js"]
+max_depth = 2                # src/plugin.ts, not a file deep inside the tree
+[[detect.groups]]
+id = "plugin-parts"
+weight = 2
+names = ["commands", "services", "controllers", "contributions", "providers"]
+[[detect.groups]]
+id = "public-face"
+weight = 1
+names = ["facade", "api", "locale", "locales"]
+
+[[roles]]
+id = "plugin"
+is = "a part with a plugin entry file"
+[[roles]]
+id = "core"
+is = "the component every plug-in depends on and that depends on no plug-in"
+[[roles]]
+id = "public-entry"
+files = ["index.ts", "index.js", "__init__.py", "lib.rs", "mod.rs"]
+
+[rules]
+internal_layers = "not judged"   # folders named controllers, commands, models inside a plug-in follow the host's own convention
+[[rules.deny]]
+from = "core"
+to = "plugin"
+reason = "the core depends on a plug-in"
+[[rules.deny]]
+from = "plugin"
+to = "plugin"
+except = "through the public entry of the other plug-in"
+severity = "candidate"
+reason = "a plug-in reaches into the internals of another plug-in"
+
+[[placement]]
+what = "a new feature"
+where = "a new plug-in or an existing one; the core changes only when every plug-in needs the change"
+[[placement]]
+what = "something another plug-in must call"
+where = "exported from the plug-in's public entry (or its facade), never imported from its inner folders"
+
+[advice]
+new_code = ["Before adding to the core, check whether the feature can be a plug-in: the core should stay small."]
+refactoring = ["Plug-in A imports src/services/x of plug-in B: export x from B's entry file, or move it to the core if several plug-ins need it."]
+
+[target]
+layers = {}
+domain = "domain"
+note = "Each plug-in keeps its own domain: the building blocks live in the plug-in, in src/domain of its package."

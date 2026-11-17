@@ -70,8 +70,26 @@ import os
 import re
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
+
+if __package__:
+    from .architecture import advice as _advice
+    from .architecture.detect import Part
+    from .architecture.labels import label_in_part
+    from .architecture.library import load_library
+    from .architecture.plan import PartPlan, layer_folders
+    from .architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
+    from .architecture.words import levenshtein as _levenshtein
+else:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from architecture import advice as _advice
+    from architecture.detect import Part
+    from architecture.labels import label_in_part
+    from architecture.library import load_library
+    from architecture.plan import PartPlan, layer_folders
+    from architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
+    from architecture.words import levenshtein as _levenshtein
 
 MAP_SCHEMA_VERSION = 1
 MAX_SEARCH_PATTERN_LENGTH = 256
@@ -412,6 +430,13 @@ def _uses_path(map_path: str) -> str:
 _USE_POSITION = re.compile(r"(\d+):(\d+)([a-z]?)")
 _USE_KINDS = {"i": "import", "r": "re-export", "c": "call", "t": "type", "e": "extends", "": "reference"}
 UseSite = tuple[str, int, int, str]  # module, line, column, kind of use
+def _keywords(tokens: list[str]) -> dict[str, str]:
+    """`:key value` pairs of a fact."""
+    return {
+        tokens[i][1:]: tokens[i + 1]
+        for i in range(len(tokens) - 1)
+        if tokens[i].startswith(":") and not tokens[i + 1].startswith(":")
+    }
 
 
 class CodeGraph:
@@ -437,6 +462,16 @@ class CodeGraph:
         self._map_path = ""
         self.pmap: dict[str, str] = {}
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
+        self.arch_parts: dict[str, dict[str, str]] = {}   # part -> keyword values of its arch-part fact
+        self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
+        self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
+        self.entry_roots: dict[str, bool] = {}   # module -> nothing imports it and it imports a composition root
+        self.arch_fixes: dict[tuple[str, str, str], str] = {}   # (part, from, to) -> fix the style prescribes
+        self.arch_ranks: dict[str, dict[str, int]] = {}         # part -> layer -> rank
+        self.arch_targets: list[tuple[str, str, str, str, bool, str, str]] = []   # part, layer, block, folder, proposed, present, source
+        self.advice_cache: Optional[tuple] = None
+        self.labels: dict[str, "ModuleLabel"] = {}   # module -> layer label written by the build
+        self.known: dict[tuple[str, str], str] = {}   # (source, target) -> baseline file of the project
         self._root: str = ""
 
     def load(self, path: str, root: Optional[str] = None, focus: Optional[str] = None) -> MapLoadResult:
@@ -461,6 +496,16 @@ class CodeGraph:
         self._map_path = path
         self.pmap = {}
         self.package_layers = {}
+        self.arch_parts = {}
+        self.arch_denies = {}
+        self.candidate_rules = set()
+        self.entry_roots = {}
+        self.arch_fixes = {}
+        self.arch_ranks = {}
+        self.arch_targets = []
+        self.advice_cache = None
+        self.labels = {}
+        self.known = {}
         self._root = os.path.abspath(root if root is not None else project_root_of(path))
         try:
             with open(path, "r", encoding="utf-8") as code_graph:
@@ -620,6 +665,32 @@ class CodeGraph:
                     if "::" in part:
                         ent_name = part.split("::", 1)[1]
                         self.edges_by_entity_name.setdefault(ent_name, []).append(edge)
+
+            elif kind == "arch-part" and len(tokens) >= 2:
+                self.arch_parts[tokens[1]] = _keywords(tokens[2:])
+            elif kind == "arch-deny" and len(tokens) >= 5:
+                self.arch_denies.setdefault(tokens[1], {})[(tokens[2], tokens[3])] = tokens[4]
+                values = _keywords(tokens[5:])
+                if values.get("severity") == "candidate":
+                    self.candidate_rules.add((tokens[1], tokens[2], tokens[3]))
+                if values.get("fix"):
+                    self.arch_fixes[(tokens[1], tokens[2], tokens[3])] = values["fix"]
+            elif kind == "arch-rank" and len(tokens) >= 4 and tokens[3].lstrip("-").isdigit():
+                self.arch_ranks.setdefault(tokens[1], {})[tokens[2]] = int(tokens[3])
+            elif kind == "arch-target" and len(tokens) >= 4:
+                values = _keywords(tokens[4:])
+                self.arch_targets.append((
+                    tokens[1], tokens[2], values.get("block", ""), tokens[3], ":proposed" in tokens,
+                    values.get("present", ""), values.get("source", ""),
+                ))
+            elif kind == "arch-known" and len(tokens) >= 5:
+                self.known[(_resolve(tokens[2]), _resolve(tokens[3]))] = tokens[4]
+            elif kind == "layer" and len(tokens) >= 3:
+                values = _keywords(tokens[3:])  # :learned-from <id> is part of the rule text as well
+                self.labels[_resolve(tokens[1])] = ModuleLabel(
+                    tokens[2], values.get("part", "-"), values.get("style", "-"),
+                    values.get("rule", ""), values.get("match", "none"), ":composition-root" in tokens,
+                )
 
             elif kind == "violation" and len(tokens) >= 5:
                 source = _resolve(tokens[2])
@@ -922,129 +993,6 @@ def _walk_rdeps(
 # Layer classifier + boundary rules
 # ---------------------------------------------------------------------------
 
-_TEST_FOLDERS = ("/tests/", "/test/", "/__tests__/", "/e2e/", "/testdata/", "/integration_test/")
-_TEST_NAME_ENDINGS = (".test", ".spec", "_test", "_spec", ".test-d")
-
-
-def _is_test_path(p: str) -> bool:
-    """True for a module in a test folder or named like a test (module IDs carry no extension)."""
-    name = p.rsplit("/", 1)[-1]
-    return (
-        any(folder in p for folder in _TEST_FOLDERS)
-        or name.startswith("test_")
-        or name.endswith(_TEST_NAME_ENDINGS)
-        or ".test." in name
-        or ".spec." in name
-    )
-
-
-def _classify_dart_layer_by_path(p: str) -> str:
-    """Layer of a Dart module from Flutter folder conventions.
-
-    `lib/` is the package source root, not the shared library folder of a JS
-    project, so a Dart module that matches no convention is left to its
-    purpose. Feature folders name the layer; test folders win over all of them.
-    A leading slash lets "/test/" match a top-level folder.
-    """
-    path = "/" + p.lower().lstrip("/")
-    if _is_test_path(path):
-        return "test"
-    if "/lib/features/" in path:
-        if "/presentation/" in path:
-            return "ui"
-        if "/domain/" in path:
-            return "domain"
-        if "/data/" in path:
-            return "infra"
-        if any(folder in path for folder in ("/bloc/", "/cubit/", "/state/", "/application/")):
-            return "service"
-    if "/config/" in path or "/env/" in path:
-        return "config"
-    if "/lib/core/" in path:
-        return "shared"
-    name = path.rsplit("/", 1)[-1]
-    if "/lib/features/" in path and name.endswith(("_bloc", "_cubit", "_state", "_event")):
-        return "service"
-    return "other"
-
-
-def _classify_layer_fallback(p: str) -> str:
-    """Classify a module into an architecture layer from its path.
-
-    Order matters: test/config checked first (override other patterns).
-    NestJS conventions: guards/controllers are api, .module files are config,
-    /interface/ folders are shared contracts (not api). Flutter's feature
-    folders (presentation, domain, data) and lib/core are recognised too.
-    """
-    # Flutter conventions are specific enough to be safe for every language.
-    dart_layer = _classify_dart_layer_by_path(p)
-    if dart_layer != "other":
-        return dart_layer
-    # High-priority overrides (tests, config)
-    if _is_test_path(p):
-        return "test"
-    if "/config/" in p or "/env/" in p:
-        return "config"
-    # NestJS .module files are wiring/config, not service
-    if ".module" in p and "/modules/" in p:
-        return "config"
-    # Interface folders are shared contracts, not api
-    if "/interface/" in p or "/interfaces/" in p:
-        return "shared"
-    # Migrations and seeds change the database: infrastructure, even under a schema folder
-    if "/migrations/" in p or "/seeds/" in p or "/seeders/" in p:
-        return "infra"
-    # Laravel and Livewire folders have fixed roles
-    if "/livewire/" in p or "/resources/views/" in p:
-        return "ui"
-    if "/http/controllers/" in p or "/http/middleware/" in p or "/http/requests/" in p:
-        return "api"
-    if "/jobs/" in p or "/listeners/" in p or "/policies/" in p:
-        return "service"
-    # Architecture layers
-    if "/api/" in p or "/routes/" in p or "/controllers/" in p:
-        return "api"
-    if "/services/" in p or "/application/" in p:
-        return "service"
-    if "/domain/" in p or "/entities/" in p or "/schema" in p or "_schema" in p:
-        return "domain"
-    if "/repositories/" in p or "/db/" in p or "/infra/" in p or "/infrastructure/" in p or "rabbitmq" in p or "s3" in p:
-        return "infra"
-    if "/commons/" in p or "/common/" in p or "/utils/" in p or "/result" in p or "/types/" in p:
-        return "shared"
-    if "/components/" in p or "/pages/" in p or "/ui/" in p or "/hooks/" in p:
-        return "ui"
-    # NestJS / backend patterns
-    if "/dto/" in p or "/dtos/" in p:
-        return "domain"
-    if "/guards/" in p or "/guard." in p:
-        return "api"
-    if "/middleware/" in p or "/middlewares/" in p or "/interceptors/" in p or "/pipes/" in p:
-        return "api"
-    if "/adapters/" in p or "/adapter." in p:
-        return "infra"
-    if "/gateways/" in p or "/gateway." in p:
-        return "infra"
-    # Domain patterns
-    if "/models/" in p or "/schemas/" in p or "/events/" in p or "/commands/" in p or "/queries/" in p:
-        return "domain"
-    if "/handlers/" in p:
-        return "service"
-    # Shared patterns
-    if "/lib/" in p or "/helpers/" in p or "/constants/" in p or "/decorators/" in p or "/mappers/" in p:
-        return "shared"
-    # UI patterns (state management tied to UI)
-    if ("/stores/" in p or "/store/" in p or "/contexts/" in p or "/providers/" in p) and ("/ui/" in p or "/web/" in p):
-        return "ui"
-    # Test patterns
-    if "/fixtures/" in p or "/mocks/" in p or "/__mocks__/" in p or "/factories/" in p:
-        return "test"
-    # Config / tooling patterns
-    if "/scripts/" in p:
-        return "config"
-    return "other"
-
-
 _PURPOSE_TO_LAYER: dict[str, str] = {
     # Domain layer
     "domain logic": "domain",
@@ -1141,21 +1089,6 @@ _PURPOSE_TO_LAYER: dict[str, str] = {
 }
 
 
-def _levenshtein(a: str, b: str) -> int:
-    """Compute Levenshtein edit distance between two strings."""
-    if len(a) < len(b):
-        return _levenshtein(b, a)
-    if not b:
-        return len(a)
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a):
-        curr = [i + 1]
-        for j, cb in enumerate(b):
-            curr.append(min(prev[j + 1] + 1, curr[j] + 1, prev[j] + (ca != cb)))
-        prev = curr
-    return prev[-1]
-
-
 def _classify_layer_by_purpose(purpose: str) -> str:
     """Classify layer from the module's purpose string using fuzzy matching.
 
@@ -1193,30 +1126,6 @@ def _classify_layer_by_purpose(purpose: str) -> str:
                     best_dist = dist
                     best_layer = layer
     return best_layer
-
-
-@functools.lru_cache(maxsize=None)
-def _classify_layer(module_path: str, purpose: str = "") -> str:
-    """Classify using path patterns first, fall back to purpose string.
-
-    Cached: the role guess compares words by edit distance, and the boundary
-    check asks for the layer of both ends of every edge.
-    """
-    result = _classify_layer_by_path(module_path)
-    if result == "other" and purpose:
-        result = _classify_layer_by_purpose(purpose)
-    return result
-
-
-def _classify_layer_by_path(module_path: str) -> str:
-    """Layer from the folders of a module. The leading slash lets "/tests/" match a top-level folder.
-
-    A file named like a layer folder (types.ts, models.py) and the index file of
-    such a folder (module ID = the folder) belong to that layer.
-    """
-    path = "/" + module_path.lower().lstrip("/")
-    layer = _classify_layer_fallback(path)
-    return layer if layer != "other" else _classify_layer_fallback(path + "/")
 
 
 # ---------------------------------------------------------------------------
@@ -1362,16 +1271,74 @@ def _is_package_init(g: CodeGraph, module_id: str) -> bool:
     return module_id.rsplit("/", 1)[-1] == "__init__" and g.module_lang(module_id) == "py"
 
 
-def _package_layer(g: CodeGraph, module_id: str) -> str:
-    """Layer of a Python package, for its __init__.py.
+@dataclass(frozen=True)
+class ModuleLabel:
+    """Layer of a module, with the part, the style and the rule that set it."""
 
-    The folder decides when a folder rule applies. Otherwise the package is
-    where most of its modules are: its own modules, or all modules below it
-    when it holds only sub-packages. What __init__.py re-exports says nothing.
+    layer: str
+    part: str
+    style: str
+    rule: str
+    match: str   # exact | spelling | synonym | config | file | declared | test | role | package | none
+    root: bool = False   # a composition root: wires the layers, may import every one
+
+
+_UNPLACED = ModuleLabel("other", "-", "-", "in no part", "none")
+# Parts whose layers a guess from the role of a file may fill: the role words name layered layers.
+_ROLE_GUESS_STYLES = ("layered",)
+
+
+def _default_labels(g: CodeGraph) -> None:
+    """Labels of a graph without architecture facts (written by hand): one part, the layered style."""
+    library = load_library()
+    style = library.style("layered")
+    assert style is not None
+    from_files = {module: _label_path(g, module) for module in g.nodes}
+    files = tuple(sorted(set(from_files.values())))
+    layers, routing = layer_folders(style, Part(".", (), files, files), _MATCH_SETTINGS)
+    part = PartPlan(
+        path=".", kind="folder", level="container", files=len(files), style="layered", state="assumed",
+        origin="default", score=None, judgement=None, layers=layers, routing_root=routing, declared=None,
+    )
+    g.arch_parts["."] = {
+        "style": "layered", "state": "assumed", "origin": "default", "level": "container", "files": str(len(files)),
+    }
+    g.arch_denies["."] = {(deny.source, deny.target): deny.reason for deny in style.denies}
+    g.candidate_rules |= {(".", deny.source, deny.target) for deny in style.denies if deny.severity == "candidate"}
+    g.arch_fixes.update({(".", deny.source, deny.target): deny.fix for deny in style.denies if deny.fix})
+    g.arch_ranks["."] = {layer.id: layer.rank for layer in style.layers}
+    for module, path in from_files.items():
+        label = label_in_part(path, part, library)
+        g.labels[module] = ModuleLabel(label.layer, ".", label.style, label.rule, label.match, label.root)
+
+
+_LANGUAGE_EXTENSIONS = {"py": ".py", "ts": ".ts", "tsx": ".tsx", "js": ".js", "rs": ".rs", "go": ".go",
+                        "rb": ".rb", "cs": ".cs", "java": ".java", "pas": ".pas", "dart": ".dart", "php": ".php"}
+
+
+def _label_path(g: CodeGraph, module_id: str) -> str:
+    """File of a module relative to the root; for a module not on disk, its ID with its language's extension."""
+    path = _impact_file(g, module_id)
+    if path != module_id:
+        return path
+    return module_id + _LANGUAGE_EXTENSIONS.get(g.module_lang(module_id), "")
+
+
+def _stored_label(g: CodeGraph, module_id: str) -> ModuleLabel:
+    if not g.arch_parts:
+        _default_labels(g)
+    return g.labels.get(module_id, _UNPLACED)
+
+
+def _package_label(g: CodeGraph, module_id: str, label: ModuleLabel) -> ModuleLabel:
+    """Label of a Python package, for its __init__.py.
+
+    A folder rule decides when one applies. Otherwise the package is where most
+    of its modules are: its own modules, or all modules below it when it holds
+    only sub-packages. What __init__.py re-exports says nothing.
     """
-    by_path = _classify_layer_by_path(module_id)
-    if by_path != "other":
-        return by_path
+    if label.match not in ("none", "role"):
+        return label
     if module_id not in g.package_layers:
         prefix = module_id[: -len("__init__")]
         below = [
@@ -1380,63 +1347,61 @@ def _package_layer(g: CodeGraph, module_id: str) -> str:
             if module.startswith(prefix) and module != module_id and not _is_package_init(g, module)
         ]
         own = [module for module in below if "/" not in module[len(prefix):]]
-        counts = collections.Counter(_graph_layer(g, module) for module in (own or below))
+        counts = collections.Counter(module_label(g, module).layer for module in (own or below))
         ranked = counts.most_common(2)
         tied = len(ranked) == 2 and ranked[0][1] == ranked[1][1]
         g.package_layers[module_id] = ranked[0][0] if ranked and not tied else "other"
-    return g.package_layers[module_id]
+    layer = g.package_layers[module_id]
+    if layer == "other":
+        return replace(label, layer="other")
+    return replace(label, layer=layer, rule=f"package: most of its modules are {layer}", match="package")
+
+
+def module_label(g: CodeGraph, module_id: str) -> ModuleLabel:
+    """Layer of a module of this graph, and where it comes from.
+
+    The build writes the label of every module (folder rule of the part's
+    style, file pattern, declared layer, test file). A module the rules leave
+    in `other` takes a guess from the role of the file in a layered part; a
+    Python __init__.py takes the layer of its package.
+    """
+    label = _stored_label(g, module_id)
+    if _is_package_init(g, module_id):
+        return _package_label(g, module_id, label)
+    if label.layer == "other" and g.arch_parts.get(label.part, {}).get("style") in _ROLE_GUESS_STYLES:
+        purpose = g.module_purpose(module_id)
+        guess = _classify_layer_by_purpose(purpose) if purpose else "other"
+        if g.module_lang(module_id) == "dart" and purpose.lower() == "state store":
+            # A Dart state store (bloc, cubit, notifier) is application state; a JS store may be a UI concern.
+            guess = "service"
+        if guess != "other":
+            return replace(label, layer=guess, rule=f"role {purpose} -> {guess} (guess)", match="role")
+    return label
 
 
 def _graph_layer(g: CodeGraph, module_id: str) -> str:
-    """Layer of a module of this graph.
-
-    A JSX component (.tsx) is UI whatever its folder is called: a Next.js route
-    folder named `models` holds pages, not the domain model. A Python
-    __init__.py is its package and takes the layer of the package. A Dart
-    module takes the Flutter folder rules, then its purpose: a Dart lib/ is a
-    source root, so the generic lib/ rule would otherwise call every feature
-    file shared.
-    """
-    if _is_package_init(g, module_id):
-        return _package_layer(g, module_id)
-    if g.module_lang(module_id) == "dart":
-        layer = _classify_dart_layer_by_path(module_id)
-        if layer != "other":
-            return layer
-        purpose = g.module_purpose(module_id)
-        # A Dart state store is application state. The shared purpose map keeps
-        # it at "other" because a JS store may be a UI concern.
-        if purpose.lower() == "state store":
-            return "service"
-        return _classify_layer_by_purpose(purpose)
-    layer = _classify_layer(module_id, g.module_purpose(module_id))
-    if layer != "test" and g.module_lang(module_id) == "tsx":
-        return "ui"
-    return layer
+    return module_label(g, module_id).layer
 
 
 def _layer_is_certain(g: CodeGraph, module_id: str) -> bool:
-    """True when the layer comes from the folders or the file type, not from a guess at the role."""
-    if g.module_lang(module_id) == "dart":
-        return _classify_dart_layer_by_path(module_id) != "other"
-    if _classify_layer_by_path(module_id) != "other":
-        return True
-    return g.module_lang(module_id) == "tsx"
+    """True when the layer comes from a rule (folder, file type, declared layer), not from a guess at the role."""
+    label = module_label(g, module_id)
+    return label.layer != "other" and label.match not in ("role", "package", "none")
 
 
 # Public names used by the report and the map (src/wingbox/overview.py).
 
 def module_layer(g: CodeGraph, module_id: str) -> str:
-    """Architecture layer of a module: ui, api, service, domain, infra, shared, config, test or other."""
+    """Architecture layer of a module: a layer of its part's style, test or other."""
     return _graph_layer(g, module_id)
 
 
 def module_layer_basis(g: CodeGraph, module_id: str) -> str:
-    """Where the layer of a module comes from: "path" (its folders), "role" (a guess from what the
-    file does) or "none" (no rule applies, the layer is "other")."""
+    """Where the layer of a module comes from: "path" (a rule: folder, file type, declared layer),
+    "role" (a guess from what the file does) or "none" (no rule applies, the layer is "other")."""
     if _layer_is_certain(g, module_id):
         return "path"
-    return "role" if module_layer(g, module_id) != "other" else "none"
+    return "role" if module_label(g, module_id).layer != "other" else "none"
 
 
 def module_file(g: CodeGraph, module_id: str) -> str:
@@ -1554,6 +1519,8 @@ def cmd_impact(
             print(f"(read-first {_q(path)})")
         if read_first_count > len(read_first):
             print(f"(read-first-more :hidden {read_first_count - len(read_first)})")
+        for item in module_advice(g, root_id):
+            print(advice_sexp(item))
         return
 
     if others:
@@ -1578,6 +1545,12 @@ def cmd_impact(
     _print_impact_block(f"Read first ({read_first_count} {files})", [(path, "") for path in read_first])
     if read_first_count > len(read_first):
         print(f"  ... {read_first_count - len(read_first)} more: the other files of Depth 1")
+    related = module_advice(g, root_id)
+    if related:
+        print()
+        print("Advice")
+        for item in related:
+            print(f"  {item.reason} [{item.style}: {item.rule}]")
 
 
 def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
@@ -1994,8 +1967,11 @@ def _analyze_sexp(
 
     # Architecture layers
     for t in sorted(import_targets):
-        layer = _graph_layer(g, t)
-        print(f"(layer {nid} {t.split('/')[-1]} :layer {layer})")
+        label = module_label(g, t)
+        print(f"(layer {nid} {t.split('/')[-1]} :layer {label.layer} :style {label.style} :rule {_q(label.rule)})")
+
+    for item in module_advice(g, nid):
+        print(advice_sexp(item))
 
     # Summary
     print(f"(analyze-summary {nid} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len(data_flow_targets)} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
@@ -2067,42 +2043,81 @@ def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
     print(f"(result-count {count})")
 
 
-# Well-known deny rules (source layer, target layer, reason).
-BOUNDARY_DENY_RULES: tuple[tuple[str, str, str], ...] = (
-    ("domain", "infra",   "domain imports infrastructure directly"),
-    ("domain", "api",     "domain imports API layer"),
-    ("domain", "ui",      "domain imports UI layer"),
-    ("ui",     "infra",   "UI imports infrastructure directly"),
-    ("service","api",     "service imports API layer (inversion)"),
-    ("infra",  "api",     "infrastructure imports API layer"),
-)
+@dataclass(frozen=True)
+class BoundaryBreak:
+    """A dependency that breaks a boundary rule of the style of its part."""
+
+    source: str
+    target: str
+    source_layer: str
+    target_layer: str
+    kind: str          # imports | data-flow
+    reason: str
+    part: str
+    style: str
+    rule: str          # "<from> -> <to>": the deny rule of the style
+    known: str         # baseline file of the project that already lists this pair, or ""
+    severity: str = "violation"   # candidate: the rule itself gives candidates (a utility on infrastructure)
 
 
-def boundary_violations(
-    g: CodeGraph, scope_mods: set[str]
-) -> list[tuple[str, str, str, str, str, str]]:
-    """Dependencies that break a layer rule.
+def _is_entry_root(g: CodeGraph, module_id: str) -> bool:
+    """A composition root by its label, or an entry point: nothing imports it and it imports a composition root."""
+    if module_label(g, module_id).root:
+        return True
+    if module_id not in g.entry_roots:
+        g.entry_roots[module_id] = not _collect_rdep_mods(g, module_id) and any(
+            module_label(g, target).root for target in _collect_dep_mods(g, module_id)
+        )
+    return g.entry_roots[module_id]
 
-    Each item is (source module, target module, source layer, target layer,
-    edge type, reason), for the import and data-flow edges of scope_mods.
+
+def boundary_rules(g: CodeGraph) -> list[tuple[str, str, str, str, str]]:
+    """Every deny rule of every part: (part, style, from layer, to layer, reason)."""
+    if not g.arch_parts:
+        _default_labels(g)
+    return [
+        (part, g.arch_parts.get(part, {}).get("style", "-"), source, target, reason)
+        for part, rules in sorted(g.arch_denies.items())
+        for (source, target), reason in sorted(rules.items())
+    ]
+
+
+def boundary_violations(g: CodeGraph, scope_mods: set[str]) -> list[BoundaryBreak]:
+    """Dependencies that break a deny rule of the style of their part.
+
+    Rules apply between two modules of the same part only: a part is judged by
+    its own style, and a dependency between parts is a dependency between
+    packages, not between layers. A part without a determined style has no rules. A composition
+    root (main.ts, app.module.ts, Program.cs) wires the layers and may import every one.
     """
-    violations: list[tuple[str, str, str, str, str, str]] = []
+    if not g.arch_parts:
+        _default_labels(g)
+    found: list[BoundaryBreak] = []
     for src_mod in sorted(scope_mods):
-        src_layer = _graph_layer(g, src_mod)
+        source = module_label(g, src_mod)
+        rules = g.arch_denies.get(source.part)
+        if not rules or _is_entry_root(g, src_mod):
+            continue
         for edge in g.edges_from.get(src_mod, []):
             if edge.etype not in ("imports", "data-flow"):
                 continue
             tgt_mod = edge.target.split("::")[0]
             if tgt_mod == src_mod:
                 continue
-            tgt_layer = _graph_layer(g, tgt_mod)
-            if src_layer == tgt_layer:
+            target = module_label(g, tgt_mod)
+            if target.part != source.part or target.layer == source.layer:
                 continue
-            for deny_src, deny_tgt, reason in BOUNDARY_DENY_RULES:
-                if src_layer == deny_src and tgt_layer == deny_tgt:
-                    violations.append((src_mod, tgt_mod, src_layer, tgt_layer, edge.etype, reason))
-                    break
-    return violations
+            reason = rules.get((source.layer, target.layer))
+            if reason is None:
+                continue
+            found.append(BoundaryBreak(
+                source=src_mod, target=tgt_mod, source_layer=source.layer, target_layer=target.layer,
+                kind=edge.etype, reason=reason, part=source.part, style=source.style if source.style != "-" else
+                g.arch_parts.get(source.part, {}).get("style", "-"),
+                rule=f"{source.layer} -> {target.layer}", known=g.known.get((src_mod, tgt_mod), ""),
+                severity="candidate" if (source.part, source.layer, target.layer) in g.candidate_rules else "violation",
+            ))
+    return found
 
 
 def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
@@ -2114,13 +2129,13 @@ def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
 
 
 def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
-    """Check boundary violations inferred from architecture layer patterns.
+    """Check the boundary rules of the style of each part (or of the rules the part declares).
 
-    Uses path-based layer classification and well-known architecture rules:
-    - domain must not import infra/api/ui
-    - ui must not import infra
-    - service must not import api
-    - infra must not import api
+    A pair is a violation when both layers come from rules (folders, file
+    patterns, declared layers); when a layer is only guessed from the role of a
+    file, the pair is a candidate. An import of types only is listed apart.
+    Each line names the part, the style and the rule; `:known` names the
+    project's own baseline when it already lists the pair.
     """
     if module_id == "all":
         scope_mods = set(g.nodes.keys())
@@ -2136,40 +2151,131 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
     if not violations:
         print(f"(boundaries-ok :checked {len(scope_mods)})")
         return
-    # A pair is a violation only when both layers are certain (folders or file type).
-    # A layer guessed from the role of a file makes the pair a candidate to read.
-    # An import of types only is erased at build time: reported apart, not a violation.
-    # The summary counts pairs of files; a pair is printed once per relation.
-    pairs: dict[str, set[tuple[str, str]]] = {"violation": set(), "violation-type-only": set(), "violation-candidate": set()}
-    for src, tgt, sl, tl, etype, reason in sorted(violations):
-        src_file = g.module_to_file(src)
-        tgt_file = g.module_to_file(tgt)
-        if etype == "imports" and is_type_only_import(g, src, tgt):
+    pairs: dict[str, set[tuple[str, str]]] = {
+        "violation": set(), "violation-known": set(), "violation-type-only": set(), "violation-candidate": set(),
+    }
+    for item in sorted(violations, key=lambda v: (v.source, v.target, v.kind)):
+        # The import decides: a pair imported for types only stays type-only whatever other edge joins it.
+        if is_type_only_import(g, item.source, item.target):
             fact = "violation-type-only"
-        elif _layer_is_certain(g, src) and _layer_is_certain(g, tgt):
-            fact = "violation"
+        elif item.severity != "candidate" and _layer_is_certain(g, item.source) and _layer_is_certain(g, item.target):
+            fact = "violation-known" if item.known else "violation"
         else:
             fact = "violation-candidate"
-        pairs[fact].add((src, tgt))
-        print(f"({fact} {src} {tgt} :src-layer {sl} :tgt-layer {tl} :via {etype} :lang {g.module_lang(src)} :src-file {_q(src_file)} :tgt-file {_q(tgt_file)} {_q(reason)})")
+        pairs[fact].add((item.source, item.target))
+        known = f" :known {_q(item.known)}" if item.known else ""
+        print(
+            f"({fact} {item.source} {item.target} :src-layer {item.source_layer} :tgt-layer {item.target_layer} "
+            f":via {item.kind} :lang {g.module_lang(item.source)} :part {_q(item.part)} :style {item.style} "
+            f":rule {_q(item.rule)}{known} :src-file {_q(g.module_to_file(item.source))} "
+            f":tgt-file {_q(g.module_to_file(item.target))} {_q(item.reason)})"
+        )
     print(
-        f"(boundaries-summary :violations {len(pairs['violation'])} :type-only {len(pairs['violation-type-only'])} "
+        f"(boundaries-summary :violations {len(pairs['violation'])} :known {len(pairs['violation-known'])} "
+        f":type-only {len(pairs['violation-type-only'])} "
         f":candidates {len(pairs['violation-candidate'])} :checked {len(scope_mods)})"
     )
 
 
 def cmd_layers(g: CodeGraph) -> None:
-    """Show layer classification for all modules, grouped by layer."""
+    """Show the layer of every module, grouped by layer, with the part, style and rule that set it."""
     by_layer: dict[str, list[str]] = {}
     for nid in sorted(g.nodes.keys()):
-        layer = _graph_layer(g, nid)
-        by_layer.setdefault(layer, []).append(nid)
+        by_layer.setdefault(_graph_layer(g, nid), []).append(nid)
 
     for layer_name in sorted(by_layer.keys()):
         mods = by_layer[layer_name]
         print(f"(layer-group {layer_name} :count {len(mods)})")
         for m in mods:
-            print(f"(layer-member {layer_name} {m} :lang {g.module_lang(m)})")
+            label = module_label(g, m)
+            print(
+                f"(layer-member {layer_name} {m} :lang {g.module_lang(m)} :part {_q(label.part)} "
+                f":style {label.style} :rule {_q(label.rule)} :match {label.match})"
+            )
+
+
+def architecture_inputs(g: CodeGraph) -> tuple:
+    """(parts, modules, dependents, dependencies) of the graph as plain values for advice and align."""
+    if not g.arch_parts:
+        _default_labels(g)
+    parts = tuple(
+        _advice.PartRules(
+            path=part, style=values.get("style", "-"), state=values.get("state", ""),
+            ranks=g.arch_ranks.get(part, {}),
+            denies={
+                (source, target): (reason, "candidate" if (part, source, target) in g.candidate_rules else "violation",
+                                   g.arch_fixes.get((part, source, target), ""))
+                for (source, target), reason in g.arch_denies.get(part, {}).items()
+            },
+        )
+        for part, values in sorted(g.arch_parts.items())
+    )
+    known_targets: dict[str, set[str]] = {}
+    for source, target in g.known:
+        known_targets.setdefault(source, set()).add(target)
+    modules = {}
+    for module in g.nodes:
+        label = module_label(g, module)
+        modules[module] = _advice.ModuleFact(
+            module, _impact_file(g, module), label.part, label.layer,
+            _layer_is_certain(g, module) and not _is_entry_root(g, module),
+            frozenset(known_targets.get(module, ())),
+        )
+    dependents: dict[str, list[str]] = {}
+    dependencies: dict[str, list[str]] = {}
+    for source in g.nodes:
+        for edge in g.edges_from.get(source, []):
+            target = edge.target.split("::")[0]
+            if edge.etype in ("imports", "data-flow") and target != source and target in g.nodes:
+                if target not in dependencies.setdefault(source, []):
+                    dependencies[source].append(target)
+                    dependents.setdefault(target, []).append(source)
+    return (
+        parts, modules, {k: tuple(v) for k, v in dependents.items()}, {k: tuple(v) for k, v in dependencies.items()},
+    )
+
+
+def advice_items(g: CodeGraph) -> tuple[tuple, tuple]:
+    """(advice, parts without advice) of the whole graph, computed once.
+
+    Built from the architecture facts of the graph: the rules, ranks and fixes
+    of each part, the labels, the import and data-flow edges inside a part, the
+    violations (both layers set by rules; candidates and type-only imports are
+    not advice) and the target layout.
+    """
+    if g.advice_cache is not None:
+        return g.advice_cache
+    parts, modules, dependents, dependencies = architecture_inputs(g)
+    violations = tuple(
+        _advice.Violation(item.source, item.target, item.source_layer, item.target_layer, item.part, item.style,
+                          item.reason, bool(item.known))
+        for item in boundary_violations(g, set(g.nodes))
+        if item.severity != "candidate" and _layer_is_certain(g, item.source) and _layer_is_certain(g, item.target)
+        and not is_type_only_import(g, item.source, item.target)
+    )
+    def in_repo(part: str, folder: str) -> str:
+        return folder if part == "." else f"{part}/{folder}"
+
+    targets = tuple(
+        _advice.TargetFact(part, layer, block, in_repo(part, folder), proposed, source)
+        for part, layer, block, folder, proposed, _present, source in g.arch_targets
+    )
+    layer_folders: dict[str, dict[str, str]] = {}
+    for part, layer, block, folder, _proposed, present, _source in g.arch_targets:
+        if not block:
+            layer_folders.setdefault(part, {}).setdefault(layer, in_repo(part, present or folder))
+    g.advice_cache = _advice.advise(parts, modules, dependents, dependencies, violations, targets, layer_folders)
+    return g.advice_cache
+
+
+def advice_sexp(item) -> str:
+    """One advice item as an S-expression fact."""
+    return _advice.to_sexp(item)
+
+
+def module_advice(g: CodeGraph, module_id: str) -> list:
+    """Advice items that concern one module (it is moved, or one of its imports breaks a rule)."""
+    return [item for item in advice_items(g)[0] if module_id in item.modules]
 
 
 # ---------------------------------------------------------------------------
@@ -3063,21 +3169,7 @@ class _SchemeEval:
         if fn == "violations":
             pattern = str(args[0]) if args else "all"
             scope = set(g.nodes.keys()) if pattern == "all" else set(g.resolve_module(pattern))
-            deny_rules = [
-                ("domain", "infra"), ("domain", "api"), ("domain", "ui"),
-                ("ui", "infra"), ("service", "api"), ("infra", "api"),
-            ]
-            result: set[str] = set()
-            for src_mod in scope:
-                sl = _graph_layer(g, src_mod)
-                for edge in g.edges_from.get(src_mod, []):
-                    if edge.etype not in ("imports", "data-flow"):
-                        continue
-                    tgt_mod = edge.target.split("::")[0]
-                    tl = _graph_layer(g, tgt_mod)
-                    if sl != tl and (sl, tl) in deny_rules:
-                        result.add(src_mod)
-            return result
+            return {item.source for item in boundary_violations(g, scope)}
 
         if fn == "layer-of":
             s = self._to_set(args[0])

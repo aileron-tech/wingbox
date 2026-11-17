@@ -45,6 +45,195 @@ Modules loaded at run time (Python):
   `deps`, `rdeps` and `impact` do not follow it: the next step depends on the
   previous one through the loop, not the other way round.
 
+Architecture of the parts (written by `wingbox build`; see `wingbox init` below):
+
+```scheme
+(arch-part <part> :style <style> :state <state> :origin detected|config|declared :level system|container|component :kind "<kind>" :files <n> [:source "<citation>"] [:declared "<file>"])
+(arch-deny <part> <from-layer> <to-layer> "<reason>")
+(arch-known <part> <src> <tgt> "<baseline file>")
+(layer <mod> <layer> :part <part> :style <style> :rule "<rule>" :match exact|spelling|synonym|config|file|declared|test|none)
+```
+
+- `<part>` is a folder relative to the repository root, `"."` for the root.
+- `:state`: `determined`, `undetermined` (candidates too close, or too weak),
+  `none` (no layer style), `not-judged` (fewer than 12 source files),
+  `declared` (the part's own rules were read), `declared-unread`, `configured`
+  (from `.wingbox/config.yaml`).
+- `arch-deny`: a boundary rule of the part's style, or, for declared layers,
+  "a layer may not import a higher one". Rules apply between two modules of
+  the same part only.
+- `arch-known`: a pair the project already lists in its own baseline of
+  known exceptions (for example `layers.known-upward-imports.json`).
+- `layer`: `:rule` says what set the layer (`folder routes/ -> api`,
+  `file *.tsx -> ui`, `route file page.* in src/app/`, `<file>: layer core`,
+  `test file`); `:match` says how the folder name matched the style's word.
+
+## init Output
+
+```scheme
+(arch-part <part> :level <c4 level> :kind "<kind>" :files <n> :style <style> :state <state> :origin <origin> [:score 0.81 :coverage 0.47] [:name "<style (author)>"] [:source "<citation>"])
+(arch-evidence <part> <style> "<folder/ or file pattern>" :files <n> :group <group> :match exact|spelling|synonym|file [:via "<word>"])
+(arch-candidate <part> <style> :score 0.34 :coverage 0.20 :status candidate|below :source "<citation>")
+(arch-overlay <part> cqrs :score 0.89 :coverage 0.12)
+(arch-layer <part> <layer> "<folder>" :files <n> :match <step> [:via "<word>"])
+(arch-declared <part> "<file>" :read yes :layers 22)
+(arch-declared <part> "<file>" :read no :reason "<why>")
+(arch-baseline <part> "<file>" :entries 112)
+(arch-target <part> <layer> "<folder>" [:block <id>] :present "<real folder>" | :proposed :source "<citation>")
+(arch-not-judged <part> :files <n> :kind "<kind>")
+(arch-config-written ".wingbox/config.yaml")
+(arch-config-kept ".wingbox/config.yaml" :reason "<why>")
+```
+
+The text that `wingbox init` prints for people is a printer over these facts.
+`arch-evidence` lists the folders (or file patterns) of each detection group of
+the best style with the number of source files below them; `arch-candidate`
+lists the other styles that scored: `:status candidate` passed the thresholds
+(score 0.6, coverage 0.25), `:status below` did not or lost to a style that
+wins over it. `arch-layer` is the folder -> layer mapping
+written to `.wingbox/config.yaml` (`routing-root` for a route-tree frontend).
+`arch-target` is the full layout of the part's style: one folder per layer,
+further folders (use cases, ports) and the domain building blocks (`:block`
+entities, value-objects, aggregates, domain-events, domain-services,
+repository-interfaces, specifications; Evans 2003, Vernon 2013). `:present`
+gives the folder the part already has, `:proposed` marks a folder that would be
+new, at the path the style gives. `init` creates no folder.
+
+## init in an empty folder
+
+```scheme
+(init-languages "typescript javascript python ...")
+(init-choice <n> <style> :language <lang> :from siblings|home|library [:note "same as packages/a"] :name "<style name>" :source "<citation>")
+(init-needs "--language <lang> --style STYLE --yes")
+(init-new-project :language <lang> :style <style> :from "<--style|siblings|home|library>" :config ".wingbox/config.yaml")
+(init-scaffold "<folder>")
+```
+
+Without a terminal `init` prints the choices and exits with 2; `--language`,
+`--style` and `--yes` make it non-interactive. Choices are ordered by
+precedence: siblings (the style of the parts in the same language of the
+repository's `.wingbox/config.yaml`), then the `$HOME/.wingbox/config.yaml`
+favourite (`defaults: {typescript: onion-clean}`), then the library. A style
+file in `$HOME/.wingbox/styles/` replaces the built-in one of the same name.
+`--scaffold` creates the empty folders of the target layout, no file.
+
+## Advice (init, analyze, impact, REPORT.md)
+
+```scheme
+(advice <part> :id <12 hex> :kind move|fix-violation|missing-folder :target "<path>" :style <style> :rule "<rule>" :reason "<what to do>" :evidence "<why>")
+(advice-none <part> :reason "<why there is no advice>")
+```
+
+- `move`: a file that dependents of its own part import against the rules
+  (at least 2, and at least half of its dependents); `:reason` names the
+  nearest layer they may all import, `:evidence` the counts by layer.
+- `fix-violation`: a violation (both layers set by rules) with the fix the
+  style prescribes; a pair the project already lists in its own baseline is
+  not repeated.
+- `missing-folder`: a proposed folder of the target layout.
+- `:id` is stable: a hash of part, kind, target and rule. A part whose style
+  is not determined gets `advice-none`. `analyze` and `impact` print the
+  advice that concerns the module; graph facts `(arch-rank <part> <layer>
+  <rank>)`, `(arch-target ...)` and `:fix` on `arch-deny` feed it.
+
+## Decisions store (.wingbox/decisions.sexp) and `wingbox advice`
+
+```scheme
+(advice-given <id> :part <part> :kind <kind> :target "<path>" :rule "<rule>" [:layer <layer> :destination "<folder>"] :at <date> :graph <hash>)
+(advice-outcome <id> :followed :at <date>)
+(advice-outcome <id> :done-differently :actual "<path or what changed>" :at <date>)
+(build-run :graph <hash> :at <date>)
+(advice-outcome <id> :ignored :runs <n> :at <date>)
+(advice-outcome <id> :accepted :by user :at <date>)
+(advice-outcome <id> :rejected :by user :reason "<why>" :at <date>)
+(learned-layer <part> "<folder>" <layer> :from <id> :at <date>)
+(learned-removed <part> "<folder>" :by config :at <date>)
+```
+
+Only changes of state are logged: one `build-run` per build, new advice,
+outcomes, and `:ignored` once, in the build where an open item reaches 3
+builds (it is hidden from then on; an accepted item never is). With a
+`.wingbox/config.yaml`, the config states the layers: learned folders apply
+only without one, and a learned folder the config does not list is recorded
+as `learned-removed`. An append-only log, written by `wingbox build` and by `wingbox advice
+accept|reject`; commit it to share it. A label that rests on a learned layer
+says so: `(layer <mod> service ... :rule "folder core/ -> service (learned
+from <id>)" :match learned :learned-from <id>)`. `wingbox advice --sexp`
+prints the open `(advice ...)` items (rejected ones and those ignored for 3
+builds are left out) and `(advice-none ...)`; `--learned` prints the
+`learned-layer` facts.
+
+## align Output
+
+```scheme
+(align-part <part> :style <style> [:from <current style>] :placed <n> :files <n> :following <n> :dependencies <n> :present "<layers>" :missing "<layers>")
+(align-gap <part> :kind unplaced-folder|missing-layer|rule :target "<folder, layer or from -> to>" :count <n> [:example "<a -> b>"])
+(align-none <part> :reason "<why>")
+(align-style <part> :style <closest style> :score <s> :coverage <c> :runner-up <style> :runner-up-score <s>)
+(align-placed <part> :layer <layer> :folders "<folders>" :by style)
+(align-learned <part> :folder "<folder>" :layer <layer> :by suffix|name|imports :why "<evidence>")
+(align-learned-none <part> :reason "declared rules: nothing is guessed, the baseline comes from them")
+(align-config-written ".wingbox/config.yaml")
+(align-baseline ".wingbox/baseline.sexp" :entries <n>)
+```
+
+`.wingbox/baseline.sexp` holds `(baseline <part> <src> <tgt> :rule "<from -> to>"
+:from align|"<project baseline file>")`; the build reads it and the pairs
+become `violation-known`.
+
+## compare Output
+
+```scheme
+(compare-part <part> :language <lang> :style <style> :layers "<layers>")
+(compare-diff <lang> :kind missing-layer|folder-meaning|style :detail "<what differs>")
+(advice <part> :id <id> :kind deviates :target <part> :style <style> :rule "majority <style>" :reason "..." :evidence "...")
+```
+
+## learn Output
+
+```scheme
+(learn-mode agent|human :because "--agent|CLAUDECODE=1|GEMINI_CLI=1|stdin or stdout is not a terminal|terminal")
+(learn-part <part> :style <closest> :score <s> :runner-up <style> :runner-up-score <s>)
+(learn-layer <part> <layer> :means "<placement text or note>")
+(learn-placed <part> <layer> "<folders>")
+(learn-known <part> "<folder>" <layer> :because "<from learned.sexp>")
+(learn-folder <part> "<folder>" :files "<2-3 files>" :imports "<layer count ...>" :imported-by "<layer count ...>" :guess <layer>|- [:weak "<how the style matched it>"] [:breaks <n>])
+(learn-more <part> :folders <n>)
+(learn-nothing <part> :reason "...")
+(learn-question "...") (learn-rule "...") (learn-answer-format "...") (learn-apply "...")
+```
+
+The answer (one per line): `(style <part> <style>)` at most once per part,
+`(layer <part> <folder> <layer> :because "<files read>")` (a folder is a name
+below the source root, `commands`, or a nested path, `lib/hooks`: a path
+decides for the files below it before any name rule), `(unknown <part>
+<folder> :because "...")`. `wingbox learn --apply` rejects the whole answer
+with `(learn-error "...")` lines when any line is invalid; otherwise it prints
+`(learn-learned ...)`, `(learn-kept ...)` for folders the config already
+states, `(learn-result :build ok :violations <n>)` and `(learn-saved ...)`.
+Besides the folders the style does not place, the task lists nested folders
+whose files take part in rule breaks or rest on a guess (`:breaks`), at the
+deepest folder that holds them, most breaks first, 25 per part
+(`learn-more` counts the rest). The rebuild after `--apply` prints nothing
+unless `--verbose`. `.wingbox/learned.sexp` keeps each accepted answer: `(learned-answer <part>
+:at <date> :mode agent|human [:agent "<name>"] :style <style> :score <s>)`
+followed by `(learned-entry <part> "<folder>" <layer>|unknown :because "..."
+:files <n>)`; a folder learned before is not asked again unless `--again` or
+its files more than doubled.
+
+## place Output
+
+```scheme
+(place <part> :layer <layer> :folder "<folder>" :present|:new|:not-stated :style <style>|declared :rule "<placement or declared layer>" :may-import "<layers>|not stated" [:where "<the style's words>"] :examples "<2-3 files>")
+(place-none <part> :reason "<why>")
+```
+
+The request is matched word by word against the `[[placement]]` texts and the
+layer words of the part's style (name, folder words, file patterns); `:new`
+marks a folder of the target layout that does not exist yet; `:examples` are
+real files of the folder. In a part with declared rules the folder whose words
+match the request is named with the project's own layer of its files.
+
 ## Use File (.wingbox/index.uses.sexp, next to the graph)
 
 What only `entity`, `usages` and `entity --positions` read; module IDs are the
@@ -90,7 +279,6 @@ import, a name, a qualified path, a type, a re-export; line and column are
 in the class, a parameter or variable annotated with the class, a variable
 built by its constructor; the method may come from a base class. Any other
 method call is not guessed: `unresolved` counts them per module.
-
 ## boundary Output
 
 ```scheme
@@ -116,7 +304,7 @@ method call is not guessed: `unresolved` counts them per module.
 (key-entity-ref <Name> <ref-mod> :lang ts)
 (key-entity-more <mod> <Name> :modules 185 :rerun "analyze <mod> --all")
 (boundary-file <mod> <file-path>)
-(layer <mod> <dep-name> :layer domain)
+(layer <mod> <dep-name> :layer domain :style layered :rule "folder models/ -> domain")
 (analyze-summary <mod> :entities 31 :imports 1 :dataflows 0 :refs 1 :dependents 50 :boundary-files 2)
 ```
 
@@ -188,14 +376,17 @@ counts, then each file with its `line:col` and kind. Kinds: `import`,
 ## boundaries Output
 
 ```scheme
-(violation <src> <tgt> :src-layer domain :tgt-layer api :via imports :lang ts "<reason>")
-(violation-type-only <src> <tgt> :src-layer domain :tgt-layer infra :via imports :lang ts "<reason>")
-(violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts "<reason>")
-(boundaries-summary :violations 2 :type-only 6 :candidates 7 :checked 3587)
+(violation <src> <tgt> :src-layer domain :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "domain -> api" [:known "<baseline file>"] :src-file <path> :tgt-file <path> "<reason>")
+(violation-type-only <src> <tgt> :src-layer domain :tgt-layer infra :via imports :lang ts :part <part> :style layered :rule "domain -> infra" :src-file <path> :tgt-file <path> "<reason>")
+(violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "infra -> api" :src-file <path> :tgt-file <path> "<reason>")
+(violation-known <src> <tgt> ... :known "<baseline file>" "<reason>")
+(boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587)
 (boundaries-ok :checked 3587)
 ```
 
-`violation`: both layers come from folders or the file type. `violation-type-only`:
+`violation`: both layers come from rules. `violation-known`: the same, but the
+pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`
+written by `wingbox align --learn`); it is not counted as a violation. `violation-type-only`:
 a TypeScript import of types or interfaces only (`import type`, or every imported
 name is a type or an interface of the target); the compiler erases it, so it is
 not counted as a violation, but a change of the type still reaches the importer.
@@ -227,7 +418,7 @@ nearest first, and `read-first` names the file and its first 10 direct dependent
 
 ```scheme
 (layer-group api :count 144)
-(layer-member api <mod> :lang ts)
+(layer-member api <mod> :lang ts :part <part> :style layered :rule "folder routes/ -> api" :match exact)
 ```
 
 ## find_function / find_type Output

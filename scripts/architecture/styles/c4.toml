@@ -1,0 +1,92 @@
+schema = 1
+id = "c4"
+name = "C4 model: system context, containers, components, code"
+kind = "model"
+summary = "Not a style but a way to name the levels of a system. Wingbox uses it to say WHICH boundary a dependency crosses: between two separately running units, between two components of one unit, or inside a component. The architecture style is then judged per container."
+
+[[sources]]
+title = "The C4 model for visualising software architecture"
+author = "Simon Brown"
+url = "https://c4model.com/"
+
+[[levels]]
+id = "system"
+is = "the repository, or the workspace it declares"
+[[levels]]
+id = "container"
+is = "a separately runnable or deployable unit: a web application, an API server, a worker, a CLI, a mobile app, a database schema"
+[[levels]]
+id = "component"
+is = "a group of code behind one interface inside a container: a workspace library, a crate, a first-level module folder"
+[[levels]]
+id = "code"
+is = "files, classes, functions: the level of the code graph itself"
+
+[detect.workspace]
+files = ["pnpm-workspace.yaml", "lerna.json", "nx.json", "turbo.json", "go.work", "rush.json"]
+manifest_fields = ["package.json:workspaces", "Cargo.toml:workspace.members", "pom.xml:modules", "settings.gradle:include"]
+folders = ["apps", "packages", "libs", "crates", "services", "plugins", "modules"]
+
+[detect.container]
+# A part (see index.toml) is a container when it can run by itself.
+folders = ["apps", "services", "cmd"]         # a part directly under one of these
+files = ["Dockerfile", "Procfile", "main.go", "main.rs", "main.py", "manage.py", "server.ts", "server.js", "src/server.*", "src/main.*", "src/app.*", "config.ru", "next.config.*", "svelte.config.*", "vite.config.*", "Program.cs", "app.json"]
+manifest_fields = ["package.json:scripts.start", "package.json:bin", "pyproject.toml:project.scripts", "Cargo.toml:bin"]
+
+[detect.component]
+# Inside a workspace: a part under these folders that cannot run by itself.
+folders = ["packages", "libs", "crates", "plugins", "modules", "shared"]
+# Inside a container: the first-level folders of its source root.
+source_roots = ["src", "lib", "app", "internal", "pkg"]
+entry = ["index.ts", "index.tsx", "index.js", "__init__.py", "lib.rs", "mod.rs", "mod.ts"]
+
+[detect.contract]
+# Code that exists to be shared across containers.
+folders = ["shared", "contracts", "api-types", "types", "proto", "protos", "openapi", "schemas", "sdk", "client"]
+files = ["*.proto", "openapi.*", "*.graphql", "*.avsc"]
+
+[rules]
+[[rules.deny]]
+level = "container"
+what = "an import from one container into another container's source"
+except = "a contract (see detect.contract) or a component of the workspace"
+severity = "violation"
+reason = "two separately deployed units are coupled by source code instead of a contract"
+[[rules.deny]]
+level = "component"
+what = "an import of another component past its entry file"
+severity = "candidate"
+reason = "a component is used through its internals instead of its interface"
+[[rules.deny]]
+level = "component"
+what = "a cycle of dependencies between components"
+severity = "violation"
+reason = "components that depend on each other cannot be changed or tested apart"
+[[rules.deny]]
+level = "component"
+what = "a component (library) imports a container (application)"
+severity = "violation"
+reason = "a library depends on an application that uses it"
+
+[[placement]]
+what = "code that two containers need"
+where = "a component of the workspace or a contract; never a relative import into the other container"
+[[placement]]
+what = "a new capability inside one container"
+where = "a new or existing component of that container, behind its entry file"
+[[placement]]
+what = "something that must run, scale or deploy by itself"
+where = "a new container with its own manifest and an explicit contract to the others"
+
+[advice]
+new_code = [
+  "Name the level before writing: does this change live inside one component, add a component, or cross to another container?",
+  "A dependency that crosses containers needs a contract both sides can read: a schema, generated types, an event definition.",
+]
+refactoring = [
+  "Deep import into another package: export what is needed from that package's entry file, or move the code to a shared component.",
+  "Two components in a cycle: extract the part both need into a third component below them.",
+]
+report = [
+  "State the blast radius by level: files inside the component, components inside the container, containers in the system.",
+]
