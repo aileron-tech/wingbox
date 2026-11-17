@@ -20,9 +20,9 @@ directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
 |---|---|
 | Name | `wingbox`; display name Wingbox |
 | Publisher | Aileron Technologies |
-| One line (at most 30 characters) | Code graph for big monorepos |
+| One line (at most 30 characters) | A map of your codebase |
 | Category | Developer Tools (OpenAI); `development` in our Claude marketplace entry |
-| Short description | Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby, PHP, Dart. Runs on your machine; no code leaves it. |
+| Short description | A map of your codebase for coding agents: what a change touches, where a symbol is used. |
 | Keywords | code-graph, blast-radius, impact-analysis, dependency-graph, code-search, architecture, local-first, mcp, monorepo, large-codebase, codebase-map, call-graph, refactoring, code-navigation |
 | Homepage | https://wingbox.dev |
 | Repository | https://github.com/aileron-tech/wingbox |
@@ -36,8 +36,8 @@ directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
 
 Long description:
 
-> Code graph for large repositories and monorepos. Wingbox builds a graph of
-> the repository you work in and answers from it before the agent reads source
+> Give your coding agent a map of your codebase. Half the cost, no missed files.
+> Wingbox builds a graph of the repository you work in and answers from it before the agent reads source
 > files: what a change will break, two hops away and across packages (blast
 > radius); who uses a file, function or type; where a feature is implemented;
 > which modules and packages depend on each other and which dependencies cross
@@ -156,8 +156,10 @@ hooks: the directory refuses lifecycle hooks. Their README.md is
 what the package holds. `requires_local_executor: true` (top level of the
 Codex manifest, as the desktop-only page says for that layout) marks them
 Desktop only: the skill runs the local `wingbox` command. The local MCP
-package starts `wingbox mcp` from `PATH` without `cwd`, so Codex runs it in
-the session folder; with `cwd` `.` it would serve the plugin folder, and
+package starts the pinned release (`uvx --from git+...@<commit> wingbox mcp --build-missing`, so it
+needs uv, not a `wingbox` on `PATH`) without `cwd`: the Codex documentation does not say which folder
+a plugin's MCP server starts in; Codex 0.169 started it in the session folder in our test, and in a
+folder that is in no repository every tool answers "No repository here"; with `cwd` `.` it would serve the plugin folder, and
 Codex 0.169 does not expand `${PLUGIN_ROOT}` in the MCP file (`codex.mcp.json`; not `.mcp.json`, which the Claude plugin directory would read as a second server).
 
 Submission: https://platform.openai.com/plugins, Upload new or existing

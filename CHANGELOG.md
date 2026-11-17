@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.8.2 - 2026-11-17
+
+Fixes from a test on Windows 11 with live Claude Code sessions, reported in
+issue #48.
+
+### Fixes
+
+- Windows: a console window no longer flashes on a background refresh. The
+  refresh started with `DETACHED_PROCESS` had no console, so every console
+  program it ran (git, its worker processes) opened a visible window of its
+  own; it now starts with a console that has no window (`CREATE_NO_WINDOW`),
+  which those programs inherit, and every other child Wingbox starts (git,
+  installers, the first build of the MCP server, a language server) gets no
+  window either.
+- When two search hooks run at once (Claude Code runs Grep and Read in
+  parallel), the second refresh found nothing left to do and still ran a
+  build, which could outlast the hook's wait and answer `wingbox-graph-stale`.
+  A refresh that finds nothing changed once it holds the lock now ends at
+  once.
+- `wingbox update` in an environment without pip (made by `uv venv`) upgrades
+  through `uv pip install --python <this interpreter>`, and without uv says
+  what to run instead of failing on "No module named pip".
+- A plain `wingbox build` leaves `git status` clean: the `.gitignore` it
+  writes in `.wingbox/` ignores itself, and `decisions.sexp` is started only
+  once the project is set up (`wingbox init`, `learn`, `align --learn` or
+  `advice`).
+- The Codex plugin's MCP server runs the pinned release through `uvx` (with
+  `--build-missing`), so a plugin installed by clicks works without a
+  `wingbox` command on PATH; the Codex plugin needs uv, as the Claude Code
+  plugin does.
+- `wingbox mcp --build-missing` started twice at once (Claude Desktop does)
+  builds once: the second server says `a build is already running: waiting
+  for it` instead of logging an error. In a folder that is in no repository it
+  builds nothing, and every tool answers "No repository here".
+
+### Changes
+
+- One short description in every manifest (the plugins, the marketplace, the
+  Claude Desktop extension): "A map of your codebase for coding agents: what a
+  change touches, where a symbol is used."
+
+- README FAQ: why the first searches after a branch switch say
+  `wingbox-graph-stale`, and why a large switch takes a build.
+
 ## 0.8.1 - 2026-11-17
 
 ### Fixes

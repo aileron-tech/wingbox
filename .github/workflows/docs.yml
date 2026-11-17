@@ -1,0 +1,32 @@
+# A change of documents only: the documentation tests on one cell instead of the nine of tests.yml.
+name: docs
+
+on:
+  push:
+    branches: [main, windows-console-and-refresh]
+    paths: ["**/*.md", "docs/**", "LICENSE"]
+  pull_request:
+    paths: ["**/*.md", "docs/**", "LICENSE"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the plugin tests read the release tags
+      - name: Install uv
+        run: pipx install uv
+      - name: Documentation tests
+        run: |
+          cat requirements.txt requirements/*.txt | sort -u > "$RUNNER_TEMP/wingbox-requirements.txt"
+          uv run --no-project --python 3.12 --with-requirements "$RUNNER_TEMP/wingbox-requirements.txt" \
+            python -m unittest tests.test_english_only tests.test_readme_numbers tests.test_plugins tests.test_mcpb

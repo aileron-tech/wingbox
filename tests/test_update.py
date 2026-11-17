@@ -1,5 +1,6 @@
 import os
 import stat
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -289,3 +290,34 @@ class OldLayoutWarningTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NoPipTest(unittest.TestCase):
+    def test_an_environment_without_pip_updates_through_uv_pip(self) -> None:
+        """/* REQ-UPDATE-010: in an environment without pip (made by `uv venv`), `wingbox update` upgrades through `uv pip install --python <this interpreter> --upgrade wingbox` when uv is on PATH, reads the latest version from `uv pip install --dry-run`, and without uv says what to run instead of failing on "No module named pip". */"""
+        stubs = StubInstallers(self)
+        stubs.add("uv", 'if args[:2] == ["pip", "install"] and "--dry-run" in args: err(" - wingbox==0.2.5", " + wingbox==0.2.6"); sys.exit(0)\n'
+                        'sys.exit(0)')
+        method = update.choose_method(update.FromIndex(), "/envs/w/bin/python", "/envs/w", update.run_installer, has_pip=False)
+        assert isinstance(method, update.Method)
+        self.assertEqual("uv pip", method.name)
+        self.assertEqual(("uv", "pip", "install", "--python", "/envs/w/bin/python", "--upgrade", "wingbox"), method.upgrade)
+        self.assertEqual("0.2.6", update.latest_version(method, update.run_installer))
+        stubs.remove("uv")
+        cannot = update.choose_method(update.FromIndex(), "/envs/w/bin/python", "/envs/w", update.run_installer, has_pip=False)
+        assert isinstance(cannot, update.CannotUpdate)
+        self.assertEqual("no-pip", cannot.reason)
+        self.assertIn("/envs/w/bin/python -m ensurepip", cannot.instead)
+
+    def test_a_real_uv_venv_has_no_pip_and_is_detected(self) -> None:
+        """/* REQ-UPDATE-011: an environment made with `uv venv` has no pip module, and `update.has_pip` of its interpreter says so; the running interpreter of the tests has its own answer from the same function. */"""
+        uv = shutil.which("uv")
+        if uv is None:
+            self.skipTest("uv is not installed here")
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run([uv, "venv", "--quiet", str(Path(tmp) / "v")], check=True)
+            python = Path(tmp) / "v" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+            probe = subprocess.run([str(python), "-c", "from importlib.util import find_spec; print(find_spec('pip') is not None)"],
+                                   capture_output=True, text=True, check=True)
+            self.assertEqual("False", probe.stdout.strip())
+        self.assertIsInstance(update.has_pip(), bool)

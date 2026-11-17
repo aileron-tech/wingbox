@@ -5,7 +5,8 @@ Started by freshness.ensure_graph_fresh, detached, with its output in
 of a project at a time, whoever starts it):
 
 1. records the changes made outside Claude Code since the snapshot;
-2. reads the marks (their generation g);
+2. reads the marks (their generation g); with none, and a readable state, it ends at once: another refresh
+   published them while this one waited for the lock;
 3. patches the graph for the marked paths (scripts/graph_update.py), or, when a
    patch does not apply, runs the incremental build;
 4. on success clears the marks up to g; on failure keeps them all and records
@@ -52,6 +53,11 @@ def refresh(root: str) -> int:
     started = time.monotonic()
     freshness.note_outside_changes(root)
     state = freshness.read_state(root)
+    if freshness.is_fresh(state):
+        # Another refresh published these changes while this one waited for the lock (two hooks at once): the
+        # state is read under the lock, so nothing is left to build.
+        print("[wingbox] refresh: nothing changed", file=sys.stderr)
+        return 0
     generation = state.generation
     changed = sorted(state.changed_files)
     kind = "partial"

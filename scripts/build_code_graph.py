@@ -240,7 +240,8 @@ INDEX_FILE = "index.sexp"
 CACHE_FILE = "cache.json"
 GITIGNORE_MARK = "# Written by Wingbox: the files it generates."
 GITIGNORE_TEXT = GITIGNORE_MARK + """ Files you write here (config.yaml, ...)
-# stay visible to git; the whole folder can be ignored as well.
+# stay visible to git; the whole folder can be ignored as well. This file is generated too.
+.gitignore
 index*
 cache*
 REPORT.md
@@ -2122,6 +2123,7 @@ class LspClient:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             cwd=cwd,
+            **portable.hidden_process_options(),
         )
         assert self._proc.stdin is not None
         assert self._proc.stdout is not None

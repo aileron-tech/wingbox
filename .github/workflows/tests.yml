@@ -2,17 +2,21 @@
 # Installs the parsers the way local runs do (AGENTS.md): every requirements file, through uv.
 name: tests
 
+# A change of documents only (Markdown, docs/, LICENSE) skips this matrix; docs.yml checks it on one cell.
 on:
   push:
-    branches: [main, windows-support, windows-powershell, mcpb-extension, github-action, fix-init-small-repo]
+    branches: [main, windows-support, windows-powershell, mcpb-extension, github-action, fix-init-small-repo, windows-console-and-refresh]
+    paths-ignore: ["**/*.md", "docs/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**/*.md", "docs/**", "LICENSE"]
 
 permissions:
   contents: read
 
+# A new push to a pull request or a feature branch replaces the run in progress; every push to main runs.
 concurrency:
   group: tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:

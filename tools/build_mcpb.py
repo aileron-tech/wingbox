@@ -27,6 +27,7 @@ ICON = REPO / "plugins" / "wingbox" / "assets" / "icon.png"
 FIXED_TIME = (2026, 1, 1, 0, 0, 0)  # same bytes for the same files
 MANIFEST_VERSION = "0.4"           # the first version with the `uv` server type
 SLOGAN = "Give your coding agent a map of your codebase. Half the cost, no missed files."
+SHORT_DESCRIPTION = "A map of your codebase for coding agents: what a change touches, where a symbol is used."
 LONG_DESCRIPTION = f"""{SLOGAN}
 
 Wingbox builds a code graph of the repository you choose and answers from it before Claude reads
@@ -70,7 +71,7 @@ def manifest(version: str, tools: list[dict[str, str]]) -> dict:
         "name": "wingbox",
         "display_name": "Wingbox",
         "version": version,
-        "description": "Code graph of your repository: what a change will break and the few files to read first.",
+        "description": SHORT_DESCRIPTION,
         "long_description": LONG_DESCRIPTION,
         "author": {"name": "Aileron Technologies", "url": "https://wingbox.dev"},
         "repository": {"type": "git", "url": "https://github.com/aileron-tech/wingbox"},

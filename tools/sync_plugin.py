@@ -29,6 +29,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN_PATH = Path("plugins") / "wingbox"
 MANIFESTS = (Path(".claude-plugin") / "plugin.json", Path(".codex-plugin") / "plugin.json")
+# Files that hold the pinned uvx source but no version: the MCP server of the Codex plugin.
+PINNED = (Path("codex.mcp.json"),)
 SKILL_DIR = Path("skills") / "wingbox"
 _PIN = re.compile(r"git\+https://github\.com/aileron-tech/wingbox@[0-9a-f]{40}")
 SOURCE = "git+https://github.com/aileron-tech/wingbox@{commit}"
@@ -99,6 +101,9 @@ def wanted_files(repo: Path) -> list[Wanted]:
     files.append(Wanted(Path("LICENSE"), (repo / "LICENSE").read_bytes()))
     for manifest in MANIFESTS:
         files.append(Wanted(manifest, with_release((plugin / manifest).read_text(encoding="utf-8"), version, commit)))
+    for pinned in PINNED:
+        text = _PIN.sub(SOURCE.format(commit=commit), (plugin / pinned).read_text(encoding="utf-8"))
+        files.append(Wanted(pinned, text.encode("utf-8")))
     return files
 
 
