@@ -280,7 +280,7 @@ def prepare_wingbox_directory(root: str) -> None:
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
 # 3: Python results carry module_loads and registry_calls.
-CACHE_SCHEMA_VERSION = 3
+CACHE_SCHEMA_VERSION = 4  # 4: Rust entities record whether they are private
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 

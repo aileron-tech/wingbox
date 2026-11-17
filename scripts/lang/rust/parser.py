@@ -313,6 +313,7 @@ def _entity_from_item(node: Node, decorators: list[str]) -> Entity | None:
         methods=methods,
         decorators=decorators,
         bases=[],
+        private=not any(child.type == "visibility_modifier" for child in node.children),
     )
 
 
