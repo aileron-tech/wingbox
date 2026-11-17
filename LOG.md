@@ -46,7 +46,7 @@
 - Test: REQ-BENCH-010 (same-machine build summary); REQ-BENCH-008 covers the regenerated README.
 
 ### Motivation
-- Maintainer: "надо ещё добавить тоже в сравнение" - people ask how CodeGraph compares.
+- The maintainer asked to add CodeGraph to the comparison: people ask how it compares.
 
 ### Verification
 - `run.sh` from an empty work directory reproduces every CodeGraph result file byte for byte.
@@ -295,7 +295,7 @@
 - Tests: REQ-PLUGIN-014 and 015 (purpose wording, keywords, skill description length), REQ-MCP-011 (annotations), REQ-MCP-012 (tool names under 64 characters); REQ-PLUGIN-001 checks `termsOfServiceUrl`.
 
 ### Motivation
-- The maintainer: "нужно проверить что плагины ищутся по назначению"; Wingbox is built for large repositories and monorepos, and "monorepo" appeared in no description or keyword. The coordinator added the directory policy and terms requirements.
+- The maintainer asked to check that the plugins are found by their purpose; Wingbox is built for large repositories and monorepos, and "monorepo" appeared in no description or keyword. The coordinator added the directory policy and terms requirements.
 
 ### Verification
 - `claude plugin eval` with only the plugin loaded (isolated home and configuration), 3 runs per request: before (main 4bf2242 wording) the skill was invoked in 11 of 18 purpose runs (blast radius 3/3, refactor plan 3/3, cross-package change 2/3, who depends 2/3, files to read first 1/3, where implemented 0/3); after, 18 of 18. Unrelated requests: 0 invocations in 9 runs, before and after. A first rewording reached 16 of 18 (where implemented 1/3); "before grep or reading files" fixed it.
@@ -862,7 +862,7 @@
 - Version 0.4.0: the graph keeps itself fresh through hooks (edit marks, outside-change check, partial update), the first `usages` after a change reads only the changed files, PHP 8 and Laravel (#42). The map-request workflow builds with 0.4.0.
 
 ### Motivation
-- The maintainer: "давай выпускай".
+- The maintainer asked for the release.
 
 ## 2026-11-17 - Release 0.5.0
 
@@ -870,7 +870,7 @@
 - Version 0.5.0: everything in `.wingbox/` (index.sexp, caches, REPORT.md, map.html), `.wingbox/` as the project marker, no refresh into another folder (a copied graph was overwritten in 0.4.0), `--output` removed, `wingbox open`, `wingbox update` warns about old files; no compatibility with the old layout. The map-request workflow builds with 0.5.0.
 
 ### Motivation
-- Errors seen in a real session on 0.4.0; maintainer: ".code_graph.sexp -> .wingbox/index.sexp", "все файлы должны быть в каталоге .wingbox", "ничего удалять не надо", "никаких совместимостей", "выпускай сразу версию потом".
+- Errors seen in a real session on 0.4.0; the maintainer decided: the graph moves to `.wingbox/index.sexp`, every file lives in `.wingbox/`, nothing is deleted, no compatibility with the old layout, and the version is released at once.
 
 ## 2026-11-17 - Release 0.5.1
 
@@ -878,7 +878,7 @@
 - Version 0.5.1: Dart and Flutter (#47), the grammar as the opt-in extra `wingbox[dart]`. The map-request workflow builds with 0.5.1.
 
 ### Motivation
-- The maintainer: "да" to releasing Dart as 0.5.1.
+- The maintainer agreed to release Dart as 0.5.1.
 
 ## 2026-11-17 - OntoIndex as the fourth tool of the Graphify comparison (branch ontoindex-comparison, not merged)
 
