@@ -47,9 +47,13 @@ Edge Types
 - ``imports`` -- module imports module. ``:via-base`` if target exports
   abstract types.
 - ``calls-api`` -- implements/extends abstract type. ``:via-ifc``.
-- ``data-flow`` -- data flows to validation module. ``:validated``.
+- ``data-flow`` -- data flows to validation module. ``:validated``; or to the
+  next step of a configured pipeline, ``:pipeline``.
+- ``registry-wires`` -- module loads module by a name read from a configuration
+  file beside it (Python ``importlib``). ``:config <path>``.
 - ``refs`` -- entity-level cross-file reference (``Module::Entity``).
-- ``calls`` (LSP only) -- function calls function with call-site lines.
+- ``calls`` -- function calls function with call-site lines: from LSP
+  (``:lsp``), or through a registry that wires the target (``:registry``).
 
 Output Format
 -------------
@@ -113,7 +117,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field
 from pathlib import Path, PureWindowsPath
-from typing import Any, Callable, Generic, Mapping, Optional, Sequence, TypeVar
+from typing import Any, Callable, Generic, Iterable, Mapping, Optional, Sequence, TypeVar
 from urllib.parse import quote, unquote
 
 try:
@@ -128,6 +132,7 @@ try:
             language_for_name,
             language_for_result,
         )
+        from .lang.config_values import CONFIG_SUFFIXES, ConfigValues, read_config_values
         from .lang.purpose import infer_purpose, scan_root
         from .lang.discovery import is_excluded_directory, is_excluded_path
         from .lang.interface import EntityPayload
@@ -138,6 +143,17 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        from .architecture.config import ConfigErr, plan_from_config, read_config
+        from .architecture.facts import (
+            BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
+        )
+        from .architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
+        from .architecture.library import load_library
+        from .architecture.plan import RepositoryPlan, detect_plan
+        from .architecture.repository import list_files, text_reader
+        from .architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
+        from .architecture.decisions import STORE_FILE, learned_layers, read_store
+        from .architecture.plan import apply_learned
     else:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
@@ -150,6 +166,7 @@ try:
             language_for_name,
             language_for_result,
         )
+        from lang.config_values import CONFIG_SUFFIXES, ConfigValues, read_config_values
         from lang.purpose import infer_purpose, scan_root
         from lang.discovery import is_excluded_directory, is_excluded_path
         from lang.interface import EntityPayload
@@ -160,6 +177,17 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        from architecture.config import ConfigErr, plan_from_config, read_config
+        from architecture.facts import (
+            BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
+        )
+        from architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
+        from architecture.library import load_library
+        from architecture.plan import RepositoryPlan, detect_plan
+        from architecture.repository import list_files, text_reader
+        from architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
+        from architecture.decisions import STORE_FILE, learned_layers, read_store
+        from architecture.plan import apply_learned
 except ModuleNotFoundError as dependency_error:
     print(
         f"Error: missing Python dependency {dependency_error.name}. "
@@ -192,6 +220,7 @@ SKIP_DIRS = {
     ".ruff_cache",
     "target",
     "vendor",
+    ".wingbox",
     ".worktrees",
     ".ralphy-worktrees",
     ".ralphy-sandboxes",
@@ -247,7 +276,8 @@ def prepare_wingbox_directory(root: str) -> None:
     if current is None or (current.startswith(GITIGNORE_MARK) and current != GITIGNORE_TEXT):
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
-CACHE_SCHEMA_VERSION = 2
+# 3: Python results carry module_loads and registry_calls.
+CACHE_SCHEMA_VERSION = 3
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -404,6 +434,9 @@ class TreeSnapshot:
 
     files: dict[str, tuple[int, int]] = field(default_factory=dict)
     directories: dict[str, int] = field(default_factory=dict)
+    # Folders of Python module loaders: their JSON, YAML and TOML files name the modules a registry
+    # loads (registry-wires), so a change to one of them changes the graph.
+    data_folders: set[str] = field(default_factory=set)
 
 
 def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str], root: str) -> str:
@@ -422,9 +455,31 @@ def snapshot_json(snapshot: TreeSnapshot, skip_directories: frozenset[str], root
             "skip_dirs": sorted(skip_directories),
             "files": {path: list(value) for path, value in sorted(snapshot.files.items())},
             "directories": dict(sorted(snapshot.directories.items())),
+            "data_folders": sorted(snapshot.data_folders),
         },
         separators=(",", ":"),
     )
+
+
+def loader_folders(root: str, results: Iterable[FileResult]) -> set[str]:
+    """Folders (relative, with /) of the files that load modules by a name read at run time."""
+    folders = {os.path.relpath(os.path.dirname(result.path), root).replace(os.sep, "/") for result in results if result.module_loads}
+    return {"" if folder == "." else folder for folder in folders}
+
+
+def record_loader_configs(root: str, snapshot: TreeSnapshot, results: Iterable[FileResult]) -> None:
+    """Add the configuration files beside each module loader, and its folder, to the snapshot."""
+    for folder in sorted(loader_folders(root, results)):
+        snapshot.data_folders.add(folder)
+        directory = os.path.join(root, *folder.split("/")) if folder else root
+        try:
+            entries = sorted(os.scandir(directory), key=lambda entry: entry.name)
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.name.endswith(CONFIG_SUFFIXES) and entry.is_file(follow_symlinks=False):
+                status = entry.stat(follow_symlinks=False)
+                snapshot.files[f"{folder}/{entry.name}" if folder else entry.name] = (status.st_mtime_ns, status.st_size)
 
 
 def discover_files(
@@ -758,6 +813,9 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
         if not isinstance(raw_result.get(field_name), list):
             return Err(f"cache result field {field_name} must be a list")
 
+    for field_name in ("module_loads", "registry_calls"):
+        if not isinstance(raw_result.get(field_name, []), list):
+            return Err(f"cache result field {field_name} must be a list")
     if not isinstance(raw_result.get("import_forms", {}), dict):
         return Err("cache result field import_forms must be an object")
     for field_name in ("bindings", "uses"):
@@ -942,6 +1000,7 @@ def _imports_types_only(
     target_id: str,
     target: FileResult,
     bound_language: BoundLanguage,
+    resolved: Optional[Mapping[str, Optional[str]]] = None,
 ) -> bool:
     """True when source imports target for types only (TypeScript erases such an import).
 
@@ -952,10 +1011,13 @@ def _imports_types_only(
     forms = source.import_forms
     if not forms:
         return False
+    # `resolved` (specifier -> module) is computed once per source file: resolving every import again for each
+    # target made a rebuild quadratic in the imports of a file.
     specifiers = {
         specifier
         for specifier in source.imports
-        if bound_language.resolve_import(specifier, source.path) == target_id
+        if (resolved[specifier] if resolved is not None and specifier in resolved
+            else bound_language.resolve_import(specifier, source.path)) == target_id
     }
     if not specifiers or any(specifier not in forms for specifier in specifiers):
         return False
@@ -1640,6 +1702,8 @@ def assemble_graph(
     seen_edges = {
         (edge["source"], edge["target"], edge["type"]) for edge in edges
     }
+    edges.extend(_registry_edges(context, edges))
+    seen_edges.update((edge["source"], edge["target"], edge["type"]) for edge in edges)
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
     # Detect modules with entities named *Client, *ClientService, *ClientApi,
@@ -1873,6 +1937,128 @@ def read_fragments(path: str, root: str) -> Result[tuple[str, DiscoveryExclusion
     except (ValueError, TypeError, IndexError, AttributeError, KeyError) as error:
         return Err(f"invalid fragment store: {error}")
     return Ok((key, exclusions, stored))
+
+
+def _registry_edges(context: GraphContext, edges: list[dict]) -> list[dict]:
+    """The registry-wires edges, the calls dispatched through a registry and the pipeline data flows.
+
+    They read configuration files and other modules' entities, so they are facts of the whole
+    graph, made after the per-module fragments. An existing data-flow between two consecutive
+    pipeline steps is replaced in edges by a copy with the pipeline flag.
+    """
+    id_to_result = context.id_to_result
+    wires_by_loader = _registry_wires(id_to_result, context.bound_languages, context.root)
+    added: list[dict] = []
+    pipeline_pairs: set[tuple[str, str]] = set()
+    for node_id, result in id_to_result.items():
+        for wire in wires_by_loader.get(node_id, ()):
+            added.append({"source": node_id, "target": wire.target, "type": "REGISTRY_WIRES", "config": wire.config})
+        if not result.registry_calls:
+            continue
+        bound_language = context.bound_languages[language_for_result(result.language).name]
+        calls, folds = _registry_call_edges(node_id, result, bound_language, wires_by_loader, id_to_result)
+        pipeline_pairs.update(folds)
+        for (source_ref, target_ref), lines in sorted(calls.items()):
+            added.append(
+                {"source": source_ref, "target": target_ref, "type": "CALLS", "from_lines": lines, "registry": True}
+            )
+    data_flows = {
+        (edge["source"], edge["target"]): position
+        for position, edge in enumerate(edges)
+        if edge["type"] == "DATA_FLOWS_TO"
+    }
+    for source_id, target_id in sorted(pipeline_pairs):
+        position = data_flows.get((source_id, target_id))
+        if position is not None:
+            # a copy: the fragment's own edge stays as the module produced it
+            edges[position] = {**edges[position], "pipeline": True}
+            continue
+        added.append({"source": source_id, "target": target_id, "type": "DATA_FLOWS_TO", "pipeline": True})
+    return added
+
+
+@dataclass(frozen=True)
+class RegistryWire:
+    """A module that a loader loads by a name taken from a configuration file."""
+
+    target: str
+    config: str
+    order: int
+
+
+def _registry_wires(
+    id_to_result: Mapping[str, FileResult],
+    bound_languages: Mapping[str, BoundLanguage],
+    root: str,
+) -> dict[str, tuple[RegistryWire, ...]]:
+    """Fill each load pattern with the names of the configuration files beside the loader.
+
+    A name counts only when the filled module name resolves to a module of the
+    graph; the order is the position of the name in its configuration file.
+    """
+    config_by_directory: dict[str, tuple[ConfigValues, ...]] = {}
+    wires: dict[str, tuple[RegistryWire, ...]] = {}
+    for node_id, result in id_to_result.items():
+        if not result.module_loads:
+            continue
+        bound_language = bound_languages[language_for_result(result.language).name]
+        directory = os.path.dirname(result.path)
+        if directory not in config_by_directory:
+            config_by_directory[directory] = read_config_values(directory)
+        found: dict[str, RegistryWire] = {}
+        for load in result.module_loads:
+            for config in config_by_directory[directory]:
+                config_path = os.path.relpath(config.path, root).replace(os.sep, "/")
+                for order, value in enumerate(config.values):
+                    target_id = bound_language.resolve_import(load["pattern"].replace("{}", value, 1), result.path)
+                    if target_id and target_id != node_id and target_id not in found:
+                        found[target_id] = RegistryWire(target_id, config_path, order)
+        if found:
+            wires[node_id] = tuple(found.values())
+    return wires
+
+
+def _defines(result: FileResult, name: str) -> bool:
+    """Whether a module defines a function of that name or a class with that method."""
+    return any(
+        (entity.get("kind") == "function" and entity.get("name") == name)
+        or (entity.get("kind") == "class" and name in entity.get("methods", []))
+        for entity in result.entities
+    )
+
+
+def _registry_call_edges(
+    node_id: str,
+    result: FileResult,
+    bound_language: BoundLanguage,
+    wires_by_loader: Mapping[str, tuple[RegistryWire, ...]],
+    id_to_result: Mapping[str, FileResult],
+) -> tuple[dict[tuple[str, str], list[int]], set[tuple[str, str]]]:
+    """Calls into the modules a registry wires, and the pipeline pairs of folding calls.
+
+    Returns the call lines by (source entity, target entity) and the ordered
+    pairs of consecutive modules of one configuration list.
+    """
+    calls: dict[tuple[str, str], list[int]] = {}
+    folds: set[tuple[str, str]] = set()
+    for call in result.registry_calls:
+        registry_id = next(
+            (target for target in (bound_language.resolve_import(name, result.path) for name in call["modules"]) if target),
+            None,
+        )
+        wired = [
+            wire
+            for wire in wires_by_loader.get(registry_id or "", ())
+            if wire.target != node_id and _defines(id_to_result[wire.target], call["method"])
+        ]
+        for wire in wired:
+            key = (f"{node_id}::{call['source_entity']}", f"{wire.target}::{call['method']}")
+            calls[key] = sorted(set(calls.get(key, [])) | {call["line"]})
+        if call["fold"]:
+            for config in sorted({wire.config for wire in wired}):
+                steps = sorted((wire for wire in wired if wire.config == config), key=lambda wire: wire.order)
+                folds.update((first.target, second.target) for first, second in zip(steps, steps[1:]))
+    return calls, folds
 
 
 def _find_local_references(
@@ -3197,6 +3383,7 @@ def render_sexp(
     _root: str,
     mode: str,
     total_files: int,
+    architecture: Optional[GraphArchitecture] = None,
 ) -> str:
     """
     Write the code graph as flat S-expression facts with path-map compression.
@@ -3346,7 +3533,13 @@ def render_sexp(
             lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
         elif etype == "DATA_FLOWS_TO":
             flags = " :validated" if edge.get("validated") else ""
+            if edge.get("pipeline"):
+                flags += " :pipeline"
             lines.append(f"(data-flow {src} {tgt}{flags})")
+        elif etype == "REGISTRY_WIRES":
+            config = edge.get("config", "")
+            flags = f" :config {config}" if config and _is_safe_path_atom(config) else ""
+            lines.append(f"(registry-wires {src} {tgt}{flags})")
         elif etype == "REFERENCES":
             relation_flags = "".join(
                 f" :{relation}" for relation in sorted(edge.get("relations", []))
@@ -3356,11 +3549,42 @@ def render_sexp(
         elif etype == "CALLS":
             fl = edge.get("from_lines", [])
             lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
-            lines.append(f"(calls {src} {tgt}{lns} :lsp)")
+            flags = (" :registry" if edge.get("registry") else "") + (" :lsp" if edge.get("lsp_verified") else "")
+            lines.append(f"(calls {src} {tgt}{lns}{flags})")
         elif etype == "HTTP_CALLS":
             client = edge.get("client_entity", "")
             client_str = f" :client {client}" if client else ""
             lines.append(f"(http-calls {src} {tgt} :transport http{client_str})")
+
+    # -- Architecture: parts, their rules, and the layer of every module --
+    if architecture is not None:
+        lines.append("")
+        lines.append("; --- architecture ---")
+        lines.extend(architecture.part_lines)
+        for node in sorted_nodes:
+            labelled = architecture.labels.get(node["id"])
+            if labelled is None:
+                continue
+            part, label = labelled
+            lines.append(
+                f'(layer {path_to_sid[node["id"]]} {label.layer} :part "{_sexp_escape(part)}" :style {label.style} '
+                f':rule "{_sexp_escape(label.rule)}" :match {label.match}{" :composition-root" if label.root else ""}'
+                f'{_learned_from(label.rule)})'
+            )
+        for part, source, target, baseline in architecture.known:
+            if source in path_to_sid and target in path_to_sid:
+                lines.append(
+                    f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}")'
+                )
+        for node in sorted_nodes:
+            for finding in (architecture.capabilities or {}).get(node["id"], ()):
+                lines.append(
+                    f'(capability {path_to_sid[node["id"]]} {finding.capability} :line {finding.line} '
+                    f':evidence "{_sexp_escape(finding.evidence)}"{" :suspect" if finding.suspect else ""})'
+                )
+        for part, node_id, capability in architecture.capability_known:
+            if node_id in path_to_sid:
+                lines.append(f'(capability-known "{_sexp_escape(part)}" {path_to_sid[node_id]} {capability} "{BASELINE_FILE}")')
 
     # -- Violations (Gap 2 fix) --
     if violations:
@@ -3747,6 +3971,12 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
             "imports": imports,
         }, separators=(",", ":")) + "\n")
     return Ok(UsePositions(path, walked=len(to_walk), reused=len(indexed) - len(to_walk), resolved=len(to_resolve)))
+def _learned_from(rule: str) -> str:
+    """` :learned-from <id>` for a label that rests on the decisions store."""
+    marker = "(learned from "
+    if marker not in rule:
+        return ""
+    return " :learned-from " + rule.split(marker, 1)[1].split(")", 1)[0]
 
 
 def write_sexp(
@@ -3756,9 +3986,10 @@ def write_sexp(
     root: str,
     mode: str,
     total_files: int,
+    architecture: Optional[GraphArchitecture] = None,
 ) -> None:
     """Atomically publish a fully rendered code graph and its use positions."""
-    content = render_sexp(nodes, edges, root, mode, total_files)
+    content = render_sexp(nodes, edges, root, mode, total_files, architecture)
     _atomic_write_text(output_path, content)
     _atomic_write_text(uses_path(output_path), render_uses_sexp(nodes, "-", content, positions=True))
 
@@ -3779,12 +4010,13 @@ class BuilderOptions:
     fragments_path: Optional[str] = None  # write the fragment store there (partial updates)
     snapshot_path: Optional[str] = None  # write the snapshot of the tree there (change detection)
     keep_published: bool = False  # an automatic refresh: never replace a graph with modules by an empty one
+    synonyms: bool = False
 
 
 def _builder_usage() -> str:
     return (
         "usage: build_code_graph.py --root ABSOLUTE_PATH [--full] [--lsp] "
-        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...]\n"
+        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...] [--synonyms]\n"
         "Writes ROOT/.wingbox/index.sexp and the files that go with it."
     )
 
@@ -3808,6 +4040,7 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
     root_argument: Optional[str] = None
     full_rebuild = False
     use_lsp = False
+    synonyms = False
     lsp_timeout = LSP_REQUEST_TIMEOUT
     excluded_directories: set[str] = set()
 
@@ -3842,6 +4075,10 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
             use_lsp = True
             index += 1
             continue
+        if argument == "--synonyms":
+            synonyms = True
+            index += 1
+            continue
         return Err(f"unknown argument: {argument}")
 
     if root_argument is None:
@@ -3863,6 +4100,7 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
             use_lsp=use_lsp,
             lsp_timeout=lsp_timeout,
             skip_directories=frozenset(SKIP_DIRS | excluded_directories),
+            synonyms=synonyms,
         )
     )
 
@@ -3896,6 +4134,8 @@ def _serialize_file_result(result: FileResult) -> dict:
             "import_forms": result.import_forms,
             "bindings": result.bindings,
             "uses": result.uses,
+            "module_loads": result.module_loads,
+            "registry_calls": result.registry_calls,
         },
     }
 
@@ -3908,10 +4148,7 @@ def _run_build(options: BuilderOptions) -> int:
 
     git_ignore_result = load_git_ignored_paths(root, options.skip_directories)
     if isinstance(git_ignore_result, GitIgnoreUnavailable):
-        print(
-            f"[code-graph] WARNING: repository ignore rules unavailable: {git_ignore_result.reason}",
-            file=sys.stderr,
-        )
+        print(f"[code-graph] {_ignore_note(git_ignore_result.reason)}", file=sys.stderr)
         ignored_paths = frozenset()
     else:
         ignored_paths = git_ignore_result.paths
@@ -4043,6 +4280,15 @@ def _run_build(options: BuilderOptions) -> int:
         t_lsp = time.monotonic() - t_lsp_start
         print(f"[code-graph] LSP pass: {t_lsp:.2f}s")
 
+    built = project_architecture(root, exclusions, options.synonyms, all_results, nodes)
+    if isinstance(built, Err):
+        print(f"[code-graph] ERROR: {built.error}", file=sys.stderr)
+        return 2
+    architecture, plan = built.value
+    print(
+        "[code-graph] Architecture: .wingbox/config.yaml" if any(p.origin == "config" for p in plan.parts)
+        else f"[code-graph] Architecture: detected ({len(plan.parts)} parts); `wingbox init` writes it to .wingbox/config.yaml"
+    )
     new_cache = {result.path: _serialize_file_result(result) for result in all_results}
     if options.keep_published and not nodes and _published_modules(options.output_path):
         print(
@@ -4050,7 +4296,7 @@ def _run_build(options: BuilderOptions) -> int:
             file=sys.stderr,
         )
         return 1
-    map_content = render_sexp(nodes, edges, root, mode, len(all_results))
+    map_content = render_sexp(nodes, edges, root, mode, len(all_results), architecture)
     uses_content = (
         render_uses_sexp(nodes, symbol_key, map_content) if reused is None else reused_uses_text(reused, map_content)
     )
@@ -4065,6 +4311,7 @@ def _run_build(options: BuilderOptions) -> int:
     if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
     if options.snapshot_path and snapshot is not None:
+        record_loader_configs(root, snapshot, all_results)
         os.makedirs(os.path.dirname(options.snapshot_path), exist_ok=True)
         _atomic_write_text(options.snapshot_path, snapshot_json(snapshot, options.skip_directories, root))
 
@@ -4098,6 +4345,120 @@ def _published_modules(path: str) -> bool:
             return any(line.startswith("(node ") for line in handle)
     except OSError:
         return False
+def project_architecture(
+    root: str,
+    exclusions: DiscoveryExclusions,
+    synonyms: bool,
+    results: Sequence[FileResult],
+    nodes: Sequence[dict],
+) -> Result[tuple[GraphArchitecture, RepositoryPlan], str]:
+    """The architecture facts of a graph (parts, layers, known violations) and the plan they come from.
+
+    A build and a partial update both call it, so the published graph is the same either way.
+    """
+    plan_paths = list_files(root, exclusions.directory_names, exclusions.paths)
+    plan = architecture_plan(root, exclusions.directory_names, exclusions.paths, synonyms, plan_paths)
+    if isinstance(plan, Err):
+        return plan
+    names_by_path = {
+        os.path.relpath(result.path, root): frozenset(
+            f"{item.get('module', '')}:{item.get('original', '')}"
+            for item in result.imported_names if isinstance(item, dict)
+        )
+        for result in results
+    }
+    baseline_text = text_reader(root)(BASELINE_FILE) or ""
+    architecture = graph_architecture(
+        plan.value, load_library(), {node["id"]: node["path"] for node in nodes if node.get("path")},
+        {node["id"]: names_by_path.get(node["path"], frozenset()) for node in nodes if node.get("path")},
+        plan_paths,
+        read_baseline_sexp(baseline_text),
+        _node_capabilities(root, nodes, {os.path.relpath(r.path, root): r.content_hash for r in results}),
+        read_capability_baseline(baseline_text),
+    )
+    return Ok((architecture, plan.value))
+
+
+CAPABILITIES_CACHE_FILE = "cache.capabilities.json"   # in .wingbox/, ignored with the other caches
+
+
+def _node_capabilities(root: str, nodes: Sequence[dict], hashes: Mapping[str, str]) -> dict[str, tuple]:
+    """What the file of each node does (SQL, database client, outbound HTTP, ...), found by syntax.
+
+    Findings are cached by content hash in .wingbox/cache.capabilities.json, so a rebuild or a partial
+    update reads again only the files that changed; a change of the detector empties the cache.
+    """
+    detector = _file_digest(detect_capabilities.__code__.co_filename)
+    path = os.path.join(wingbox_directory(root), CAPABILITIES_CACHE_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            stored = json.load(handle)
+        cached = stored.get("files", {}) if isinstance(stored, dict) and stored.get("detector") == detector else {}
+    except (OSError, ValueError):
+        cached = {}
+    found: dict[str, tuple] = {}
+    entries: dict[str, list] = {}
+    changed = False
+    for node in nodes:
+        relative = node.get("path")
+        if not relative or not capability_language(relative):
+            continue
+        digest = hashes.get(relative, "")
+        entry = cached.get(relative)
+        if digest and isinstance(entry, list) and len(entry) == 2 and entry[0] == digest:
+            rows = entry[1]
+        else:
+            try:
+                with open(os.path.join(root, relative), "r", encoding="utf-8", errors="replace") as handle:
+                    text = handle.read()
+            except OSError:
+                continue
+            rows = [[f.capability, f.line, f.evidence, f.suspect] for f in detect_capabilities(relative, text)]
+            changed = True
+        entries[relative] = [digest, rows]
+        if rows:
+            found[node["id"]] = tuple(_finding(*row) for row in rows)
+    if changed or set(entries) != set(cached):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            _atomic_write_text(path, json.dumps({"detector": detector, "files": entries}, separators=(",", ":")) + "\n")
+        except OSError as error:
+            print(f"[code-graph] WARNING: capability cache not written: {error}", file=sys.stderr)
+    return found
+
+
+def _file_digest(path: str) -> str:
+    with open(path, "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()[:16]
+
+
+def architecture_plan(
+    root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str], synonyms: bool = False,
+    listed: Optional[tuple[str, ...]] = None,
+) -> Result[RepositoryPlan, str]:
+    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection.
+
+    `synonyms` adds the word-vector step when folders are mapped to layers (`--synonyms`).
+    """
+    library = load_library()
+    settings = SYNONYM_SETTINGS if synonyms else DEFAULT_SETTINGS
+    paths = listed if listed is not None else list_files(root, skip_directories, ignored_paths)
+    read = text_reader(root)
+    config = read_config(read, library)
+    if isinstance(config, ConfigErr):
+        return Err(config.error)
+    learned = learned_layers(read_store(read(STORE_FILE) or ""))
+    if config is None:
+        plan = detect_plan(paths, read, library, settings)
+        return Ok(apply_learned(plan, learned))
+    return Ok(apply_learned(plan_from_config(config, paths, read, library, settings), learned, from_config=True))
+
+
+def _ignore_note(reason: str) -> str:
+    """One plain line when git gives no ignore rules (outside a git repository: expected, not a fault)."""
+    if "not a git repository" in reason:
+        return "not a git repository: .gitignore rules are not applied"
+    return f"WARNING: repository ignore rules unavailable: {reason}"
 
 
 def _lock_path(root: str) -> str:

@@ -1,6 +1,7 @@
 # Layer control: propose the layers of a project, then hold them
 
 Status: proposal, not built. Roadmap item "Propose the layers, then hold them" ([ROADMAP.md](../ROADMAP.md)).
+Shipped in 0.6.0: the open points settled through the agent (`wingbox learn`, the questionnaire without an agent, the instruction header of `.wingbox/config.yaml`) and the capability rules with their three pattern checks (section 4.4); `wingbox check`, pinned files, `required` imports and the exports are not built yet.
 
 ## 1. Problem
 

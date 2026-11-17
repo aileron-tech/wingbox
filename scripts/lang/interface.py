@@ -58,6 +58,21 @@ class UsePayload(UsePayloadRequired, total=False):
     module: str
     member: str
     kind: str
+class ModuleLoadPayload(TypedDict):
+    """A module name with one variable part: ``{}`` marks the variable."""
+
+    pattern: str
+    line: int
+
+
+class RegistryCallPayload(TypedDict):
+    """A method called on an object that a registry module returns."""
+
+    modules: list[str]
+    method: str
+    source_entity: str
+    line: int
+    fold: bool
 
 
 class SourceRelationPayloadRequired(TypedDict):
@@ -135,6 +150,9 @@ class FileResult:
     # Symbol index: module-level import bindings and the use sites of names.
     bindings: list[BindingPayload] = field(default_factory=list)
     uses: list[UsePayload] = field(default_factory=list)
+    # Python: module names filled at run time and calls dispatched through a registry
+    module_loads: list[ModuleLoadPayload] = field(default_factory=list)
+    registry_calls: list[RegistryCallPayload] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

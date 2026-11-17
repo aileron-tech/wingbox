@@ -1,0 +1,103 @@
+schema = 1
+id = "feature-sliced"
+name = "Feature-Sliced Design"
+kind = "style"
+languages = ["typescript", "javascript"]                 # languages a new project may choose this style for
+wins_over = ["route-tree", "layered", "onion-clean"]   # its folder names also satisfy these more general styles
+summary = "A frontend split into fixed layers, each cut into slices by business meaning. A module imports only from layers strictly below its own, and slices of one layer do not import each other."
+
+[[sources]]
+title = "Feature-Sliced Design: layers reference"
+author = "Feature-Sliced Design"
+url = "https://feature-sliced.design/docs/reference/layers"
+
+[detect]
+[[detect.groups]]
+id = "features"
+weight = 3
+required = true
+names = ["features"]
+[[detect.groups]]
+id = "entities"
+weight = 3
+required = true
+names = ["entities"]
+[[detect.groups]]
+id = "shared"
+weight = 2
+required = true
+names = ["shared"]
+[[detect.groups]]
+id = "widgets"
+weight = 2
+names = ["widgets"]
+[[detect.groups]]
+id = "pages-or-app"
+weight = 1
+names = ["pages", "app", "processes"]
+siblings = true              # the layer folders must lie side by side in one folder
+
+[[layers]]
+id = "app"
+rank = 6
+folders = ["app"]
+[[layers]]
+id = "processes"
+rank = 5
+folders = ["processes"]
+note = "Deprecated by the methodology; kept so that older projects are read correctly."
+[[layers]]
+id = "pages"
+rank = 4
+folders = ["pages"]
+[[layers]]
+id = "widgets"
+rank = 3
+folders = ["widgets"]
+[[layers]]
+id = "features"
+rank = 2
+folders = ["features"]
+[[layers]]
+id = "entities"
+rank = 1
+folders = ["entities"]
+[[layers]]
+id = "shared"
+rank = 0
+folders = ["shared"]
+
+[rules]
+direction = "strictly-downward"    # only to a LOWER rank; the same rank is not allowed across slices
+[[rules.cross]]
+layer = ["pages", "widgets", "features", "entities"]
+between = "different slices of the same layer"
+severity = "violation"
+reason = "a slice imports another slice of its own layer"
+[[rules.public_api]]
+layer = ["pages", "widgets", "features", "entities"]
+entry = ["index.ts", "index.tsx", "index.js"]
+severity = "candidate"
+reason = "a slice is imported past its public entry file"
+
+[[placement]]
+what = "reusable business object (user, order): its model, API calls and small UI"
+layer = "entities"
+[[placement]]
+what = "user action that brings business value (add to cart, sign in)"
+layer = "features"
+[[placement]]
+what = "self-contained block of a page built from features and entities"
+layer = "widgets"
+[[placement]]
+what = "UI kit, API client, helpers without business meaning"
+layer = "shared"
+
+[advice]
+new_code = ["Place code as low as it can live: business-free code in shared, a noun in entities, a verb in features."]
+refactoring = ["Two features import each other: lift the common part into an entity or compose both in a widget."]
+
+[target]
+layers = { app = "app", pages = "pages", widgets = "widgets", features = "features", entities = "entities", shared = "shared" }
+domain = "entities/<slice>/model"
+note = "Business objects are slices of the entities layer: entities/<slice>/model holds their types, rules and state."

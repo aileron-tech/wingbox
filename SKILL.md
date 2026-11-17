@@ -136,7 +136,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | Command | Purpose | Example |
 |---|---|---|
 | `search "<pattern>"` | Safe literal/`.*` search on graph | `search "operative.*service"` |
-| `analyze <id> [--all]` | Full module analysis (PRIMARY command); names at most 200 dependents unless `--all` | `analyze drive/modules/drive/drive_schema` |
+| `analyze <id> [--all]` | Full module analysis (PRIMARY command); names at most 200 dependents unless `--all`; ends with the `(advice ...)` that concerns the module | `analyze drive/modules/drive/drive_schema` |
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
 | `boundary <id> --files-only` | File paths only (compact) | `boundary operatives.service --files-only` |
@@ -144,12 +144,18 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `usages <symbol> [--sexp] [--all]` | Every use of one symbol (`Name`, `<file>::Name`, `<file>::Class.method`) through re-exports and aliases, by file, `line:col` and kind (import, re-export, call, type, extends, reference; `unresolved-call` for a method call whose receiver type is not in sight); at most 200 unless `--all`; a name defined in several files lists the candidates | `usages src/billing/invoice.ts::Invoice` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
-| `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth + files to read first; lists at most 200 unless `--all`, counts are always complete | `impact src/billing/invoice.service.ts --sexp` |
+| `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth + files to read first; lists at most 200 unless `--all`, counts are always complete; ends with the advice that concerns the file | `impact src/billing/invoice.service.ts --sexp` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id>` | Single module with edges | `module operatives.controller` |
-| `boundaries [id\|all]` | Check architecture violations; type-only imports and guessed layers are reported apart | `boundaries all` |
+| `wingbox init [PATH] [--force] [--sexp] [--synonyms]` | Split the repository into parts, judge the architecture style of each (with score, evidence and sources) and write `.wingbox/config.yaml` (kept unless `--force`); `--synonyms` also maps folder names through the built-in word vectors; in an empty folder `--language L --style S --yes [--scaffold]` starts a new project (without them it prints the choices and exits 2) | `wingbox init --sexp` |
+| `wingbox advice [--sexp] [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; record a decision in `.wingbox/decisions.sexp` | `wingbox advice --sexp` |
+| `wingbox align [PART] [--to STYLE] [--learn] [--sexp]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported | `wingbox align --sexp` |
+| `wingbox place "<what>" [--part PART] [--sexp]` | Layer and folder for new code by the placement rules of the part's style (`:new` when the folder does not exist yet) and what it may import | `wingbox place "repository for invoices" --sexp` |
+| `wingbox compare [--sexp]` | Parts of a monorepo per language: style, layers, differences (missing layers, a folder name meaning another layer, a style unlike the majority) and advice for the part that deviates | `wingbox compare --sexp` |
+| `wingbox learn --agent [PART] [--sexp]` / `wingbox learn --apply [FILE]` | `/wingbox learn`: run `wingbox learn --agent`, read the files it names, answer only in its format (`(layer <part> <folder> <layer> :because "...")`, `(unknown ...)`, at most one `(style ...)`), pipe the answer to `wingbox learn --apply`, show the result; on errors fix the named lines and send the whole answer again. When the code does not decide a folder, ask the user in the chat and answer with `:because "operator: <their words>"`; never guess. To change `.wingbox/config.yaml`, follow the instructions at its top | `wingbox learn --agent` |
+| `boundaries [id\|all]` | Check the boundary rules of each part's style (or of rules the part declares); each line names `:part`, `:style` and `:rule`; type-only imports and guessed layers are reported apart; then what files do that their layer may not (`capability-violation`: SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the domain, with `:line` and `:evidence`) and the style's pattern checks (`pattern-violation`) | `boundaries all` |
 | `invariants [id\|all]` | Check naming convention violations | `invariants all` |
-| `layers` | Show all modules by layer | `layers` |
+| `layers` | Show all modules by layer, with the part, style and rule that set each layer | `layers` |
 | `find_function <name>` | Find function/method definitions | `find_function createOrder` |
 | `find_type <name>` | Find type/class/module/interface/enum definitions | `find_type DriveDbCommitResponse` |
 | `find_callchain <src> <tgt> [depth]` | Trace call path between functions | `find_callchain createOrder processPayment` |
@@ -187,6 +193,9 @@ rg '^\(cls drive/' .wingbox/index.sexp
 
 # Data flow edges
 rg 'data-flow' .wingbox/index.sexp
+
+# Python modules loaded by a name read from a configuration file
+rg 'registry-wires' .wingbox/index.sexp
 ```
 
 These one-liners are useful for quick checks. For structured output and full analysis, use the Python script commands.
@@ -345,6 +354,17 @@ An import that goes through the `outDir` of a `tsconfig*.json`, written as a
 relative path, through an alias or as a package entry, resolves to the file
 under `rootDir` that it is compiled from. Without `rootDir` the source is
 looked up next to that tsconfig, then in its `src` folder.
+
+Python indexing follows `import` and `from` imports and modules loaded at run
+time: a literal name given to `importlib.import_module` or `__import__` is an
+import; a name built from a literal package path and one variable
+(`f".plugins.{name}"`) is a `registry-wires` edge to each module of that
+package named by a string of a JSON, YAML or TOML file in the folder of the
+loader. A method called in a loop on an object such a registry returns for the
+loop variable is a `calls ... :registry` edge to each wired module that defines
+it, and `data-flow ... :pipeline` when the call replaces its own argument
+(`data = stage.process(data)`), in the order of the configuration list. Names
+computed any other way stay unlinked.
 
 C# indexing follows namespaces and referenced local types; Java indexing
 follows packages, explicit imports, and referenced wildcard types. Unused

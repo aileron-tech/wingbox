@@ -1,0 +1,136 @@
+schema = 1
+id = "hexagonal"
+name = "Hexagonal architecture (ports and adapters)"
+aliases = ["ports-and-adapters"]
+kind = "style"
+languages = ["any"]                 # languages a new project may choose this style for
+patterns = ["service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
+wins_over = ["onion-clean", "layered"]
+summary = "The application sits in the middle and talks to the outside only through ports it defines. Driving adapters (web, CLI, tests) call the ports; driven adapters (database, messaging) implement them."
+
+[[sources]]
+title = "Hexagonal architecture"
+author = "Alistair Cockburn"
+year = 2005
+url = "https://alistair.cockburn.us/hexagonal-architecture/"
+
+[detect]
+[[detect.groups]]
+id = "ports"
+weight = 4
+required = true
+names = ["ports", "port"]
+[[detect.groups]]
+id = "adapters"
+weight = 4
+required = true
+names = ["adapters", "adapter"]
+[[detect.groups]]
+id = "inside"
+weight = 2
+names = ["domain", "application", "core", "usecases"]
+
+[[layers]]
+id = "domain"
+rank = 0
+folders = ["domain", "core", "model"]
+[[layers]]
+id = "application"
+rank = 1
+folders = ["application", "usecases", "ports", "port", "service", "services"]
+note = "Ports belong to the application: in = what the application offers, out = what it needs."
+[[layers]]
+id = "driving-adapter"
+rank = 2
+folders = ["in", "inbound", "driving", "primary", "web", "rest", "cli", "api"]
+under = ["adapters", "adapter"]
+[[layers]]
+id = "driven-adapter"
+rank = 2
+folders = ["out", "outbound", "driven", "secondary", "persistence", "messaging", "storage"]
+under = ["adapters", "adapter"]
+[[layers]]
+id = "adapter"
+rank = 2
+folders = ["adapters", "adapter"]
+note = "An adapter not sorted into driving or driven."
+
+[from.layered]
+domain = "domain"
+service = "application"
+api = "driving-adapter"
+ui = "driving-adapter"
+infra = "driven-adapter"
+[from.nestjs]
+domain = "domain"
+service = "application"
+api = "driving-adapter"
+infra = "driven-adapter"
+[from.onion-clean]
+domain = "domain"
+application = "application"
+interface = "driving-adapter"
+infrastructure = "driven-adapter"
+
+[rules]
+direction = "inward"
+[[rules.deny]]
+from = "domain"
+to = ["application", "driving-adapter", "driven-adapter", "adapter"]
+reason = "the domain depends on the application or on an adapter"
+fix = "move the code out of {target_folder}/ into the domain, or depend on a port the domain owns"
+[[rules.deny]]
+from = "application"
+to = ["driving-adapter", "driven-adapter", "adapter"]
+reason = "the application depends on an adapter instead of a port"
+fix = "declare an out port in application/ports/out for {target}, implement it in the adapter and bind it at the composition root"
+[[rules.deny]]
+from = "driving-adapter"
+to = "driven-adapter"
+reason = "an adapter depends on another adapter; go through a port"
+fix = "let both adapters talk through a port of the application"
+[[rules.deny]]
+from = "driven-adapter"
+to = "driving-adapter"
+reason = "an adapter depends on another adapter; go through a port"
+fix = "let both adapters talk through a port of the application"
+
+[[placement]]
+what = "use case offered to the outside"
+layer = "application"
+where = "a port in ports/in, its implementation in the application services"
+may_import = ["domain"]
+[[placement]]
+what = "need for a database, a queue or another system"
+layer = "application"
+where = "an interface in ports/out"
+may_import = ["domain"]
+[[placement]]
+what = "controller, CLI command, message consumer"
+layer = "driving-adapter"
+may_import = ["application", "domain"]
+[[placement]]
+what = "repository, HTTP client, publisher"
+layer = "driven-adapter"
+may_import = ["application", "domain"]
+
+[advice]
+new_code = ["Start a feature from the port: write the interface the application needs, then the adapter that implements it."]
+refactoring = ["A service imports an adapter class: replace the import with an out port and bind the adapter at the composition root."]
+
+[target]
+layers = { domain = "domain", application = "application", driving-adapter = "adapters/in", driven-adapter = "adapters/out" }
+domain = "domain"
+note = "Repository interfaces are out ports of the application: application/ports/out; ports offered to the outside in application/ports/in."
+extra = { application = ["application/ports/in", "application/ports/out"] }
+blocks_elsewhere = { repository-interfaces = "application/ports/out" }
+
+# Hexagonal: all I/O sits in the driven adapters; the web framework in the driving adapters.
+[capabilities]
+sql = {allowed_in = ["driven-adapter", "adapter"], fix = "move the query into a driven adapter that implements a port"}
+db-client = {allowed_in = ["driven-adapter", "adapter"], fix = "keep the database client in a driven adapter behind a port"}
+http-client = {allowed_in = ["driven-adapter", "adapter"], fix = "put the outbound call in a driven adapter behind a port"}
+filesystem = {allowed_in = ["driven-adapter", "adapter"], fix = "put file access in a driven adapter behind a port"}
+process = {allowed_in = ["driven-adapter", "adapter"], fix = "start processes from a driven adapter behind a port"}
+framework = {forbidden_in = ["domain", "application"], fix = "keep the framework in the driving adapters"}
+env = {allowed_in = ["driving-adapter", "driven-adapter", "adapter"], fix = "read the environment in an adapter and pass the values in"}

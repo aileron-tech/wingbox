@@ -1,0 +1,352 @@
+schema = 1
+id = "infra"
+name = "Infrastructure and operations code (DevOps, SRE)"
+kind = "infra"
+summary = "What surrounds the application code: how each container is built, deployed, configured per environment and watched. Judged for the whole repository, tool by tool, and then joined to the C4 containers: every unit that runs should have a build, a deployment, a pipeline and signals that tell when it is unhealthy."
+
+[[sources]]
+title = "Standard Module Structure"
+author = "HashiCorp, Terraform documentation"
+url = "https://developer.hashicorp.com/terraform/language/modules/develop/structure"
+[[sources]]
+title = "Best practices for general style and structure (Terraform)"
+author = "Google Cloud"
+url = "https://cloud.google.com/docs/terraform/best-practices/general-style-structure"
+[[sources]]
+title = "Declarative Management of Kubernetes Objects Using Kustomize (bases and overlays)"
+author = "Kubernetes documentation"
+url = "https://kubernetes.io/docs/tasks/manage-kubernetes-objects/kustomization/"
+[[sources]]
+title = "Configuration Best Practices"
+author = "Kubernetes documentation"
+url = "https://kubernetes.io/docs/concepts/configuration/overview/"
+[[sources]]
+title = "Liveness, Readiness, and Startup Probes"
+author = "Kubernetes documentation"
+url = "https://kubernetes.io/docs/concepts/configuration/liveness-readiness-startup-probes/"
+[[sources]]
+title = "Chart Best Practices Guide"
+author = "Helm documentation"
+url = "https://helm.sh/docs/chart_best_practices/"
+[[sources]]
+title = "Sample Ansible setup (directory layout, roles)"
+author = "Ansible documentation"
+url = "https://docs.ansible.com/ansible/latest/tips_tricks/sample_setup.html"
+[[sources]]
+title = "Building best practices (Dockerfile)"
+author = "Docker documentation"
+url = "https://docs.docker.com/build/building/best-practices/"
+[[sources]]
+title = "Security hardening for GitHub Actions"
+author = "GitHub documentation"
+url = "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions"
+[[sources]]
+title = "Site Reliability Engineering: Service Level Objectives; Monitoring Distributed Systems (the four golden signals)"
+author = "Google (Beyer, Jones, Petoff, Murphy, eds.)"
+year = 2016
+url = "https://sre.google/sre-book/service-level-objectives/"
+[[sources]]
+title = "The Site Reliability Workbook: Alerting on SLOs"
+author = "Google"
+year = 2018
+url = "https://sre.google/workbook/alerting-on-slos/"
+[[sources]]
+title = "The Twelve-Factor App: III. Config"
+author = "Adam Wiggins"
+url = "https://12factor.net/config"
+[[sources]]
+title = "OpenGitOps principles"
+author = "OpenGitOps (CNCF)"
+url = "https://opengitops.dev/"
+
+# ---------------------------------------------------------------------------
+# Tools. A tool is present when one of its files is found. `layout` names the
+# levels of its code, lowest first: a level may use the levels below it only.
+# ---------------------------------------------------------------------------
+
+[[tools]]
+id = "terraform"
+name = "Terraform / OpenTofu"
+files = ["*.tf", "*.tofu", "terragrunt.hcl"]
+[[tools.layout]]
+level = "module"
+rank = 0
+folders = ["modules"]
+is = "reusable building block: no provider configuration, no backend, no environment name inside"
+[[tools.layout]]
+level = "environment"
+rank = 1
+folders = ["environments", "envs", "env", "live", "stacks", "stages", "accounts", "prod", "production", "staging", "stage", "dev", "qa"]
+is = "root configuration of one environment: backend, providers, calls to modules, the values of that environment"
+[[tools.rules]]
+deny = "a module refers to an environment (path, name or backend)"
+reason = "a module must be usable by every environment"
+[[tools.rules]]
+deny = "a module configures a provider or a backend"
+needs = "file contents"
+reason = "providers and state belong to the root configuration"
+[[tools.rules]]
+deny = "one environment refers to another environment's files or state"
+severity = "candidate"
+reason = "environments must be able to change apart; share through a module or a published output"
+[[tools.rules]]
+deny = "a state file or a variables file with secrets is committed"
+files = ["*.tfstate", "*.tfstate.backup", "secrets.auto.tfvars", "*.secret.tfvars"]
+reason = "state and secrets hold credentials"
+[[tools.edges]]
+what = "module call: source = \"../modules/x\""
+gives = "blast radius of a module: every environment that calls it"
+
+[[tools]]
+id = "kustomize"
+name = "Kubernetes manifests with Kustomize"
+files = ["kustomization.yaml", "kustomization.yml"]
+[[tools.layout]]
+level = "base"
+rank = 0
+folders = ["base", "bases"]
+is = "manifests common to every environment"
+[[tools.layout]]
+level = "component"
+rank = 0
+folders = ["components"]
+is = "an optional piece several overlays may include"
+[[tools.layout]]
+level = "overlay"
+rank = 1
+folders = ["overlays", "clusters", "environments", "envs", "prod", "production", "staging", "dev"]
+is = "what differs in one environment or cluster: patches, replicas, images, configuration"
+[[tools.rules]]
+deny = "a base refers to an overlay"
+reason = "the base must not know the environments"
+[[tools.rules]]
+deny = "an overlay refers to another overlay"
+severity = "candidate"
+reason = "environments are siblings; a shared patch belongs to a component or the base"
+[[tools.edges]]
+what = "resources, bases, components and patches listed in kustomization.yaml"
+gives = "blast radius of a base: every overlay built on it"
+
+[[tools]]
+id = "helm"
+name = "Helm charts"
+files = ["Chart.yaml"]
+[[tools.layout]]
+level = "chart"
+rank = 0
+is = "a folder with Chart.yaml, templates/ and values.yaml (the defaults)"
+[[tools.layout]]
+level = "values-per-environment"
+rank = 1
+files = ["values-*.yaml", "values.*.yaml", "*-values.yaml"]
+is = "the values of one environment or release"
+[[tools.rules]]
+deny = "an environment name, a hostname or a credential written into templates/"
+needs = "file contents"
+reason = "what differs per environment belongs to values"
+[[tools.rules]]
+deny = "a secret value in a committed values file"
+needs = "file contents"
+reason = "values files are plain text in the repository"
+[[tools.edges]]
+what = "dependencies in Chart.yaml; image repository and tag in values"
+gives = "which charts and which built image a release depends on"
+
+[[tools]]
+id = "kubernetes"
+name = "Plain Kubernetes manifests"
+folders = ["k8s", "kubernetes", "manifests", "deploy", "deployment", "deployments"]
+files = ["*deployment*.yaml", "*deployment*.yml", "*statefulset*.yaml", "*ingress*.yaml", "*service*.yaml"]
+[[tools.rules]]
+deny = "a workload without readiness and liveness probes"
+needs = "file contents"
+reason = "the platform cannot tell a broken instance from a healthy one"
+[[tools.rules]]
+deny = "a container without resource requests and limits"
+needs = "file contents"
+reason = "one workload can starve the others"
+[[tools.rules]]
+deny = "an image referenced by the tag latest or without a tag"
+needs = "file contents"
+reason = "the running version cannot be told from the manifest and a rollback is not reproducible"
+[[tools.rules]]
+deny = "a Secret manifest with data committed in plain or base64 form"
+needs = "file contents"
+reason = "base64 is not encryption"
+
+[[tools]]
+id = "containers"
+name = "Container images"
+files = ["Dockerfile", "Dockerfile.*", "*.Dockerfile", "Containerfile", "docker-compose*.yml", "docker-compose*.yaml", "compose.yml", "compose.yaml", ".dockerignore"]
+[[tools.rules]]
+deny = "a final image that runs as root, or a base image without a version"
+needs = "file contents"
+reason = "least privilege and reproducible builds"
+[[tools.rules]]
+deny = "a secret passed through ARG or ENV, or copied into a layer"
+needs = "file contents"
+reason = "image layers keep it forever"
+[[tools.rules]]
+deny = "a Dockerfile with a build context but no .dockerignore"
+reason = "the whole repository, with local secrets, goes into the build context"
+[[tools.edges]]
+what = "FROM and COPY --from; the build context; compose build and depends_on"
+gives = "which source folders rebuild which image, and which image a service needs to start"
+
+[[tools]]
+id = "pipelines"
+name = "CI/CD pipelines"
+files = [".github/workflows/*.yml", ".github/workflows/*.yaml", ".gitlab-ci.yml", "Jenkinsfile", "azure-pipelines.yml", ".circleci/config.yml", "bitbucket-pipelines.yml", ".buildkite/pipeline.yml", "cloudbuild.yaml"]
+[[tools.layout]]
+level = "reusable"
+rank = 0
+files = [".github/actions/*/action.yml", ".github/actions/*/action.yaml", ".gitlab/ci/*.yml"]
+is = "a step or workflow other pipelines call"
+[[tools.layout]]
+level = "pipeline"
+rank = 1
+is = "what runs on an event: build, test, release, deploy"
+[[tools.rules]]
+deny = "a third-party action referenced by a branch or a tag instead of a commit"
+needs = "file contents"
+reason = "a tag can be moved to other code that then runs with the pipeline's secrets"
+[[tools.rules]]
+deny = "a workflow without a permissions block, or with write permissions it does not use"
+needs = "file contents"
+reason = "the default token should have the least privilege"
+[[tools.rules]]
+deny = "a long-lived cloud key in pipeline secrets where the provider offers short-lived identity (OIDC)"
+needs = "file contents"
+severity = "candidate"
+reason = "static keys leak and do not expire"
+[[tools.rules]]
+deny = "a deployment to production that no environment protection or approval guards"
+needs = "file contents"
+severity = "candidate"
+reason = "a change reaches production without a second look"
+[[tools.edges]]
+what = "path filters (on.push.paths), the working directory of a job, uses: of reusable workflows and actions"
+gives = "which pipeline runs for a changed file, and which pipelines break when a shared action changes"
+
+[[tools]]
+id = "ansible"
+name = "Ansible"
+files = ["ansible.cfg", "site.yml", "playbook.yml", "requirements.yml"]
+folders = ["playbooks", "roles", "inventories", "inventory", "group_vars", "host_vars"]
+require_any = ["roles", "playbooks", "ansible.cfg"]
+[[tools.layout]]
+level = "role"
+rank = 0
+folders = ["roles"]
+is = "reusable unit: tasks, handlers, templates, defaults"
+[[tools.layout]]
+level = "playbook"
+rank = 1
+folders = ["playbooks"]
+files = ["site.yml", "*.playbook.yml"]
+is = "what is applied to which hosts"
+[[tools.layout]]
+level = "inventory"
+rank = 2
+folders = ["inventories", "inventory", "group_vars", "host_vars"]
+is = "the hosts and the values of one environment"
+[[tools.rules]]
+deny = "a role refers to a host, a group or an inventory by name"
+needs = "file contents"
+reason = "a role must be usable in every environment"
+[[tools.rules]]
+deny = "a secret in group_vars or host_vars that is not encrypted (Ansible Vault or an external store)"
+needs = "file contents"
+reason = "inventory files are plain text in the repository"
+
+[[tools]]
+id = "gitops"
+name = "GitOps (Argo CD, Flux)"
+folders = ["clusters", "argocd", "argo", "flux", "flux-system", "apps", "applications"]
+files = ["*application*.yaml", "*applicationset*.yaml", "gotk-*.yaml", "*kustomization*.yaml", "*helmrelease*.yaml"]
+require_any = ["clusters", "flux-system", "argocd"]
+[[tools.rules]]
+deny = "a change applied to a cluster that the repository does not describe"
+needs = "the running cluster"
+reason = "the repository is the declared state; the cluster is reconciled to it"
+
+[[tools]]
+id = "observability"
+name = "Monitoring, alerting, SLOs"
+folders = ["monitoring", "observability", "alerts", "alerting", "dashboards", "grafana", "prometheus", "slo", "slos", "runbooks", "playbooks-oncall"]
+files = ["*alert*.yaml", "*alert*.yml", "*rules*.yaml", "*rules*.yml", "*dashboard*.json", "*slo*.yaml", "*slo*.yml", "prometheus.yml", "otel-collector*.yaml"]
+[[tools.rules]]
+deny = "an alert without a runbook link or without an owner"
+needs = "file contents"
+reason = "the person paged must know what to do and whose it is"
+[[tools.rules]]
+deny = "an alert on a cause (CPU, memory) with no alert on a symptom the user feels (errors, latency)"
+needs = "file contents"
+severity = "candidate"
+reason = "page on the symptoms: latency, traffic, errors, saturation"
+[[tools.rules]]
+deny = "a user-facing service without a stated objective (SLO) and an alert on its error budget"
+needs = "file contents"
+severity = "candidate"
+reason = "without an objective nobody can say whether the service is reliable enough"
+
+# ---------------------------------------------------------------------------
+# What every running unit should have. Joined to the containers of c4.toml:
+# the report lists, per container, what is present and what is missing.
+# ---------------------------------------------------------------------------
+
+[[completeness]]
+id = "build"
+question = "Can it be built into an artifact?"
+evidence = ["a Dockerfile in or above the container's folder", "a build job that names the container's folder"]
+[[completeness]]
+id = "deploy"
+question = "Is its deployment described in the repository?"
+evidence = ["a chart, an overlay, a manifest or Terraform that names the container or its image"]
+[[completeness]]
+id = "pipeline"
+question = "Does a pipeline build and test it when its code changes?"
+evidence = ["a workflow whose path filter or working directory covers the container's folder"]
+[[completeness]]
+id = "config"
+question = "Is its configuration outside the code and stated per environment?"
+evidence = ["an example environment file, values per environment, a config map"]
+[[completeness]]
+id = "health"
+question = "Can the platform tell whether it is alive and ready?"
+evidence = ["a health endpoint in the code", "probes in its manifest", "a healthcheck in its Dockerfile or compose file"]
+[[completeness]]
+id = "signals"
+question = "Does anyone learn when it fails?"
+evidence = ["metrics or tracing set up in the code", "an alert or a dashboard that names it"]
+[[completeness]]
+id = "ownership"
+question = "Is it known who answers for it?"
+evidence = ["a CODEOWNERS entry that covers its folder", "an owner label in its manifests"]
+
+[[placement]]
+what = "something that differs between environments (size, hostname, feature flag)"
+where = "the values of that environment: an environment root, an overlay, a values file, an inventory; never a module, a base, a template or a role"
+[[placement]]
+what = "something every environment needs"
+where = "a module, a base, a chart template or a role"
+[[placement]]
+what = "a secret"
+where = "a secret store or an encrypted file the tool supports; the repository holds only its name"
+[[placement]]
+what = "a new service"
+where = "its build, deployment, pipeline, health check and alert are added in the same change as its code"
+
+[advice]
+new_code = [
+  "Before adding a resource, find the module, base or chart that owns that kind of resource and extend it; a copy in one environment drifts.",
+  "A new container of the system is not done until the completeness list above is answered for it.",
+]
+refactoring = [
+  "A value repeated in every environment with small differences: move the common part down to the module or base and keep only the difference above.",
+  "Before changing a module, a base or a shared action, list what calls it: that list is the blast radius and the test plan.",
+]
+change_review = [
+  "State which environments a change reaches and in what order it is rolled out.",
+  "A change to a shared level (module, base, reusable workflow) is reviewed as a change to everything that uses it.",
+]

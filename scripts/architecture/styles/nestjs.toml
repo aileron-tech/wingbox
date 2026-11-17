@@ -1,0 +1,200 @@
+schema = 1
+id = "nestjs"
+name = "NestJS application (modules, controllers, providers)"
+kind = "style"
+languages = ["typescript", "javascript"]                 # languages a new project may choose this style for
+patterns = ["controller-skips-service", "service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
+wins_over = ["layered"]                          # the same layering, read from file names instead of folder names
+compatible_with = ["onion-clean", "hexagonal"]   # a Nest application may be built in rings; then both are reported
+layer_by = ["file", "folder"]                    # the file name states the role; the folder decides only when the name does not
+summary = "The framework's own structure: the application is a tree of modules; each module declares controllers (incoming requests) and providers (services, repositories) and exports what other modules may use. The role of a file is in its name: users.controller.ts, users.service.ts, users.module.ts."
+
+[[sources]]
+title = "NestJS documentation: Modules"
+author = "NestJS"
+url = "https://docs.nestjs.com/modules"
+[[sources]]
+title = "NestJS documentation: Controllers"
+author = "NestJS"
+url = "https://docs.nestjs.com/controllers"
+[[sources]]
+title = "NestJS documentation: Providers"
+author = "NestJS"
+url = "https://docs.nestjs.com/providers"
+[[sources]]
+title = "NestJS documentation: Gateways"
+author = "NestJS"
+url = "https://docs.nestjs.com/websockets/gateways"
+[[sources]]
+title = "NestJS documentation: CLI command reference (generated file names)"
+author = "NestJS"
+url = "https://docs.nestjs.com/cli/usages"
+
+[detect]
+decisive_files = ["nest-cli.json"]               # present at the root of the part: the part is a Nest application
+note = "Angular also names files *.service.ts and *.module.ts; controllers are required, which Angular does not have."
+[[detect.groups]]
+id = "modules"
+weight = 4
+required = true
+files = ["*.module.ts", "*.module.js"]
+[[detect.groups]]
+id = "controllers"
+weight = 3
+required = true
+files = ["*.controller.ts", "*.controller.js", "*.resolver.ts", "*.gateway.ts"]
+[[detect.groups]]
+id = "providers"
+weight = 3
+required = true
+files = ["*.service.ts", "*.service.js", "*.repository.ts", "*.provider.ts"]
+[[detect.groups]]
+id = "request-pipeline"
+weight = 1
+files = ["*.guard.ts", "*.pipe.ts", "*.interceptor.ts", "*.filter.ts", "*.middleware.ts", "*.decorator.ts", "*.strategy.ts"]
+[[detect.groups]]
+id = "data-shapes"
+weight = 1
+files = ["*.dto.ts", "*.entity.ts", "*.schema.ts"]
+
+# A layer is given by the file name first, by the folder second. rank: a layer
+# may depend on layers with a LOWER rank only.
+[[layers]]
+id = "module"
+rank = 5
+files = ["*.module.ts", "*.module.js", "main.ts", "main.js"]
+note = "Wiring. A module file may import every layer of its own module and the module files of other modules."
+[[layers]]
+id = "api"
+rank = 4
+files = ["*.controller.ts", "*.controller.js", "*.resolver.ts", "*.gateway.ts", "*.guard.ts", "*.pipe.ts", "*.interceptor.ts", "*.filter.ts", "*.middleware.ts", "*.strategy.ts"]
+folders = ["controllers", "resolvers", "gateways", "guards", "pipes", "interceptors", "filters", "middleware", "middlewares", "strategies"]
+note = "In Nest a gateway is a WebSocket entry point: it belongs to the API layer, not to infrastructure."
+[[layers]]
+id = "service"
+rank = 3
+files = ["*.service.ts", "*.service.js", "*.handler.ts", "*.processor.ts", "*.consumer.ts", "*.listener.ts", "*.saga.ts", "*.job.ts", "*.task.ts", "*.use-case.ts", "*.usecase.ts"]
+folders = ["services", "handlers", "processors", "jobs", "use-cases", "usecases"]
+[[layers]]
+id = "infra"
+rank = 2
+files = ["*.repository.ts", "*.repository.js", "*.client.ts", "*.adapter.ts", "*.provider.ts", "*.subscriber.ts", "*.migration.ts"]
+folders = ["repositories", "database", "db", "infra", "infrastructure", "persistence", "adapters", "clients", "migrations", "seeds"]
+[[layers]]
+id = "domain"
+rank = 1
+files = ["*.entity.ts", "*.dto.ts", "*.schema.ts", "*.model.ts", "*.enum.ts", "*.interface.ts", "*.type.ts", "*.types.ts", "*.event.ts", "*.command.ts", "*.query.ts", "*.vo.ts"]
+folders = ["entities", "dto", "dtos", "schemas", "models", "enums", "interfaces", "events", "commands", "queries", "domain"]
+[[layers]]
+id = "shared"
+rank = 0
+files = ["*.decorator.ts", "*.util.ts", "*.utils.ts", "*.helper.ts", "*.constants.ts", "*.constant.ts", "*.config.ts"]
+folders = ["common", "shared", "utils", "util", "helpers", "constants", "decorators", "config", "lib"]
+
+[modules]
+# A feature module is the folder that holds a *.module.ts file, with everything below it
+# up to the next folder that holds one.
+unit = "folder of a *.module.ts file"
+shared_names = ["common", "shared", "core", "config", "database"]   # modules every feature may use
+
+[rules]
+direction = "downward"
+[[rules.deny]]
+from = "service"
+to = "api"
+reason = "a provider imports a controller, guard or other request-handling file"
+fix = "move the shared logic out of {target} into a service and let both call it"
+[[rules.deny]]
+from = "infra"
+to = ["api", "service"]
+reason = "a repository or client imports the layer that uses it"
+fix = "move what {source} needs from {target} down into the domain or shared"
+[[rules.deny]]
+from = "domain"
+to = ["api", "service", "infra"]
+reason = "an entity or DTO imports application code"
+fix = "move the code {source} needs out of {target} into the domain or shared"
+# A utility that calls a layer acts as part of that layer: the dependency is real,
+# the fix is a move or an inversion, so these rules give candidates, not violations.
+[[rules.deny]]
+from = "shared"
+to = ["api", "service"]
+severity = "candidate"
+reason = "shared code imports a layer that uses it; move it to that layer or invert"
+fix = "move {source} into the layer of {target}, or pass {target} in as a parameter"
+[[rules.deny]]
+from = "shared"
+to = "infra"
+severity = "candidate"
+reason = "utility depends on infrastructure; move it to services or invert"
+fix = "move {source} into services/, or let it take what it needs from {target} as a parameter"
+[[rules.deny]]
+from = ["api", "service", "infra", "domain", "shared"]
+to = "module"
+reason = "code imports a module file; only module files and the bootstrap import modules"
+fix = "import the provider {source} needs, not the module file {target}"
+[[rules.cross]]
+between = "different feature modules"
+what = "a controller of one module imported by another module"
+severity = "violation"
+reason = "controllers are entry points and are never shared between modules"
+[[rules.cross]]
+between = "different feature modules"
+what = "a provider of one module used by another module that does not import that module, or that the owning module does not export"
+needs = "the @Module() decorators (imports, providers, exports)"
+severity = "violation"
+reason = "a provider is used outside its module without being exported and imported"
+[[rules.cross]]
+between = "different feature modules"
+what = "two modules that import each other"
+severity = "candidate"
+reason = "a circular module dependency (it needs forwardRef and usually hides a missing third module)"
+
+[[placement]]
+what = "HTTP endpoint, GraphQL resolver, WebSocket gateway"
+layer = "api"
+where = "<feature>/<feature>.controller.ts (.resolver.ts, .gateway.ts), declared in the controllers of <feature>.module.ts"
+may_import = ["service", "domain", "shared"]
+[[placement]]
+what = "business operation"
+layer = "service"
+where = "<feature>/<feature>.service.ts, listed in providers; add it to exports only when another module needs it"
+may_import = ["infra", "domain", "shared"]
+[[placement]]
+what = "database access, client of another system"
+layer = "infra"
+where = "<feature>/<feature>.repository.ts or a provider of a shared module"
+may_import = ["domain", "shared"]
+[[placement]]
+what = "request and response shapes, entities"
+layer = "domain"
+where = "<feature>/dto/*.dto.ts, <feature>/entities/*.entity.ts"
+may_import = ["shared"]
+[[placement]]
+what = "guard, pipe, interceptor, filter used by several modules"
+layer = "api"
+where = "common/ (or a shared module), not inside one feature"
+
+[advice]
+new_code = [
+  "A controller holds no business rule: it validates the input, calls one service method and shapes the response.",
+  "To use a provider of another module, import that MODULE in your module file and make sure the owner exports the provider; do not list a foreign provider in your own providers.",
+  "A new feature is a new folder with its own module file, not new files in an existing module.",
+]
+refactoring = [
+  "A service imports a controller or a guard: move the shared logic into a service and let both call it.",
+  "Two modules import each other: move what both need into a third module and import it from both.",
+  "A service used from many modules without being exported: export it from its module, or move it to a shared module.",
+]
+
+[target]
+layers = { module = "<feature>", api = "<feature>", service = "<feature>", infra = "<feature>", domain = "<feature>/entities", shared = "common" }
+domain = "<feature>/domain"
+note = "A Nest application is a tree of feature modules: each feature folder holds its module, controller, service, repository and, in <feature>/domain, its building blocks."
+
+# NestJS: queries in repositories (infra), outbound HTTP in infra, the domain free of Nest and the ORM.
+[capabilities]
+sql = {allowed_in = ["infra"], fix = "move the query into a repository provider and inject it into the service"}
+db-client = {allowed_in = ["infra", "module"], fix = "keep the ORM client in repositories and the module that wires them"}
+http-client = {allowed_in = ["infra"], fix = "wrap the outbound call in a client provider in infra"}
+framework = {forbidden_in = ["domain"], fix = "keep entities and value objects free of Nest decorators and the web framework"}

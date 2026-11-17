@@ -1,0 +1,100 @@
+schema = 1
+id = "cqrs"
+name = "CQRS (command query responsibility segregation)"
+kind = "overlay"
+summary = "The model that changes state (commands) is separate from the model that answers questions (queries). It is used inside another style, so it is judged next to the style of a part, not instead of it."
+
+[[sources]]
+title = "CQRS Documents"
+author = "Greg Young"
+year = 2010
+[[sources]]
+title = "CQRS"
+author = "Martin Fowler"
+year = 2011
+url = "https://martinfowler.com/bliki/CQRS.html"
+
+[detect]
+note = "A frontend folder of data-fetching hooks named queries/ without commands/ is not CQRS: both sides are required."
+[[detect.groups]]
+id = "commands"
+weight = 3
+required = true
+names = ["commands", "command"]
+files = ["*.command.*", "*command.cs", "*command.java", "*command.kt", "*_command.py", "*commandhandler.*", "*.command-handler.*"]
+[[detect.groups]]
+id = "queries"
+weight = 3
+required = true
+names = ["queries", "query"]
+files = ["*.query.*", "*query.cs", "*query.java", "*query.kt", "*_query.py", "*queryhandler.*", "*.query-handler.*"]
+[[detect.groups]]
+id = "handlers"
+weight = 1
+names = ["handlers", "commandhandlers", "queryhandlers"]
+files = ["*handler.*"]
+[[detect.groups]]
+id = "read-side"
+weight = 1
+names = ["readmodels", "readmodel", "projections", "projectors", "views"]
+[[detect.groups]]
+id = "events"
+weight = 1
+names = ["events", "sagas", "eventhandlers"]
+
+[[roles]]
+id = "command"
+folders = ["commands", "command"]
+files = ["*.command.*", "*command.cs", "*command.java"]
+[[roles]]
+id = "query"
+folders = ["queries", "query"]
+files = ["*.query.*", "*query.cs", "*query.java"]
+[[roles]]
+id = "write-model"
+folders = ["aggregates", "aggregate", "domain"]
+[[roles]]
+id = "read-model"
+folders = ["readmodels", "readmodel", "projections", "projectors"]
+[[roles]]
+id = "event"
+folders = ["events"]
+files = ["*.event.*", "*event.cs", "*event.java"]
+
+[rules]
+[[rules.deny]]
+from = "query"
+to = "command"
+reason = "the read side depends on the write side"
+[[rules.deny]]
+from = "command"
+to = "query"
+reason = "the write side depends on the read side"
+[[rules.deny]]
+from = "query"
+to = "write-model"
+reason = "a query loads the write model; read from a read model"
+[[rules.deny]]
+from = "command"
+to = "read-model"
+reason = "a command decides from a read model, which may be stale"
+[[rules.deny]]
+from = "event"
+to = ["command", "query"]
+reason = "an event is a plain fact and depends on nothing that handles it"
+
+[[placement]]
+what = "operation that changes state"
+role = "command"
+where = "a command (data only) and one handler; the handler returns no data beyond an identifier or a result status"
+[[placement]]
+what = "operation that returns data"
+role = "query"
+where = "a query (data only) and one handler that changes nothing"
+[[placement]]
+what = "data shaped for a screen or a report"
+role = "read-model"
+
+[advice]
+new_code = ["Decide first whether the operation changes state or returns data; it is one or the other."]
+refactoring = ["A handler that both changes state and returns a view: split it into a command and a query the caller runs afterwards."]

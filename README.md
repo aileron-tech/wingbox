@@ -50,8 +50,9 @@ Use it for codebase architecture discovery, dependency graph search, blast-radiu
 analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 
 Everything runs on your machine. The code graph is built by deterministic
-static parsing: no LLM call, no embeddings, no vector database, and no network
-access to build or query it.
+static parsing: no LLM call, no vector database, and no network access to build
+or query it. Wingbox does not embed your code; to read folder names it uses a
+built-in table of word vectors for architecture terms.
 
 ## Runs fully locally, inside your security perimeter
 
@@ -184,8 +185,8 @@ compact S-expressions.
 One hundred "which files depend on this file" questions, drawn at random with
 a fixed seed in five public repositories (TypeScript, Rust, Python):
 
-- `wingbox impact` names the complete list of dependent files, with nothing
-  outside it, in 100 of 100 questions (95 % interval 96 to 100 %). The lists
+- `wingbox impact <file> 2 --all` names the complete list of dependent files,
+  with nothing outside it, in 100 of 100 questions (95 % interval 96 to 100 %). The lists
   hold 1 to 503 files.
 - Claude Code answers 55 of the questions with its built-in search only, and
   again with the `wingbox` command added:
@@ -233,6 +234,27 @@ answers a wider question than "who imports this file"; the report gives its
 figures restricted to imports too. The scripts, the reference lists, every
 result file and the token formula Graphify publishes are in
 [benchmarks/graphify](benchmarks/graphify/README.md).
+
+## Wingbox on Theory of Code Space
+
+[Theory of Code Space](https://arxiv.org/abs/2603.00601) (ToCS) generates Python
+codebases with a known architecture and scores a map of their dependencies by
+edge type, with its own metric. Its agents explore with a budget of 20 actions;
+Wingbox reads every file, with no model, which is closest to the paper's
+condition where a model is given every file at once. On the paper's three
+medium codebases:
+
+| Map | Dep F1 | IMPORTS | CALLS_API | REGISTRY_WIRES | DATA_FLOWS_TO |
+|---|---|---|---|---|---|
+| Wingbox, this version | 0.953 | 150 of 150 | 19 of 39 | 19 of 19 | 16 of 16 |
+| Wingbox 0.2.4 | 0.802 | 150 of 150 | 0 of 39 | 0 of 19 | 0 of 16 |
+
+No edge outside the ground truth on these three. The CALLS_API left are calls
+between files that also import each other, where the ground truth counts a call
+of an API but not of a helper; Wingbox leaves that judgement to a model. The
+scripts, the maps sent to the metric, eight more generated codebases and the
+plan for a model that starts from the Wingbox map are in
+[benchmarks/tocs](benchmarks/tocs/README.md).
 
 ## Quick start for AI coding agents
 
@@ -317,6 +339,7 @@ Build the code graph of a project, then ask what a change will break:
 
 ```bash
 cd /path/to/project
+wingbox init                 # optional: state the architecture of each part
 wingbox build .
 wingbox impact path/to/file.py
 wingbox usages path/to/file.py::create_order
@@ -351,6 +374,200 @@ guessed. At most 200 uses unless `--all`; `--sexp` prints the same answer as
 files, about as long as a build) and keeps them for the next calls. Python,
 TypeScript, JavaScript and Rust have use positions; in
 other languages `usages` names the files that reference the symbol.
+### Architecture commands, with examples from immich (server)
+
+Version 0.6.0 judges the architecture of each part of a repository by a
+style from a library of styles (or by the rules the project declares itself)
+and keeps it through the coding agent. One example of each command, run on the
+`server` folder of [immich](https://github.com/immich-app/immich):
+
+```text
+$ wingbox init                      # the style of each part, written to .wingbox/config.yaml
+.  nestjs (NestJS)   1.00   container
+  *.repository.ts 60  *.service.ts 57  *.dto.ts 53  *.controller.ts 48
+
+$ wingbox align                     # gaps against the style
+.  nestjs: 371 of 475 files placed, 1132 of 1132 dependencies follow the rules
+
+$ wingbox place "a client for the payment API"
+src/repositories/  infra layer of nestjs
+  because: placement: database access, client of another system
+
+$ wingbox learn --agent             # the task for the coding agent: folders the style cannot place
+Part .: closest style nestjs 1.00 (runner-up layered 1.00). Layers:
+
+$ wingbox advice                    # open recommendations; accept or reject them by id
+f7c97b6d2342  missing-folder  src/<feature>
+
+$ wingbox compare                   # the parts of a monorepo side by side
+.    typescript  nestjs  api domain infra service shared
+
+$ wingbox boundaries all            # layer rules, then what each layer may do
+(capability-violation src/services/shared-link.service.ts :capability db-client :layer service :allowed (infra module) :line 2 :evidence "import { PostgresError } from 'postgres';" ...)
+(pattern-violation src/services/api.service.ts :pattern service-builds-http-response :line 99 ...)
+(capability-summary :violations 15 :known 0 :candidates 0 :patterns 2 :checked 707)
+```
+
+On immich the capability rules find 15 files that do what their layer may
+not (database client types in DTOs and services, query-builder helpers in
+`utils/`) and 2 services that write the HTTP response themselves.
+
+### The architecture of each part: `wingbox init`
+
+`wingbox init [PATH] [--force] [--sexp] [--details] [--synonyms]` splits the repository into parts and
+judges the architecture style of each, then writes `.wingbox/config.yaml`:
+
+```
+$ wingbox init
+platform/backend   declared by platform/backend/layers.mjs (22 layers, read)   container
+  also declared: platform/backend/.dependency-cruiser.mjs (not read: it states no layer order)
+  known exceptions: platform/backend/layers.known-upward-imports.json (112 entries)
+platform/frontend  route-tree (Vercel)   1.00   container
+  app/ 828  components/ 574  page.tsx 135  ui/ 70
+  target: 5 of 5 folders present
+  advice: 2 to move, 59 to fix
+  - move platform/frontend/src/app/llm/model-pools/_parts/pool-providers.tsx from the feature layer to ui ...
+crates/engine      Rust crate, no layer style   -   component
+
+wrote .wingbox/config.yaml (edit it, then: wingbox build)
+```
+
+- **Parts.** A part starts at a folder that holds a manifest (`package.json`,
+  `pyproject.toml`, `setup.py`, `Cargo.toml`, `go.mod`, `Gemfile`,
+  `composer.json`, `*.sln`, `pom.xml`, `settings.gradle`, `mix.exs`) and ends
+  where a nested part starts; the repository root is always a part. A
+  `pom.xml` below another one is a module of the same application. A part
+  with fewer than 12 source files (tests and generated folders left out) is
+  listed but not judged. Each part gets its C4 level (system for a workspace,
+  container for a unit that runs by itself, component otherwise).
+- **Styles.** layered (Martin Fowler, "Patterns of Enterprise Application
+  Architecture", 2002), onion / clean architecture (Jeffrey Palermo, 2008;
+  Robert C. Martin, "Clean Architecture", 2017), hexagonal / ports and
+  adapters (Alistair Cockburn, 2005), model-view-controller, NestJS,
+  microkernel / plug-ins (Mark Richards, 2015), route-tree frontends (Next.js
+  `app/` and `pages/`, Remix, SvelteKit), Feature-Sliced Design, and CQRS (Greg
+  Young; Martin Fowler) as an overlay. Each style is a TOML file in
+  `scripts/architecture/styles/` with its sources, the folder words it is
+  recognised by, its layers and its rules.
+- **Score.** Each style scores the weight of its folder groups found in the
+  part (a required group missing gives 0, a pattern of another style counts
+  against it). A style is a candidate at score 0.6 and when its folders hold a
+  quarter of the part's files; the part is determined when one candidate
+  leads the next by 0.15. Otherwise the part is "not determined": no layers
+  and no boundary violations are stated for it.
+- **Own rules first.** A part that states its architecture itself
+  (dependency-cruiser layers, import-linter, tach, deptrac, packwerk, ESLint
+  boundaries, ArchUnit, ...) is judged by those rules. A dependency-cruiser
+  layer list in plain data is read (its order and path patterns); a file Wingbox
+  cannot read is named and no violation is stated for that part.
+- **Folder names.** A folder matches a style word as a whole name after
+  lowercasing and dropping `-` and `_`; a spelling variant one edit away
+  matches (`controlers`). With `--synonyms`, a name still unmatched is
+  compared with the style words through a built-in table of word vectors for
+  architecture terms (GloVe, public domain), above a threshold; it is off by
+  default because it did not improve accuracy on
+  [benchmarks/architecture](benchmarks/architecture/README.md). Each label
+  says which step matched.
+
+- **Target layout.** For each part with a style, `init` lists the full layout
+  of that style: one folder per layer and the building blocks of the domain
+  tier (entities, value objects, aggregates, domain events, domain services,
+  repository interfaces, specifications; Eric Evans, "Domain-Driven Design",
+  2003; Vaughn Vernon, "Implementing Domain-Driven Design", 2013), each marked
+  present (with the real folder) or proposed (where the style puts it). It is
+  written to `.wingbox/config.yaml`; no folder is created.
+
+- **Recommendations.** Each part ends with its advice: folders of the target
+  layout to create when such code appears, files to move (their dependents
+  import them against the rules; the advice names the layer and the counts)
+  and violations with the fix the style prescribes ("introduce a port in the
+  domain and implement it in infrastructure"). `wingbox build` writes the same
+  advice into REPORT.md ("Recommendations") and the map; `analyze` and
+  `impact` print the advice that concerns the module. A part whose style is
+  not determined gets no advice; a part with declared rules is advised by them.
+
+- **Decisions.** `wingbox build` logs the advice it gives and what became of
+  it in `.wingbox/decisions.sexp` (append-only, meant to be committed):
+  followed, done differently, ignored, or accepted and rejected with
+  `wingbox advice accept|reject <id> [--reason TEXT]`. A file moved to another
+  folder than the advised one teaches that folder's layer for the part, and
+  later builds use it (`:learned-from <id>`); an item rejected or ignored for
+  3 builds is no longer shown. `wingbox advice` lists the open items,
+  `wingbox advice --learned` what was learned.
+
+- **What a layer may do.** Besides who imports whom, each style says what
+  kind of work belongs where: SQL and the database client in the repository
+  (DAO) layer, outbound HTTP in infrastructure, no web framework in the
+  domain, the environment read in configuration (hexagonal: all I/O in the
+  driven adapters). The build finds these capabilities by syntax in Python,
+  TypeScript, PHP, Ruby, Java, C# and Go (a SQL string passed to `execute`,
+  `query` or `raw`, query builders, `session.query`, Prisma model calls,
+  `DB::select`, driver and ORM imports, `requests`/`axios`/`HttpClient`,
+  `os.environ`/`process.env`, ...), each with its line, and `wingbox
+  boundaries` reports a file outside the allowed layers:
+  `(capability-violation src/services/orders.py :capability sql :layer service
+  :allowed (infra) :line 42 :evidence "cursor.execute(\"SELECT ...\")")`. A
+  query only kept in a variable is a candidate. A few pattern checks ride on
+  the same data: a controller that imports a repository and skips the service,
+  a service that builds an HTTP response, a domain file that imports the ORM.
+  `capabilities:` of a part in `.wingbox/config.yaml` restates a rule; REPORT.md
+  ("What layers do") and `wingbox advice` (`fix-capability`, `fix-pattern`)
+  name the fix; `align --learn` accepts the current ones in the baseline. SQL
+  assembled at run time or behind a helper of another package is not seen.
+
+- **Align.** `wingbox align [PART] [--to STYLE] [--learn]` measures the gaps
+  of each part against its style: files placed, dependencies that follow the
+  rules, layers present and missing, folders without a layer, broken rules
+  with an example; `--to` maps the layers onto another style (a migration
+  view). `--learn` matches the part against the style library and takes the
+  closest style as the base (its folders keep that style's layers); a folder
+  it does not place is derived from its file names (`*.controller.ts`), its
+  name in another style, and last its imports, each with its evidence; it
+  writes the learned folders into
+  `.wingbox/config.yaml` with a comment and what still breaks a rule into
+  `.wingbox/baseline.sexp`; later builds report only new violations. For a
+  part with declared rules nothing is guessed: the baseline comes from them.
+
+- **A new project.** In a folder without source files, `init` asks the
+  language and offers the styles that fit it, best first: the style of the
+  other parts in the same language of the repository (monorepo siblings),
+  then your favourite in `$HOME/.wingbox/config.yaml` (`defaults:
+  {typescript: onion-clean}`), then the library. Without a terminal it prints
+  the choices and the flags it needs (`--language`, `--style`, `--yes`); it
+  writes the chosen style with its full target layout, and creates the empty
+  folders only with `--scaffold`. Style files in `$HOME/.wingbox/styles/`
+  replace the built-in ones of the same name.
+
+- **Learn with an agent.** `wingbox learn` decides who runs it: `--agent`
+  or `--human` first, then the variables a coding agent sets for its
+  commands (Claude Code `CLAUDECODE=1`, Gemini CLI `GEMINI_CLI=1`), then a
+  command without a terminal counts as an agent. An agent gets a task: the
+  closest style, its layers, and each folder the style cannot place with real
+  files and imports; it reads the files and answers in a fixed S-expression
+  format. When the code does not tell (a public API or an internal helper?),
+  the task tells the agent to ask the operator in its chat and pass the answer
+  on, never to guess. `wingbox learn --apply` validates the answer (the whole
+  answer is rejected with every error when a line is wrong), writes into
+  `.wingbox/config.yaml` with `learned by agent: <because>` (an entry you
+  wrote is kept), records in `.wingbox/learned.sexp` and rebuilds. A person in
+  a terminal (`learn`, or `align --learn`) gets a questionnaire: the style of
+  each part among its candidates, with scores and one-line descriptions, then
+  one question per open folder with its files and imports; the answers are
+  recorded the same way, and at the end `learn` offers to open
+  `.wingbox/config.yaml` in `$VISUAL` or `$EDITOR` (`--yes` takes the closest
+  style and the guesses). Nobody needs to edit the file by hand; it starts
+  with a header of instructions (what each key means, the rule that decides a
+  file's layer, how to move a folder, what to run after a change), rewritten
+  on every write, so that an agent asked to change it does so correctly. Commit `.wingbox/`: its `.gitignore` keeps out
+  the generated files (index, cache, report, map), so the folder shares
+  `config.yaml`, `learned.sexp`, `decisions.sexp` and `baseline.sexp`.
+
+If `.wingbox/config.yaml` exists, `init` keeps it and only prints the
+candidates; `--force` rewrites it. `wingbox build` reads the file when it
+exists and detects the styles itself when it does not. Every layer label and
+every boundary violation names its style and rule: in the graph
+(`(layer <module> api :style layered :rule "folder routes/ -> api")`), in
+`wingbox boundaries`, in REPORT.md and in the map.
 
 `wingbox build [PATH]` accepts the builder options described below, and every
 query command in [Common code searches](#common-code-searches) is available as
@@ -508,6 +725,8 @@ project root.
 | `map.html` | People | An interactive map of the code graph: one file, opens in a browser (`wingbox open`), works without a network connection |
 | `graph-*`, `refresh.*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the folder it was built from, the files changed since (see "Keeping the graph fresh") |
 | `.gitignore` | git | Ignores every file above, so that a file you write into `.wingbox/` later stays in the repository |
+| `config.yaml`, `learned.sexp`, `baseline.sexp` | People and agents | The architecture of each part, what `wingbox learn` learned, the known rule breaks (`wingbox init`, `learn`, `align --learn`); not ignored, commit them |
+| `decisions.sexp` | People and Wingbox | The advice each build gave and what became of it; not ignored, commit it |
 
 On the map, click a file to see its blast radius: the files that depend on it
 move onto rings, one ring per hop. The layers view stacks the architecture
@@ -707,7 +926,14 @@ Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 | Find callers | `find_callers createOrder 2` |
 | Trace a call path | `find_callchain handleRequest createOrder 5` |
 | Search inside function bodies | `grep_functions "validate.*input"` |
-| Check architecture boundaries | `boundaries all` |
+| State the architecture of each part | `wingbox init` (`--sexp` for agents) |
+| See or decide the open recommendations | `wingbox advice`, `wingbox advice reject <id> --reason "..."` |
+| Measure architecture gaps, learn the current architecture | `wingbox align`, `wingbox align --to hexagonal`, `wingbox align --learn` |
+| Ask where new code goes | `wingbox place "a client for the payment API"` |
+| Let the coding agent decide the folders a style cannot place | `wingbox learn --agent`, then `wingbox learn --apply < answer.sexp` |
+| Compare the architectures of the parts of a monorepo | `wingbox compare` |
+| Check architecture boundaries and what each layer may do (SQL, HTTP, framework; each line names part, style and rule) | `boundaries all` |
+| Show the layer of every module with its style and rule | `layers` |
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |
 
@@ -723,7 +949,7 @@ when the graph is outside the current directory and its parents.
 
 | Language | What is indexed |
 |---|---|
-| Python | Modules, imports, classes, functions, methods, inheritance, and references |
+| Python | Modules, imports, modules loaded through `importlib` (literal names, and names read from a JSON, YAML or TOML file beside the loader), classes, functions, methods, inheritance, and references |
 | TypeScript, TSX and JavaScript | Imports, re-exports, classes, interfaces, functions, types, decorators, aliases, and references |
 | Rust | Cargo crates, modules, `use` dependencies, structs, traits, enums, functions, implementations, and methods |
 | C# | Namespaces, types, interfaces, records, enums, methods, attributes, inheritance, and local type dependencies |
@@ -879,15 +1105,17 @@ available.
 
 For generated imports, runtime dependency injection, reflection, or framework
 behavior that is not explicit in source, verify the result against the running
-application or the owning framework.
+application or the owning framework. One run-time form is followed in Python: a
+module loaded by a name read from a JSON, YAML or TOML file beside the loader
+(`registry-wires`), and the calls made through such a registry.
 
 ## FAQ
 
 ### Does Wingbox send my code anywhere?
 
 No. The code graph is built and queried locally by deterministic static
-parsing. Building and querying need no LLM, no embeddings, no vector database
-and no network access.
+parsing. Building and querying need no LLM, no vector database and no network
+access.
 
 ### Is Wingbox free?
 
@@ -904,16 +1132,22 @@ image with `--network none`.
 
 ### Does it use embeddings or a vector database?
 
-No. The graph is built by parsers that read the source; a question is
-answered by following recorded import, reference and inheritance edges, not
-by retrieving text that looks similar.
+Wingbox does not embed your code, and it has no vector database. The graph is
+built by parsers that read the source; a question is answered by following
+recorded import, reference and inheritance edges, not by retrieving text that
+looks similar. To read folder names it ships a built-in table of word vectors
+for architecture terms (30,102 English words from GloVe, public domain),
+used with `--synonyms` to match a folder name that no style dictionary holds
+to the nearest style word. Only folder names are looked up; no code is turned
+into vectors.
 
 ### How is Wingbox different from RAG or vector search?
 
 RAG splits code into chunks, embeds them and returns the chunks that look
 closest to a question. Wingbox resolves each import to the file it names and
-answers from those edges, so `impact` returns the complete list of dependent
-files with nothing guessed. The benchmark checks every list against resolvers
+answers from those edges, so `impact --all` returns the complete list of
+dependent files with nothing guessed (without `--all` it names at most 200,
+nearest first, and always gives the complete counts). The benchmark checks every list against resolvers
 that share no code with Wingbox: [benchmarks/impact](benchmarks/impact/README.md).
 
 ### My editor already has "go to definition" and "find usages". Why a graph?

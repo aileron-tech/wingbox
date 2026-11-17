@@ -1,9 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-11-17
 
 ### Changes
 
+- Release summary: Wingbox now judges the architecture of each part of a
+  repository and keeps it. `wingbox init` finds the style of each part
+  (layered, onion and clean, hexagonal, MVC, NestJS, microkernel, route-tree,
+  Feature-Sliced Design, CQRS as an overlay) or reads the rules the project
+  declares; `learn`, `align`, `place`, `advice` and `compare` work from it. The
+  layer configuration is settled through the coding agent, which asks the
+  operator when the code does not tell, and `.wingbox/config.yaml` starts with
+  instructions. Capability rules check what each layer may do: SQL and the
+  database client in the repositories, outbound HTTP in infrastructure, no web
+  framework in the domain, with three pattern checks (a controller that skips
+  the service, a service that builds an HTTP response, a domain that imports
+  the ORM). Python modules loaded at run time by names from configuration files
+  are followed.
 - README: the header opens with "Give your coding agent a map of your codebase.
   Half the cost, no missed files." and the benchmark numbers behind it.
 - `benchmarks/graphify` measures CodeGraph 1.6.2 (npm `@colbymchenry/codegraph`)
@@ -14,6 +27,221 @@
   CodeGraph from npm. The Wingbox column is measured with 0.5.1 and `run.sh`
   pins it; the report opens with "Which tool for which job" and explains in
   "Why the numbers differ" how each tool's design produces its numbers.
+- New command `wingbox init [PATH] [--force] [--sexp]`: splits the repository
+  into parts (a folder with a manifest: `package.json`, `pyproject.toml`,
+  `Cargo.toml`, `go.mod`, ...), gives each its C4 level and judges its
+  architecture style with a score and the folders that support it: layered,
+  onion / clean, hexagonal, MVC, NestJS, microkernel (plug-ins), route-tree
+  frontends, Feature-Sliced Design, CQRS as an overlay. A part that declares
+  its own rules (dependency-cruiser layers, import-linter, tach, deptrac,
+  packwerk, ESLint boundaries, ArchUnit) is judged by them; a
+  dependency-cruiser layer list in plain data is read. It writes
+  `.wingbox/config.yaml` (kept when it exists, unless `--force`). The text is a
+  printer over S-expression facts (`arch-part`, `arch-evidence`,
+  `arch-candidate`, `arch-declared`, `arch-config-written`).
+- The styles are TOML files shipped in `scripts/architecture/styles/`, with
+  their sources, detection groups, layers, rules and target layout.
+- `wingbox init` proposes the full architecture of each part: the target
+  layout of its style, with the building blocks of the domain tier (entities,
+  value objects, aggregates, domain events, domain services, repository
+  interfaces, specifications), each folder present or proposed
+  (`(arch-target ...)`, `target:` in `.wingbox/config.yaml`).
+- Recommendations: `wingbox init` ends each part with its advice, REPORT.md
+  has a "Recommendations" section, the map carries them, and `analyze` and
+  `impact` print the advice that concerns the module:
+  `(advice <part> :kind move|fix-violation|missing-folder :target ... :style
+  ... :rule ... :reason ... :evidence ...)`. A file its dependents import
+  against the rules is a move (with the counts), a violation comes with the
+  fix its style prescribes, a missing folder of the target layout is
+  proposed. No advice for a part whose style is not determined.
+- `.wingbox/decisions.sexp` and `wingbox advice`: builds log the advice and
+  its outcome (followed, done differently, ignored); `wingbox advice
+  accept|reject <id>` records a decision. A file moved to another folder than
+  advised teaches that folder's layer (`:learned-from <id>` on later labels);
+  rejected items, and items ignored for 3 builds, are no longer shown, and
+  advice of the same kind and rule in the part ranks lower.
+- `wingbox align [PART] [--to STYLE] [--learn]`: architecture gaps of each
+  part, a migration view against another style, and learning: folders
+  without a layer get one from their place in the dependency graph, folders
+  whose name contradicts a restatement are listed for review, the learned
+  folders go into `.wingbox/config.yaml` and the remaining breaks into
+  `.wingbox/baseline.sexp`. A pair listed in a baseline (the project's own or
+  this one) is a `violation-known` and is not counted.
+- `wingbox learn`: for a coding agent, a task (closest style, its layers, the
+  folders it cannot place with files, imports and a name guess, the questions,
+  the rules and the answer format); `wingbox learn --apply` validates the
+  answer, rejects it whole with every error, or writes it into
+  `.wingbox/config.yaml` (never over an entry of the user),
+  `.wingbox/learned.sexp` and `decisions.sexp`, and rebuilds. For a person in a
+  terminal, the deterministic learning, confirmed part by part. Who runs it:
+  `--agent`/`--human`, then `CLAUDECODE=1` or `GEMINI_CLI=1`, then no terminal
+  means an agent. `.wingbox/.gitignore` keeps the graph and the cache out of
+  version control. The task also lists nested folders whose files break a
+  rule or rest on a guess (`lib/hooks`), 25 per part, most breaks first; an
+  answer for a folder path decides for the files below it. The rebuild after
+  `--apply` is quiet unless `--verbose`.
+- `wingbox place "<what>"`: the layer, the folder (present, or new from the
+  target layout) and the allowed imports for new code, from the placement
+  rules of the part's style.
+- `wingbox init` in an empty folder starts a new project: it offers the
+  styles that fit the language (monorepo siblings first, then the
+  `$HOME/.wingbox/config.yaml` favourite, then the library), never blocks
+  without a terminal (`--language`, `--style`, `--yes`), writes the full target
+  layout and creates the folders only with `--scaffold`. Style files in
+  `$HOME/.wingbox/styles/` replace built-in ones.
+- `wingbox compare`: the parts of a monorepo side by side per language, with
+  their differences and an advice item for a part whose style differs from
+  the majority of its language.
+- `wingbox build` reads `.wingbox/config.yaml`, or detects the styles when it
+  is absent. Layers come from the style of each part; boundary rules are the
+  rules of that style and apply inside a part; a part whose style is not
+  determined gets no layers and no violations. Every label and violation
+  names its part, style and rule: `(layer ...)` and `(arch-part ...)` facts in
+  the graph, `:part :style :rule` on `boundaries` and `layers` lines, a
+  "Style and rule" column and an "Architecture" section in REPORT.md, the rule
+  of each module in the map. A violation the project already lists in its own
+  baseline carries `:known <file>`.
+- Folder names match style words as whole names (lowercase, `-` and `_`
+  dropped), then as a spelling variant; with `--synonyms` (init and build), a
+  name still unmatched goes through a built-in table of word vectors for
+  architecture terms (GloVe 6B, public domain, 3 MB). The step is recorded as
+  `:match`. Wingbox does not embed your code.
+- `benchmarks/architecture`: 476 hand-labelled folders of 19 public
+  repositories and 33 parts with an expected style; on the held-out half the
+  word vectors do not beat dictionaries and Levenshtein (75.4 % against
+  76.2 %), so they are off by default and style detection never uses them.
+- The files a person or an agent decides on stay in `.wingbox/` next to the
+  index and are not in `.wingbox/.gitignore`: `config.yaml`, `decisions.sexp`,
+  `learned.sexp` and `baseline.sexp` can be committed.
+- Capability rules: what a layer may do. The build finds, by syntax and with
+  the line as evidence, what each file does - `sql` (a SQL string passed to
+  `execute`, `query` or `raw`, query builders, `session.query`, Prisma model
+  calls, `DB::select`, `find_by_sql`, `createQuery`, `FromSqlRaw`,
+  `db.Query`), `db-client`, `http-client`, `framework`, `http-response`,
+  `env`, `filesystem`, `process` - in Python, TypeScript and JavaScript, PHP,
+  Ruby, Java, C# and Go. Each style states where they are allowed (layered:
+  SQL and the database client in infrastructure, outbound HTTP in
+  infrastructure, no web framework in the domain, the environment in
+  configuration; hexagonal: all I/O in the driven adapters; MVC: queries in
+  the models), and `capabilities:` of a part in `.wingbox/config.yaml`
+  restates a rule. `wingbox boundaries` prints `(capability-violation <file>
+  :capability sql :layer service :allowed (infra) :line 42 :evidence "...")`;
+  a query only kept in a variable, or an `import type` of a client, is a
+  `capability-candidate`. Pattern checks of the style: a controller that
+  imports a repository with database access (skipping the service), a service
+  that builds an HTTP response, a domain file that imports the ORM.
+  REPORT.md gets a "What layers do" section, `wingbox advice` fix-capability
+  and fix-pattern items, and `align --learn` accepts the current ones as
+  `baseline-capability` lines of `.wingbox/baseline.sexp`. Findings are cached
+  by content hash in `.wingbox/cache.capabilities.json`.
+- Nobody edits the layer config by hand: the `learn` task tells the agent to
+  ask the operator in its chat when the code does not decide a folder, and to
+  pass the answer on (`:because "operator: ..."`). A person at a terminal
+  (`wingbox learn`, or `wingbox align --learn`) gets a questionnaire: the style
+  of each part among its candidates with scores and one-line descriptions,
+  then one question per open folder; the answers are recorded like an
+  agent's, and at the end `learn` offers to open `.wingbox/config.yaml` in
+  `$VISUAL` or `$EDITOR`. `.wingbox/config.yaml` starts with a header of
+  instructions (each key, the rule that decides a file's layer, how to move a
+  folder, the baseline, what to run after a change, `align --learn` when
+  unsure), rewritten on every write above the parts.
+- The Flutter and Laravel layer conventions are label rules of the parts: a
+  Dart file takes its layer from the Flutter folders (`features/*/presentation`
+  ui, `domain`, `data` infra, `bloc`/`cubit`/`state` service, `lib/core`
+  shared; `lib/` is the package source root), `integration_test/` holds tests,
+  and the layered style places `livewire/` in ui and `listeners/`, `policies/`
+  in service. A graph patched after a change carries the same architecture
+  facts as a build.
+
+- Python modules loaded at run time are in the graph. A literal name given to
+  `importlib.import_module` or `__import__` is an import. A name built from a
+  literal package path and one variable (`f".plugins.{name}"`,
+  `"app.plugins." + name`) is a new fact `(registry-wires <loader> <module>
+  :config <file>)` for each module of that package named by a string of a
+  JSON, YAML or TOML file in the folder of the loader; `deps`, `rdeps` and
+  `impact` follow it.
+- A method called in a loop on an object that such a registry returns for the
+  loop variable is `(calls <fn> <module>::<method> :lines N :registry)` to each
+  wired module that defines it; when the call replaces its own argument
+  (`data = stage.process(data)`) the modules of one configuration list get
+  `(data-flow <a> <b> :pipeline)` in list order. `impact` does not follow a
+  pipeline step backwards.
+- `benchmarks/tocs`: Wingbox on the Theory of Code Space benchmark, scored with
+  its own metric: Dep F1 0.953 on the paper's three medium codebases (0.802
+  with 0.2.4), with the scripts, the maps, eight generated codebases and a plan
+  for a model that starts from the Wingbox map.
+
+### Fixes
+
+- `wingbox advice`, `align`, `place`, `learn` and `compare` bring the graph up
+  to date before they read it, as the query commands do, and print the same
+  stale or unconfirmed fact when they cannot.
+- A change to a JSON, YAML or TOML file beside a Python module loader (the
+  names its registry loads) marks the graph out of date, through the edit hook
+  and the comparison with the last build; the next query rebuilds the
+  registry-wires edges.
+
+- Advice the user accepted is never hidden as ignored; the decisions store
+  logs one line per build plus changes of state instead of a line per open
+  item; with a `.wingbox/config.yaml` the config wins over learned folders, and
+  a learned folder removed from it is recorded.
+- `align --learn` matches the part against the style library, keeps what the
+  closest style places, and derives only the other folders, from file names,
+  folder names in other styles and imports, each with its evidence; it never
+  displaces the style's own folder of a layer (immich: `place` named `bin/`
+  for a REST endpoint) and rewrites the config only when something changed.
+  It counts breaks with the rule set of `boundaries`.
+- A rebuild with nothing changed no longer resolves every import of a file
+  once per imported module to tell type-only imports: univer (6,834 files)
+  rebuilds from the cache in 46 s instead of about 70 s.
+- A new package inside a monorepo becomes a part of the root
+  `.wingbox/config.yaml` (language from its manifest, level from its folder);
+  `init --yes` without `--style` takes the first choice (siblings, then the
+  `$HOME` favourite).
+- Output for people is text: `align`, `place` and the new-project `init` print
+  S-expressions only with `--sexp`; `init --sexp` summarises targets and
+  missing folders per part (`--details` for every folder); `advice` names the
+  parts without advice in one line; one advice item per pair; outside git the
+  build says once that `.gitignore` rules are not applied.
+- `place` matches layer names, folder words and file patterns as well as the
+  placement texts, works in parts with declared rules, gives 2-3 example
+  files, says "not stated" when the style states no imports, and never turns
+  the style's prose into a path.
+- Domain building blocks are proposed only where the style has a domain layer
+  and the part has domain code, as `value_objects` in Python, Rust, Go and Ruby.
+- `tests-integration/`, `test-utils/` and `e2e-cases/` hold tests (a folder
+  named by a test word first; a feature named after tests is not one); a
+  `shared/` or `common/` folder inside a layer folder belongs to that layer.
+- A pair imported for types only is listed once, as type-only, even when a
+  data-flow edge joins the same files.
+- The map no longer trembles: in the layers view the layout comes to rest
+  before it is drawn, and choosing a file or changing the hops redraws without
+  restarting it. The map opens on the most depended-on file whose 2-hop
+  radius stays under 5 % of the modules, not on the one that paints half the
+  graph.
+- Layer rules match whole folder names: `src/class3.ts`, `utils3d/` and `s3/`
+  are no longer infrastructure, a file named `types.ts` or `models.py` is no
+  longer placed by its name.
+- Folders below the routing root of a Next.js, Remix or SvelteKit frontend
+  are URL segments: `app/mcp/gateways/gateway-tools.ts` is route code, not
+  infrastructure.
+- Folders of a plug-in package (`commands/`, `controllers/`, `menu/`) are no
+  longer read as backend layers.
+- A composition root (`main.ts`, `app.module.ts`, `Program.cs`) may import
+  every layer; test helpers named `x.test-helpers.ts` are tests.
+- A file that starts the application (it imports `NestFactory` from
+  `@nestjs/core`, or a nest-commander `Command`/`CommandRunner`) and a file
+  that nothing imports and that imports a composition root (a worker
+  bootstrap) are composition roots, not sources of violations.
+- `*.command.ts`, `*.query.ts`, `commands/` and `queries/` are CQRS commands
+  and queries of the domain only when the part shows the CQRS overlay with its
+  own evidence; a nest-commander CLI command is not domain code.
+- A utility that imports infrastructure, or a frontend utility that imports a
+  component or state, is a `violation-candidate` ("utility depends on
+  infrastructure; move it to services or invert"), not a violation.
+- In a route-tree frontend, a private folder at the top of the routing root
+  (`app/_parts`) is shared by the routes (ui), and `*.query.ts`, `*.store.ts`,
+  `*.context.tsx` and `use-*.ts` modules are state.
 
 ## 0.5.1 - 2026-11-17
 

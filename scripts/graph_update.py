@@ -133,11 +133,16 @@ def classify(
     modified: list[str] = []
     created: list[str] = []
     deleted: list[str] = []
+    # The configuration files beside a module loader name the modules it loads (registry-wires edges).
+    loaders = {os.path.dirname(path) for path, result in cached.items()
+               if isinstance(result, builder.FileResult) and result.module_loads}
     for relative in sorted(set(changed)):
         path = os.path.join(root, *relative.split("/"))
         name = os.path.basename(path)
         if builder.is_resolution_config(name):
             return NotApplicable(f"resolution config changed: {relative}")
+        if name.endswith(builder.CONFIG_SUFFIXES) and os.path.dirname(path) in loaders:
+            return NotApplicable(f"module loader config changed: {relative}")
         language = _discovered_language(root, path, skip_directories) if os.path.isfile(path) else None
         old = cached.get(path)
         if language is None:
@@ -353,7 +358,10 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
         for node_id, result in context.id_to_result.items()
     }
     graph = builder.assemble_graph(context, new_list, fragments)
-    content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list))
+    built = builder.project_architecture(root, exclusions, False, new_list, graph.nodes)
+    if isinstance(built, builder.Err):
+        return NotApplicable(built.error)
+    content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list), built.value[0])
     new_key = builder.symbol_index_key(new_list, fingerprint, _MODE)
     uses = builder.render_uses_sexp(graph.nodes, new_key, content)
     _write_cache(root, fingerprint, new_list)

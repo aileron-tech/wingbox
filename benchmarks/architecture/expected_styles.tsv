@@ -1,0 +1,36 @@
+# Expected style per part, read from the path list of each repository (README.md of this folder says how).
+# none: no layer style (a library, a script collection, a component library, a package by feature).
+repository	part	style
+archestra-ai/archestra	platform/backend	layered
+archestra-ai/archestra	platform/frontend	route-tree
+archestra-ai/archestra	platform/shared	none
+archestra-ai/archestra	platform	none
+archestra-ai/archestra	ai-labs	none
+archestra-ai/archestra	platform/archestra-cli	none
+ardalis/CleanArchitecture	.	onion-clean
+evrone/go-clean-template	.	onion-clean
+jasontaylordev/CleanArchitecture	.	onion-clean
+jasontaylordev/CleanArchitecture	src/Web/ClientApp	none
+jasontaylordev/CleanArchitecture	src/Web/ClientApp-React	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean
+thombergs/buckpal	.	hexagonal
+mastodon/mastodon	.	mvc
+gothinkster/django-realworld-example-app	.	mvc
+gothinkster/laravel-realworld-example-app	.	mvc
+spring-projects/spring-petclinic	.	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced
+tyshgc/feature-sliced-design-example	.	feature-sliced
+vercel/commerce	.	route-tree
+fastapi/fastapi	.	none
+karpathy/nanoGPT	.	none
+immich-app/immich	server	nestjs
+immich-app/immich	web	route-tree
+immich-app/immich	machine-learning	none
+dream-num/univer	packages/sheets-ui	microkernel
+dream-num/univer	packages/sheets	microkernel
+dream-num/univer	packages/engine-formula	microkernel
+dream-num/univer	packages/docs-ui	microkernel
+dream-num/univer	packages/ui	microkernel
+dream-num/univer	packages/sheets-formula-ui	microkernel
+dream-num/univer	packages/core	none
+dream-num/univer	packages/design	none

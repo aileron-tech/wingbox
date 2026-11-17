@@ -1,0 +1,151 @@
+schema = 1
+id = "onion-clean"
+name = "Onion / clean architecture"
+aliases = ["onion", "clean"]
+kind = "style"
+languages = ["any"]                 # languages a new project may choose this style for
+patterns = ["controller-skips-service", "service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
+summary = "Concentric rings around the domain model. Source code dependencies point inward only: the domain knows nothing of the application, the application nothing of the database, the web or a framework."
+
+[[sources]]
+title = "The Onion Architecture: part 1"
+author = "Jeffrey Palermo"
+year = 2008
+url = "https://jeffreypalermo.com/2008/07/the-onion-architecture-part-1/"
+[[sources]]
+title = "The Clean Architecture"
+author = "Robert C. Martin"
+year = 2012
+url = "https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html"
+[[sources]]
+title = "Clean Architecture: A Craftsman's Guide to Software Structure and Design"
+author = "Robert C. Martin"
+year = 2017
+
+[detect]
+[[detect.groups]]
+id = "domain"
+weight = 3
+required = true
+names = ["domain", "core", "entities", "entity", "enterprise"]
+[[detect.groups]]
+id = "application"
+weight = 3
+required = true
+names = ["application", "usecases", "usecase", "interactors"]
+[[detect.groups]]
+id = "infrastructure"
+weight = 3
+required = true
+names = ["infrastructure", "infra", "persistence", "frameworks", "drivers", "data", "repo", "repository"]
+[[detect.groups]]
+id = "interface"
+weight = 1
+names = ["presentation", "interfaces", "adapters", "web", "webui", "webapi", "api", "controllers", "controller", "presenters", "delivery", "ui"]
+[[detect.against]]
+weight = 3
+all_of = [["ports", "port"], ["adapters", "adapter"]]    # that is the hexagonal vocabulary
+
+# rank: a layer may depend only on layers with a LOWER rank (inward).
+[[layers]]
+id = "domain"
+ring = "entities / domain model"
+rank = 0
+folders = ["domain", "core", "entities", "entity", "enterprise"]
+[[layers]]
+id = "application"
+ring = "use cases / application services"
+rank = 1
+folders = ["application", "usecases", "usecase", "interactors"]
+[[layers]]
+id = "interface"
+ring = "interface adapters: controllers, presenters, gateways"
+rank = 2
+folders = ["presentation", "interfaces", "adapters", "web", "webui", "webapi", "api", "controllers", "controller", "presenters", "delivery", "ui"]
+[[layers]]
+id = "infrastructure"
+ring = "frameworks and drivers: database, messaging, external services"
+rank = 3
+folders = ["infrastructure", "infra", "persistence", "frameworks", "drivers", "data", "repo", "repository"]
+
+# How the layers of another style map onto the rings, for `align --to onion-clean`:
+# the gaps are then the dependencies the rings forbid in the code as it is placed today.
+[from.layered]
+domain = "domain"
+service = "application"
+api = "interface"
+ui = "interface"
+infra = "infrastructure"
+[from.nestjs]
+domain = "domain"
+service = "application"
+api = "interface"
+infra = "infrastructure"
+[from.mvc]
+model = "domain"
+controller = "interface"
+view = "interface"
+
+[rules]
+direction = "inward"         # from a higher rank to a lower rank only
+[[rules.deny]]
+from = "domain"
+to = ["application", "interface", "infrastructure"]
+reason = "the domain depends on an outer ring"
+fix = "introduce an interface in the domain for what {source} needs from {target}, implement it in the outer ring and inject it"
+[[rules.deny]]
+from = "application"
+to = ["interface", "infrastructure"]
+reason = "a use case depends on an adapter or on infrastructure; depend on an interface the application owns"
+fix = "declare an interface in the application for {target}, implement it in infrastructure and inject it"
+[[rules.deny]]
+from = "interface"
+to = "infrastructure"
+reason = "an interface adapter depends on a framework or driver"
+fix = "reach {target} through an interface of the application"
+[[rules.external]]
+# Packages the inner rings should not import: the inner rings stay free of frameworks.
+layers = ["domain"]
+deny_kinds = ["orm", "web-framework", "http-client", "message-broker", "cloud-sdk"]
+reason = "the domain imports a framework or driver"
+
+[[placement]]
+what = "entity, value object, domain event, domain service, repository INTERFACE"
+layer = "domain"
+may_import = []
+[[placement]]
+what = "use case, command or query handler, application service, port to the outside"
+layer = "application"
+may_import = ["domain"]
+[[placement]]
+what = "controller, presenter, view model, request and response mapping"
+layer = "interface"
+may_import = ["application", "domain"]
+[[placement]]
+what = "repository IMPLEMENTATION, ORM mapping, message broker, HTTP client, file storage"
+layer = "infrastructure"
+may_import = ["application", "domain"]
+
+[advice]
+new_code = [
+  "When a use case needs the database or another system, declare an interface in the application (or domain) ring and implement it in infrastructure.",
+  "Data crossing a ring boundary is a plain structure of the inner ring, never an ORM row or a web request object.",
+]
+refactoring = [
+  "Domain imports infrastructure: extract an interface next to the domain code, move the implementation outward, inject it at the composition root.",
+  "A controller calls a repository implementation: route the call through a use case.",
+]
+
+[target]
+layers = { domain = "domain", application = "application", interface = "presentation", infrastructure = "infrastructure" }
+domain = "domain"
+note = "The entities core holds the building blocks; use cases live in application/use-cases and depend only on the domain."
+extra = { application = ["application/use-cases"] }
+
+# What a ring may do: all I/O in infrastructure; the framework stays out of the domain and the use cases.
+[capabilities]
+sql = {allowed_in = ["infrastructure"], fix = "move the query into a repository implementation in infrastructure behind an interface of the domain"}
+db-client = {allowed_in = ["infrastructure"], fix = "keep the database client in infrastructure behind an interface the inner rings own"}
+http-client = {allowed_in = ["infrastructure"], fix = "put the outbound call in an infrastructure gateway behind an interface the inner rings own"}
+framework = {forbidden_in = ["domain", "application"], fix = "keep the framework in the interface and infrastructure rings"}
+env = {allowed_in = ["infrastructure", "interface"], fix = "read the environment in the outer rings and pass the values in"}
