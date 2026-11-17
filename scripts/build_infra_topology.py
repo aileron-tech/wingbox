@@ -836,7 +836,7 @@ def main() -> None:
 
     if append_file is not None:
         try:
-            with append_file.open("a", encoding="utf-8") as fh:
+            with append_file.open("a", encoding="utf-8", newline="\n") as fh:
                 fh.write(output_text)
         except OSError as exc:
             print(f"Error: could not append to {append_file}: {exc}", file=sys.stderr)

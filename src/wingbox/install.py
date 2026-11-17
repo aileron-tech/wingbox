@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 from dataclasses import dataclass
 from typing import Literal, Mapping, Optional, Union
@@ -324,14 +325,15 @@ def remove_block(text: str) -> EditResult:
 
 
 def is_wingbox_hook(entry: object) -> bool:
+    """A hook entry Wingbox wrote: shell form (`... hook pre-search`) or exec form (`args` apart)."""
     if not isinstance(entry, dict) or entry.get("type") != "command":
         return False
     command = entry.get("command")
-    return (
-        isinstance(command, str)
-        and "wingbox" in command
-        and command.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
-    )
+    args = entry.get("args", [])
+    if not isinstance(command, str) or not isinstance(args, list):
+        return False
+    line = " ".join([command, *(str(arg) for arg in args)])
+    return "wingbox" in line and line.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
 
 
 def dirty_command(command: str) -> str:
@@ -339,18 +341,21 @@ def dirty_command(command: str) -> str:
     return command[: -len(HOOK_SUBCOMMAND)] + DIRTY_SUBCOMMAND if command.endswith(HOOK_SUBCOMMAND) else command
 
 
-def hook_group(command: str) -> dict:
-    return {
-        "matcher": HOOK_MATCHER,
-        "hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT_SECONDS}],
-    }
+def _hook_entry(command: str, timeout: int, windows: bool) -> dict:
+    """A hook entry. On Windows in exec form (`command` + `args`): Claude Code starts the program without a
+    shell, so neither Git Bash nor PowerShell quoting matters (code.claude.com/docs/en/hooks)."""
+    if not windows:
+        return {"type": "command", "command": command, "timeout": timeout}
+    program, *args = shlex.split(command, posix=True) if '"' in command else command.split()
+    return {"type": "command", "command": program, "args": args, "timeout": timeout}
 
 
-def dirty_group(command: str) -> dict:
-    return {
-        "matcher": DIRTY_MATCHER,
-        "hooks": [{"type": "command", "command": dirty_command(command), "timeout": DIRTY_TIMEOUT_SECONDS}],
-    }
+def hook_group(command: str, windows: bool = os.name == "nt") -> dict:
+    return {"matcher": HOOK_MATCHER, "hooks": [_hook_entry(command, HOOK_TIMEOUT_SECONDS, windows)]}
+
+
+def dirty_group(command: str, windows: bool = os.name == "nt") -> dict:
+    return {"matcher": DIRTY_MATCHER, "hooks": [_hook_entry(dirty_command(command), DIRTY_TIMEOUT_SECONDS, windows)]}
 
 
 def _stripped_groups(groups: list) -> list:

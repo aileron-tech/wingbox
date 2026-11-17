@@ -60,3 +60,48 @@ class PortableTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WindowsHookTest(unittest.TestCase):
+    def test_a_windows_hook_runs_the_program_without_a_shell(self) -> None:
+        """/* REQ-INSTALL-023: on Windows a hook entry is written in exec form (`command` = the program, `args` = the rest), which Claude Code starts without a shell, so a path with spaces or backslashes needs no quoting and PowerShell syntax never matters; elsewhere the entry stays a shell command; both forms are recognised as Wingbox's own entries. */"""
+        sys.path.insert(0, str(REPO / "src"))
+        from wingbox import cli, install
+
+        program = r"C:\Program Files\Python313\Scripts\wingbox.exe"
+        command = cli.global_hook_command_for(program, sys.executable, windows=True)
+        entry = install.hook_group(command, windows=True)["hooks"][0]
+        self.assertEqual(program, entry["command"])
+        self.assertEqual(["hook", "pre-search"], entry["args"])
+        dirty = install.dirty_group(command, windows=True)["hooks"][0]
+        self.assertEqual(["hook", "dirty"], dirty["args"])
+        self.assertTrue(install.is_wingbox_hook(entry) and install.is_wingbox_hook(dirty))
+        posix = install.hook_group("/usr/local/bin/wingbox hook pre-search", windows=False)["hooks"][0]
+        self.assertEqual("/usr/local/bin/wingbox hook pre-search", posix["command"])
+        self.assertNotIn("args", posix)
+        self.assertTrue(install.is_wingbox_hook(posix))
+
+
+class LineEndingTest(unittest.TestCase):
+    def test_crlf_sources_give_the_same_graph_as_lf_sources(self) -> None:
+        """/* REQ-PORT-004: source files with CRLF line endings (as Windows editors and Git checkouts write them) give the same graph, line numbers included, as the same files with LF; the graph file itself is written with LF on every system. */"""
+        files = {
+            "pkg/__init__.py": "",
+            "pkg/models.py": "class Order:\n    pass\n\n\ndef total(order):\n    return order\n",
+            "pkg/service.py": "import os\nfrom pkg.models import Order, total\n\n\ndef run():\n    os.environ.get('X')\n    return total(Order())\n",
+            "web/src/view.ts": "import { fmt } from './util';\nexport function show(n: number) {\n  return fmt(n);\n}\n",
+            "web/src/util.ts": "export function fmt(n: number): string {\n  return String(n);\n}\n",
+        }
+        graphs = []
+        for ending in ("\n", "\r\n"):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "project"
+                for name, text in files.items():
+                    path = root / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(text.replace("\n", ending).encode("utf-8"))
+                graph = _build(root, "")
+                self.assertNotIn(b"\r\n", graph)
+                graphs.append(graph.replace(root.name.encode(), b"project"))
+        self.assertEqual(graphs[0], graphs[1])
+        self.assertIn(b"total 5 ", graphs[1])

@@ -175,11 +175,28 @@ def read_skill_files(directory: str) -> dict[str, bytes]:
 
 def global_hook_command(argv0: str, python: str) -> str:
     """The hook command for a global install: the absolute `wingbox` program, else this Python."""
-    program = os.path.abspath(argv0) if os.path.basename(argv0) == "wingbox" and os.path.isfile(argv0) else None
-    program = program or shutil.which("wingbox")
-    if program:
-        return f"{shlex.quote(program)} hook pre-search"
-    return f"{shlex.quote(python)} -m wingbox.cli hook pre-search"
+    name = os.path.basename(argv0).lower()
+    program = os.path.abspath(argv0) if name in ("wingbox", "wingbox.exe") and os.path.isfile(argv0) else None
+    return global_hook_command_for(program or shutil.which("wingbox"), python, os.name == "nt")
+
+
+def global_hook_command_for(program: Optional[str], python: str, windows: bool) -> str:
+    """The command line of the search hook: POSIX shell quoting, or Windows quoting (install writes it
+    in exec form there, program and arguments apart)."""
+    parts = [program, "hook", "pre-search"] if program else [python, "-m", "wingbox.cli", "hook", "pre-search"]
+    if windows:
+        import subprocess
+
+        return subprocess.list2cmdline(parts)
+    return " ".join(shlex.quote(part) for part in parts)
+
+
+def _platform() -> ModuleType:
+    """scripts/portable.py, imported directly: the stream set-up runs before any command."""
+    directory = scripts_directory(_PACKAGE_DIR)
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    return import_module("portable")
 
 
 def load_script(name: str) -> ModuleType:
@@ -1540,7 +1557,7 @@ def _update_command(rest: list[str]) -> int:
 def main(argv: Optional[list[str]] = None) -> int:
     """Run a command; a reader that closes the pipe (`| head`) ends it quietly."""
     # A Windows console with a legacy code page must never stop a command on a character it cannot show.
-    load_script("portable").utf8_streams()
+    _platform().utf8_streams()
     try:
         return _run(argv)
     except BrokenPipeError:
