@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.7.1 - 2026-11-17
+
+### Fixes
+
+- The hooks and the MCP server work on Windows without Git for Windows (Git
+  Bash), under PowerShell or cmd, and with it. The Claude Code plugin no longer
+  goes through `sh`: its hooks and MCP server start `uvx` directly (a real
+  executable on every system) with the release pinned to its commit; the
+  launcher script `scripts/wingbox-run` is removed. The plugin now needs uv.
+- Every hook entry, from `wingbox install` (global or `--project`) and from the
+  plugin, is written in exec form (`command` and `args`, no shell) with
+  `"onFailure": "continue"`, so a missing program or a timeout never blocks a
+  search, a read or an edit. `--project` writes `"command": "wingbox"`, found
+  on `PATH`. Entries written by earlier versions are recognised and replaced.
+
+### Changes
+
+- The plugin hooks always run the pinned release through `uvx --offline`; an
+  installed `wingbox` command is no longer preferred. Each search hook takes
+  about 0.4 s longer for those who had it installed.
+- CI runs every hook entry Wingbox writes as Claude Code does, in a project
+  folder whose name holds a space and non-ASCII letters, on Linux, macOS and
+  Windows (there with Git for Windows taken off `PATH`).
+
 ## 0.7.0 - 2026-11-17
 
 Wingbox runs natively on Windows (issue #48). The test suite runs on Linux,
