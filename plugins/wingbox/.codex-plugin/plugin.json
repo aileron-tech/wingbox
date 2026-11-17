@@ -1,7 +1,7 @@
 {
   "name": "wingbox",
   "version": "0.8.1",
-  "description": "Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby. Runs on your machine; no code leaves it.",
+  "description": "A map of your codebase for coding agents: what a change touches, where a symbol is used.",
   "author": {
     "name": "Aileron Technologies",
     "url": "https://wingbox.dev"
@@ -30,8 +30,8 @@
   "requires_local_executor": true,
   "interface": {
     "displayName": "Wingbox",
-    "shortDescription": "Code graph for big monorepos",
-    "longDescription": "Code graph for large repositories and monorepos. Wingbox builds a graph of the repository you work in and answers from it before the agent reads source files: what a change will break, two hops away and across packages (blast radius); who uses a file, function or type; where a feature is implemented; which modules and packages depend on each other and which dependencies cross an architecture layer; and which three or four files to read first. Use it before a refactor or a cross-package change. It parses Python, TypeScript and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails with tree-sitter, and writes an offline HTML map of the repository. Everything runs on your computer with the open-source wingbox command (MIT, on PyPI): no code, graph or question is sent anywhere. The plugin needs a local shell and the command, installed once with pipx install wingbox.",
+    "shortDescription": "A map of your codebase",
+    "longDescription": "Give your coding agent a map of your codebase. Half the cost, no missed files. Wingbox builds a graph of the repository you work in and answers from it before the agent reads source files: what a change will break, two hops away and across packages (blast radius); who uses a file, function or type; where a feature is implemented; which modules and packages depend on each other and which dependencies cross an architecture layer; and which three or four files to read first. Use it before a refactor or a cross-package change. It parses Python, TypeScript and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails with tree-sitter, and writes an offline HTML map of the repository. Everything runs on your computer with the open-source wingbox command (MIT, on PyPI): no code, graph or question is sent anywhere. The plugin needs a local shell and the command, installed once with pipx install wingbox.",
     "developerName": "Aileron Technologies",
     "category": "Developer Tools",
     "capabilities": [

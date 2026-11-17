@@ -259,7 +259,7 @@ class PluginFolderTest(unittest.TestCase):
 class PurposeTest(unittest.TestCase):
     """The plugin is found by its purpose: code graphs of large repositories and monorepos."""
 
-    PURPOSE = "Code graph for large repositories and monorepos"
+    SHORT = "A map of your codebase for coding agents: what a change touches, where a symbol is used."
     KEYWORDS = {
         "code-graph", "blast-radius", "impact-analysis", "dependency-graph", "code-search", "architecture",
         "local-first", "mcp", "monorepo", "large-codebase", "codebase-map", "call-graph", "refactoring",
@@ -272,14 +272,20 @@ class PurposeTest(unittest.TestCase):
         return " ".join(line.strip() for line in folded.splitlines() if line.startswith("  "))
 
     def test_descriptions_and_keywords(self) -> None:
-        """/* REQ-PLUGIN-014: the descriptions of both manifests and of the Claude Code marketplace entry must start with "Code graph for large repositories and monorepos", the Codex subtitle and long description must name monorepos, and the keywords of both manifests must include monorepo, large-codebase, codebase-map, call-graph, refactoring and code-navigation besides the earlier ones. */"""
+        """/* REQ-PLUGIN-014: the short description is one text in every manifest that has one (the Claude Code plugin, the Codex plugin, the Claude Code marketplace entry, the Claude Desktop extension): "A map of your codebase for coding agents: what a change touches, where a symbol is used."; the Codex one-line subtitle (at most 30 characters) is its start, the Codex long description starts with the slogan, and the keywords of both plugin manifests include monorepo, large-codebase, codebase-map, call-graph, refactoring and code-navigation besides the earlier ones. */"""
         claude = load(PLUGIN / ".claude-plugin" / "plugin.json")
         codex = load(PLUGIN / ".codex-plugin" / "plugin.json")
         (entry,) = load(REPO / ".claude-plugin" / "marketplace.json")["plugins"]
+        spec = __import__("importlib.util").util.spec_from_file_location("build_mcpb", REPO / "tools" / "build_mcpb.py")
+        mcpb = __import__("importlib.util").util.module_from_spec(spec)
+        spec.loader.exec_module(mcpb)
+        self.assertEqual(self.SHORT, mcpb.SHORT_DESCRIPTION)
         for description in (claude["description"], codex["description"], entry["description"]):
-            self.assertTrue(description.startswith(self.PURPOSE), description)
-        self.assertIn("monorepo", codex["interface"]["shortDescription"])
-        self.assertTrue(codex["interface"]["longDescription"].startswith(self.PURPOSE))
+            self.assertEqual(self.SHORT, description)
+        one_line = codex["interface"]["shortDescription"]
+        self.assertLessEqual(len(one_line), 30)
+        self.assertTrue(self.SHORT.startswith(one_line), one_line)
+        self.assertTrue(codex["interface"]["longDescription"].startswith(mcpb.SLOGAN))
         for manifest in (claude, codex):
             self.assertLessEqual(self.KEYWORDS, set(manifest["keywords"]))
 

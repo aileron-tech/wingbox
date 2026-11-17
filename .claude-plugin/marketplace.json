@@ -9,7 +9,7 @@
     {
       "name": "wingbox",
       "source": "./plugins/wingbox",
-      "description": "Code graph for large repositories and monorepos: blast radius of a change, dependents, module boundaries and the files to read first. Skill, search hook and MCP server; runs on your machine.",
+      "description": "A map of your codebase for coding agents: what a change touches, where a symbol is used.",
       "category": "development"
     }
   ]
