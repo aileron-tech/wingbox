@@ -42,14 +42,15 @@ class PyEdgesTest(unittest.TestCase):
                 subprocess.run([sys.executable, "-I", str(ROOT / "benchmarks" / copy / "tools" / "py_edges.py"), str(root), str(out)],
                                check=True, capture_output=True)
                 ref = json.loads(out.read_text(encoding="utf-8"))
-                calls = sorted((r["to"], r["stmt"]) for r in ref["refs"] if r["kind"] == "import-call")
+                posix = lambda path: path.replace(os.sep, "/")   # the references write the system's separator
+                calls = sorted((posix(r["to"]), r["stmt"]) for r in ref["refs"] if r["kind"] == "import-call")
                 self.assertEqual([
                     ("app/plugins/alpha.py", "importlib.import_module('app.plugins.alpha')"),
                     ("app/plugins/beta.py", "import_module('app.plugins.beta')"),
                     ("app/plugins/gamma.py", "__import__('app.plugins.gamma')"),
                 ], calls, copy)
-                self.assertIn(["app/loader.py", "app/plugins/alpha.py"], ref["pairs"])
-                self.assertIn(["app/loader.py", "app/plugins/__init__.py"], ref["implied_pairs"])
+                self.assertIn(["app/loader.py", "app/plugins/alpha.py"], [[posix(a), posix(b)] for a, b in ref["pairs"]])
+                self.assertIn(["app/loader.py", "app/plugins/__init__.py"], [[posix(a), posix(b)] for a, b in ref["implied_pairs"]])
 
     def test_questions_are_drawn_from_import_statements_only(self) -> None:
         """/* REQ-BENCH-014: the impact benchmark draws its questions from the files that an import statement reaches, so that counting modules loaded by name changes no question; the edge of a module loaded by name is still in the reference list of every question. */"""
