@@ -133,7 +133,7 @@ class PythonSymbolUsageTests(unittest.TestCase):
 
 class RustSymbolUsageTests(unittest.TestCase):
     def test_glob_imports_reach_definitions_and_reexports(self) -> None:
-        """/* REQ-RUST-015: a name used after `use a::b::*` references S where it is defined: in b itself or behind a `pub use x::*` of b; module dependencies (impact) do not change. */"""
+        """/* REQ-RUST-015: a name used after `use a::b::*` references S where it is defined: in b itself or behind a `pub use x::*` of b; since 0.9.1 the module that uses S through the facade also imports the file that defines it (an `:item :candidate` edge, maintainer's decision of 2026-11-17), and keeps its edge to the facade. */"""
         _nodes, edges = _graph({
             "src/lib.rs": "pub mod flow;\npub mod elf;\npub mod linker;\n",
             "src/flow/mod.rs": "mod outcome;\nmod http;\npub use outcome::*;\n",
@@ -145,7 +145,8 @@ class RustSymbolUsageTests(unittest.TestCase):
         self.assertEqual({"src/flow/http"}, _users(edges, "src/flow/outcome", "TierResult"))
         self.assertEqual(set(), _users(edges, "src/flow/outcome", "unused"))
         self.assertEqual({"src/linker"}, _users(edges, "src/elf", "PT_DYNAMIC"))
-        self.assertNotIn(("src/flow/http", "src/flow/outcome"), _module_pairs(edges))
+        self.assertIn(("src/flow/http", "src/flow/outcome"), _module_pairs(edges))
+        self.assertIn(("src/flow/http", "src/flow"), _module_pairs(edges))
 
     def test_pub_use_chains_and_use_declarations_are_references(self) -> None:
         """/* REQ-RUST-016: `use crate::flow::X` where flow re-exports X (`pub use net::{X}`) references X in net, and a `use` that names S is a reference to S even when S is not used further. */"""
