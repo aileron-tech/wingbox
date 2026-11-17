@@ -62,24 +62,23 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class WindowsHookTest(unittest.TestCase):
-    def test_a_windows_hook_runs_the_program_without_a_shell(self) -> None:
-        """/* REQ-INSTALL-023: on Windows a hook entry is written in exec form (`command` = the program, `args` = the rest), which Claude Code starts without a shell, so a path with spaces or backslashes needs no quoting and PowerShell syntax never matters; elsewhere the entry stays a shell command; both forms are recognised as Wingbox's own entries. */"""
+class HookFormTest(unittest.TestCase):
+    def test_every_hook_is_written_in_exec_form_and_never_blocks(self) -> None:
+        """/* REQ-INSTALL-023: every hook entry Wingbox writes is in exec form on every system (`command` = the program, `args` = the rest), which Claude Code starts with no shell, so it runs on Windows without Git Bash and a path with spaces or backslashes needs no quoting; each entry carries `"onFailure": "continue"`, so a missing program or a timeout never blocks Grep, Glob, Read or an edit; the shell form of older versions is still recognised as Wingbox's own entry. */"""
         sys.path.insert(0, str(REPO / "src"))
-        from wingbox import cli, install
+        from wingbox import install
 
-        program = r"C:\Program Files\Python313\Scripts\wingbox.exe"
-        command = cli.global_hook_command_for(program, sys.executable, windows=True)
-        entry = install.hook_group(command, windows=True)["hooks"][0]
-        self.assertEqual(program, entry["command"])
-        self.assertEqual(["hook", "pre-search"], entry["args"])
-        dirty = install.dirty_group(command, windows=True)["hooks"][0]
-        self.assertEqual(["hook", "dirty"], dirty["args"])
+        program = (r"C:\Program Files\Python313\Scripts\wingbox.exe",)
+        entry = install.hook_group(program)["hooks"][0]
+        self.assertEqual(
+            {"type": "command", "command": program[0], "args": ["hook", "pre-search"], "timeout": 10, "onFailure": "continue"},
+            entry,
+        )
+        dirty = install.dirty_group(("python3", "-m", "wingbox.cli"))["hooks"][0]
+        self.assertEqual(("python3", ["-m", "wingbox.cli", "hook", "dirty"]), (dirty["command"], dirty["args"]))
         self.assertTrue(install.is_wingbox_hook(entry) and install.is_wingbox_hook(dirty))
-        posix = install.hook_group("/usr/local/bin/wingbox hook pre-search", windows=False)["hooks"][0]
-        self.assertEqual("/usr/local/bin/wingbox hook pre-search", posix["command"])
-        self.assertNotIn("args", posix)
-        self.assertTrue(install.is_wingbox_hook(posix))
+        self.assertTrue(install.is_wingbox_hook({"type": "command", "command": "/usr/local/bin/wingbox hook pre-search"}))
+        self.assertFalse(install.is_wingbox_hook({"type": "command", "command": "fmt.sh"}))
 
 
 class LineEndingTest(unittest.TestCase):

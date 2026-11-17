@@ -8,13 +8,12 @@ writes two archives from plugins/wingbox, in the Codex layout that
 
 - wingbox-openai-plugin-<version>.zip: skills only. The wingbox skill and the
   listing; `requires_local_executor` marks it Desktop only. No MCP server, no
-  hook, no launcher. This is the package for the public submission.
+  hook. This is the package for the public submission.
 - wingbox-openai-plugin-<version>-local-mcp.zip: the same plus .mcp.json, the
   local stdio server `wingbox mcp`. Local MCP submissions are open only to
   allowlisted organizations; keep it for that.
 
-Neither archive holds the Claude Code manifest, the hook or the launcher
-script; their README.md is docs/store/openai-package-README.md. The
+Neither archive holds the Claude Code manifest or its hooks; their README.md is docs/store/openai-package-README.md. The
 archives are not committed. The build refuses a stale plugin folder: run
 `python3 tools/sync_plugin.py` first.
 """

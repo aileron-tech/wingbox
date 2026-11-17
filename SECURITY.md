@@ -26,7 +26,7 @@ In scope:
 
 - the `wingbox` command and Python package (`src/`, `scripts/`);
 - the MCP server `wingbox mcp` and the search hook `wingbox hook pre-search`;
-- the plugins in `plugins/wingbox` (manifests, launcher, skill) and
+- the plugins in `plugins/wingbox` (manifests, skill) and
   `wingbox install` / `uninstall` / `update`.
 
 Out of scope:

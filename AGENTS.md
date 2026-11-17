@@ -19,7 +19,7 @@ this file applies to you.
   The wheel bundles `SKILL.md` and `references/` as `wingbox/_skill`, the
   skill that `wingbox install` copies.
 - Plugins: `plugins/wingbox` is the folder Claude Code and Codex install
-  (manifests, a copy of the skill, the `scripts/wingbox-run` launcher);
+  (manifests with the pinned `uvx` commands, a copy of the skill);
   `.claude-plugin/marketplace.json` and `.agents/plugins/marketplace.json`
   list it. `tools/sync_plugin.py` keeps the copy in step with the repository;
   `tools/build_openai_plugin.py` builds the OpenAI directory ZIPs from it
@@ -66,8 +66,8 @@ this file applies to you.
 - After a change to `SKILL.md`, `references/` or the version, run
   `python3 tools/sync_plugin.py`: a test keeps the plugin's copy of the skill
   byte for byte identical, and `--check` exits 1 while anything is stale. The
-  launcher pins the commit of the newest `vX.Y.Z` tag, so run it again once
-  the release tag exists.
+  Claude Code manifest pins the commit of the newest `vX.Y.Z` tag in every
+  `uvx` command, so run it again once the release tag exists.
 - ASCII only, and English only: no Russian or other non-English text anywhere in the repository, including LOG.md entries and quotes of what the maintainer said (paraphrase them in English; REQ-DOC-001). `.gitignore` changes only when the name of a generated file
   changes.
 - A user-facing change updates `README.md` and `SKILL.md` (command tables),
@@ -89,7 +89,7 @@ Follow these steps in order when the maintainer asks for a release.
    gh release create vX.Y.Z --target main --title "Wingbox X.Y.Z" -F notes.md
    ```
 
-   Then run `python3 tools/sync_plugin.py` again so the launcher pins the new
+   Then run `python3 tools/sync_plugin.py` again so the manifest pins the new
    tag's commit, and merge that through a pull request.
 3. On `main` at the tagged commit, build outside the repository:
 

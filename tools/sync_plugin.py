@@ -3,8 +3,9 @@
 
 The plugin folder is what Claude Code and Codex install, and nothing outside
 it reaches the user, so it holds a copy of the skill (SKILL.md and
-references/) and of LICENSE, and the version of pyproject.toml in both
-manifests and the launcher's pinned `uvx --from git+https://github.com/aileron-tech/wingbox@<commit>`.
+references/) and of LICENSE, the version in both manifests, and in the Claude Code manifest the
+pinned `uvx --from git+https://github.com/aileron-tech/wingbox@<commit>` of every hook and of the MCP
+server (a literal in each command: the plugin directory reads the pin from it).
 The plugin follows the latest release: the version and commit of the newest `vX.Y.Z` tag
 (the Claude plugin directory accepts a git source pinned to a full commit, not a PyPI version).
 Set WINGBOX_RELEASE="<version> <commit>" to override, as the tests do.
@@ -28,7 +29,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PLUGIN_PATH = Path("plugins") / "wingbox"
 MANIFESTS = (Path(".claude-plugin") / "plugin.json", Path(".codex-plugin") / "plugin.json")
-LAUNCHER = Path("scripts") / "wingbox-run"
 SKILL_DIR = Path("skills") / "wingbox"
 _PIN = re.compile(r"git\+https://github\.com/aileron-tech/wingbox@[0-9a-f]{40}")
 SOURCE = "git+https://github.com/aileron-tech/wingbox@{commit}"
@@ -40,7 +40,6 @@ class Wanted:
 
     path: Path  # relative to the plugin folder
     content: bytes
-    executable: bool = False
 
 
 def project_version(repo: Path) -> str:
@@ -58,7 +57,7 @@ def latest_release(repo: Path) -> tuple[str, str]:
     if not tags:
         # A source archive or a shallow clone without tags: keep the release the
         # plugin already pins, so --check still compares the copied files.
-        pinned = _PIN.search((repo / PLUGIN_PATH / LAUNCHER).read_text(encoding="utf-8"))
+        pinned = _PIN.search((repo / PLUGIN_PATH / MANIFESTS[0]).read_text(encoding="utf-8"))
         if pinned is None:
             raise SystemExit("no vX.Y.Z tag and no pinned commit: release first, or set WINGBOX_RELEASE")
         manifest = json.loads((repo / PLUGIN_PATH / MANIFESTS[0]).read_text(encoding="utf-8"))
@@ -74,8 +73,9 @@ def skill_sources(repo: Path) -> list[Path]:
     return [Path("SKILL.md")] + references
 
 
-def with_version(manifest_text: str, version: str) -> bytes:
-    manifest = json.loads(manifest_text)
+def with_release(manifest_text: str, version: str, commit: str) -> bytes:
+    """The manifest at version, every pinned uvx source pointing at commit."""
+    manifest = json.loads(_PIN.sub(SOURCE.format(commit=commit), manifest_text))
     manifest["version"] = version
     return (json.dumps(manifest, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
 
@@ -87,9 +87,7 @@ def wanted_files(repo: Path) -> list[Wanted]:
     files = [Wanted(SKILL_DIR / source, (repo / source).read_bytes()) for source in skill_sources(repo)]
     files.append(Wanted(Path("LICENSE"), (repo / "LICENSE").read_bytes()))
     for manifest in MANIFESTS:
-        files.append(Wanted(manifest, with_version((plugin / manifest).read_text(encoding="utf-8"), version)))
-    launcher = _PIN.sub(SOURCE.format(commit=commit), (plugin / LAUNCHER).read_text(encoding="utf-8"))
-    files.append(Wanted(LAUNCHER, launcher.encode("utf-8"), executable=True))
+        files.append(Wanted(manifest, with_release((plugin / manifest).read_text(encoding="utf-8"), version, commit)))
     return files
 
 
@@ -122,8 +120,6 @@ def sync(repo: Path) -> list[Path]:
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(item.content)
-        if item.executable:
-            target.chmod(0o755)
     return changed
 
 
