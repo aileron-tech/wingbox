@@ -5,7 +5,7 @@ Wingbox 0.10.0 from PyPI, run of 2026-11-17. This file is written by `make_repor
 ## Summary
 
 - 100 questions drawn at random with a fixed seed in 5 public repositories (TypeScript, Rust, Python): `wingbox impact` names the complete list of dependent files, with nothing outside it, in 100 of 100 (95 % interval 96 to 100 %). A required file is missing in 0 of 100.
-- A coding agent on 55 of these questions, with Wingbox against its built-in search alone: tokens -35 % (-47 % to -20 %), cost -51 % (-58 % to -43 %); complete answers 41 of 55 against 37 of 55.
+- A coding agent on 55 of these questions, with Wingbox against its built-in search alone: tokens -39 % (-50 % to -26 %), cost -52 % (-60 % to -44 %); complete answers 54 of 55 against 39 of 55.
 - Every module dependency of the graph against the import statements of the code, in 7 corpora (3,795 dependencies in the largest): 0 wrong, 4 missing.
 - Building the graph, the report and the map of fastapi (1,227 source files) from a fresh checkout takes 2.0 s on a hosted runner.
 
@@ -40,21 +40,21 @@ Claude Code, headless, model alias `sonnet`, no user settings, skills or connect
 
 | Setup | Trials | Complete answers (95 % interval) | F1, mean (95 % interval) | Tokens, mean (95 % interval) | USD per answer | Turns |
 |---|---|---|---|---|---|---|
-| With Wingbox | 55 | 41 (62 to 84 %) | 0.962 (0.928 to 0.985) | 32,183 (28,229 to 36,523) | 0.031 | 3.0 |
-| Built-in search only | 55 | 37 (54 to 78 %) | 0.943 (0.903 to 0.973) | 49,292 (42,863 to 56,703) | 0.063 | 5.0 |
+| With Wingbox | 55 | 54 (90 to 100 %) | 0.998 (0.995 to 1.000) | 29,482 (26,097 to 33,372) | 0.030 | 2.8 |
+| Built-in search only | 55 | 39 (58 to 81 %) | 0.954 (0.919 to 0.979) | 48,545 (42,353 to 55,650) | 0.063 | 5.0 |
 
-- Tokens with Wingbox against search alone: -35 % (-47 % to -20 %); cost -51 % (-58 % to -43 %). Fewer tokens on 39 of the 55 questions, more on 16.
-- Complete answer only with Wingbox on 5 questions, only without it on 1; exact sign test on these questions: p = 0.219.
+- Tokens with Wingbox against search alone: -39 % (-50 % to -26 %); cost -52 % (-60 % to -44 %). Fewer tokens on 42 of the 55 questions, more on 13.
+- Complete answer only with Wingbox on 16 questions, only without it on 1; exact sign test on these questions: p = 0.000.
 
 | Repository | Questions | Tokens with Wingbox, mean | Tokens with search alone, mean | Change |
 |---|---|---|---|---|
-| chrome-devtools-mcp | 12 | 39,146 | 42,406 | -8 % |
-| immich-server | 12 | 35,867 | 31,950 | +12 % |
-| agent-browser | 12 | 35,158 | 78,529 | -55 % |
-| claudes-c-compiler | 12 | 24,270 | 50,428 | -52 % |
-| fastapi | 7 | 22,396 | 38,753 | -42 % |
+| chrome-devtools-mcp | 12 | 33,541 | 43,778 | -23 % |
+| immich-server | 12 | 34,901 | 33,871 | +3 % |
+| agent-browser | 12 | 24,757 | 74,412 | -67 % |
+| claudes-c-compiler | 12 | 21,088 | 51,908 | -59 % |
+| fastapi | 7 | 35,722 | 31,765 | +12 % |
 
-Ratios are totals over the questions; their intervals are 95 % paired bootstrap intervals over the questions (10,000 resamples). The 110 trials cost 5.15 USD in total and ran with Wingbox 0.2.1 (the agent test ran with 0.2.1; its saved answers are scored against the reference lists of 2026-11-17 (Rust items followed to their definers), with no new session); every trial with its scores is in `results/agent.json`.
+Ratios are totals over the questions; their intervals are 95 % paired bootstrap intervals over the questions (10,000 resamples). The 110 trials cost 5.13 USD in total and ran with Wingbox 0.10.0; every trial with its scores is in `results/agent.json`.
 
 ## Test 3. Are the edges in the code?
 

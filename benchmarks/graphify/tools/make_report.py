@@ -330,7 +330,12 @@ if agent:
         "search plus the `graphify` command; search plus the `codegraph` command. Graphs are built beforehand. The prompt names the tool's impact command in one sentence of the same shape for every tool "
         f"(`tools/agent_test.py`). {repeats} repeats per question and setup, four trials at a time. Score: F1 of the answer list against the reference list. "
         "Tokens: everything the model read and wrote, cache included. Seconds: wall clock of one trial while four run.")
-    if "all_cg" in sm:
+    if "wingbox_test_d" in versions:
+        add("")
+        add(f"All five setups ran again on {versions['wingbox_test_d_date']} with Wingbox {versions['wingbox_test_d']}, Graphify {gf}, CodeGraph {cgv} "
+            "and OntoIndex 3.1.9 on the graphs of the first run, one setup after the other, four trials at a time, with the same prompt, model and limits. "
+            "Tokens, cost and F1 compare directly; seconds less so, since the load of the machine differed between setups.")
+    elif "all_cg" in sm:
         add("")
         add(f"Plain search and Graphify ran interleaved on {versions['date']}. The Wingbox {versions['wingbox']} trials ran on {versions.get('wingbox_date', versions['date'])} "
             f"and the CodeGraph trials on {versions['codegraph_date']}, each setup on its own, four trials at a time, with the same prompt, model and limits. "
