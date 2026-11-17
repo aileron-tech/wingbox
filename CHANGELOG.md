@@ -1,13 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-11-17
 
 ### Changes
 
-- Claude Desktop extension: `python3 tools/build_mcpb.py` builds
-  `dist/wingbox-<version>.mcpb`, an MCP Bundle (manifest 0.4, server type
-  `uv`) that installs this release of `wingbox` from PyPI and runs
-  `wingbox mcp` for the repository the user picks in the extension settings.
+- Claude Desktop extension: `wingbox-<version>.mcpb`, published with each
+  GitHub release and built by `python3 tools/build_mcpb.py`. An MCP Bundle
+  (manifest 0.4, server type `uv`) that installs this release of `wingbox`
+  from PyPI and runs `wingbox mcp` for the repository the user picks in the
+  extension settings; the first use builds its graph.
 - `wingbox mcp --build-missing`: when the repository has no code graph, the
   server builds it in the background; a tool call waits up to 45 seconds
   (`WINGBOX_FIRST_BUILD_WAIT`) and otherwise says that the first build is

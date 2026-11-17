@@ -358,6 +358,32 @@ The plugin folder holds a copy of `SKILL.md` and `references/`, and the
 version of `pyproject.toml`; `python3 tools/sync_plugin.py` refreshes them and
 the tests fail while they differ.
 
+## Claude Desktop
+
+Wingbox is also a Claude Desktop extension. Download `wingbox-<version>.mcpb`
+from the assets of the [latest release](https://github.com/aileron-tech/wingbox/releases/latest)
+and install it: double-click the file, drag it into the Claude Desktop window,
+or choose **Settings > Extensions > Advanced settings > Install Extension...**
+and select it. In the extension settings, choose the repository Wingbox maps.
+
+The first use builds the code graph of that repository (the `.wingbox/`
+folder in it). A tool call waits up to 45 seconds for that first build; on a
+large repository it answers that the build is still running, and the next call
+a minute later answers from the graph. Later answers bring the graph up to date
+with the files you change.
+
+The extension holds no Python packages: it is an MCP Bundle of the server type
+`uv`, which pins this release of `wingbox` from PyPI. The
+[MCPB specification](https://github.com/modelcontextprotocol/mcpb/blob/main/MANIFEST.md#uv-runtime-v04)
+says the host installs Python and the dependencies with uv, so that nothing
+needs to be installed first; Wingbox's parsers ship as binary wheels for
+macOS, Windows and Linux, so no compiler is needed. If your Claude Desktop
+reports that it cannot start the server, install
+[uv](https://docs.astral.sh/uv/getting-started/installation/) and restart it.
+The first start downloads the package from PyPI; after that the server opens
+no network connection. `python3 tools/build_mcpb.py` builds the file from a
+checkout.
+
 ## Quick start from the command line
 
 Install the `wingbox` command (Python 3.11 or newer, macOS, Linux or Windows):

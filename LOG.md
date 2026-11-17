@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.8.0: Claude Desktop extension
+
+### Changes
+- `pyproject.toml`, `server.json` and `WINGBOX_VERSION`: 0.8.0 (a new command-line option, `wingbox mcp --build-missing`, and a new artefact, the `.mcpb` bundle).
+- `CHANGELOG.md`: `## 0.8.0 - 2026-11-17`. README: section "Claude Desktop" (install, the repository setting, first build, what the `uv` server type needs; the uv requirement is stated as the MCPB specification gives it, since it was not checked inside Claude Desktop).
+- `tools/sync_plugin.py`: the plugin follows the newest `vX.Y.Z` tag that is an ancestor of HEAD (`git describe --tags --abbrev=0`), with a "fetch the tags and the history" message when tags exist but none is reachable; REQ-PLUGIN-017. Why: the run of 350aa31 went red on macOS 3.11 when the v0.7.2 tag landed during the run.
+- Release note for the maintainer: build the bundle with `python3 tools/build_mcpb.py` from the release commit and attach `dist/wingbox-0.8.0.mcpb` to the GitHub release after PyPI has 0.8.0 (the bundle pins `wingbox==0.8.0`).
+
 ## 2026-11-17 - Claude Desktop extension (MCP Bundle)
 
 ### Changes
