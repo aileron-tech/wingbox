@@ -12,7 +12,7 @@ if [ "$1" = "hook" ]; then
   if command -v wingbox >/dev/null 2>&1; then
     wingbox "$@" 2>/dev/null
   elif command -v uvx >/dev/null 2>&1; then
-    uvx --offline --quiet --from git+https://github.com/aileron-tech/wingbox@fdc681225c0de7b6eb039ef9c44a050056051086 wingbox "$@" 2>/dev/null
+    uvx --offline --quiet --from git+https://github.com/aileron-tech/wingbox@8481a35b08c3078d8f898c52dd5f679206bbdd2d wingbox "$@" 2>/dev/null
   fi
   exit 0
 fi
@@ -20,7 +20,7 @@ if command -v wingbox >/dev/null 2>&1; then
   exec wingbox "$@"
 fi
 if command -v uvx >/dev/null 2>&1; then
-  exec uvx --quiet --from git+https://github.com/aileron-tech/wingbox@fdc681225c0de7b6eb039ef9c44a050056051086 wingbox "$@"
+  exec uvx --quiet --from git+https://github.com/aileron-tech/wingbox@8481a35b08c3078d8f898c52dd5f679206bbdd2d wingbox "$@"
 fi
 echo "wingbox: the wingbox command is not installed. Install it with: pipx install wingbox" >&2
 echo "(or install uv from https://docs.astral.sh/uv/ and the plugin runs wingbox through uvx)" >&2
