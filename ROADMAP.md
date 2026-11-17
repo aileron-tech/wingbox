@@ -16,6 +16,7 @@ What is being built next. Items move to the [Changelog](CHANGELOG.md) when they 
   - required imports that can never become exceptions (an entry point must bind its ports);
   - optionally one TypeScript project (or package) per layer, with a check that every file sits in the project its layer names;
   - export of the same rules to the tools a team already runs: CodeRabbit review instructions and ast-grep rules, and a dependency-cruiser configuration.
+  Proposal and solution: [docs/layer-control.md](docs/layer-control.md).
 - **Confidence on every edge:** each dependency carries how it was found (resolved from the import, inferred, or ambiguous), so an agent knows which links to trust.
 - **A short verdict before an edit:** `SAFE`, `CAUTION` or `DANGEROUS` for a file, from its blast radius and the layers it touches, with capped lists and counts of what was left out.
 - **Failed queries say so:** a query that could not finish is marked as failed, so it never reads as "nothing depends on this".
