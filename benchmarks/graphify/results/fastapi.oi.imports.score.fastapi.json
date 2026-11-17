@@ -1,0 +1,88 @@
+{
+ "label": "fastapi/: ontoindex imports",
+ "scope": "fastapi/",
+ "reference_pairs": 124,
+ "tool_edges": 122,
+ "strict": {
+  "right": 122,
+  "of_them_implied_package_init": 6,
+  "precision": 1.0,
+  "recall": 0.9355
+ },
+ "either": {
+  "right": 122,
+  "precision": 1.0,
+  "found": 116,
+  "recall": 0.9355
+ },
+ "tool_edges_not_in_code": [],
+ "tool_edges_wrong_strict": [],
+ "code_pairs_missing_strict": [
+  [
+   "fastapi/_compat/v2.py",
+   "fastapi/_compat/shared.py"
+  ],
+  [
+   "fastapi/_compat/v2.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/applications.py",
+   "fastapi/routing.py"
+  ],
+  [
+   "fastapi/dependencies/utils.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/openapi/utils.py",
+   "fastapi/routing.py"
+  ],
+  [
+   "fastapi/param_functions.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/routing.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/utils.py",
+   "fastapi/_compat/v2.py"
+  ]
+ ],
+ "code_pairs_missing_either": [
+  [
+   "fastapi/_compat/v2.py",
+   "fastapi/_compat/shared.py"
+  ],
+  [
+   "fastapi/_compat/v2.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/applications.py",
+   "fastapi/routing.py"
+  ],
+  [
+   "fastapi/dependencies/utils.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/openapi/utils.py",
+   "fastapi/routing.py"
+  ],
+  [
+   "fastapi/param_functions.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/routing.py",
+   "fastapi/params.py"
+  ],
+  [
+   "fastapi/utils.py",
+   "fastapi/_compat/v2.py"
+  ]
+ ]
+}

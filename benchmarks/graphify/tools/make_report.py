@@ -7,12 +7,17 @@ Test F is included when <results dir>/build_times.same_machine.json exists (tool
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
 import sys
 
 R, out_path = sys.argv[1:3]
+# Tools measured after the first three: their lines come from their own result files (tools/other_tools.py).
+_spec = importlib.util.spec_from_file_location("other_tools", os.path.join(os.path.dirname(os.path.abspath(__file__)), "other_tools.py"))
+other_tools = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(other_tools)
 load = lambda name: json.load(open(os.path.join(R, name)))
 text = lambda name: open(os.path.join(R, name), encoding="utf-8").read()
 num = lambda value: f"{value:,}" if isinstance(value, int) else (f"{value:,.3f}" if value < 10 else f"{value:,.1f}")
@@ -35,7 +40,9 @@ exact_g = sum(row["graphify"]["wrong"] == 0 and row["graphify"]["missing"] == 0 
 exact_c = sum(row["codegraph"]["wrong"] == 0 and row["codegraph"]["missing"] == 0 for row in cg_cc.values())
 kw, kg = kf["wingbox"], kf["graphify"]
 
-add("# Wingbox, Graphify and CodeGraph on the same public tests")
+_extra = other_tools.names(R)
+add("# Wingbox, Graphify, CodeGraph" + "".join(f", {label}" for label in _extra[:-1]) + (f" and {_extra[-1]}" if _extra else "") + " on the same public tests"
+    if _extra else "# Wingbox, Graphify and CodeGraph on the same public tests")
 add("")
 add(f"Wingbox {versions['wingbox']} from PyPI, run of {versions.get('wingbox_date', versions['date'])}. Graphify {gf} from PyPI (`graphifyy`), "
     f"`GRAPHIFY_BACKEND=none` (no model, no key), run of {versions['date']}. Every number below is produced by the scripts in `tools/` "
@@ -47,6 +54,8 @@ add("")
 add(f"Versions: Wingbox {versions['wingbox']}, Graphify {gf}, CodeGraph {cgv}. Test E (build time on a hosted runner) is the only part still measured with "
     "an earlier Wingbox; its version is named there.")
 add("")
+for _line in other_tools.intro(R):
+    add(_line)
 add("## Which tool for which job")
 add("")
 cg_rows = list(cg_cc.values())
@@ -82,6 +91,8 @@ add("- What the others do better: " + (
     + "Per its documentation CodeGraph covers more languages "
     "(Swift, Kotlin, C, C++, Dart, Lua and others), keeps its index in sync with file changes automatically and answers symbol and call-flow "
     "questions; per its documentation Graphify also maps documents, PDFs, images and videos.")
+for _line in other_tools.which_job(R):
+    add(_line)
 add("")
 add("## Summary")
 add("")
@@ -119,6 +130,8 @@ if os.path.exists(os.path.join(R, "build_times.same_machine.json")):
     add(f"- On one machine, a fresh graph of {big['corpus']} takes Wingbox {big['wingbox_build_wall_s']:.1f} s, Graphify "
         f"{big['graphify_extract_wall_s'] + big['graphify_cluster_wall_s']:.1f} s and CodeGraph {big['codegraph_init_wall_s']:.1f} s; after a one-line edit "
         f"Wingbox {big['wingbox_edit_wall_s']:.1f} s, Graphify {big['graphify_edit_wall_s']:.1f} s and CodeGraph {big['codegraph_edit_wall_s']:.1f} s (test F).")
+for _line in other_tools.summary(R):
+    add(_line)
 add("")
 add("## What Graphify publishes in its repository")
 add("")
@@ -453,6 +466,9 @@ add("**CodeGraph** builds a symbol-level graph: \"nodes (functions, classes, met
     "answers are the shortest of the three (test C). Its main agent tool, `codegraph_explore`, returns source code and call paths for "
     "symbols, which these tests do not measure.")
 add("")
+
+for _line in other_tools.why(R) + other_tools.sections(R):
+    add(_line)
 
 add("## Scope")
 add("")

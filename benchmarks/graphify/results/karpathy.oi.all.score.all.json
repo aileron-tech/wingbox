@@ -1,0 +1,40 @@
+{
+ "label": "karpathy: ontoindex all",
+ "scope": "(whole tree)",
+ "reference_pairs": 15,
+ "tool_edges": 17,
+ "strict": {
+  "right": 15,
+  "of_them_implied_package_init": 0,
+  "precision": 0.8824,
+  "recall": 1.0
+ },
+ "either": {
+  "right": 15,
+  "precision": 0.8824,
+  "found": 15,
+  "recall": 1.0
+ },
+ "tool_edges_not_in_code": [
+  [
+   "minGPT/mingpt/trainer.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "micrograd/micrograd/engine.py"
+  ]
+ ],
+ "tool_edges_wrong_strict": [
+  [
+   "minGPT/mingpt/trainer.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "micrograd/micrograd/engine.py"
+  ]
+ ],
+ "code_pairs_missing_strict": [],
+ "code_pairs_missing_either": []
+}

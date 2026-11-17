@@ -68,7 +68,7 @@ this file applies to you.
   byte for byte identical, and `--check` exits 1 while anything is stale. The
   launcher pins the commit of the newest `vX.Y.Z` tag, so run it again once
   the release tag exists.
-- ASCII only. `.gitignore` changes only when the name of a generated file
+- ASCII only, and English only: no Russian or other non-English text anywhere in the repository, including LOG.md entries and quotes of what the maintainer said (paraphrase them in English; REQ-DOC-001). `.gitignore` changes only when the name of a generated file
   changes.
 - A user-facing change updates `README.md` and `SKILL.md` (command tables),
   `CHANGELOG.md` (under `## Unreleased`, `### Changes` before `### Fixes`)
