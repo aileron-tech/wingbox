@@ -1,5 +1,12 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.7.2: documents
+
+- The maintainer found the README's title and several sections out of date (old tagline, the two-tool comparison of an early run, no find-usages section, no operating systems). The README was rewritten in #80; PyPI shows it only with a release, hence 0.7.2.
+- New test REQ-DOC-003: every number in the README's comparison and find-usages tables is a number of the generated reports; checked by putting an old figure back, which fails the test.
+- `pyproject.toml`, `server.json` and `WINGBOX_VERSION` say 0.7.2; no code change since 0.7.1.
+- Verification: the nine CI cells on the pull request.
+
 ## 2026-11-17 - Version 0.7.1: hooks and MCP server without Git Bash on Windows
 
 ### Changes

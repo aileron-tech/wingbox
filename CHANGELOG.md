@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.2 - 2026-11-17
+
+A release of the documents; the tool behaves as in 0.7.1.
+
+### Changes
+
+- README, which is also the PyPI page: the title "Wingbox: a map of your
+  codebase for AI coding agents", the comparison of four tools from the current
+  run, a section on the find-usages benchmark, macOS, Linux and Windows named
+  in the lead and the FAQ, the plugin install commands in their verified forms.
+- A test keeps the numbers of the README's summary tables equal to the
+  generated benchmark reports.
+- The roadmap lists what shipped in 0.6 and 0.7 apart from what is in progress.
+
 ## 0.7.1 - 2026-11-17
 
 ### Fixes
