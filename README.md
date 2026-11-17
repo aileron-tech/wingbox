@@ -1275,6 +1275,20 @@ may miss changes says so. `wingbox build` rebuilds by hand; files whose
 content did not change are taken from the cache. `diff_functions <ref>` lists
 the functions changed since a git ref.
 
+### Why do the first searches after a branch switch say `wingbox-graph-stale`?
+
+A branch switch changes many files at once, so the next search hook starts a
+rebuild of the graph in the background. The hook waits up to 3 seconds; a
+rebuild that takes longer (7 to 17 seconds on a 670-file repository on
+Windows) is not waited for: the hook answers `(wingbox-graph-stale :reason
+refresh-timeout ...)` so that the agent knows the graph does not yet match the
+branch, instead of holding the search or answering from the old branch. The
+searches after the rebuild get context again. A partial update would not make
+this much faster: switching FastAPI from 0.115.0 to 0.118.0 changes 402 of
+1,142 Python files, and through their importers 1,006 of 1,152 modules have to
+be resolved again (4.6 s against 5.5 s for the whole build on an Intel Core i9
+laptop), so a large switch takes a build.
+
 ### Which AI coding agents does Wingbox work with?
 
 Codex, Claude Code, Gemini CLI, Cursor, GitHub Copilot, and other clients
