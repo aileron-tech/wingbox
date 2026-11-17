@@ -34,6 +34,8 @@ macOS and Windows with Python 3.11, 3.12 and 3.13 in GitHub Actions.
 - Output is written as UTF-8 whatever the console code page, and colours are
   used only on a terminal that shows them (`NO_COLOR` is respected).
 - `git` output is read as UTF-8, with file names unquoted.
+- No `SyntaxWarning` on the first run under Python 3.13; a test compiles every
+  source file with warnings turned into errors.
 
 ## 0.6.2 - 2026-11-17
 

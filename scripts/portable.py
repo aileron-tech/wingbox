@@ -1,4 +1,4 @@
-"""What differs between Windows, macOS and Linux, in one place. Everything else calls these helpers.
+r"""What differs between Windows, macOS and Linux, in one place. Everything else calls these helpers.
 
 - file locks: `lock` / `unlock` on an open file (fcntl.flock, or msvcrt.locking on Windows); the system
   releases them when the process ends;
