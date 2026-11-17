@@ -796,8 +796,9 @@ wingbox update            # upgrade, then refresh what wingbox install put in pl
 
 `wingbox update` upgrades with the installer that installed Wingbox: pipx
 (`pipx upgrade wingbox`), uv (`uv tool upgrade wingbox`) or pip of the Python
-environment it runs in. A Docker image or an editable or local install cannot
-update itself; the command says so and prints what to run instead. Wingbox
+environment it runs in. A Homebrew install is upgraded by Homebrew
+(`brew upgrade wingbox`), and a Docker image or an editable or local install
+cannot update itself; the command says so and prints what to run instead. Wingbox
 itself opens no network connection: only the installer reaches the package
 index, and only when you run `wingbox update`.
 

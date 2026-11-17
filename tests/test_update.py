@@ -154,6 +154,23 @@ class MethodDetectionTest(unittest.TestCase):
         self.assertIsInstance(update.package_origin('{"url": "file:///w/wingbox-0.2.5-py3-none-any.whl", '
                                                     '"archive_info": {}}', False), update.FromIndex)
 
+    def test_a_homebrew_install_is_upgraded_by_homebrew(self) -> None:
+        """/* REQ-UPDATE-012: inside a Homebrew keg (the environment folder lies under Cellar/wingbox/<version>/), `wingbox update` must change nothing, run no installer, exit 1 and name `brew upgrade wingbox`, also when uv is on PATH and the environment has no pip; an environment outside a keg is chosen as before. */"""
+        stubs = StubInstallers(self)
+        stubs.add("uv", 'if args[:1] == ["--version"]: out("uv 0.9.0"); sys.exit(0)\nsys.exit(2)')
+        for prefix in ("/opt/homebrew/Cellar/wingbox/0.9.0/libexec", "/home/linuxbrew/.linuxbrew/Cellar/wingbox/0.9.0/libexec"):
+            self.assertTrue(update.homebrew_keg(prefix), prefix)
+            cannot = update.choose_method(update.FromIndex(), prefix + "/bin/python", prefix, update.run_installer, has_pip=False)
+            self.assertIsInstance(cannot, update.CannotUpdate)
+            self.assertEqual(("homebrew-install", "brew upgrade wingbox"), (cannot.reason, cannot.instead))
+            result = update.update(update.Options(False, False, False),
+                                   environment(python=prefix + "/bin/python", prefix=prefix))
+            self.assertEqual(1, update.exit_status(result))
+            self.assertEqual("brew upgrade wingbox", result[-1].get("instead"))
+        self.assertEqual([], stubs.called())
+        for prefix in ("/envs/wingbox", "/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks", "/home/me/Cellar/project/.venv"):
+            self.assertFalse(update.homebrew_keg(prefix), prefix)
+
 
 class CheckTest(unittest.TestCase):
     def test_check_reports_the_latest_version_without_installing(self) -> None:
