@@ -6,7 +6,7 @@ it reaches the user, so it holds a copy of the skill (SKILL.md and
 references/) and of LICENSE, the version in both manifests, and in the Claude Code manifest the
 pinned `uvx --from git+https://github.com/aileron-tech/wingbox@<commit>` of every hook and of the MCP
 server (a literal in each command: the plugin directory reads the pin from it).
-The plugin follows the latest release: the version and commit of the newest `vX.Y.Z` tag
+The plugin follows the latest release: the version and commit of the newest `vX.Y.Z` tag that is an ancestor of HEAD
 (the Claude plugin directory accepts a git source pinned to a full commit, not a PyPI version).
 Set WINGBOX_RELEASE="<version> <commit>" to override, as the tests do.
 
@@ -46,14 +46,26 @@ def project_version(repo: Path) -> str:
     return tomllib.loads((repo / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
 
+def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+
 def latest_release(repo: Path) -> tuple[str, str]:
-    """(version, full commit) of the newest vX.Y.Z tag, or of WINGBOX_RELEASE."""
+    """(version, full commit) of the newest vX.Y.Z tag that is an ancestor of HEAD, or of WINGBOX_RELEASE.
+
+    An ancestor, not the newest tag of the repository: a branch cut before a release keeps the
+    release it was cut from when the next tag lands on main."""
     override = os.environ.get("WINGBOX_RELEASE", "").split()
     if len(override) == 2:
         return override[0], override[1]
-    listed = subprocess.run(["git", "-C", str(repo), "tag", "--list", "v[0-9]*", "--sort=-v:refname"],
-                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+    listed = _git(repo, "tag", "--list", "v[0-9]*")
     tags = listed.stdout.split() if listed.returncode == 0 else []
+    if tags:
+        described = _git(repo, "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", "HEAD")
+        if described.returncode != 0:
+            raise SystemExit("no vX.Y.Z tag is an ancestor of HEAD (a shallow clone?): fetch the tags and the "
+                             "history (git fetch --tags --unshallow), or set WINGBOX_RELEASE")
+        tags = [described.stdout.strip()]
     if not tags:
         # A source archive or a shallow clone without tags: keep the release the
         # plugin already pins, so --check still compares the copied files.
@@ -62,8 +74,7 @@ def latest_release(repo: Path) -> tuple[str, str]:
             raise SystemExit("no vX.Y.Z tag and no pinned commit: release first, or set WINGBOX_RELEASE")
         manifest = json.loads((repo / PLUGIN_PATH / MANIFESTS[0]).read_text(encoding="utf-8"))
         return manifest["version"], pinned.group(0).rsplit("@", 1)[1]
-    commit = subprocess.run(["git", "-C", str(repo), "rev-parse", f"{tags[0]}^{{commit}}"],
-                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
+    commit = _git(repo, "rev-parse", f"{tags[0]}^{{commit}}").stdout.strip()
     return tags[0][1:], commit
 
 
