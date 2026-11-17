@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "wingbox"
 version = "0.6.1"
-description = "Code graph and blast radius analysis for AI coding agents"
+description = "A map of your codebase for AI coding agents: what a change breaks, where a symbol is used, how the architecture is layered. Local, no model."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -28,6 +28,16 @@ keywords = [
     "graphify",
     "graphify-alternative",
     "knowledge-graph",
+    "code-knowledge-graph",
+    "codebase-map",
+    "mcp",
+    "mcp-server",
+    "claude-code-plugin",
+    "cursor",
+    "monorepo",
+    "architecture",
+    "find-usages",
+    "refactoring",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -36,6 +46,9 @@ classifiers = [
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development",
     "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
@@ -60,6 +73,9 @@ Homepage = "https://wingbox.dev"
 Repository = "https://github.com/aileron-tech/wingbox"
 Changelog = "https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md"
 Issues = "https://github.com/aileron-tech/wingbox/issues"
+Documentation = "https://github.com/aileron-tech/wingbox#readme"
+Benchmarks = "https://wingbox.dev/benchmarks"
+"Release notes" = "https://github.com/aileron-tech/wingbox/releases"
 
 [project.scripts]
 wingbox = "wingbox.cli:main"
