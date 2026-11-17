@@ -26,6 +26,7 @@ FILES = {
 
 
 class RustReferenceTest(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "the benchmark references run on Linux and macOS (run.sh); the resolver joins POSIX paths")
     def test_the_reference_follows_items_to_their_definers(self) -> None:
         """/* REQ-BENCH-015: both copies of tools/rust_resolve.py give, for a name used through a facade, the file that defines it (to_followed), skipping a private item a glob re-export cannot carry; a glob import (`use crate::domain::*`) gives a glob-use reference for each item its module text names, also as the head of a path (`Kind::A`), and none for the variant of a local enum or a typed local name; the impact benchmark requires both the facade and the definer, and still draws its questions from the facade edges. */"""
         sys.path.insert(0, str(ROOT / "benchmarks" / "impact"))
