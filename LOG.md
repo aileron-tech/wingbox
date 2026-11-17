@@ -10,6 +10,7 @@
 - README: the `.wingbox/` table and one paragraph on which files appear in git; FAQ on `wingbox-graph-stale` after a branch switch, measured: FastAPI 0.115.0 to 0.118.0 (402 of 1,142 Python files) redoes 1,006 of 1,152 modules in a partial update without its limits, 4.6 s against 5.5 s for a full build and 5.6 s for the incremental one, so the limits stay.
 - Version 0.8.2 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`.
 - Why: the report of a test on Windows 11 in issue #48.
+- Added after installing by clicks in Claude Desktop and the Codex app: `plugins/wingbox/codex.mcp.json` starts `uvx --quiet --from <pin> wingbox mcp --build-missing` (pin kept by `tools/sync_plugin.py`, REQ-PLUGIN-005/011); `wingbox mcp --build-missing` takes a first-build lock so that two servers build once, waits for a running `wingbox build`, and never builds outside a source repository (REQ-MCP-018, 019; the server tests' fixture is now a git work tree); one short description in every manifest (REQ-PLUGIN-014); `tests.yml` skips Markdown, docs/ and LICENSE changes and cancels a superseded run outside main, `docs.yml` runs the documentation tests on one cell for them.
 
 ## 2026-11-17 - Version 0.8.1: init on a small repository
 

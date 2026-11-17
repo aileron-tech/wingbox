@@ -26,8 +26,20 @@ issue #48.
   writes in `.wingbox/` ignores itself, and `decisions.sexp` is started only
   once the project is set up (`wingbox init`, `learn`, `align --learn` or
   `advice`).
+- The Codex plugin's MCP server runs the pinned release through `uvx` (with
+  `--build-missing`), so a plugin installed by clicks works without a
+  `wingbox` command on PATH; the Codex plugin needs uv, as the Claude Code
+  plugin does.
+- `wingbox mcp --build-missing` started twice at once (Claude Desktop does)
+  builds once: the second server says `a build is already running: waiting
+  for it` instead of logging an error. In a folder that is in no repository it
+  builds nothing, and every tool answers "No repository here".
 
 ### Changes
+
+- One short description in every manifest (the plugins, the marketplace, the
+  Claude Desktop extension): "A map of your codebase for coding agents: what a
+  change touches, where a symbol is used."
 
 - README FAQ: why the first searches after a branch switch say
   `wingbox-graph-stale`, and why a large switch takes a build.
