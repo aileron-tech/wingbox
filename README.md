@@ -7,7 +7,7 @@
 > **Give your coding agent a map of your codebase. Half the cost, no missed files.**
 >
 > Your agent sees every file a change touches before it edits, so it no longer
-> forgets a fix. Half the cost of its own search: [benchmarks](benchmarks/impact/README.md).
+> forgets a fix. Half the cost of its own search: [benchmarks](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md).
 >
 > Wingbox builds a local **code graph** (a code knowledge graph made by static
 > parsing, with no model) of your repository so that AI coding
@@ -35,11 +35,11 @@
 >
 > **Skill only:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
-> **Release notes:** [Changelog](CHANGELOG.md) · **What is next:** [Roadmap](ROADMAP.md)
+> **Release notes:** [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md) · **What is next:** [Roadmap](https://github.com/aileron-tech/wingbox/blob/main/ROADMAP.md)
 >
 > **Note:** Wingbox was formerly published as `codespaces`. The skill, the
 > scripts and the generated files were renamed on 2026-11-15; see the
-> [Changelog](CHANGELOG.md) for the old and new names.
+> [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md) for the old and new names.
 
 Understand a large codebase before you change it. Wingbox is an
 architecture-aware code search and impact analysis tool for Python, TypeScript,
@@ -207,7 +207,7 @@ a fixed seed in five public repositories (TypeScript, Rust, Python):
 
 The reference lists come from resolvers that share no code with Wingbox. The
 scripts, the lists and every result file are in
-[benchmarks/impact](benchmarks/impact/README.md), with what the benchmark does
+[benchmarks/impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md), with what the benchmark does
 not show. `Dockerfile.benchmark` runs the tests that need no model in a clean
 container and compares every result with the committed one:
 
@@ -235,7 +235,7 @@ of what depends on a file. Both were run on the same public repositories
 answers a wider question than "who imports this file"; the report gives its
 figures restricted to imports too. The scripts, the reference lists, every
 result file and the token formula Graphify publishes are in
-[benchmarks/graphify](benchmarks/graphify/README.md).
+[benchmarks/graphify](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md).
 
 ## Wingbox on Theory of Code Space
 
@@ -256,7 +256,7 @@ between files that also import each other, where the ground truth counts a call
 of an API but not of a helper; Wingbox leaves that judgement to a model. The
 scripts, the maps sent to the metric, eight more generated codebases and the
 plan for a model that starts from the Wingbox map are in
-[benchmarks/tocs](benchmarks/tocs/README.md).
+[benchmarks/tocs](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/tocs/README.md).
 
 ## Quick start for AI coding agents
 
@@ -289,7 +289,7 @@ MCP clients use `wingbox mcp`: see [Use from an MCP client](#use-from-an-mcp-cli
 ## Install as a plugin
 
 This repository is also a plugin marketplace for Claude Code and Codex. The
-plugin, in [`plugins/wingbox`](plugins/wingbox), bundles the `wingbox` skill
+plugin, in [`plugins/wingbox`](https://github.com/aileron-tech/wingbox/tree/main/plugins/wingbox), bundles the `wingbox` skill
 and the MCP server `wingbox mcp`, and in Claude Code the search hook that
 `wingbox install` adds. Use either the plugin or `wingbox install`, not both
 (`wingbox uninstall` removes what install added).
@@ -469,7 +469,7 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   compared with the style words through a built-in table of word vectors for
   architecture terms (GloVe, public domain), above a threshold; it is off by
   default because it did not improve accuracy on
-  [benchmarks/architecture](benchmarks/architecture/README.md). Each label
+  [benchmarks/architecture](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/architecture/README.md). Each label
   says which step matched.
 
 - **Target layout.** For each part with a style, `init` lists the full layout
@@ -1159,7 +1159,7 @@ closest to a question. Wingbox resolves each import to the file it names and
 answers from those edges, so `impact --all` returns the complete list of
 dependent files with nothing guessed (without `--all` it names at most 200,
 nearest first, and always gives the complete counts). The benchmark checks every list against resolvers
-that share no code with Wingbox: [benchmarks/impact](benchmarks/impact/README.md).
+that share no code with Wingbox: [benchmarks/impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md).
 
 ### My editor already has "go to definition" and "find usages". Why a graph?
 
@@ -1243,11 +1243,11 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 ## Project resources
 
 - Website: [wingbox.dev](https://wingbox.dev)
-- [Skill workflow and complete command reference](SKILL.md)
-- [S-expression map format](references/sexp-notation.md)
-- [Composable query language](references/scheme-queries.md)
-- [Changelog](CHANGELOG.md)
-- [Completion log](LOG.md)
+- [Skill workflow and complete command reference](https://github.com/aileron-tech/wingbox/blob/main/SKILL.md)
+- [S-expression map format](https://github.com/aileron-tech/wingbox/blob/main/references/sexp-notation.md)
+- [Composable query language](https://github.com/aileron-tech/wingbox/blob/main/references/scheme-queries.md)
+- [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md)
+- [Completion log](https://github.com/aileron-tech/wingbox/blob/main/LOG.md)
 
 ## License
 
