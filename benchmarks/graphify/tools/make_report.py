@@ -44,6 +44,9 @@ add("")
 add(f"CodeGraph {cgv} from npm (`@colbymchenry/codegraph`), run of {versions['codegraph_date']} on the same commits, questions, reference lists "
     "and scoring; the Wingbox and Graphify figures are those of the first run.")
 add("")
+add(f"Versions: Wingbox {versions['wingbox']}, Graphify {gf}, CodeGraph {cgv}. The Wingbox column is Wingbox {versions['wingbox']} as published on PyPI, "
+    "the version of the first run; later Wingbox releases are not measured here.")
+add("")
 add("## Summary")
 add("")
 add(f"- Graphify's \"71.5x fewer tokens per query\" is the size of the whole corpus divided by the size of one graph answer. "
@@ -377,6 +380,41 @@ if os.path.exists(same_path):
                    if before != after)
         + " Every single run is in `results/build_times.same_machine.json`.")
     add("")
+
+add("## Why the numbers differ")
+add("")
+add("The three tools are built for different questions. Tests B and C ask one question, which files depend on a file through its import "
+    "statements, and the reference lists are built from import statements. Each tool's design explains its numbers on that question; "
+    "the design points below are taken from each tool's own documentation.")
+add("")
+add("**Wingbox** is built for this question. Its README describes the blast radius of a change as \"everything that depends, directly or "
+    "transitively, on the code you are about to edit\", computed from the reverse dependencies of a file-level code graph, and `wingbox impact "
+    "<file>` prints the dependents of a file by depth. Wingbox resolves each import statement to a file, which is also how the reference lists "
+    "are made, so its answers match them. The benchmark measures the question Wingbox is built for; it does not measure symbol-level or "
+    "flow questions.")
+add("")
+gi = load("fastapi.gf.imports.score.all.json")
+q4 = next(row for row in cc if row["question"] == "Q4")
+add("**Graphify** builds a knowledge graph of a whole project: \"code, docs, PDFs, images, videos\" (Graphify README). In code it records "
+    "functions, methods and classes and links them through `calls`, `imports` and `inherits`, and tags every edge `EXTRACTED` (read from "
+    "the source) or `INFERRED` (resolved by Graphify). `graphify affected` is a \"reverse traversal to find nodes impacted by X\" over all "
+    "these relations, a wider question than which files import X: it names files that call or reference something in X, which is why Q4 "
+    f"lists {q4['graphify']['wrong']} files beyond the import statements, and {q4['graphify_import_relations']['wrong']} when the same command follows only "
+    "its import relations (test C). Graphify also links an import to the file that defines the imported name and resolves some names across files; that adds and "
+    f"drops some file pairs ({len(gi['tool_edges_not_in_code'])} and {len(gi['code_pairs_missing_either'])} on FastAPI, test B). "
+    "Its documents, papers and images are outside these tests.")
+add("")
+add("**CodeGraph** builds a symbol-level graph: \"nodes (functions, classes, methods) and edges (calls, imports, extends, implements)\" stored "
+    "in SQLite, with references resolved after extraction (\"function calls -> definitions, imports -> source files\", CodeGraph README, "
+    "How It Works). Two files are linked when a symbol of one reaches a symbol of the other, and an import is linked to the file that "
+    "defines the imported name. A file-to-file check against import statements therefore counts many of its links as extra although they "
+    "are correct in its model; the second table of test B accepts those links. Its `impact` command takes a symbol (\"Analyze what code is "
+    "affected by changing a symbol\"), so a file question needs `codegraph impact <file name> --file <path>`; from a file node it follows the "
+    "edges into that node, and in the two Rust repositories no edge points at the file node, so Q2 and Q3 returned no file. Its file-level "
+    "command `codegraph affected` is documented for test files (\"Find test files affected by changed source files\"). When it answers, its "
+    "answers are the shortest of the three (test C). Its main agent tool, `codegraph_explore`, returns source code and call paths for "
+    "symbols, which these tests do not measure.")
+add("")
 
 add("## Scope")
 add("")

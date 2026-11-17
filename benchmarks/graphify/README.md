@@ -4,6 +4,8 @@ Run of 2026-11-16. Wingbox 0.2.0 from PyPI. Graphify 0.9.110 from PyPI (`graphif
 
 CodeGraph 1.6.2 from npm (`@colbymchenry/codegraph`), run of 2026-11-17 on the same commits, questions, reference lists and scoring; the Wingbox and Graphify figures are those of the first run.
 
+Versions: Wingbox 0.2.0, Graphify 0.9.110, CodeGraph 1.6.2. The Wingbox column is Wingbox 0.2.0 as published on PyPI, the version of the first run; later Wingbox releases are not measured here.
+
 ## Summary
 
 - Graphify's "71.5x fewer tokens per query" is the size of the whole corpus divided by the size of one graph answer. No answer is checked. On the code of its own example corpus Graphify publishes 8.8x; Graphify 0.9.110 gives 3.5x and 5.0x today, and the same formula gives Wingbox 78.1x (test A).
@@ -155,6 +157,16 @@ Seconds from a fresh checkout to a graph: every run starts from a new export of 
 The size of the graph is read from the file each build wrote, in every run; the summary stops when two runs of one tool differ. CPU seconds per step and every single run are in `results/build_times.json`.
 
 CodeGraph was not part of the hosted-runner run. `tools/time_builds_same_machine.py` times the three tools on one machine, the tools taking turns and their order rotating from round to round, cold and after a one-line edit; it has not been run on a quiet machine yet.
+
+## Why the numbers differ
+
+The three tools are built for different questions. Tests B and C ask one question, which files depend on a file through its import statements, and the reference lists are built from import statements. Each tool's design explains its numbers on that question; the design points below are taken from each tool's own documentation.
+
+**Wingbox** is built for this question. Its README describes the blast radius of a change as "everything that depends, directly or transitively, on the code you are about to edit", computed from the reverse dependencies of a file-level code graph, and `wingbox impact <file>` prints the dependents of a file by depth. Wingbox resolves each import statement to a file, which is also how the reference lists are made, so its answers match them. The benchmark measures the question Wingbox is built for; it does not measure symbol-level or flow questions.
+
+**Graphify** builds a knowledge graph of a whole project: "code, docs, PDFs, images, videos" (Graphify README). In code it records functions, methods and classes and links them through `calls`, `imports` and `inherits`, and tags every edge `EXTRACTED` (read from the source) or `INFERRED` (resolved by Graphify). `graphify affected` is a "reverse traversal to find nodes impacted by X" over all these relations, a wider question than which files import X: it names files that call or reference something in X, which is why Q4 lists 366 files beyond the import statements, and 3 when the same command follows only its import relations (test C). Graphify also links an import to the file that defines the imported name and resolves some names across files; that adds and drops some file pairs (19 and 16 on FastAPI, test B). Its documents, papers and images are outside these tests.
+
+**CodeGraph** builds a symbol-level graph: "nodes (functions, classes, methods) and edges (calls, imports, extends, implements)" stored in SQLite, with references resolved after extraction ("function calls -> definitions, imports -> source files", CodeGraph README, How It Works). Two files are linked when a symbol of one reaches a symbol of the other, and an import is linked to the file that defines the imported name. A file-to-file check against import statements therefore counts many of its links as extra although they are correct in its model; the second table of test B accepts those links. Its `impact` command takes a symbol ("Analyze what code is affected by changing a symbol"), so a file question needs `codegraph impact <file name> --file <path>`; from a file node it follows the edges into that node, and in the two Rust repositories no edge points at the file node, so Q2 and Q3 returned no file. Its file-level command `codegraph affected` is documented for test files ("Find test files affected by changed source files"). When it answers, its answers are the shortest of the three (test C). Its main agent tool, `codegraph_explore`, returns source code and call paths for symbols, which these tests do not measure.
 
 ## Scope
 
