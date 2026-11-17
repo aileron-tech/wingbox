@@ -239,14 +239,13 @@ a fixed seed in five public repositories (TypeScript, Rust, Python):
 
 | Setup | Complete answers | Tokens per answer | Cost per answer |
 |---|---|---|---|
-| With Wingbox | 41 of 55 | 32,183 | 0.031 USD |
-| Built-in search only | 37 of 55 | 49,292 | 0.063 USD |
+| With Wingbox | 54 of 55 | 29,482 | 0.030 USD |
+| Built-in search only | 39 of 55 | 48,545 | 0.063 USD |
 
-  Tokens -35 % (95 % interval -47 % to -20 %), cost -51 % (-58 % to -43 %).
-  The sessions ran with Wingbox 0.2.1; their saved answers are scored against
-  the reference lists that follow Rust items to their definers (2026-11-17).
-  The saving is large on the Rust and Python repositories and absent on the
-  two TypeScript ones.
+  Tokens -39 % (95 % interval -50 % to -26 %), cost -52 % (-60 % to -44 %).
+  The sessions ran with Wingbox 0.10.0 (2026-11-18).
+  The saving is large on the two Rust repositories (-67 % and -59 % tokens),
+  smaller on chrome-devtools-mcp (-23 %) and absent on immich and FastAPI.
 - Checked against every import statement of seven corpora (3,795 dependencies
   in the largest), the graph has no wrong dependency and four missing: an
   import of a vendored bundle, which Wingbox leaves out of the graph, and
@@ -277,9 +276,9 @@ no model inside any of the tools):
 |---|---|---|---|---|
 | Exact list of dependent files, five questions | 5 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
 | File dependencies of FastAPI against its 1,802 import pairs, wrong / missing | 0 / 0 | 19 / 17 | 106 / 25 | 22 / 118 |
-| Tokens a coding agent spends per answer (built-in search alone: 59,367) | 23,768 | 109,071 | 81,151 | 78,070 |
-| Cost per answer in that test, USD (built-in search alone: 0.075) | 0.021 | 0.095 | 0.070 | 0.075 |
-| Answer quality in that test, F1 (built-in search alone: 0.894) | 0.895 | 0.892 | 0.888 | 0.873 |
+| Tokens a coding agent spends per answer (built-in search alone: 55,971) | 25,283 | 150,504 | 99,247 | 73,905 |
+| Cost per answer in that test, USD (built-in search alone: 0.078) | 0.024 | 0.117 | 0.081 | 0.065 |
+| Answer quality in that test, F1 (built-in search alone: 0.888) | 1.000 | 0.870 | 0.888 | 0.874 |
 
 Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
 Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).

@@ -1,6 +1,6 @@
 {
  "wingbox": "wingbox 0.10.0",
  "date": "2026-11-17",
- "agent_wingbox": "0.2.1",
- "agent_note": "the agent test ran with 0.2.1; its saved answers are scored against the reference lists of 2026-11-17 (Rust items followed to their definers), with no new session"
+ "agent_wingbox": "0.10.0",
+ "agent_note": "the agent test ran again with 0.10.0 on 2026-11-18 (110 sessions, both arms); the answers are in agent_answers.json"
 }
