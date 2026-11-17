@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import unittest.mock
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -79,6 +80,8 @@ class HookOnABuiltGraphTest(unittest.TestCase):
                 "from shop.pricing import order_total\n\n\ndef pay(items):\n    return order_total(items)\n",
                 encoding="utf-8",
             )
+        (root / "shop" / "plans.py").write_text("class Subscription:\n    pass\n", encoding="utf-8")
+        (root / "shop" / "billing.py").write_text("from shop.plans import Subscription\n\n\ndef renew(s: Subscription):\n    return s\n", encoding="utf-8")
         with redirect_stdout(io.StringIO()):
             status = cli.main(["build", str(root)])
         assert status == 0
@@ -103,6 +106,16 @@ class HookOnABuiltGraphTest(unittest.TestCase):
         """/* REQ-INSTALL-017: a Grep pattern written for source lines (`def\\s+order_total`) must be answered for its longest word when the pattern itself names nothing in the graph. */"""
         context = _context(hook.run_pre_search(_payload("Grep", self.root, pattern="def\\s+order_total\\("), "/"))
         self.assertIn("(definition order_total ", context)
+
+    def test_a_grep_pattern_matches_with_smart_case(self) -> None:
+        """/* REQ-INSTALL-024: the Grep hint uses smart case, as the command line matches without case: a pattern with no upper-case letter (escapes such as \\s do not count) matches without case, a pattern with an upper-case letter matches with case, and the tool's case-insensitive flag (-i) always matches without case. */"""
+        def context(pattern: str, **flags: object) -> str:
+            return _context(hook.run_pre_search(_payload("Grep", self.root, pattern=pattern, **flags), "/"))
+
+        for pattern in ("subscription", "Subscription", "class\\s+subscription", "subscr.*tion"):
+            self.assertIn("(definition Subscription ", context(pattern), pattern)
+        self.assertEqual("", context("SUBSCRIPTION"))
+        self.assertIn("(definition Subscription ", context("SUBSCRIPTION", **{"-i": True}))
 
     def test_a_read_names_the_dependents_of_the_file_and_the_impact_command(self) -> None:
         """/* REQ-INSTALL-018: the pre-search hook on Read must give the module of the file, its direct dependents and the `wingbox impact` hint; a file outside the graph gives nothing. */"""
@@ -192,3 +205,72 @@ class HookBudgetTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HookWithoutAGraphHintTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name).resolve()
+        self.home = self.base / "home"
+        self.home.mkdir()
+        patcher = unittest.mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def context(self, root: Path, session: str = "s1", tool: str = "Read", **tool_input: object) -> str:
+        payload = json.loads(_payload(tool, root, **(tool_input or {"file_path": str(root / "README.md")})))
+        payload["session_id"] = session
+        return _context(hook.run_pre_search(json.dumps(payload), "/"))
+
+    def repository(self, name: str, marker: str = ".git", files: tuple[str, ...] = ("src/app/orders.py",)) -> Path:
+        root = self.base / name
+        root.mkdir()
+        if marker == ".git":
+            (root / ".git").mkdir()
+        elif marker:
+            (root / marker).write_text("", encoding="utf-8")
+        for name in files:
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text("x = 1\n", encoding="utf-8")
+        return root
+
+    def test_a_source_repository_without_a_graph_is_named_once_per_session(self) -> None:
+        """/* REQ-INSTALL-025: in a source repository (a git work tree or a folder with a project manifest, holding files of a supported language) without .wingbox/index.sexp, the search hook answers once per session and repository with `(wingbox-no-graph :root <root> :hint ...)` naming `wingbox build`; the next call of the same session says nothing, another session is told again; the marker lives under ~/.wingbox/hook-hints, nothing is written into the repository and no graph is built. */"""
+        root = self.repository("shop")
+        first = self.context(root / "src", tool="Grep", pattern="orders")
+        self.assertIn(f"(wingbox-no-graph :root {root.as_posix()} :hint ", first)
+        self.assertIn("wingbox build", first)
+        self.assertEqual("", self.context(root, file_path=str(root / "src" / "app" / "orders.py")))
+        self.assertIn("(wingbox-no-graph ", self.context(root, session="s2"))
+        self.assertFalse((root / ".wingbox").exists())
+        self.assertEqual(2, len(list((self.home / ".wingbox" / "hook-hints").iterdir())))
+        manifest = self.repository("lib", marker="pyproject.toml", files=("lib/core.py",))
+        self.assertIn("(wingbox-no-graph ", self.context(manifest, tool="Glob", pattern="**/*core*.py"))
+
+    def test_no_hint_outside_a_source_repository(self) -> None:
+        """/* REQ-INSTALL-026: no hint in a folder that is no repository (no .git, no project manifest), in a repository without a source file of a supported language (only documents), or in the home folder itself even when it is a git work tree; old markers are pruned. */"""
+        self.assertEqual("", self.context(self.repository("loose", marker="", files=("notes/script.py",))))
+        self.assertEqual("", self.context(self.repository("docs", files=("guide/index.md", "README.md"))))
+        (self.home / ".git").mkdir()
+        (self.home / "tool.py").write_text("x = 1\n", encoding="utf-8")
+        self.assertEqual("", self.context(self.home))
+        hints = self.home / ".wingbox" / "hook-hints"
+        hints.mkdir(parents=True, exist_ok=True)
+        old = hints / "old"
+        old.write_text("", encoding="utf-8")
+        os.utime(old, (time.time() - 30 * 86400, time.time() - 30 * 86400))
+        self.context(self.repository("app"))
+        self.assertFalse(old.exists())
+
+    def test_the_extensions_are_the_builders_and_the_check_is_fast(self) -> None:
+        """/* REQ-INSTALL-027: the hook knows a source file by the extensions the builder parses, and the check without a graph stays under 100 ms in a repository of 5,000 files. */"""
+        builder = cli.load_script("build_code_graph")
+        self.assertEqual(
+            {extension for language in builder.LANGUAGES for extension in language.source_extensions}, set(hook.SOURCE_EXTENSIONS)
+        )
+        root = self.repository("big", files=tuple(f"docs/part{index // 100}/page{index}.md" for index in range(5000)) + ("zz/last.go",))
+        started = time.perf_counter()
+        for session in range(5):
+            self.context(root, session=f"t{session}")
+        self.assertLess((time.perf_counter() - started) / 5, 0.1)

@@ -25,8 +25,12 @@ FILES = {
 }
 
 
+# A home folder of the tests: the search hook keeps its once-per-session marks under ~/.wingbox.
+_HOME = tempfile.TemporaryDirectory()
+
+
 def _environment(**extra: str) -> dict[str, str]:
-    environment = dict(os.environ)
+    environment = dict(os.environ, HOME=_HOME.name, USERPROFILE=_HOME.name)
     environment["PYTHONPATH"] = os.pathsep.join(filter(None, (str(REPO / "src"), environment.get("PYTHONPATH", ""))))
     environment["WINGBOX_HOOK_WAIT"] = "120"  # deterministic under load; the timeout rule has its own test
     environment.update(extra)
@@ -276,8 +280,9 @@ class OutsideChangesTest(FreshnessTestCase):
 
 class FirstBuildTest(FreshnessTestCase):
     def test_without_a_graph_the_hooks_do_nothing_and_the_first_build_starts_fresh(self) -> None:
-        """/* REQ-FRESH-026: without a graph the hooks must print nothing, mark nothing and build nothing (the skill or `wingbox build` makes the first graph); after `wingbox build` the state is fresh and the snapshot is written. */"""
+        """/* REQ-FRESH-026: without a graph the hooks must mark nothing and build nothing (the skill or `wingbox build` makes the first graph); the search hook names the missing graph once (REQ-INSTALL-025) and then says nothing; after `wingbox build` the state is fresh and the snapshot is written. */"""
         self.edited("shop/cart.py", "X = 1\n")
+        self.assertIn("(wingbox-no-graph ", self.context("shop/cart.py"))
         self.assertEqual(self.context("shop/cart.py"), "")
         self.assertFalse((self.root / ".wingbox").exists())
         self.assertFalse((self.root / ".wingbox/index.sexp").exists())

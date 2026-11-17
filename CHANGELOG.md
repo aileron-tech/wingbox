@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.0 - 2026-11-17
+
+### Changes
+
+- Claude Desktop extension: `wingbox-<version>.mcpb`, published with each
+  GitHub release and built by `python3 tools/build_mcpb.py`. An MCP Bundle
+  (manifest 0.4, server type `uv`) that installs this release of `wingbox`
+  from PyPI and runs `wingbox mcp` for the repository the user picks in the
+  extension settings; the first use builds its graph.
+- `wingbox mcp --build-missing`: when the repository has no code graph, the
+  server builds it in the background; a tool call waits up to 45 seconds
+  (`WINGBOX_FIRST_BUILD_WAIT`) and otherwise says that the first build is
+  still running.
+
+### Fixes
+
+- The search hook no longer stays silent in a source repository without a
+  graph: once per session it answers `(wingbox-no-graph :root <root> :hint
+  ...)`, naming `wingbox build`, so the agent learns that Wingbox is there. It
+  never builds by itself, writes nothing into the project, and says nothing
+  outside a source repository (the home folder, a folder of documents).
+- The search hook matches a Grep pattern with smart case, as `wingbox quick`
+  does: `subscription` now finds `Subscription`; a pattern with an upper-case
+  letter keeps its case, and Grep's `-i` always ignores it.
+
 ## 0.7.2 - 2026-11-17
 
 A release of the documents; the tool behaves as in 0.7.1.

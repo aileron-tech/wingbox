@@ -22,8 +22,12 @@ GENERATED = ("index.sexp", "index.uses.sexp", "cache.json", "REPORT.md", "map.ht
 NO_PROJECT = "no .wingbox/ in this folder or its parents: run wingbox build"
 
 
+# A home folder of the tests: the search hook keeps its once-per-session marks under ~/.wingbox.
+_HOME = tempfile.TemporaryDirectory()
+
+
 def _environment(**extra: str) -> dict[str, str]:
-    environment = dict(os.environ)
+    environment = dict(os.environ, HOME=_HOME.name, USERPROFILE=_HOME.name)
     environment["PYTHONPATH"] = os.pathsep.join(filter(None, (str(REPO / "src"), environment.get("PYTHONPATH", ""))))
     environment["WINGBOX_HOOK_WAIT"] = "120"
     environment.update(extra)
@@ -100,7 +104,7 @@ class ProjectFolderTest(unittest.TestCase):
         self.assertIn("shop/cart", completed.stdout)
 
     def test_without_a_wingbox_folder_a_query_says_so_and_fails(self) -> None:
-        """/* REQ-FRESH-032: without .wingbox/index.sexp in the folder or a parent, a query must say "no .wingbox/ in this folder or its parents: run wingbox build", name the paths it looked at and the --map and --root options, and exit non-zero; the search hook must stay silent and exit 0. */"""
+        """/* REQ-FRESH-032: without .wingbox/index.sexp in the folder or a parent, a query must say "no .wingbox/ in this folder or its parents: run wingbox build", name the paths it looked at and the --map and --root options, and exit non-zero; the search hook exits 0 and names the missing graph (REQ-INSTALL-025) without building one. */"""
         completed = self.wingbox("impact", "shop/pricing.py")
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn(NO_PROJECT, completed.stderr)
@@ -110,7 +114,9 @@ class ProjectFolderTest(unittest.TestCase):
         hook = self.wingbox("hook", "pre-search", stdin=json.dumps(
             {"tool_name": "Read", "cwd": str(self.root), "tool_input": {"file_path": str(self.root / "shop/cart.py")}}
         ))
-        self.assertEqual((hook.returncode, hook.stdout), (0, ""))
+        self.assertEqual(0, hook.returncode)
+        self.assertIn("(wingbox-no-graph ", hook.stdout)
+        self.assertFalse((self.root / ".wingbox").exists())
 
     def test_a_moved_wingbox_folder_is_never_refreshed(self) -> None:
         """/* REQ-FRESH-033: a .wingbox/ folder copied to a folder it was not built from (no sources there) must be read as it is, with a note to rebuild; the graph must not be replaced (no refresh runs). */"""

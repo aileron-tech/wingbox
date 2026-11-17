@@ -26,15 +26,33 @@ engine, so that a graph of 8,000 files is answered in a fraction of a second.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from typing import Optional, Union
 
 from wingbox import freshness
 from wingbox.facts import atom
+
+# Files the builder parses (scripts/build_code_graph.py LANGUAGES; a test keeps them equal).
+SOURCE_EXTENSIONS = frozenset({
+    ".cjs", ".cs", ".cts", ".dart", ".go", ".inc", ".java", ".js", ".jsx", ".lpr", ".mjs", ".mts",
+    ".pas", ".php", ".pp", ".py", ".rake", ".rb", ".rs", ".ts", ".tsx",
+})
+PROJECT_MANIFESTS = (
+    "pyproject.toml", "setup.py", "package.json", "tsconfig.json", "Cargo.toml", "go.mod", "pom.xml",
+    "build.gradle", "build.gradle.kts", "Gemfile", "composer.json", "pubspec.yaml",
+)
+_SCAN_SKIP = frozenset({"node_modules", "venv", "__pycache__", "dist", "build", "target", "vendor", "obj", "coverage"})
+_SCAN_ENTRIES = 5000   # the no-graph check looks at no more folder entries than this
+_SCAN_DEPTH = 4
+HINT_MARKER_DAYS = 7
+NO_GRAPH_HINT = ("no Wingbox graph here yet: run `wingbox build` in this repository once (a few seconds), "
+                 "then impact / usages / layers answer from it")
 
 CONTEXT_LIMIT = 1500
 _SHOWN_MODULES = 6
@@ -96,6 +114,12 @@ class Definition:
 # Input
 # ---------------------------------------------------------------------------
 
+def smart_case(pattern: str, ignore_case_flag: bool) -> bool:
+    """Whether a Grep pattern matches without case: the tool's -i flag, or no upper-case letter in the
+    pattern outside its escapes (\\S, \\W, \\D do not count), as `wingbox quick` and ripgrep's smart case do."""
+    return ignore_case_flag or not any(char.isupper() for char in re.sub(r"\\.", "", pattern))
+
+
 def _compile(pattern: str, ignore_case: bool) -> "re.Pattern[str]":
     flags = re.IGNORECASE if ignore_case else 0
     try:
@@ -135,7 +159,7 @@ def read_query(payload: object, cwd: str) -> tuple[Optional[Query], str]:
         return None, base
     under = start if path else ""
     if tool == "Grep":
-        return PatternQuery(_compile(pattern, bool(tool_input.get("-i"))), pattern, under), start
+        return PatternQuery(_compile(pattern, smart_case(pattern, bool(tool_input.get("-i")))), pattern, under), start
     if tool == "Glob":
         keyword = _glob_keyword(pattern)
         if len(keyword) < 3:
@@ -310,7 +334,7 @@ def _search_word(query: PatternQuery) -> Optional["re.Pattern[str]"]:
     longest = max(words, key=len)
     if longest == query.shown:
         return None
-    return re.compile(re.escape(longest), re.IGNORECASE)
+    return re.compile(re.escape(longest), query.regex.flags & re.IGNORECASE)
 
 
 def _matches(graph: LightGraph, regex: "re.Pattern[str]", under: str) -> tuple[list[str], list[Definition], bool]:
@@ -390,13 +414,84 @@ def capped(lines: list[str], limit: int = CONTEXT_LIMIT) -> str:
     return "\n".join(kept)
 
 
+def _has_source(root: str) -> bool:
+    """A file of a supported language within a few levels of root (bounded: the hook's time budget)."""
+    folders, seen = [(root, 0)], 0
+    while folders:
+        folder, depth = folders.pop(0)
+        try:
+            entries = list(os.scandir(folder))
+        except OSError:
+            continue
+        for entry in entries:
+            seen += 1
+            if seen > _SCAN_ENTRIES:
+                return False
+            if entry.name.startswith(".") or entry.name in _SCAN_SKIP:
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                if depth + 1 < _SCAN_DEPTH:
+                    folders.append((entry.path, depth + 1))
+            elif os.path.splitext(entry.name)[1].lower() in SOURCE_EXTENSIONS:
+                return True
+    return False
+
+
+def source_repository(start: str, home: str) -> Optional[str]:
+    """The root of the source repository around start: the nearest folder at or above start with .git or a
+    project manifest, holding files of a supported language. None for the home folder, a folder that is in
+    no repository, or a repository of documents only."""
+    folder = os.path.abspath(start if os.path.isdir(start) else os.path.dirname(start))
+    home = os.path.normcase(os.path.abspath(home))
+    while os.path.normcase(folder) != home:
+        if os.path.exists(os.path.join(folder, ".git")) or any(os.path.isfile(os.path.join(folder, name)) for name in PROJECT_MANIFESTS):
+            return folder if _has_source(folder) else None
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            return None
+        folder = parent
+    return None
+
+
+def first_hint(home: str, session: str, root: str) -> bool:
+    """True the first time a session meets root without a graph: a marker under ~/.wingbox/hook-hints (never in
+    the project, which Wingbox has not built), pruned after HINT_MARKER_DAYS days."""
+    folder = os.path.join(home, ".wingbox", "hook-hints")
+    marker = os.path.join(folder, hashlib.sha1(f"{session}\0{root}".encode("utf-8")).hexdigest()[:20])
+    if os.path.exists(marker):
+        return False
+    try:
+        os.makedirs(folder, exist_ok=True)
+        cutoff = time.time() - HINT_MARKER_DAYS * 86400
+        for entry in os.scandir(folder):
+            if entry.is_file() and entry.stat().st_mtime < cutoff:
+                os.remove(entry.path)
+        with open(marker, "w", encoding="utf-8"):
+            pass
+    except OSError as error:   # the hint is still given; it may come again
+        print(f"[wingbox] hook: cannot record the hint: {error}", file=sys.stderr)
+    return True
+
+
+def no_graph_context(payload: object, start: str) -> str:
+    """The one-time hint for a source repository that has no graph yet; "" otherwise."""
+    from pathlib import Path
+
+    home = str(Path.home())
+    root = source_repository(start, home)
+    session = payload.get("session_id") if isinstance(payload, dict) else None
+    if root is None or not first_hint(home, session if isinstance(session, str) else "", root):
+        return ""
+    return f"(wingbox-no-graph :root {atom(Path(root).as_posix())} :hint {atom(NO_GRAPH_HINT)})"
+
+
 def context_for(payload: object, cwd: str) -> str:
     query, start = read_query(payload, cwd)
     if query is None:
         return ""
     found = find_graph(start)
     if found is None:
-        return ""
+        return no_graph_context(payload, start)
     fresh = freshness.ensure_graph_fresh(found[0], freshness.hook_wait())
     note = freshness.stale_line(fresh, found[0])
     if freshness.withholds_context(fresh):

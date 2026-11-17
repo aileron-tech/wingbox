@@ -9,6 +9,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -192,6 +193,35 @@ class NoGitTest(unittest.TestCase):
             env["GIT_CEILING_DIRECTORIES"] = tmp
             result = subprocess.run([sys.executable, str(copy / "tools" / "sync_plugin.py"), "--check"], capture_output=True, text=True, env=env)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class ReleaseTagTest(unittest.TestCase):
+    def git(self, repo: Path, *args: str) -> str:
+        return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_the_release_is_the_newest_tag_that_is_an_ancestor_of_head(self) -> None:
+        """/* REQ-PLUGIN-017: the plugin follows the newest vX.Y.Z tag that is an ancestor of HEAD, so a branch cut before a release keeps passing when the release tag lands on main; with tags present but none reachable (a shallow clone) the sync stops with a message that says to fetch the tags and the history. */"""
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ):
+            os.environ.pop("WINGBOX_RELEASE", None)
+            repo = Path(tmp)
+            self.git(repo, "init", "-q")
+            for name in ("user.email", "user.name"):
+                self.git(repo, "config", name, "tests@example.invalid")
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "one")
+            self.git(repo, "tag", "v1.0.0")
+            first = self.git(repo, "rev-parse", "HEAD")
+            self.git(repo, "switch", "-q", "-c", "feature")
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "feature work")
+            self.git(repo, "switch", "-q", "-")
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "release")
+            self.git(repo, "tag", "v1.1.0")
+            self.git(repo, "switch", "-q", "feature")
+            self.assertEqual(("1.0.0", first), _sync.latest_release(repo))
+            self.git(repo, "switch", "-q", "--orphan", "lonely")
+            self.git(repo, "commit", "-q", "--allow-empty", "-m", "no tag reachable")
+            with self.assertRaises(SystemExit) as stopped:
+                _sync.latest_release(repo)
+            self.assertIn("fetch the tags", str(stopped.exception))
 
 
 class PinTest(unittest.TestCase):

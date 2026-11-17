@@ -1,5 +1,31 @@
 # Completion Log
 
+## 2026-11-17 - Search hook: a hint without a graph, smart case
+
+### Changes
+- `src/wingbox/hook.py`: in a source repository (a git work tree or a folder with a project manifest, holding files of a supported language within four levels and 5,000 entries) without `.wingbox/index.sexp`, the search hook answers `(wingbox-no-graph :root <root> :hint ...)` once per session and repository; the mark is a file under `~/.wingbox/hook-hints` (pruned after 7 days), nothing is written into the project and nothing is built. No hint in the home folder, outside a repository or in a repository of documents. REQ-INSTALL-025..027; REQ-FRESH-026 and REQ-FRESH-032 now expect the hint (they asserted the silence that was the reported bug), and the freshness and project-folder tests run with a temporary home.
+- Grep patterns use smart case (no upper-case letter outside escapes: ignore case; Grep's `-i`: always ignore case); the longest-word retry follows the same case. REQ-INSTALL-024.
+- Why: the maintainer's session read four files in a repository without a graph and the hook said nothing, so the agent never learned Wingbox was there; and `subscription` found nothing in the hook while `wingbox quick subscription` matched 17 modules.
+- Measured on fastapi without a graph: the no-graph check takes 2.3 ms in the hook (first hint) and 1.4 ms when already told; the whole hook process 0.27 s, as before (Python start).
+
+## 2026-11-17 - Version 0.8.0: Claude Desktop extension
+
+### Changes
+- `pyproject.toml`, `server.json` and `WINGBOX_VERSION`: 0.8.0 (a new command-line option, `wingbox mcp --build-missing`, and a new artefact, the `.mcpb` bundle).
+- `CHANGELOG.md`: `## 0.8.0 - 2026-11-17`. README: section "Claude Desktop" (install, the repository setting, first build, what the `uv` server type needs; the uv requirement is stated as the MCPB specification gives it, since it was not checked inside Claude Desktop).
+- `tools/sync_plugin.py`: the plugin follows the newest `vX.Y.Z` tag that is an ancestor of HEAD (`git describe --tags --abbrev=0`), with a "fetch the tags and the history" message when tags exist but none is reachable; REQ-PLUGIN-017. Why: the run of 350aa31 went red on macOS 3.11 when the v0.7.2 tag landed during the run.
+- Release note for the maintainer: build the bundle with `python3 tools/build_mcpb.py` from the release commit and attach `dist/wingbox-0.8.0.mcpb` to the GitHub release after PyPI has 0.8.0 (the bundle pins `wingbox==0.8.0`).
+
+## 2026-11-17 - Claude Desktop extension (MCP Bundle)
+
+### Changes
+- `tools/build_mcpb.py`: builds `dist/wingbox-<version>.mcpb` deterministically (sorted entries, fixed times): `manifest.json` (manifest 0.4, server type `uv`, tools generated from `mcp_server.TOOLS`, a required `repository` directory setting passed as `--root`, platforms darwin, win32 and linux), a `pyproject.toml` pinning `wingbox==<version>`, `src/server.py` (runs `wingbox mcp`), the plugin icon and LICENSE.
+- `tools/mcpb/`: the MCPB manifest schema v0.4, copied unchanged from github.com/modelcontextprotocol/mcpb at commit 70fe3b3 (2026-04-22), with its source in SOURCE.txt.
+- `src/wingbox/mcp_server.py`: `--build-missing` starts `wingbox build` in a child process when the root has no graph; tool calls wait up to `WINGBOX_FIRST_BUILD_WAIT` seconds (default 45) and otherwise answer that the first build is running; the child is stopped when the client closes the server.
+- Tests: REQ-MCPB-001..004 (`tests/test_mcpb.py`: schema validation with a small draft-07 validator, tools equal to `tools/list` over stdio, version, archive contents and determinism); REQ-MCP-015..017.
+- Why: the maintainer asked for a Claude Desktop extension due 20/11.
+- Verification: `npx @anthropic-ai/mcpb@2.1.2 validate` and `pack` pass; the bundle started on macOS with the manifest's command (`uv run --directory <bundle> src/server.py --root <project> --build-missing`, the dependency pointed at this checkout) answered `tools/list` (18 tools) and `impact` after building the graph on first use.
+
 ## 2026-11-17 - Version 0.7.2: documents
 
 - The maintainer found the README's title and several sections out of date (old tagline, the two-tool comparison of an early run, no find-usages section, no operating systems). The README was rewritten in #80; PyPI shows it only with a release, hence 0.7.2.

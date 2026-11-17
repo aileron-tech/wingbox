@@ -1,0 +1,4 @@
+mcpb-manifest-v0.4.schema.json is copied unchanged from
+https://github.com/modelcontextprotocol/mcpb/blob/70fe3b34cd6dff1b3bba046638edc72a6467a4fb/schemas/mcpb-manifest-v0.4.schema.json
+(repository main at commit 70fe3b34cd6dff1b3bba046638edc72a6467a4fb, 2026-04-22), fetched 2026-11-17.
+tests/test_mcpb.py validates the manifest of tools/build_mcpb.py against it.
