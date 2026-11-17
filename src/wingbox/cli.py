@@ -3,7 +3,8 @@
     wingbox init [PATH] [--force] [--sexp] [--synonyms] [--language L --style S --yes --scaffold]
                                             Detect the parts of a repository and the architecture style of each,
                                             print the candidates and write .wingbox/config.yaml (kept if present
-                                            unless --force); then wingbox learn settles the open points
+                                            unless --force) and .wingbox/assistant-setup.md (lines a team may
+                                            add by hand); then wingbox learn settles the open points
     wingbox advice [--sexp] [--learned]     The open recommendations (or what was learned from past ones);
     wingbox advice accept|reject <id> [--reason TEXT]   record the decision in .wingbox/decisions.sexp
     wingbox align [PART] [--to STYLE] [--learn] [--sexp]
@@ -23,23 +24,30 @@
     wingbox open [PATH]                     Open .wingbox/map.html of the project in the browser
     wingbox <command> [arguments]           Query the code graph: impact, quick, analyze, search, ...
     wingbox infra [arguments]               Build the infrastructure topology (Kustomize, Helm, Terraform)
-    wingbox install [--global|--project] [--assistant NAME ...] [--dry-run] [--sexp]
-                                            Put the wingbox skill, an always-on block in CLAUDE.md and
-                                            AGENTS.md, and the Claude Code search hook in place
-    wingbox uninstall [--global|--project] [--assistant NAME ...] [--sexp]
-                                            Remove exactly what install added
+    wingbox install [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run] [--sexp]
+                                            Set up your assistants in your own settings: the skill, an
+                                            always-on block, the Claude Code hooks; in a terminal shows the
+                                            list to untick; items: skill, block, search-hook, edit-hook,
+                                            session-hook, git-hook (or ASSISTANT:ITEM; --without none: all)
+    wingbox uninstall [--global|--project] [--assistant NAME ...] [--without ITEM,...] [--sexp]
+                                            Remove exactly what install added (except the --without items);
+                                            --project: what versions before 0.9.0 wrote into a repository
     wingbox update [--check] [--dry-run] [--sexp]
                                             Upgrade with the installer that installed Wingbox (pipx, uv
                                             or pip), then refresh what install put in place
     wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
     wingbox hook dirty                      The Claude Code PostToolUse hook on Edit and Write: marks the
                                             changed file so the graph is refreshed before its next use
+    wingbox hook session-start              The SessionStart hook: refreshes a stale graph in the background
+    wingbox hook git                        The PostToolUse hook on Bash: after git switch, checkout, pull,
+                                            merge, rebase, reset or stash pop, refreshes in the background
     wingbox mcp [--root DIR]                Run the MCP server on stdio for an MCP client (default: current directory)
     wingbox --version
 
 Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
 ~/.agents/skills folder). Without --assistant, install uses those whose
-configuration folder exists in the home folder.
+configuration folder exists in the home folder. Wingbox writes only into a
+project's .wingbox/ and your own settings in the home folder.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -1342,6 +1350,8 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
         return 1
     fact = (f"(init-new-project {q(part_path)} :language {language} :style {style.id} :from {q(origin)} "
             f":level {level} :config {q(os.path.relpath(config_path, parsed.root))})")
+    if _assistant_setup(base, parsed.sexp):
+        return 1
     print(fact if parsed.sexp else
           f"{part_path if in_repo else 'new project'}: {style.id} ({origin}), {language}, {level}\n"
           f"wrote {os.path.relpath(config_path, parsed.root)}\n{NEXT_STEP}")
@@ -1408,7 +1418,31 @@ def _init(args: list[str], cwd: str) -> int:
     store = read_store(_store(root)[1])
     facts = init_facts(plan, library, config_line, paths, _graph_advice(root), lambda items: visible(store, items),
                        details=parsed.details)
+    if not sexp and _assistant_setup(root, sexp):
+        return 1
     print("\n".join(facts) if sexp else render_text(facts, library.index.min_source_files), end="\n" if sexp else "")
+    return _assistant_setup(root, sexp) if sexp else 0
+
+
+def _assistant_setup(root: str, sexp: bool) -> int:
+    """Save .wingbox/assistant-setup.md and print it (a fact with --sexp) before the report of init: the lines a team
+    may add by hand to the repository's own files. init writes nothing outside .wingbox/."""
+    from wingbox import install
+
+    path = os.path.join(root, *install.ASSISTANT_SETUP_FILE.split("/"))
+    text = install.assistant_setup_text()
+    try:
+        _prepare_wingbox(root)
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+    except OSError as error:
+        print(f"[wingbox] ERROR: cannot write {path}: {error}", file=sys.stderr)
+        return 1
+    if sexp:
+        print(f'(init-assistant-setup "{install.ASSISTANT_SETUP_FILE}" :for "AGENTS.md CLAUDE.md .claude/settings.json")')
+    else:
+        print(f"To have every member's assistant use Wingbox here, a person may add these lines by hand "
+              f"(saved in {install.ASSISTANT_SETUP_FILE}; Wingbox writes none of them):\n\n{text}")
     return 0
 
 
@@ -1499,9 +1533,43 @@ def _install_command(command: str, rest: list[str], cwd: str) -> int:
         print(f"[wingbox] {command}: {options.message}", file=sys.stderr)
         return 2
     machine = _machine(cwd)
+    if options.command == "install":
+        chosen = _install_choice(options, machine)
+        if chosen is None:
+            print("nothing installed")
+            return 0
+        options = chosen
     facts = install.install(options, machine) if options.command == "install" else install.uninstall(options, machine)
     _print_facts(facts, options.sexp)
     return install.exit_status(facts)
+
+
+def _install_choice(options, machine):
+    """The install list: shown and asked in a terminal (a person unticks items), printed with --dry-run; the
+    options with the person's choice as --without, or None when the person quits."""
+    import dataclasses
+
+    from wingbox import checklist, install
+
+    assistants = install.chosen_assistants(options, machine)
+    without = options.without if options.without is not None else install.recorded_without(machine.home)
+    items = install.install_items(os.path.abspath(machine.home), assistants, without)
+    home = os.path.abspath(machine.home)
+    if options.dry_run and not options.sexp:
+        print("Wingbox would put these in place ([ ] left out):")
+        print("\n".join(checklist.lines(items, home=home)))
+    if not items or not checklist.asks(sys.stdin.isatty(), sys.stdout.isatty(), dict(os.environ), options.yes,
+                                       options.dry_run, options.sexp):
+        return dataclasses.replace(options, without=without)
+    portable = _platform()
+    with portable.RawKeys() as keys:
+        if keys.available:
+            answered = checklist.with_keys(items, keys.read, lambda text: (sys.stdout.write(text), sys.stdout.flush()), home)
+        else:
+            answered = checklist.numbered(items, input, sys.stdout.write, home)
+    if answered is None:
+        return None
+    return dataclasses.replace(options, without=install.without_from_items(answered))
 
 
 def _package_origin():

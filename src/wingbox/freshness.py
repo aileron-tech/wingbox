@@ -806,6 +806,20 @@ def ensure_graph_fresh(root: str, wait: Optional[float] = None) -> Freshness:
     return _stale(root, "refresh-timeout", after)
 
 
+def refresh_in_background(root: str) -> bool:
+    """Record the changes made since the snapshot and start a refresh when the graph misses some; return at once.
+
+    For the SessionStart hook and the hook after a git command the agent ran: nothing waits for the refresh,
+    nothing is printed. True when a refresh was started."""
+    if not os.path.isfile(graph_path(root)) or built_here(root, read_snapshot(root)) is not None:
+        return False
+    state = note_outside_changes(root) or read_state(root)
+    if is_fresh(state) or not auto_refresh_enabled() or failed_for_now(state) or refresh_running(root):
+        return False
+    start_refresh(root)
+    return True
+
+
 def stale_line(result: Freshness, root: str = ".") -> str:
     """The S-expression that tells an agent the graph may miss recent changes; empty when fresh."""
     if isinstance(result, Unconfirmed):

@@ -30,6 +30,7 @@ class TsPathAliasContext:
 
     config_directory: str
     aliases: tuple[TsPathAlias, ...]
+    base_directory: Optional[str] = None   # `baseUrl`: bare specifiers that no alias matches are looked up below it
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,7 @@ def _load_ts_path_aliases(
             if is_excluded_path(discovery_exclusions, tsconfig_path):
                 continue
             options = load_ts_path_options(tsconfig_path, loaded)
-            if options.paths_directory is None:
+            if options.paths_directory is None and options.base_directory is None:
                 continue
             # TypeScript resolves paths against baseUrl, else next to their tsconfig.
             base_directory = options.base_directory or options.paths_directory
@@ -124,7 +125,7 @@ def _load_ts_path_aliases(
                 for alias_pattern, targets in options.paths
                 if targets
             ]
-            if aliases:
+            if aliases or options.base_directory is not None:
                 contexts.append(
                     TsPathAliasContext(
                         config_directory=os.path.normpath(dirpath),
@@ -135,6 +136,7 @@ def _load_ts_path_aliases(
                                 reverse=True,
                             )
                         ),
+                        base_directory=options.base_directory,
                     )
                 )
 
@@ -393,6 +395,13 @@ def _resolve_ts_path_alias(
                 )
                 if target_id:
                     return target_id
+        if context.base_directory is not None:
+            # No `paths` entry names it: TypeScript looks the specifier up below baseUrl.
+            target_id = _resolve_source_path(
+                os.path.normpath(os.path.join(context.base_directory, *imp.split("/"))), root, path_to_id, output_roots
+            )
+            if target_id:
+                return target_id
 
     return None
 

@@ -69,15 +69,18 @@ class ClaudePluginTest(unittest.TestCase):
         self.assertFalse((PLUGIN / "scripts").exists())
 
     def test_edit_hook(self) -> None:
-        """/* REQ-FRESH-012: the Claude Code manifest must carry one PostToolUse hook on Edit|Write|MultiEdit that runs `uvx --offline --quiet --from <pin> wingbox hook dirty` in exec form with `"onFailure": "continue"`, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
+        """/* REQ-FRESH-012: the Claude Code manifest must carry a PostToolUse hook on Edit|Write|MultiEdit running `wingbox hook dirty`, a PostToolUse hook on Bash running `wingbox hook git` and a SessionStart hook (no matcher) running `wingbox hook session-start`, each as `uvx --offline --quiet --from <pin> wingbox hook ...` in exec form with `"onFailure": "continue"` and a timeout of 5 seconds, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
-        (group,) = manifest["hooks"]["PostToolUse"]
-        self.assertEqual(group["matcher"], "Edit|Write|MultiEdit")
-        (hook,) = group["hooks"]
-        self.assertEqual(hook["command"], "uvx")
-        self.assertEqual(hook["args"][:3], ["--offline", "--quiet", "--from"])
-        self.assertEqual(hook["args"][4:], ["wingbox", "hook", "dirty"])
-        self.assertEqual((hook["timeout"], hook["onFailure"]), (5, "continue"))
+        edit, git = manifest["hooks"]["PostToolUse"]
+        (session,) = manifest["hooks"]["SessionStart"]
+        self.assertEqual((edit["matcher"], git["matcher"]), ("Edit|Write|MultiEdit", "Bash"))
+        self.assertNotIn("matcher", session)
+        for group, subcommand in ((edit, "dirty"), (git, "git"), (session, "session-start")):
+            (hook,) = group["hooks"]
+            self.assertEqual(hook["command"], "uvx")
+            self.assertEqual(hook["args"][:3], ["--offline", "--quiet", "--from"])
+            self.assertEqual(hook["args"][4:], ["wingbox", "hook", subcommand])
+            self.assertEqual((hook["timeout"], hook["onFailure"]), (5, "continue"))
         (search,) = manifest["hooks"]["PreToolUse"]
         self.assertEqual(search["hooks"][0]["timeout"], 10)
 
@@ -179,7 +182,7 @@ class SkillCopyTest(unittest.TestCase):
             self.assertEqual(load(plugin / ".claude-plugin" / "plugin.json")["version"], "9.8.7")
             self.assertEqual(load(plugin / ".codex-plugin" / "plugin.json")["version"], "9.8.7")
             text = (plugin / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
-            self.assertEqual(PIN.findall(text), [fake] * 3)   # both hooks and the MCP server
+            self.assertEqual(PIN.findall(text), [fake] * 5)   # the four hooks and the MCP server
             self.assertEqual(PIN.findall((plugin / "codex.mcp.json").read_text(encoding="utf-8")), [fake])
 
 
@@ -230,12 +233,12 @@ class ReleaseTagTest(unittest.TestCase):
 
 class PinTest(unittest.TestCase):
     def test_every_uvx_command_is_pinned_to_a_release_commit(self) -> None:
-        """/* REQ-PLUGIN-005: every uvx command of the plugins (both hooks and the MCP server of Claude Code, the MCP server of Codex) must name the source as a literal git URL pinned to the same full 40-character commit (the Claude plugin directory refuses a PyPI version, a variable or a short commit as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
+        """/* REQ-PLUGIN-005: every uvx command of the plugins (the four hooks and the MCP server of Claude Code, the MCP server of Codex) must name the source as a literal git URL pinned to the same full 40-character commit (the Claude plugin directory refuses a PyPI version, a variable or a short commit as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
         text = CLAUDE_MANIFEST.read_text(encoding="utf-8")
         self.assertNotIn("wingbox==", text)
         self.assertNotIn("$", text.replace("${CLAUDE_PLUGIN_ROOT}", ""))
         commits = PIN.findall(text) + PIN.findall((PLUGIN / "codex.mcp.json").read_text(encoding="utf-8"))
-        self.assertEqual(len(commits), 4)   # the hooks and the MCP server of Claude Code, the MCP server of Codex
+        self.assertEqual(len(commits), 6)   # the four hooks and the MCP server of Claude Code, the MCP server of Codex
         self.assertEqual(len(set(commits)), 1)
         tags = subprocess.run(["git", "-C", str(REPO), "tag", "--points-at", commits[0]], capture_output=True, text=True).stdout.split()
         if subprocess.run(["git", "-C", str(REPO), "tag", "--list", "v*"], capture_output=True, text=True).stdout.strip():

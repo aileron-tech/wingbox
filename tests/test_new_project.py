@@ -68,7 +68,8 @@ class NewProjectTest(unittest.TestCase):
         config = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("    style: hexagonal   # chosen: --style", config)
         self.assertIn("- {layer: domain, block: entities, folder: src/domain/entities, proposed: true}", config)
-        self.assertEqual({self.root / ".wingbox", self.root / ".wingbox" / "config.yaml", self.root / ".wingbox" / ".gitignore"},
+        self.assertEqual({self.root / ".wingbox", self.root / ".wingbox" / "config.yaml", self.root / ".wingbox" / ".gitignore",
+                          self.root / ".wingbox" / "assistant-setup.md"},
                          set(self.root.rglob("*")))
         status, text = _run(["init", str(self.root), "--language", "python", "--style", "hexagonal", "--yes", "--force", "--scaffold", "--sexp"],
                             home=str(self.home))

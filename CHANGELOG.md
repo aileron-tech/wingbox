@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.9.0 - 2026-11-17
+
+Wingbox writes in two places only: a repository's `.wingbox/` folder and your
+own settings in your home folder. A test runs every command in a temporary
+repository with a temporary home folder and fails on any other changed path.
+
+### Changes
+
+- `wingbox install` shows what it is about to put in place, one line with a
+  checkbox per item, grouped by assistant: `skill`, `block`, and for Claude
+  Code `search-hook`, `edit-hook`, `session-hook` and `git-hook`. In a
+  terminal you untick items (arrow keys and space, or typed numbers where the
+  terminal gives no single keys) and press Enter; Enter alone installs
+  everything as before. Started by an agent, a script, CI or with `--yes`, it
+  asks nothing; `--without ITEM[,ITEM]` (or `ASSISTANT:ITEM`) leaves items out
+  and `--without none` puts them back. The choice is recorded in
+  `~/.wingbox/installed.sexp`, so `wingbox update` refreshes only the items you
+  kept. `wingbox uninstall --without ...` keeps the named items. `--dry-run`
+  prints the list.
+- Two new Claude Code hooks keep the graph fresh after a branch change,
+  installed by `wingbox install` and carried by the plugin: `SessionStart`
+  (`wingbox hook session-start`) refreshes a graph older than the code in the
+  background when a session starts, and `PostToolUse` on `Bash`
+  (`wingbox hook git`) does the same after the agent ran `git switch`,
+  `checkout`, `pull`, `merge`, `rebase`, `reset` or `stash pop`. Both print
+  nothing and return at once. On angular/components, switching from 20.1.0
+  to 20.2.0 (256 changed sources) with the first search 5 s later, the graph
+  was fresh 8.8 to 9.5 s after the switch instead of 13.6 to 13.7 s.
+- `wingbox init` writes only into `.wingbox/`: `config.yaml`, and
+  `assistant-setup.md` with the lines a team may add by hand to the
+  repository's own files (the always-on block for `AGENTS.md` and `CLAUDE.md`,
+  the hook entries for a committed `.claude/settings.json`); it prints them
+  too. The file is meant to be committed.
+- The build lock and the first-build lock of the MCP server live in
+  `.wingbox/` instead of the system's temporary folder.
+
+### Removed
+
+- `wingbox install --project`. It wrote the skill, the block and the hooks
+  into the repository, outside `.wingbox/`. It now exits with an error that
+  says what to run instead and writes nothing. If you used it (as in issue
+  #48): in each such repository run `wingbox uninstall --project`, which
+  removes only the marked blocks, the hook entries and the skill folders that
+  install wrote, then run `wingbox install` once for your own assistants. A
+  team that wants the setup in the repository commits the lines of
+  `.wingbox/assistant-setup.md` by hand. Until then `wingbox update` names each
+  repository where those files are still there; it no longer refreshes them.
+
+### Fixes
+
+- A folder named `vendor` inside the sources that holds first-party code (no
+  dependency manager's files in it, no project manifest next to it, below
+  `src`, `lib`, `libs`, `app` or `packages`) is part of the graph; vendored
+  dependencies of Go, Composer, Bundler and a `vendor` folder next to a
+  manifest stay out. On bitwarden/clients 9 files and 57 import edges of
+  `libs/common/src/tools/extension/vendor` were missing; they are in the graph,
+  and every one of them is an edge dependency-cruiser finds too.
+- TypeScript imports written from `baseUrl` without a path alias
+  (`import ... from "src/app/core/x"`) resolve, from the `baseUrl` of the
+  nearest `tsconfig`. On thingsboard (ui-ngx) the 6 edges that were missing
+  against dependency-cruiser are in the graph; what still differs there is
+  only imports of non-code files and `.d.ts` declarations.
+
 ## 0.8.2 - 2026-11-17
 
 Fixes from a test on Windows 11 with live Claude Code sessions, reported in

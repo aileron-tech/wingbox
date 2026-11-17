@@ -203,3 +203,59 @@ def relative_posix(path: str, root: str) -> Optional[str]:
     if relative == os.pardir or relative.startswith(os.pardir + os.sep) or os.path.isabs(relative):
         return None
     return "" if relative == os.curdir else relative.replace(os.sep, "/")
+
+
+class RawKeys:
+    """Single keys from the terminal while it is used as a context manager: "up", "down", "space", "enter",
+    "escape", a letter. `available` is False where the terminal gives no single keys (then ask for lines)."""
+
+    def __init__(self, stream: Any = None) -> None:
+        self.stream = stream or sys.stdin
+        self.available = False
+        self._saved: Any = None
+
+    def __enter__(self) -> "RawKeys":
+        if WINDOWS:
+            try:
+                import msvcrt  # noqa: F401
+
+                self.available = self.stream.isatty()
+            except ImportError:
+                self.available = False
+            return self
+        try:
+            import termios
+            import tty
+
+            descriptor = self.stream.fileno()
+            self._saved = termios.tcgetattr(descriptor)
+            tty.setcbreak(descriptor)
+            self.available = True
+        except (ImportError, OSError, ValueError, AttributeError):
+            self.available = False
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self._saved is not None:
+            import termios
+
+            termios.tcsetattr(self.stream.fileno(), termios.TCSADRAIN, self._saved)
+
+    def read(self) -> str:
+        if WINDOWS:
+            import msvcrt
+
+            char = msvcrt.getwch()
+            if char in ("\x00", "\xe0"):
+                return {"H": "up", "P": "down"}.get(msvcrt.getwch(), "")
+            return self._name(char)
+        char = os.read(self.stream.fileno(), 1).decode("utf-8", "replace")
+        if char == "\x1b":
+            rest = os.read(self.stream.fileno(), 2).decode("utf-8", "replace")
+            return {"[A": "up", "[B": "down"}.get(rest, "escape")
+        return self._name(char)
+
+    @staticmethod
+    def _name(char: str) -> str:
+        return {" ": "space", "\r": "enter", "\n": "enter", "\x1b": "escape", "k": "up", "j": "down"}.get(char, char.lower())
+

@@ -328,7 +328,8 @@ class IssueOneRegressionTest(unittest.TestCase):
             root = Path(tmpdir)
             (root / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
             canonical_root = os.path.realpath(root)
-            lock_path = build_code_graph._lock_path(canonical_root)
+            lock_path = build_code_graph._lock_path(canonical_root)   # in .wingbox/ of the project
+            os.makedirs(os.path.dirname(lock_path), exist_ok=True)
             with open(lock_path, "a+", encoding="utf-8") as lock_file:
                 portable.lock(lock_file)
                 result = subprocess.run(

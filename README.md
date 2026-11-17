@@ -69,9 +69,10 @@ pipx install wingbox && wingbox install
 wingbox build .
 ```
 
-The first line installs the command and sets it up for every coding assistant on
-the machine; the second maps the repository you are in. Then ask your agent, or
-run `wingbox impact path/to/file`.
+The first line installs the command and sets up your coding assistants: it lists
+what it adds, lets you untick items, and writes only your own settings in your home
+folder. The second maps the repository you are in into its `.wingbox/` folder. Then
+ask your agent, or run `wingbox impact path/to/file`.
 
 **No terminal? Install with a click**
 
@@ -110,8 +111,18 @@ Wingbox is safe to run on code that must not leave the company:
 - **Deterministic and open.** The same code gives the same graph; the source
   is MIT licensed and small enough to review.
 
-Two tests of the repository keep this true: the package imports no module
-that opens network connections, and the map page loads no outside resource.
+**Where Wingbox writes.** Nothing else on the machine is changed:
+
+| Command | Writes to |
+|---|---|
+| `wingbox build` (and the refresh after a change) | the repository's `.wingbox/` |
+| `wingbox init` (project setup) | the repository's `.wingbox/` |
+| `wingbox install` (your assistants) | your own settings in your home folder (the assistants' files, `~/.wingbox/`) |
+
+Three tests of the repository keep this true: the package imports no module
+that opens network connections, the map page loads no outside resource, and
+every command run in a temporary repository with a temporary home folder
+changes no path outside `.wingbox/` and that home folder.
 
 ## See it in action
 
@@ -669,29 +680,61 @@ at. `wingbox open` shows the map of the project in the browser.
 ### Install into your coding assistants
 
 ```bash
-wingbox install                    # every assistant whose configuration folder exists
-wingbox install --dry-run          # name every file it would write, change nothing
-wingbox install --assistant codex  # only the named assistants (repeatable)
-wingbox install --project          # into the current repository instead of the home folder
-wingbox uninstall                  # remove exactly what install added
+wingbox install                            # every assistant whose configuration folder exists
+wingbox install --dry-run                  # print the list and every file it would write, change nothing
+wingbox install --assistant codex          # only the named assistants (repeatable)
+wingbox install --without git-hook         # leave items out: ITEM or ASSISTANT:ITEM, comma separated
+wingbox install --yes                      # ask nothing, even in a terminal
+wingbox uninstall                          # remove exactly what install added
+wingbox uninstall --without skill          # ... except the named items
 ```
 
-`wingbox install` puts three things in place for each assistant: the
-`wingbox` skill (so `/wingbox` exists), a short always-on block in the
-instructions file the assistant reads in every session, and for Claude Code a
-hook that runs before each search. Running it again changes nothing; after an
-upgrade it refreshes the skill. Assistants are found by their folders in the
-home directory (`%USERPROFILE%` on Windows): `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
-`~/.copilot` and `~/.agents`.
+`wingbox install` writes only your own settings in your home folder
+(`%USERPROFILE%` on Windows). It shows what it is about to put in place, one
+line with a checkbox per item, grouped by assistant:
 
-| Assistant (`--assistant`) | Skill, global | Skill, `--project` | Always-on block, global | Block, `--project` |
-|---|---|---|---|---|
-| Claude Code (`claude-code`) | `~/.claude/skills/wingbox` | `.claude/skills/wingbox` | `~/.claude/CLAUDE.md` | `CLAUDE.md` |
-| Codex (`codex`) | `~/.agents/skills/wingbox` | `.agents/skills/wingbox` | `~/.codex/AGENTS.md` | `AGENTS.md` |
-| Gemini CLI (`gemini`) | `~/.gemini/skills/wingbox` | `.gemini/skills/wingbox` | `~/.gemini/GEMINI.md` | `GEMINI.md` |
-| Cursor (`cursor`) | `~/.cursor/skills/wingbox` | `.cursor/skills/wingbox` | none (user rules live in the settings) | `AGENTS.md` |
-| GitHub Copilot, CLI and VS Code (`copilot`) | `~/.copilot/skills/wingbox` | `.github/skills/wingbox` | `~/.copilot/copilot-instructions.md` | `AGENTS.md` |
-| Shared Agent Skills folder of `npx skills` (`agents`) | `~/.agents/skills/wingbox` | `.agents/skills/wingbox` | none | `AGENTS.md` |
+| Item (`--without`) | What it is |
+|---|---|
+| `skill` | the `wingbox` skill, so `/wingbox` exists |
+| `block` | a short always-on block in the instructions file the assistant reads in every session |
+| `search-hook` | Claude Code: before each Grep, Glob and Read, context from the graph |
+| `edit-hook` | Claude Code: after each Edit and Write, marks the edited file |
+| `session-hook` | Claude Code: at session start, refreshes a graph older than the code, in the background |
+| `git-hook` | Claude Code: after the agent ran `git switch`, `checkout`, `pull`, `merge`, `rebase`, `reset` or `stash pop`, refreshes the graph in the background |
+
+In a terminal you untick items with the arrow keys and space (or, where the
+terminal gives no single keys, by typing their numbers) and press Enter;
+Enter alone installs everything, `q` installs nothing. Started by an agent,
+from a script, in CI or with `--yes`, it asks nothing and installs every item
+except those named by `--without` (`--without git-hook,codex:block`;
+`--without none` puts everything back). The choice is recorded in
+`~/.wingbox/installed.sexp`: a later `wingbox install` and `wingbox update`
+refresh only the items you kept and never add back one you left out.
+Running it again changes nothing; after an upgrade it refreshes the skill.
+Assistants are found by their folders in the home directory: `~/.claude`,
+`~/.codex`, `~/.gemini`, `~/.cursor`, `~/.copilot` and `~/.agents`.
+
+| Assistant (`--assistant`) | Skill | Always-on block |
+|---|---|---|
+| Claude Code (`claude-code`) | `~/.claude/skills/wingbox` | `~/.claude/CLAUDE.md` |
+| Codex (`codex`) | `~/.agents/skills/wingbox` | `~/.codex/AGENTS.md` |
+| Gemini CLI (`gemini`) | `~/.gemini/skills/wingbox` | `~/.gemini/GEMINI.md` |
+| Cursor (`cursor`) | `~/.cursor/skills/wingbox` | none (user rules live in the settings) |
+| GitHub Copilot, CLI and VS Code (`copilot`) | `~/.copilot/skills/wingbox` | `~/.copilot/copilot-instructions.md` |
+| Shared Agent Skills folder of `npx skills` (`agents`) | `~/.agents/skills/wingbox` | none |
+
+**For a whole team.** Wingbox writes nothing into a repository outside
+`.wingbox/`. `wingbox init` prints, and saves in `.wingbox/assistant-setup.md`
+(meant to be committed), the lines a team may add by hand to the repository's
+own files so that every member's assistant uses Wingbox there: the always-on
+block for `AGENTS.md` and `CLAUDE.md`, and the four hook entries for a
+committed `.claude/settings.json` (they run `wingbox` from `PATH`).
+
+**Moving from `wingbox install --project`.** It was removed in 0.9.0. In each
+repository where you used it, run `wingbox uninstall --project` (it removes only
+the marked blocks, the hook entries and the skill folders that install wrote),
+then `wingbox install` once for your own assistants; `wingbox update` names
+these repositories until then.
 
 - **The block** sits between `<!-- wingbox:begin -->` and
   `<!-- wingbox:end -->`. It tells the agent to run `wingbox quick` or
@@ -699,15 +742,16 @@ home directory (`%USERPROFILE%` on Windows): `~/.claude`, `~/.codex`, `~/.gemini
   changing a file, and `/wingbox` for an overview. Text outside the markers is
   never touched; a file that links to another one (`CLAUDE.md` to `AGENTS.md`)
   gets one block.
-- **The Claude Code hooks** are a `PreToolUse` entry with the matcher
-  `Grep|Glob|Read` in `~/.claude/settings.json` (`.claude/settings.json` with
-  `--project`) that runs `wingbox hook pre-search`, and a `PostToolUse` entry
-  with the matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`. Both are written in
+- **The Claude Code hooks** in `~/.claude/settings.json` are a `PreToolUse` entry with the
+  matcher `Grep|Glob|Read` that runs `wingbox hook pre-search`, a `PostToolUse` entry with the
+  matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`, a `SessionStart` entry that
+  runs `wingbox hook session-start`, and a `PostToolUse` entry with the matcher `Bash` that
+  runs `wingbox hook git` (it reads the command and acts only on the git commands above; it
+  prints nothing). All are written in
   exec form (`"command"` the program, `"args"` `["hook", "pre-search"]`) with
   `"onFailure": "continue"`: Claude Code starts the program with no shell, so the hooks work on
-  Windows with or without Git Bash, and a missing program never blocks a tool call. A global
-  install names the full path of the `wingbox` program (`wingbox.exe` on Windows); `--project`
-  names `wingbox`, found on `PATH` (install it with pipx or uv). When the project has a
+  Windows with or without Git Bash, and a missing program never blocks a tool call. Install
+  names the full path of the `wingbox` program (`wingbox.exe` on Windows). When the project has a
   graph, the search hook adds a few lines of context to the search: the modules and
   definitions that match the pattern with their direct dependents, or for a
   file its dependents and the hint to run `wingbox impact`. It answers in
@@ -751,8 +795,12 @@ index, and only when you run `wingbox update`.
 It also looks for files that versions before 0.4.1 wrote outside `.wingbox/`
 (`.code_graph.sexp`, `.code_graph.uses.sexp`, `.code_graph.uses-cache.json`,
 `.code_graph_cache.json`, `wingbox-out/`), in the current folder and its
-parents up to the project root and in every `--project` install, and prints
-one warning line per project (yellow on a terminal); it deletes nothing.
+parents up to the project root and in every repository an earlier
+`install --project` recorded, and prints one warning line per project (yellow
+on a terminal); it deletes nothing. `wingbox update` refreshes only your own
+settings: for each repository where a version before 0.9.0 installed with
+`--project` it says once that those files are still there and that
+`wingbox uninstall --project` in that folder removes them.
 
 ### Keeping the graph fresh
 
@@ -762,6 +810,11 @@ are brought in:
 
 - In Claude Code, `wingbox hook dirty` (PostToolUse on Edit and Write) marks
   the edited file in `.wingbox/graph-state.json` and returns; it never builds.
+- At the start of a session (`wingbox hook session-start`) and after the agent
+  ran `git switch`, `checkout`, `pull`, `merge`, `rebase`, `reset` or
+  `stash pop` (`wingbox hook git`, PostToolUse on Bash), the changed files are
+  found at once and a refresh starts in the background; the hook prints nothing
+  and returns, so the first search usually meets a graph that is fresh already.
 - Changes made elsewhere (an editor, `git checkout`, a script, a shell
   command) are found by comparing the size and modification time of every
   source and resolution config, and the time of every folder, with the
@@ -1314,6 +1367,14 @@ this much faster: switching FastAPI from 0.115.0 to 0.118.0 changes 402 of
 1,142 Python files, and through their importers 1,006 of 1,152 modules have to
 be resolved again (4.6 s against 5.5 s for the whole build on an Intel Core i9
 laptop), so a large switch takes a build.
+
+Since 0.9.0 the rebuild starts when the agent runs the git command (the
+`git-hook` item of `wingbox install`) or when a session starts on a graph
+older than the code (`session-hook`), not at the first search. On
+angular/components, switching from 20.1.0 to 20.2.0 (256 changed sources), the
+graph was fresh 8.8 to 9.5 s after the switch instead of 13.6 to 13.7 s, with
+the first search 5 s after the switch; that search still answered
+`wingbox-graph-stale`, since the rebuild takes about 8.5 s.
 
 ### Which AI coding agents does Wingbox work with?
 

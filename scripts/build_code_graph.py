@@ -248,6 +248,7 @@ REPORT.md
 map.html
 graph-*
 refresh.*
+*.lock
 *.tmp
 """
 
@@ -4490,11 +4491,8 @@ def _ignore_note(reason: str) -> str:
 
 
 def _lock_path(root: str) -> str:
-    root_digest = hashlib.sha256(root.encode("utf-8")).hexdigest()[:20]
-    return os.path.join(
-        tempfile.gettempdir(),
-        f"wingbox-code-graph-{root_digest}.lock",
-    )
+    """The build lock of the project at root, in its .wingbox/ folder: Wingbox writes nowhere else in a project."""
+    return os.path.join(wingbox_directory(root), "build.lock")
 
 
 FRAGMENTS_FILE = "graph-fragments.json"
@@ -4527,6 +4525,7 @@ def main(args: Optional[list[str]] = None) -> int:
     )
     lock_path = _lock_path(options.root)
     try:
+        prepare_wingbox_directory(options.root)
         lock_file = open(lock_path, "a+", encoding="utf-8")
     except OSError as error:
         print(

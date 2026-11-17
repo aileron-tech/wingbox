@@ -55,6 +55,34 @@ def _is_published_view_directory(parent: str, name: str) -> bool:
     return parts[-2:] == ["resources", "views"]
 
 
+# What a `vendor` folder of dependencies holds (Go modules, Composer, Bundler), and the project manifests
+# next to which a `vendor` folder is the dependency folder of that project.
+_VENDOR_CONTENT_MARKERS = ("modules.txt", "autoload.php", "composer", "bundle")
+_SOURCE_TREE_FOLDERS = frozenset({"src", "lib", "libs", "app", "packages"})
+_PROJECT_MANIFESTS = (
+    "package.json", "go.mod", "composer.json", "Gemfile", "Cargo.toml", "pyproject.toml", "setup.py",
+    "pom.xml", "build.gradle", "build.gradle.kts", "pubspec.yaml",
+)
+
+
+def _is_source_vendor_directory(parent: str, name: str) -> bool:
+    """True for a first-party folder that happens to be named `vendor` (bitwarden/clients
+    libs/common/src/tools/extension/vendor holds the code for each mail provider): it holds none of the
+    files a dependency manager writes, has no project manifest next to it and lies inside a source tree.
+    The name alone must not exclude it."""
+    if name != "vendor":
+        return False
+    folder = os.path.join(parent, name)
+    if any(os.path.exists(os.path.join(folder, marker)) for marker in _VENDOR_CONTENT_MARKERS):
+        return False
+    if any(os.path.isfile(os.path.join(parent, manifest)) for manifest in _PROJECT_MANIFESTS):
+        return False
+    # Inside a source tree (below a src, lib, libs, app or packages folder); a vendor folder at the top of a
+    # project is its dependencies.
+    ancestors = os.path.normpath(parent).replace("\\", "/").split("/")
+    return any(part in _SOURCE_TREE_FOLDERS for part in ancestors)
+
+
 def is_excluded_directory(
     exclusions: DiscoveryExclusions,
     parent: str,
@@ -62,7 +90,8 @@ def is_excluded_directory(
 ) -> bool:
     """Apply basename and repository-ignore policy before descending."""
     return (
-        (name in exclusions.directory_names and not _is_published_view_directory(parent, name))
+        (name in exclusions.directory_names and not _is_published_view_directory(parent, name)
+         and not _is_source_vendor_directory(parent, name))
 or name in DART_OUTPUT_DIRECTORIES
         or _is_dotnet_output_directory(parent, name)
         or is_excluded_path(exclusions, os.path.join(parent, name))

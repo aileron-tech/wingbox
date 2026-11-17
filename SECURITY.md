@@ -25,9 +25,15 @@ security fixes. Upgrade with `wingbox update` or `pipx upgrade wingbox`.
 In scope:
 
 - the `wingbox` command and Python package (`src/`, `scripts/`);
-- the MCP server `wingbox mcp` and the search hook `wingbox hook pre-search`;
+- the MCP server `wingbox mcp` and the hooks (`wingbox hook pre-search`,
+  `dirty`, `session-start`, `git`);
 - the plugins in `plugins/wingbox` (manifests, skill) and
-  `wingbox install` / `uninstall` / `update`.
+  `wingbox install` / `uninstall` / `update`;
+- any write outside the two places Wingbox writes to: the repository's
+  `.wingbox/` folder and the user's own settings in the home folder (the
+  assistants' files and `~/.wingbox/`). A test runs every command in a
+  temporary repository with a temporary home folder and fails on any other
+  changed path (`tests/test_write_zones.py`).
 
 Out of scope:
 
