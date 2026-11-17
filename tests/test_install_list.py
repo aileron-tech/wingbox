@@ -66,8 +66,8 @@ class ItemsTest(ListTestCase):
         self.assertTrue(all(item.ticked and item.path.startswith(str(self.home)) for item in items))
         self.assertIn(str(self.home / ".codex" / "AGENTS.md"), [item.path for item in items])
         text = "\n".join(checklist.lines(items, home=str(self.home)))
-        self.assertIn("claude-code:\n   1. [x] skill (/wingbox)  (~/.claude/skills/wingbox)", text)
-        self.assertIn("[x] always-on instructions block  (~/.codex/AGENTS.md)", text)
+        self.assertIn(f"claude-code:\n   1. [x] skill (/wingbox)  ({os.path.join('~', '.claude', 'skills', 'wingbox')})", text)
+        self.assertIn(f"[x] always-on instructions block  ({os.path.join('~', '.codex', 'AGENTS.md')})", text)
 
     def test_without_names_an_item_or_an_item_of_one_assistant(self) -> None:
         """/* REQ-INSTALL-031: `--without` takes ITEM or ASSISTANT:ITEM, comma separated or repeated (skill, block, search-hook, edit-hook, session-hook, git-hook); `none` leaves nothing out; an unknown item or assistant is a usage error that names the known ones. */"""

@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -140,6 +141,21 @@ def check(label: str, settings: dict, project: Path, env: dict[str, str]) -> lis
     return failures
 
 
+def wait_for_refresh(project: Path) -> list[str]:
+    """The git and session-start hooks start a refresh that outlives them (the edit hook marked a file): wait until
+    it has published, so that the temporary folders are not removed under it."""
+    sys.path.insert(0, str(REPO / "src"))
+    from wingbox import freshness
+
+    deadline = time.monotonic() + 300
+    while time.monotonic() < deadline:
+        if freshness.is_fresh(freshness.read_state(str(project))) and not freshness.refresh_running(str(project)):
+            time.sleep(1)   # the refresh process exits after it releases its lock
+            return []
+        time.sleep(0.2)
+    return ["the refresh started by the hooks did not finish within 300 s"]
+
+
 def main(args: list[str]) -> int:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")   # type: ignore[attr-defined]
@@ -181,6 +197,7 @@ def main(args: list[str]) -> int:
         for label, written in settings.items():
             failures += check(label, written, project, env)
         print(json.dumps({label: written["hooks"] for label, written in settings.items()}, indent=2, ensure_ascii=False))
+        failures += wait_for_refresh(project)
     for failure in failures:
         print(f"FAIL: {failure}", file=sys.stderr)
     return 1 if failures else 0
