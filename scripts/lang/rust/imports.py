@@ -355,25 +355,37 @@ class BoundRustLanguage:
         resolve = resolve or self.resolve_import
         found: dict[str, set[str]] = {}
         not_followed = 0
+        # `use crate::store;` then `use store::Cache;`: a path that starts with a module brought in by a `use`.
+        aliases = {
+            str(binding["local"]): f"{binding.get('module')}::{binding.get('name')}" if binding.get("module") else str(binding.get("name"))
+            for binding in result.bindings
+            if binding.get("local") not in (None, "", "*") and binding.get("name") not in (None, "", "*")
+        }
         for spec in result.imports:
             target = resolve(spec, result.path)
+            head, _, rest = spec.partition("::")
+            if target is None and rest and head in aliases:
+                spec = f"{aliases[head]}::{rest}"
+                target = resolve(spec, result.path)
             named = self._named_item(spec, result.path, target, resolve) if target is not None else None
             if named is None:
                 continue
-            definer = self._definer(target, named, results, resolve, set())
+            definer = self._definer(target, named, results, resolve, set(), self._inside(result, target, results))
             if definer is None:
                 not_followed += 1
             elif definer != target:
                 found.setdefault(definer, set()).add("item")
-        used = {use["path"][0] for use in result.uses if len(use["path"]) == 1 and "module" not in use}
+        # Names the body uses, alone or as the head of a path (`Handler::new()`, `Kind::A`).
+        used = {use["path"][0] for use in result.uses if "module" not in use and use.get("kind") != "import"}
         for binding in result.bindings:
             if binding.get("name") != "*" or binding.get("export"):
                 continue
             facade = resolve(str(binding.get("module", "")), result.path)
             if facade is None:
                 continue
+            inside = self._inside(result, facade, results)
             for name in sorted(used):
-                definer = self._definer(facade, name, results, resolve, set())
+                definer = self._definer(facade, name, results, resolve, set(), inside)
                 if definer is not None and definer != facade:
                     found.setdefault(definer, set()).update(("item", "candidate"))
         return {target: frozenset(relations) for target, relations in found.items()}, not_followed
@@ -392,6 +404,14 @@ class BoundRustLanguage:
                 return None if inline_module else name
         return None
 
+    @staticmethod
+    def _inside(result: FileResult, module: str, results: Mapping[str, FileResult]) -> bool:
+        """Whether the file of result lies inside module (a descendant sees the private imports of its ancestors)."""
+        facade = results.get(module)
+        if facade is None:
+            return False
+        return os.path.normpath(result.path).startswith(_logical_module_directory(facade.path) + os.sep)
+
     def _definer(
         self,
         module: str,
@@ -399,8 +419,10 @@ class BoundRustLanguage:
         results: Mapping[str, FileResult],
         resolve: Callable[[str, str], str | None],
         seen: set[str],
+        inside: bool = False,
     ) -> str | None:
-        """The module that defines name as module sees it: module itself, or the file a `pub use` leads to."""
+        """The module that defines name as module sees it: module itself, or the file a `pub use` leads to; with
+        inside (the importer is a descendant of module), also a private `use` of module itself."""
         if module in seen:
             return None
         seen.add(module)
@@ -414,7 +436,7 @@ class BoundRustLanguage:
         if any(entity["name"] == name and not (reached and entity.get("private")) for entity in result.entities):
             return module
         for binding in result.bindings:
-            if not binding.get("export"):
+            if not binding.get("export") and not (inside and not reached):
                 continue
             original, local, source = binding.get("name", ""), binding.get("local", ""), binding.get("module", "")
             if original == "*":

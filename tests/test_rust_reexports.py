@@ -40,7 +40,8 @@ FILES = {
     "src/app/mod.rs": (
         "mod fork;\nmod view;\nmod save;\nmod glob_user;\nmod path_user;\nmod helper_user;\nmod unknown_user;\n"
         "mod net_user;\nmod inner;\nmod tools;\nmod shape_user;\nmod platform_user;\nmod api_user;\nmod prelude_user;\n"
-        "mod rename_user;\nmod glob_chain_user;\nmod time_user;\npub use tools::Tool;\n"
+        "mod rename_user;\nmod glob_chain_user;\nmod time_user;\nmod alias_user;\nmod head_user;\nmod parent_user;\n"
+        "pub use tools::Tool;\nuse crate::store::Cache;\n"
     ),
     "src/app/tools.rs": "pub struct Tool;\n",
     "src/app/fork.rs": "use crate::domain::{ForkContext, ForkCut, LIMIT, Alias, NAME, Render};\npub fn f(_: ForkContext) {}\n",
@@ -64,6 +65,12 @@ FILES = {
     "src/app/prelude_user.rs": "use crate::prelude::{ForkContext, Store};\npub fn p(_: ForkContext, _: Store) {}\n",
     "src/app/rename_user.rs": "use crate::store::Storage;\npub fn r(_: Storage) {}\n",
     "src/app/glob_chain_user.rs": "use crate::api::*;\npub fn g(_: Handler) {}\n",
+    # A use path that starts with a module brought in by an earlier `use`, and a glob import whose body names the
+    # item only as the head of a path (`Handler::new()`, `Kind::A`).
+    "src/app/alias_user.rs": "use crate::store;\nuse store::Cache;\npub fn a(_: Cache) {}\n",
+    # A child that glob-imports its parent sees the parent's private imports too.
+    "src/app/parent_user.rs": "use super::*;\npub fn p(_: Cache) {}\n",
+    "src/app/head_user.rs": "use crate::api::*;\npub fn h() -> usize { Handler::new(); Version::current() }\n",
 }
 
 
@@ -150,6 +157,18 @@ class RustReexportTest(unittest.TestCase):
         """/* REQ-RUST-026: `pub use child::Name as Alias` leads an importer of Alias to the child that defines Name, also when another facade re-exports Alias under a second name (`pub use crate::store::Storage as Store`). */"""
         self.assertEqual({"src/store": (), "src/store/disk": ("item",)}, self.targets("src/app/rename_user"))
         self.assertEqual(("item",), self.targets("src/app/prelude_user")["src/store/disk"])
+
+    def test_a_use_through_a_module_alias_and_a_path_head_lead_to_the_definer(self) -> None:
+        """/* REQ-RUST-029: `use crate::m;` then `use m::Name;` leads to the child of m that defines Name, and after a glob import (`use crate::api::*`) an item named only as the head of a path (`Handler::new()`) gives the :item :candidate edge to its definer, as a bare name does. */"""
+        self.assertEqual(("item",), self.targets("src/app/alias_user")["src/store/cache"])
+        head = self.targets("src/app/head_user")
+        self.assertEqual(("candidate", "item"), head["src/api/v1/handlers"])
+        self.assertEqual(("candidate", "item"), head["src/api/v1"])
+
+    def test_a_child_that_globs_its_parent_reaches_the_parents_private_imports(self) -> None:
+        """/* REQ-RUST-030: `use super::*` in a child module brings in what the parent imports privately (`use crate::store::Cache;` in the parent): an item the child names that way gives the :item :candidate edge to its definer; a module outside the parent does not see those imports. */"""
+        self.assertEqual(("candidate", "item"), self.targets("src/app/parent_user")["src/store/cache"])
+        self.assertNotIn("src/store/cache", self.targets("src/app/glob_chain_user"))
 
     def test_a_private_item_is_not_reexported_by_a_glob(self) -> None:
         """/* REQ-RUST-028: a glob re-export (`pub use child::*`) carries only the items of the child that the facade can see (pub, pub(crate), pub(super), pub(in ...)); a private item of the same name in a child globbed earlier is skipped, and the importer gets its :item edge to the child that defines the visible item (seen in a public Rust repository: a private `fn parse_rfc3339_to_unix_ms` in stats.rs and a pub(crate) one in timeline.rs). */"""
