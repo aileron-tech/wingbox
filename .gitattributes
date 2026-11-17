@@ -1,0 +1,6 @@
+# Text files keep LF in every checkout: the plugin copies, the generated files and the tests compare bytes.
+* text=auto eol=lf
+*.png binary
+*.gz binary
+*.npy binary
+*.i8 binary

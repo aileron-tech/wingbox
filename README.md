@@ -62,7 +62,8 @@ Wingbox is safe to run on code that must not leave the company:
 
 - **No network.** Building and querying the graph open no network connection.
   Run it with the network switched off to see for yourself:
-  `docker run --rm --network none -v "$PWD":/repo wingbox`.
+  `docker run --rm --network none -v "$PWD":/repo wingbox`
+  (PowerShell: `docker run --rm --network none -v "${PWD}:/repo" wingbox`).
   The one command that reaches the network is `wingbox update`, which runs
   your package installer (pipx, uv or pip) when you ask it to.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
@@ -307,7 +308,9 @@ or `/plugin marketplace add aileron-tech/wingbox`, then
 The plugin runs the installed `wingbox` command; without it, and with `uv`
 installed, it runs `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`,
 pinned to the commit of the latest release tag, which uv fetches on first use. The search hook never downloads and
-stays silent while neither is available.
+stays silent while neither is available. The plugin starts its launcher with `sh`; on Windows that is the
+`sh` of Git for Windows. Without it, use `pipx install wingbox` and `wingbox install` instead of the
+plugin: the hooks it writes start `wingbox.exe` directly, with no shell.
 
 Codex:
 
@@ -325,7 +328,7 @@ the tests fail while they differ.
 
 ## Quick start from the command line
 
-Install the `wingbox` command (Python 3.11 or newer, macOS or Linux):
+Install the `wingbox` command (Python 3.11 or newer, macOS, Linux or Windows):
 
 ```bash
 pipx install wingbox
@@ -594,7 +597,7 @@ wingbox uninstall                  # remove exactly what install added
 instructions file the assistant reads in every session, and for Claude Code a
 hook that runs before each search. Running it again changes nothing; after an
 upgrade it refreshes the skill. Assistants are found by their folders in the
-home directory: `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
+home directory (`%USERPROFILE%` on Windows): `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
 `~/.copilot` and `~/.agents`.
 
 | Assistant (`--assistant`) | Skill, global | Skill, `--project` | Always-on block, global | Block, `--project` |
@@ -615,7 +618,9 @@ home directory: `~/.claude`, `~/.codex`, `~/.gemini`, `~/.cursor`,
 - **The Claude Code hooks** are a `PreToolUse` entry with the matcher
   `Grep|Glob|Read` in `~/.claude/settings.json` (`.claude/settings.json` with
   `--project`) that runs `wingbox hook pre-search`, and a `PostToolUse` entry
-  with the matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`. When the project has a
+  with the matcher `Edit|Write|MultiEdit` that runs `wingbox hook dirty`. On Windows a global
+  install writes them in exec form (`"command"` the full path of `wingbox.exe`, `"args"`
+  `["hook", "pre-search"]`), which Claude Code starts without Git Bash or PowerShell. When the project has a
   graph, the search hook adds a few lines of context to the search: the modules and
   definitions that match the pattern with their direct dependents, or for a
   file its dependents and the hint to run `wingbox impact`. It answers in
@@ -754,6 +759,14 @@ docker run --rm --network none -v "$PWD":/repo wingbox
 docker run --rm --network none -v "$PWD":/repo wingbox impact path/to/file.py
 ```
 
+In PowerShell on Windows:
+
+```powershell
+cd C:\path\to\project
+docker run --rm --network none -v "${PWD}:/repo" wingbox
+docker run --rm --network none -v "${PWD}:/repo" wingbox impact path/to/file.py
+```
+
 The first `docker run` builds the code graph, the report and the map of the
 mounted project; any other Wingbox command goes after the image name. The
 container needs no network, and `--network none` shows it: nothing leaves the
@@ -773,6 +786,12 @@ Build the code graph for an explicit project directory:
 
 ```bash
 python3 scripts/build_code_graph.py --root /absolute/path/to/project
+```
+
+On Windows the interpreter is `python` (or `py`), and paths may use either slash:
+
+```powershell
+python scripts\build_code_graph.py --root C:\absolute\path\to\project
 ```
 
 Exclude tracked source snapshots or generated fixture trees by directory name.

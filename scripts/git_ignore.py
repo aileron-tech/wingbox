@@ -51,6 +51,8 @@ def _repository_root(root: str) -> _RepositoryRootResult:
             check=False,
             env=_git_environment(),
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except OSError as error:
         return _RepositoryRootUnavailable(f"could not run Git: {error}")

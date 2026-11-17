@@ -21,7 +21,7 @@ def snapshot(root: Path) -> dict[str, bytes]:
     """Every file under root with its bytes, and every folder (value b'<dir>')."""
     result: dict[str, bytes] = {}
     for path in sorted(root.rglob("*")):
-        relative = str(path.relative_to(root))
+        relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             result[relative] = b"<link>" + os.readlink(path).encode()
         elif path.is_dir():
@@ -80,8 +80,9 @@ class GlobalInstallTest(InstallTestCase):
             self.assertEqual(1, text.count(install.BEGIN_MARKER))
             self.assertIn("wingbox impact <file>", text)
         settings = json.loads((self.home / ".claude" / "settings.json").read_text())
+        # The entry is a shell command, or on Windows the program and its arguments apart (exec form).
         self.assertEqual(
-            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 10}]}],
+            [install.hook_group(HOOK_COMMAND)],
             settings["hooks"]["PreToolUse"],
         )
         self.assertFalse((self.home / ".gemini").exists())
@@ -101,16 +102,11 @@ class GlobalInstallTest(InstallTestCase):
         self.run_command("install")
         self.run_command("install")
         hooks = json.loads(settings_path.read_text())["hooks"]
-        self.assertEqual(
-            [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 10}]}],
-            hooks["PreToolUse"],
-        )
+        self.assertEqual([install.hook_group(HOOK_COMMAND)], hooks["PreToolUse"])
         self.assertEqual(
             [
                 {"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]},
-                {"matcher": "Edit|Write|MultiEdit", "hooks": [
-                    {"type": "command", "command": "/opt/tools/bin/wingbox hook dirty", "timeout": 5}
-                ]},
+                install.dirty_group(HOOK_COMMAND),
             ],
             hooks["PostToolUse"],
         )
@@ -291,18 +287,19 @@ class InstallOutputTest(InstallTestCase):
         """/* REQ-INSTALL-013: `wingbox install --sexp` must print one `(install-wrote <path> :what ... :assistant ...)` fact per target; the default output is the same facts as aligned text, with the home folder shown as ~. */"""
         (self.home / ".claude").mkdir()
         output = io.StringIO()
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}), redirect_stdout(output):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), redirect_stdout(output):
             os.chdir(self.project)
             self.addCleanup(os.chdir, str(REPO))
             status = cli.main(["install", "--sexp"])
         self.assertEqual(0, status)
         lines = output.getvalue().splitlines()
         skill_path = self.home / ".claude" / "skills" / "wingbox"
-        self.assertIn(f"(install-wrote {skill_path} :what skill :assistant (claude-code) :version {cli._version()})", lines)
-        self.assertIn(f"(install-wrote {self.home / '.claude' / 'settings.json'} :what hook :assistant (claude-code))", lines)
+        # facts.atom quotes a path that holds backslashes (Windows), so the expectation is built the same way.
+        self.assertIn(f"(install-wrote {facts.atom(str(skill_path))} :what skill :assistant (claude-code) :version {cli._version()})", lines)
+        self.assertIn(f"(install-wrote {facts.atom(str(self.home / '.claude' / 'settings.json'))} :what hook :assistant (claude-code))", lines)
 
         text = io.StringIO()
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}), redirect_stdout(text):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), redirect_stdout(text):
             cli.main(["install"])
         first = text.getvalue().splitlines()[0].split()
         self.assertEqual(["kept", "skill", "claude-code", "~/.claude/skills/wingbox", "(unchanged)"], first)

@@ -295,6 +295,8 @@ def _resolve_typescript_path(
     path_to_id: Mapping[str, str],
 ) -> Optional[str]:
     for candidate in _typescript_resolution_candidates(resolved):
+        # A specifier joins with "/"; the file system and path_to_id use the system's separator.
+        candidate = os.path.normpath(candidate)
         if candidate in path_to_id:
             return path_to_id[candidate]
         try:

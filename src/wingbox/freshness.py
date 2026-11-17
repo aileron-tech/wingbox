@@ -17,7 +17,7 @@ Model: dirty marking plus a lazy refresh.
 
 This module is imported by the hooks: it reads and writes small JSON files and
 calls stat; it never imports the builder. Writes are atomic (temporary file and
-rename) and serialised by a lock file (`fcntl.flock`, released by the kernel
+rename) and serialised by a lock file (`portable.lock`, released by the system
 when its process dies, so a crashed writer leaves no stale lock).
 
 Settings (environment):
@@ -32,7 +32,6 @@ Settings (environment):
 """
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 import sys
@@ -298,9 +297,9 @@ def write_json_atomic(path: str, value: object) -> None:
     os.makedirs(directory, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(path) + ".", suffix=".tmp")
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(value, handle, separators=(",", ":"))
-        os.replace(temporary, path)
+        portable().replace(temporary, path)
     except BaseException:
         try:
             os.unlink(temporary)
@@ -317,6 +316,13 @@ def read_state(root: str) -> State:
     return decode_state(raw)
 
 
+def portable():
+    """scripts/portable.py: the platform differences (locks, detached processes, atomic replace, paths)."""
+    from wingbox.cli import load_script
+
+    return load_script("portable")
+
+
 def write_state(root: str, state: State) -> None:
     write_json_atomic(_state_file(root, STATE_NAME), encode_state(state))
 
@@ -326,11 +332,12 @@ def state_lock(root: str) -> Iterator[None]:
     """Serialise read-modify-write of the state between processes."""
     os.makedirs(state_directory(root), exist_ok=True)
     with open(_state_file(root, LOCK_NAME), "a+", encoding="utf-8") as handle:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        helpers = portable()
+        helpers.lock(handle)
         try:
             yield
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            helpers.unlock(handle)
 
 
 def update_state(root: str, change) -> State:
@@ -544,10 +551,8 @@ def with_outside_changes(snapshot: Snapshot, changes: OutsideChanges) -> Snapsho
 
 def relative_path(root: str, path: str) -> Optional[str]:
     """path relative to root with /, or None outside root."""
-    relative = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
-    if relative == "." or relative == ".." or relative.startswith(".." + os.sep) or os.path.isabs(relative):
-        return None
-    return relative.replace(os.sep, "/")
+    relative = portable().relative_posix(path, root)
+    return relative or None
 
 
 def _edited_path(payload: object) -> Optional[str]:
@@ -560,7 +565,8 @@ def _edited_path(payload: object) -> Optional[str]:
     if not isinstance(file_path, str) or not file_path:
         return None
     base = payload.get("cwd") if isinstance(payload.get("cwd"), str) else os.getcwd()
-    return os.path.join(base, file_path)
+    local_path = portable().local_path
+    return os.path.join(local_path(base), local_path(file_path))
 
 
 def _reported_failure(payload: dict) -> bool:
@@ -671,7 +677,7 @@ def _check_due(root: str) -> bool:
     except OSError:
         pass
     try:
-        with open(marker, "a", encoding="utf-8"):
+        with open(marker, "a", encoding="utf-8", newline="\n"):
             pass
         os.utime(marker)
     except OSError as error:
@@ -700,11 +706,10 @@ def refresh_running(root: str) -> bool:
     except OSError:
         return False
     with handle:
-        try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        helpers = portable()
+        if not helpers.lock(handle, blocking=False):
             return True
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        helpers.unlock(handle)
     return False
 
 
@@ -733,8 +738,7 @@ def start_refresh(root: str) -> "subprocess.Popen":
             stderr=log,
             cwd=root,
             env=environment,
-            start_new_session=True,
-            close_fds=True,
+            **portable().detached_process_options(),
         )
 
 

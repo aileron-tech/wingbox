@@ -35,12 +35,33 @@ class StubInstallers:
         test.addCleanup(patcher.stop)
 
     def add(self, name: str, body: str) -> None:
-        script = self.bin / name
-        script.write_text(f'#!/bin/sh\necho "{name} $*" >> "{self.calls}"\n{body}\n', encoding="utf-8")
-        script.chmod(script.stat().st_mode | stat.S_IXUSR)
+        """A stub program: a Python script (body: Python with `args`, `out`, `err`, `HERE`) and a launcher
+        the system finds on PATH: a .cmd file on Windows, an sh script elsewhere."""
+        script = self.bin / f"{name}-stub.py"
+        script.write_text(
+            "import os, sys\n"
+            "args = sys.argv[1:]\n"
+            "HERE = os.path.dirname(os.path.abspath(__file__))\n"
+            f"with open({str(self.calls)!r}, 'a', encoding='utf-8') as log:\n"
+            f"    log.write(' '.join([{name!r}, *args]) + '\\n')\n"
+            "def out(*lines): print('\\n'.join(lines))\n"
+            "def err(*lines): print('\\n'.join(lines), file=sys.stderr)\n"
+            f"{body}\n",
+            encoding="utf-8",
+        )
+        if os.name == "nt":
+            (self.bin / f"{name}.cmd").write_text(f'@"{sys.executable}" "{script}" %*\r\n', encoding="utf-8")
+        else:
+            launcher = self.bin / name
+            launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8")
+            launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
+
+    def remove(self, name: str) -> None:
+        for path in self.bin.glob(f"{name}*"):
+            path.unlink()
 
     def called(self) -> list[str]:
-        return self.calls.read_text().splitlines() if self.calls.exists() else []
+        return self.calls.read_text(encoding="utf-8").splitlines() if self.calls.exists() else []
 
 
 def environment(installed: list[install.Installed] | None = None, refreshed: list[install.Installed] | None = None,
@@ -64,12 +85,12 @@ def environment(installed: list[install.Installed] | None = None, refreshed: lis
 
 
 PIPX_LIST = (
-    'if [ "$1" = list ]; then echo "wingbox 0.2.5"; echo "black 24.1.0"; exit 0; fi\n'
-    'if [ "$1" = environment ]; then echo "${0%/*}/../venvs"; exit 0; fi'
+    'if args[:1] == ["list"]: out("wingbox 0.2.5", "black 24.1.0"); sys.exit(0)\n'
+    'if args[:1] == ["environment"]: out(os.path.join(HERE, "..", "venvs")); sys.exit(0)'
 )
 UV_LIST = (
-    'if [ "$1 $2" = "tool list" ]; then echo "wingbox v0.2.5"; echo "- wingbox"; exit 0; fi\n'
-    'if [ "$1 $2" = "tool dir" ]; then echo "${0%/*}/../tools"; exit 0; fi'
+    'if args[:2] == ["tool", "list"]: out("wingbox v0.2.5", "- wingbox"); sys.exit(0)\n'
+    'if args[:2] == ["tool", "dir"]: out(os.path.join(HERE, "..", "tools")); sys.exit(0)'
 )
 
 
@@ -77,7 +98,7 @@ class MethodDetectionTest(unittest.TestCase):
     def test_the_installer_that_lists_wingbox_is_chosen(self) -> None:
         """/* REQ-UPDATE-001: `wingbox update` must choose pipx when `pipx list --short` names wingbox and Wingbox runs from pipx's wingbox environment, uv likewise with `uv tool list` and `uv tool dir`, and pip of the running Python otherwise, also when another installer holds a second copy. */"""
         stubs = StubInstallers(self)
-        stubs.add("pipx", 'if [ "$1" = list ]; then echo "black 24.1.0"; fi')
+        stubs.add("pipx", 'if args[:1] == ["list"]: out("black 24.1.0")')
         stubs.add("uv", UV_LIST)
         method = update.choose_method(update.FromIndex(), "/envs/w/bin/python", stubs.uv_env, update.run_installer)
         assert isinstance(method, update.Method)
@@ -92,8 +113,8 @@ class MethodDetectionTest(unittest.TestCase):
         assert isinstance(method, update.Method)
         self.assertEqual(("/envs/w/bin/python", "-m", "pip", "install", "--upgrade", "wingbox"), method.upgrade)
 
-        (stubs.bin / "pipx").unlink()
-        (stubs.bin / "uv").unlink()
+        stubs.remove("pipx")
+        stubs.remove("uv")
         method = update.choose_method(update.FromIndex(), "/envs/w/bin/python", stubs.pipx_env, update.run_installer)
         assert isinstance(method, update.Method)
         self.assertEqual("pip", method.name)
@@ -103,10 +124,10 @@ class MethodDetectionTest(unittest.TestCase):
         stubs = StubInstallers(self)
         stubs.add(
             "pipx",
-            'if [ "$1" = list ]; then echo "poetry 1.8.3"; echo "wingbox 0.2.5"; '
-            'echo "   package pipenv has invalid interpreter /usr/bin/python3.9"; '
-            'echo "One or more packages have a missing python interpreter." >&2; exit 1; fi\n'
-            'if [ "$1" = environment ]; then echo "${0%/*}/../venvs"; exit 0; fi',
+            'if args[:1] == ["list"]:\n'
+            '    out("poetry 1.8.3", "wingbox 0.2.5", "   package pipenv has invalid interpreter /usr/bin/python3.9")\n'
+            '    err("One or more packages have a missing python interpreter."); sys.exit(1)\n'
+            'if args[:1] == ["environment"]: out(os.path.join(HERE, "..", "venvs")); sys.exit(0)',
         )
         method = update.choose_method(update.FromIndex(), "/envs/w/bin/python", stubs.pipx_env, update.run_installer)
         assert isinstance(method, update.Method)
@@ -137,8 +158,8 @@ class CheckTest(unittest.TestCase):
     def test_check_reports_the_latest_version_without_installing(self) -> None:
         """/* REQ-UPDATE-003: `wingbox update --check` must report the installed and the latest version through the installer and install nothing. */"""
         stubs = StubInstallers(self)
-        stubs.add("pipx", PIPX_LIST + '\nif [ "$1" = runpip ]; then echo "wingbox (0.3.0)"; '
-                                      'echo "Available versions: 0.3.0, 0.2.5"; exit 0; fi\nexit 9')
+        stubs.add("pipx", PIPX_LIST + '\nif args[:1] == ["runpip"]: out("wingbox (0.3.0)", "Available versions: 0.3.0, 0.2.5"); '
+                                      'sys.exit(0)\nsys.exit(9)')
         result = update.update(update.Options(True, False, False), environment(prefix=stubs.pipx_env))
         self.assertEqual(["(update-from 0.2.5)", "(update-method pipx)", "(update-latest 0.3.0)"],
                          [facts.fact_sexp(fact) for fact in result])
@@ -147,7 +168,7 @@ class CheckTest(unittest.TestCase):
     def test_check_without_internet_fails_clearly(self) -> None:
         """/* REQ-UPDATE-004: when the installer cannot reach the index, `--check` must end with an `update-failed` fact that quotes the installer and exit 1, without a traceback. */"""
         stubs = StubInstallers(self)
-        stubs.add("pipx", PIPX_LIST + '\necho "ERROR: Could not fetch URL: connection refused" >&2; exit 1')
+        stubs.add("pipx", PIPX_LIST + '\nerr("ERROR: Could not fetch URL: connection refused"); sys.exit(1)')
         result = update.update(update.Options(True, False, False), environment(prefix=stubs.pipx_env))
         self.assertEqual(1, update.exit_status(result))
         self.assertIn("connection refused", str(result[-1].get("reason")))
@@ -167,7 +188,7 @@ class UpgradeTest(unittest.TestCase):
     def test_a_failed_upgrade_refreshes_nothing(self) -> None:
         """/* REQ-UPDATE-006: when the installer's upgrade fails, `wingbox update` must report it, exit 1 and refresh nothing. */"""
         stubs = StubInstallers(self)
-        stubs.add("pipx", PIPX_LIST + '\necho "network is unreachable" >&2; exit 1')
+        stubs.add("pipx", PIPX_LIST + '\nerr("network is unreachable"); sys.exit(1)')
         refreshed: list[install.Installed] = []
         entry = install.Installed("global", "/home/dev", ("claude-code",))
         result = update.update(update.Options(False, False, False), environment([entry], refreshed, prefix=stubs.pipx_env))
@@ -177,7 +198,7 @@ class UpgradeTest(unittest.TestCase):
     def test_after_an_upgrade_the_installed_skills_are_refreshed(self) -> None:
         """/* REQ-UPDATE-007: after a successful upgrade, `wingbox update` must run `wingbox install` of the new version for every recorded install, so an outdated skill is rewritten, and report `update-from`, `update-to`, `update-method` and `update-refreshed`. */"""
         stubs = StubInstallers(self)
-        stubs.add("pipx", PIPX_LIST + '\nif [ "$1" = upgrade ]; then echo "upgraded package wingbox"; exit 0; fi')
+        stubs.add("pipx", PIPX_LIST + '\nif args[:1] == ["upgrade"]: out("upgraded package wingbox"); sys.exit(0)')
         home = stubs.folder / "home"
         (home / ".claude").mkdir(parents=True)
         machine = install.Machine(str(home), str(home), "0.2.4", SKILL_FILES, "wingbox hook pre-search")
@@ -185,10 +206,10 @@ class UpgradeTest(unittest.TestCase):
         assert isinstance(options, install.Options)
         install.install(options, machine)
         skill = home / ".claude" / "skills" / "wingbox" / "SKILL.md"
-        skill.write_text("outdated skill of 0.2.4\n")
-        [entry] = install.read_record((home / ".wingbox" / "installed.sexp").read_text())
+        skill.write_text("outdated skill of 0.2.4\n", encoding="utf-8")
+        [entry] = install.read_record((home / ".wingbox" / "installed.sexp").read_text(encoding="utf-8"))
 
-        with mock.patch.dict(os.environ, {"HOME": str(home)}):
+        with mock.patch.dict(os.environ, {"HOME": str(home), "USERPROFILE": str(home)}):
             env = update.Environment(
                 origin=update.FromIndex(),
                 python=sys.executable,
@@ -205,7 +226,7 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(SKILL_FILES["SKILL.md"], skill.read_bytes())
         lines = [facts.fact_sexp(fact) for fact in result]
         self.assertEqual(["(update-from 0.2.4)", "(update-method pipx)", "(update-to 0.2.5)"], lines[:3])
-        self.assertIn(f"(update-refreshed {skill.parent} :what skill :assistant (claude-code))", lines)
+        self.assertIn(f"(update-refreshed {facts.atom(str(skill.parent))} :what skill :assistant (claude-code))", lines)
         self.assertIn("pipx upgrade wingbox", stubs.called())
 
 
@@ -237,16 +258,16 @@ class OldLayoutWarningTest(unittest.TestCase):
         kept.update(self.leave_old_files(self.recorded))
         installed = [install.Installed("project", str(self.recorded), ("claude-code",))]
         warnings = update.old_layout_warnings(str(self.project / "src"), installed)
-        self.assertEqual([fact.args[0] for fact in warnings], [str(self.project), str(self.recorded)])
+        self.assertEqual([fact.args[0] for fact in warnings], [self.project.as_posix(), self.recorded.as_posix()])
         self.assertEqual(warnings[0].get("old-files"), self.OLD + ("wingbox-out/",))
         line = update.warning_text(warnings[0], color=False)
         self.assertEqual(
             line,
-            f"! WARNING: {self.project}: old Wingbox files left: {', '.join(self.OLD + ('wingbox-out/',))}"
+            f"! WARNING: {self.project.as_posix()}: old Wingbox files left: {', '.join(self.OLD + ('wingbox-out/',))}"
             " - Wingbox now uses .wingbox/ only; remove them yourself",
         )
         self.assertEqual(update.warning_text(warnings[0], color=True), "\033[33m" + line + "\033[0m")
-        self.assertIn(f"(update-warning {self.project} :old-files (", facts.render_sexp(warnings))
+        self.assertIn(f"(update-warning {self.project.as_posix()} :old-files (", facts.render_sexp(warnings))
         self.assertFalse(update.use_color(is_terminal=True, environ={"NO_COLOR": "1"}))
         self.assertTrue(update.use_color(is_terminal=True, environ={}))
         self.assertFalse(update.use_color(is_terminal=False, environ={}))
@@ -259,9 +280,9 @@ class OldLayoutWarningTest(unittest.TestCase):
         completed = subprocess.run(
             [sys.executable, "-m", "wingbox.cli", "update", "--check"],
             capture_output=True, text=True, cwd=self.project / "src",
-            env={**os.environ, "PYTHONPATH": str(REPO / "src"), "HOME": str(self.base)}, timeout=300,
+            env={**os.environ, "PYTHONPATH": str(REPO / "src"), "HOME": str(self.base), "USERPROFILE": str(self.base)}, timeout=300,
         )
-        self.assertIn(f"! WARNING: {self.project}: old Wingbox files left:", completed.stdout)
+        self.assertIn(f"! WARNING: {self.project.as_posix()}: old Wingbox files left:", completed.stdout)
         self.assertNotIn("\033[", completed.stdout)
         self.assertTrue((self.project / ".code_graph.sexp").is_file())
 

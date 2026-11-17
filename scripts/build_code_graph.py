@@ -100,7 +100,6 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
-import fcntl
 import hashlib
 import importlib.metadata
 import json
@@ -143,6 +142,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        from . import portable
         from .architecture.config import ConfigErr, plan_from_config, read_config
         from .architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -177,6 +177,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        import portable
         from architecture.config import ConfigErr, plan_from_config, read_config
         from architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -624,7 +625,7 @@ def _report_dependency_issues(
     for issue in issues:
         requirements_path = skill_root / "requirements" / f"{issue.language.name}.txt"
         print(
-            f'[code-graph]   python3 -m pip install -r "{requirements_path}"',
+            f'[code-graph]   {"python" if portable.WINDOWS else "python3"} -m pip install -r "{requirements_path.as_posix()}"',
             file=sys.stderr,
         )
         extra = OPTIONAL_LANGUAGE_EXTRAS.get(issue.language.name)
@@ -691,16 +692,13 @@ def _atomic_write_text(path: str, content: str) -> None:
         suffix=".tmp",
     )
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        # newline="\n": the graph and the reports are the same bytes on every system.
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as output:
             output.write(content)
             output.flush()
             os.fsync(output.fileno())
-        os.replace(temporary_path, path)
-        directory_descriptor = os.open(directory, os.O_RDONLY)
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
+        portable.replace(temporary_path, path)
+        portable.fsync_directory(directory)
     except OSError:
         if os.path.exists(temporary_path):
             try:
@@ -1213,6 +1211,7 @@ class GraphContext:
     bound_languages: dict[str, BoundLanguage]
     provider_candidates: dict[str, set[str]]
     methods: frozenset[str]
+    exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS   # what bound the languages, for spawned workers
 
 
 @dataclass(frozen=True)
@@ -1296,7 +1295,7 @@ def graph_context(
             entity_candidates.get(base_name, set())
         )
     methods = frozenset(method for result in id_to_result.values() for method in class_methods(result))
-    return Ok(GraphContext(root, path_to_id, id_to_result, bound_languages, provider_candidates, methods))
+    return Ok(GraphContext(root, path_to_id, id_to_result, bound_languages, provider_candidates, methods, exclusions))
 
 
 def symbol_index(context: GraphContext) -> SymbolIndex:
@@ -1313,7 +1312,7 @@ def module_node(node_id: str, r: FileResult, root: str, purpose: str) -> dict:
     node: dict = {
         "id": node_id,
         "language": r.language,
-        "path": os.path.relpath(r.path, root),
+        "path": os.path.relpath(r.path, root).replace(os.sep, "/"),   # repository-relative, POSIX on every system
         "repo": r.repo,
         "invariant": {
             "naming": r.naming_convention,
@@ -1614,8 +1613,17 @@ def module_fragment(context: GraphContext, index: Optional[SymbolIndex], node_id
     )
 
 
+def _fragment_worker(results: list[FileResult], root: str, exclusions: DiscoveryExclusions, resolve_uses: bool) -> None:
+    """Initializer of a spawned worker: it builds the same context as the parent from the parse results."""
+    global _FORK_CONTEXT
+    built = graph_context(results, root, exclusions)
+    assert isinstance(built, Ok), "the parent built this context without a collision"
+    _FORK_CONTEXT = (built.value, resolve_uses)
+
+
 def _fragment_chunk(node_ids: list[str]) -> list[ModuleFragment]:
-    """Worker side of a parallel resolution: the context comes from the forked parent."""
+    """Worker side of a parallel resolution: the context comes from the forked parent, or from
+    _fragment_worker in a spawned process."""
     context, resolve_uses = _FORK_CONTEXT
     index = symbol_index(context) if resolve_uses else None
     return [module_fragment(context, index, node_id) for node_id in node_ids]
@@ -1632,7 +1640,8 @@ def module_fragments(
     resolve_uses: bool,
     jobs: int = 1,
 ) -> dict[str, ModuleFragment]:
-    """The fragments of node_ids, in their order; with jobs > 1, in forked worker processes.
+    """The fragments of node_ids, in their order; with jobs > 1, in worker processes (forked, or spawned
+    where fork does not exist: each spawned worker builds the context again from the parse results).
 
     Each answer depends only on the context, never on which other modules the
     same process resolved before (the symbol index memoises an answer only when
@@ -1640,13 +1649,18 @@ def module_fragments(
     """
     global _FORK_CONTEXT
     ordered = list(node_ids)
-    if jobs <= 1 or len(ordered) < PARALLEL_MIN_MODULES or "fork" not in multiprocessing.get_all_start_methods():
+    if jobs <= 1 or len(ordered) < PARALLEL_MIN_MODULES:
         index = symbol_index(context) if resolve_uses else None
         return {node_id: module_fragment(context, index, node_id) for node_id in ordered}
     chunks = [ordered[start : start + _CHUNK_MODULES] for start in range(0, len(ordered), _CHUNK_MODULES)]
+    method = portable.start_method(prefer_fork=True)
     _FORK_CONTEXT = (context, resolve_uses)
+    spawned = {} if method == "fork" else {
+        "initializer": _fragment_worker,
+        "initargs": (list(context.id_to_result.values()), context.root, context.exclusions, resolve_uses),
+    }
     try:
-        with ProcessPoolExecutor(max_workers=jobs, mp_context=multiprocessing.get_context("fork")) as pool:
+        with ProcessPoolExecutor(max_workers=jobs, mp_context=multiprocessing.get_context(method), **spawned) as pool:
             parts = list(pool.map(_fragment_chunk, chunks))
     except (OSError, BrokenProcessPool) as error:
         print(f"[code-graph] WARNING: parallel resolution failed ({error}); resolving in one process", file=sys.stderr)
@@ -4220,11 +4234,7 @@ def _run_build(options: BuilderOptions) -> int:
 
     new_results: list[FileResult] = []
     if to_parse:
-        workers = min(os.cpu_count() or 4, len(to_parse))
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(parse_file, item): item for item in to_parse}
-            for fut in as_completed(futures):
-                new_results.append(fut.result())
+        new_results = parse_files(to_parse)
 
     all_results = sorted(
         cached_results + new_results,
@@ -4338,6 +4348,20 @@ def _run_build(options: BuilderOptions) -> int:
     return 0
 
 
+def parse_files(to_parse: list[tuple[str, ...]]) -> list[FileResult]:
+    """Parse files in worker processes (the start method of portable.start_method); in this process
+    when a pool cannot start (a sandbox without semaphores, a system without processes)."""
+    workers = min(os.cpu_count() or 4, len(to_parse))
+    if workers > 1:
+        try:
+            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context(portable.start_method())) as pool:
+                futures = {pool.submit(parse_file, item): item for item in to_parse}
+                return [future.result() for future in as_completed(futures)]
+        except (OSError, BrokenProcessPool) as error:
+            print(f"[code-graph] WARNING: parallel parsing failed ({error}); parsing in one process", file=sys.stderr)
+    return [parse_file(item) for item in to_parse]
+
+
 def _published_modules(path: str) -> bool:
     """Whether the graph at path has at least one module."""
     try:
@@ -4373,7 +4397,7 @@ def project_architecture(
         {node["id"]: names_by_path.get(node["path"], frozenset()) for node in nodes if node.get("path")},
         plan_paths,
         read_baseline_sexp(baseline_text),
-        _node_capabilities(root, nodes, {os.path.relpath(r.path, root): r.content_hash for r in results}),
+        _node_capabilities(root, nodes, {os.path.relpath(r.path, root).replace(os.sep, "/"): r.content_hash for r in results}),
         read_capability_baseline(baseline_text),
     )
     return Ok((architecture, plan.value))
@@ -4508,9 +4532,7 @@ def main(args: Optional[list[str]] = None) -> int:
         return 1
 
     try:
-        try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        if not portable.lock(lock_file, blocking=False):
             print(
                 f"[code-graph] ERROR: another build is active for {options.root}",
                 file=sys.stderr,
@@ -4522,7 +4544,7 @@ def main(args: Optional[list[str]] = None) -> int:
         return 1
     finally:
         try:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            portable.unlock(lock_file)
         except OSError as error:
             print(
                 f"[code-graph] ERROR: could not release build lock: {error}",

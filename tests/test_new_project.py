@@ -20,17 +20,20 @@ class _Terminal(io.StringIO):
 
 def _run(arguments: list[str], stdin=None, home: str = "") -> tuple[int, str]:
     output = io.StringIO()
-    saved_stdin, saved_home = sys.stdin, os.environ.get("HOME")
+    saved_stdin, saved_home = sys.stdin, {name: os.environ.get(name) for name in ("HOME", "USERPROFILE")}
     sys.stdin = stdin if stdin is not None else io.StringIO("")
     if home:
-        os.environ["HOME"] = home
+        os.environ["HOME"] = os.environ["USERPROFILE"] = home   # the home folder on POSIX and on Windows
     try:
         with redirect_stdout(output):
             status = cli.main(arguments)
     finally:
         sys.stdin = saved_stdin
-        if saved_home is not None:
-            os.environ["HOME"] = saved_home
+        for name, value in saved_home.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     return status, output.getvalue()
 
 

@@ -23,6 +23,7 @@ install added: stamped skill folders, the marked blocks, the hook entries.
 from __future__ import annotations
 
 import json
+import ntpath
 import os
 import shutil
 from dataclasses import dataclass
@@ -45,6 +46,11 @@ DIRTY_TIMEOUT_SECONDS = 5
 _HOOK_EVENTS = ("PreToolUse", "PostToolUse")
 BACKUP_SUFFIX = ".wingbox-bak"
 RECORD_RELATIVE = os.path.join(".wingbox", "installed.sexp")
+
+
+def _join(base: str, *relatives: str) -> str:
+    """base joined with paths written with / (".claude/skills", "references/x.md"), in the system's form."""
+    return os.path.join(base, *(part for relative in relatives for part in relative.split("/")))
 PROJECT_HOOK_COMMAND = f"wingbox {HOOK_SUBCOMMAND}"
 
 ALWAYS_ON_BLOCK = f"""{BEGIN_MARKER}
@@ -195,7 +201,7 @@ def detect_assistants(home: str, created: frozenset[str] = frozenset()) -> tuple
     """Assistants whose configuration folder exists and was not created by a Wingbox install."""
     found = []
     for name in ASSISTANTS:
-        folder = os.path.join(home, _CONFIG_FOLDERS[name])
+        folder = _join(home, _CONFIG_FOLDERS[name])
         if os.path.isdir(folder) and folder not in created:
             found.append(name)
     return tuple(found)
@@ -235,11 +241,11 @@ def plan_targets(scope: Scope, assistants: tuple[str, ...]) -> list[Target]:
     blocks = _GLOBAL_BLOCKS if scope.kind == "global" else _PROJECT_BLOCKS
     wanted: list[tuple[What, str, str]] = []
     for name in assistants:
-        wanted.append(("skill", os.path.join(scope.root, skills[name], SKILL_NAME), name))
+        wanted.append(("skill", _join(scope.root, skills[name], SKILL_NAME), name))
     for name in assistants:
         block = blocks[name]
         if block is not None:
-            wanted.append(("block", os.path.join(scope.root, block), name))
+            wanted.append(("block", _join(scope.root, block), name))
     if "claude-code" in assistants:
         wanted.append(("hook", os.path.join(scope.root, ".claude", "settings.json"), "claude-code"))
 
@@ -319,14 +325,15 @@ def remove_block(text: str) -> EditResult:
 
 
 def is_wingbox_hook(entry: object) -> bool:
+    """A hook entry Wingbox wrote: shell form (`... hook pre-search`) or exec form (`args` apart)."""
     if not isinstance(entry, dict) or entry.get("type") != "command":
         return False
     command = entry.get("command")
-    return (
-        isinstance(command, str)
-        and "wingbox" in command
-        and command.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
-    )
+    args = entry.get("args", [])
+    if not isinstance(command, str) or not isinstance(args, list):
+        return False
+    line = " ".join([command, *(str(arg) for arg in args)])
+    return "wingbox" in line and line.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
 
 
 def dirty_command(command: str) -> str:
@@ -334,18 +341,36 @@ def dirty_command(command: str) -> str:
     return command[: -len(HOOK_SUBCOMMAND)] + DIRTY_SUBCOMMAND if command.endswith(HOOK_SUBCOMMAND) else command
 
 
-def hook_group(command: str) -> dict:
-    return {
-        "matcher": HOOK_MATCHER,
-        "hooks": [{"type": "command", "command": command, "timeout": HOOK_TIMEOUT_SECONDS}],
-    }
+def _hook_entry(command: str, timeout: int, windows: bool) -> dict:
+    """A hook entry. On Windows in exec form (`command` + `args`): Claude Code starts the program without a
+    shell, so neither Git Bash nor PowerShell quoting matters (code.claude.com/docs/en/hooks)."""
+    if not windows:
+        return {"type": "command", "command": command, "timeout": timeout}
+    program, args = _split_windows_command(command)
+    # A project-scope command (`wingbox hook pre-search`, committed and shared) stays a shell command that
+    # bash and PowerShell both run; only a global install names an absolute program.
+    if not ntpath.isabs(program):
+        return {"type": "command", "command": command, "timeout": timeout}
+    return {"type": "command", "command": program, "args": args, "timeout": timeout}
 
 
-def dirty_group(command: str) -> dict:
-    return {
-        "matcher": DIRTY_MATCHER,
-        "hooks": [{"type": "command", "command": dirty_command(command), "timeout": DIRTY_TIMEOUT_SECONDS}],
-    }
+def _split_windows_command(command: str) -> tuple[str, list[str]]:
+    """Program and arguments of a command line written by subprocess.list2cmdline: the program may be
+    quoted (a path with spaces); backslashes are path separators, never escapes."""
+    command = command.strip()
+    if command.startswith('"'):
+        end = command.find('"', 1)
+        return command[1:end], command[end + 1:].split()
+    program, *args = command.split()
+    return program, args
+
+
+def hook_group(command: str, windows: bool = os.name == "nt") -> dict:
+    return {"matcher": HOOK_MATCHER, "hooks": [_hook_entry(command, HOOK_TIMEOUT_SECONDS, windows)]}
+
+
+def dirty_group(command: str, windows: bool = os.name == "nt") -> dict:
+    return {"matcher": DIRTY_MATCHER, "hooks": [_hook_entry(dirty_command(command), DIRTY_TIMEOUT_SECONDS, windows)]}
 
 
 def _stripped_groups(groups: list) -> list:
@@ -534,12 +559,12 @@ def _install_skill(target: Target, payload: Mapping[str, bytes], version: str, d
     if os.path.isdir(target.path) and os.listdir(target.path) and not os.path.isfile(stamp):
         return make_fact("install-kept", target.path, what="skill", assistant=target.assistants,
                          reason="installed-by-another-tool")
-    changed = [rel for rel, data in sorted(payload.items()) if _read_bytes(os.path.join(target.path, rel)) != data]
+    changed = [rel for rel, data in sorted(payload.items()) if _read_bytes(_join(target.path, rel)) != data]
     if not changed:
         return make_fact("install-kept", target.path, what="skill", assistant=target.assistants, reason="unchanged")
     if not dry_run:
         for rel in changed:
-            destination = os.path.join(target.path, rel)
+            destination = _join(target.path, rel)
             os.makedirs(os.path.dirname(destination), exist_ok=True)
             with open(destination, "wb") as handle:
                 handle.write(payload[rel])
@@ -637,10 +662,10 @@ def _remove_skill(target: Target, payload: Mapping[str, bytes]) -> list[Fact]:
         return [make_fact("uninstall-kept", target.path, what="skill", assistant=target.assistants,
                           reason="installed-by-another-tool")]
     for rel in sorted(payload, key=lambda name: name.count("/"), reverse=True):
-        path = os.path.join(target.path, rel)
+        path = _join(target.path, rel)
         if os.path.isfile(path):
             os.remove(path)
-    for folder in sorted({os.path.dirname(os.path.join(target.path, rel)) for rel in payload}, key=len, reverse=True):
+    for folder in sorted({os.path.dirname(_join(target.path, rel)) for rel in payload}, key=len, reverse=True):
         try:
             os.rmdir(folder)
         except OSError:

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wingbox"
-version = "0.6.2"
+version = "0.7.0"
 description = "A map of your codebase for AI coding agents: what a change breaks, where a symbol is used, how the architecture is layered. Local, no model."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -44,10 +44,12 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development",
     "Topic :: Software Development :: Quality Assurance",
 ]

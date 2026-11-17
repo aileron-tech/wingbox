@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import os
 import tomllib
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -296,7 +297,7 @@ def _style(data: dict[str, Any]) -> Style:
 
 def user_styles_dir() -> str:
     """$HOME/.wingbox/styles: style files of the user that replace built-in ones of the same name."""
-    return os.path.join(os.path.expanduser("~"), ".wingbox", "styles")
+    return os.path.join(str(Path.home()), ".wingbox", "styles")
 
 
 def load_library(directory: str = STYLES_DIR, override: str | None = None) -> Library:

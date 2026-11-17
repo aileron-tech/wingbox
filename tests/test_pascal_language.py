@@ -557,7 +557,7 @@ end.
         self.assertEqual(
             {"soft/live.pas", "soft/backup/helper.py"},
             {
-                str(Path(item[0]).relative_to(root))
+                Path(item[0]).relative_to(root).as_posix()
                 for item in discovered
             },
         )

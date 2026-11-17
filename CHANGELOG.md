@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.0 - 2026-11-17
+
+Wingbox runs natively on Windows (issue #48). The test suite runs on Linux,
+macOS and Windows with Python 3.11, 3.12 and 3.13 in GitHub Actions.
+
+### Changes
+
+- Windows support: the build, queries, the hooks, `wingbox install`,
+  `wingbox update` and the background refresh of the graph work on Windows.
+  Locks, detached processes, atomic file replacement and worker processes go
+  through one module of platform differences (`scripts/portable.py`).
+- The worker processes of the build start with `spawn` where `fork` does not
+  exist; the graph is byte for byte the same whatever the start method.
+- On Windows, `wingbox install` writes the Claude Code hooks in exec form (the
+  full path of `wingbox.exe` and its arguments apart), which Claude Code starts
+  without Git Bash or PowerShell.
+- The plugin's Claude Code hooks are in exec form too (`sh` with the launcher
+  and its arguments as a list), as the Claude Code documentation advises for a
+  path under `${CLAUDE_PLUGIN_ROOT}`; on macOS and Linux they run as before.
+- With no `EDITOR` or `VISUAL` set, `wingbox learn` offers Notepad on Windows.
+- README: PowerShell forms of the Docker and script examples, and how to use
+  Wingbox on Windows without Git for Windows.
+
+### Fixes
+
+- Every path Wingbox stores in `.wingbox/`, prints or compares is written with
+  `/` on every system; paths from a person or a hook (backslashes, a Git Bash
+  drive such as `/c/Users/...`, the `\\?\` prefix, another drive) are
+  normalised where they come in.
+- Every file Wingbox writes uses UTF-8 and LF line endings; source files with
+  CRLF line endings give the same graph, line numbers included.
+- Output is written as UTF-8 whatever the console code page, and colours are
+  used only on a terminal that shows them (`NO_COLOR` is respected).
+- `git` output is read as UTF-8, with file names unquoted.
+
 ## 0.6.2 - 2026-11-17
 
 A release of the package page and the documents; the tool behaves as in 0.6.1.

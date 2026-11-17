@@ -213,11 +213,11 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
             with redirect_stdout(analyze_output):
                 code_graph_search.cmd_analyze(graph, "src/handlers/payments")
             self.assertIn(
-                f"(boundary-file src/handlers/payments {child_module.relative_to(root)})",
+                f"(boundary-file src/handlers/payments {child_module.relative_to(root).as_posix()})",
                 analyze_output.getvalue(),
             )
             self.assertIn(
-                f"(boundary-file src/handlers/payments {flat_module.relative_to(root)})",
+                f"(boundary-file src/handlers/payments {flat_module.relative_to(root).as_posix()})",
                 analyze_output.getvalue(),
             )
 
@@ -284,7 +284,7 @@ class CodeGraphSearchAliasTest(unittest.TestCase):
                 with redirect_stdout(analyze_output):
                     code_graph_search.cmd_analyze(graph, module_id)
                 self.assertIn(
-                    f"(boundary-file {module_id} {path.relative_to(root)})",
+                    f"(boundary-file {module_id} {path.relative_to(root).as_posix()})",
                     analyze_output.getvalue(),
                 )
 

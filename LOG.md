@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.7.0: native Windows support (issue #48)
+
+### Changes
+- `.github/workflows/tests.yml`: the suite on ubuntu, macos and windows with Python 3.11, 3.12 and 3.13 (fail-fast off, uv with every requirements file, `PYTHONUTF8=0`). The first Windows run gave the list of failures; the work followed it.
+- `scripts/portable.py`: the one module of platform differences: file locks (fcntl or msvcrt), detached processes (new session, or `CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS`), `replace` with a short retry on `PermissionError`, directory fsync, the start method of worker processes (`WINGBOX_START_METHOD` overrides it), ANSI colours, UTF-8 streams, and the edge path functions `local_path` and `relative_posix`.
+- Builder: no `fcntl`; the parse pool and the resolution workers use an explicit context with a single-process fallback; spawned resolution workers rebuild their context in an initializer; graph and side files written with LF; module paths and capability-cache keys use `/`.
+- Freshness, refresh, hooks and queries: locks and detached refresh through the helper; paths from Claude Code hooks and from the command line normalised at the edge; no string prefix checks on paths.
+- Install: on Windows the Claude Code hooks of a global install are written in exec form (`command` = `wingbox.exe`, `args` apart); a project install keeps `wingbox hook pre-search`; both forms are recognised by uninstall. Home folders from `Path.home()`; printed paths use `/` and `~`.
+- Plugin: the Claude Code hooks in exec form (`sh` + `args`), as the hooks documentation advises for `${CLAUDE_PLUGIN_ROOT}` paths; the launcher stays one `sh` script because the plugin manifest has no per-system key.
+- Update and learn: installers found with `shutil.which` (pipx.exe, uv.exe, .cmd shims); child output read as UTF-8; `$EDITOR` parsed for Windows paths, Notepad when none is set.
+- `.gitattributes`: text files checked out with LF on every system (the plugin and fixture comparisons are byte comparisons).
+- Tests made portable (no `sh` stubs, POSIX path expectations, `USERPROFILE`); skipped on Windows with a stated reason only where the feature cannot exist: the pty questionnaire test and the four tests that run the `sh` launcher. New: REQ-PORT-001..006, REQ-INSTALL-023, REQ-LEARN-014.
+- README: PowerShell forms, Windows notes for the plugin and the hooks; classifiers Windows and Python 3.13; version 0.7.0 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`.
+- Why: the maintainer asked for native Windows support as the one exception to the feature freeze.
+- Verification: all nine CI cells green; immich built with main and with this branch on macOS, same `index.sexp` bytes, 4.5 s both (side files differ only by the builder fingerprint and an edge order that also varies between two runs of main).
+
 ## 2026-11-17 - Version 0.6.2: package page and documents
 
 - The maintainer asked for the PyPI page to be brought up to date; PyPI shows what the last release carries, so the metadata and README changes of #66 go out as a release.
