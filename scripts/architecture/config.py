@@ -216,20 +216,60 @@ def _flow(values: tuple[str, ...]) -> str:
     return "[" + ", ".join(_quote(value) for value in values) + "]"
 
 
+HEADER_MARK = "# Wingbox architecture config."
+
+
+def config_header(library: Library, generated: str) -> list[str]:
+    """The instructions at the top of .wingbox/config.yaml, rewritten on every write.
+
+    They say what each key means and how the layer of a file is decided, so that an agent
+    asked to move a folder edits the file correctly. Everything below them is the user's.
+    """
+    styles = ", ".join(style.id for style in library.styles)
+    return [
+        f"{HEADER_MARK} Read this before you change the file (written {generated}).",
+        "# Wingbox writes it (wingbox init, align --learn, learn); a coding agent settles what Wingbox",
+        "# cannot decide, asking the operator when the code does not tell. Edit by these rules only.",
+        "# - parts: one entry per part, keyed by its root folder (\".\" is the repository root). A part",
+        "#   ends where another listed part starts.",
+        "# - level: C4 level (system, container, component); informative.",
+        f"# - style: {styles};",
+        "#   declared (the project's own rule files, listed under `declared`, decide),",
+        "#   none or undetermined (no layers and no rules for the part).",
+        "# - layers: layer -> folders. A name (services) matches a folder of that name at any depth; a",
+        "#   path (lib/hooks) matches that folder and everything below it. Only the style's layers.",
+        "# - The layer of a file, first rule that applies: a test file is in no layer; the longest folder",
+        "#   path listed under layers; below a routing-root (route-tree), route files are route, other",
+        "#   files feature; a file pattern of the style (*.tsx -> ui); the nearest folder above the",
+        "#   file whose name is listed; otherwise no layer (other).",
+        "# - What a layer may import is the style's rule list (wingbox boundaries names each rule).",
+        "# - To move a folder to another layer, move its name or path to that layer's list; to move a",
+        "#   subfolder alone, list its path (lib/hooks) under the new layer. Write the reason in a",
+        "#   comment on the line. A single file cannot be pinned: move it into a folder of its layer.",
+        "# - overlays, routing-root, target: found by init; target is the style's full layout,",
+        "#   informative.",
+        "# - Known rule breaks accepted on purpose are in .wingbox/baseline.sexp (align --learn).",
+        "# - After any change run `wingbox build` and `wingbox boundaries`: no new violation may appear.",
+        "# - Unsure where something belongs? Run `wingbox align --learn` (or `wingbox learn`) and answer",
+        "#   its questions instead of guessing.",
+    ]
+
+
+def with_header(text: str, library: Library, generated: str) -> str:
+    """text with the current instruction header: the leading comment block is replaced, the rest kept."""
+    lines = text.split("\n")
+    start = 0
+    while start < len(lines) and lines[start].startswith("#"):
+        start += 1
+    return "\n".join([*config_header(library, generated), *lines[start:]])
+
+
 def render_config(
     plan: RepositoryPlan, library: Library, generated: str, paths: tuple[str, ...] = (),
     with_target: bool = False, chosen: str = "",
 ) -> str:
     """YAML text of .wingbox/config.yaml for a plan; comments say what each value means."""
-    styles = ", ".join(style.id for style in library.styles)
-    lines = [
-        f"# Architecture of this repository, written by `wingbox init` on {generated}.",
-        "# Edit it, then run: wingbox build",
-        f"# style: {styles},",
-        "#   declared (the project states its own rules), none (no layer style) or undetermined.",
-        "# layers: layer -> whole folder names inside the part, at any depth.",
-        "parts:",
-    ]
+    lines = [*config_header(library, generated), "parts:"]
     for part in plan.parts:
         if part.state == "not-judged":
             continue
@@ -258,6 +298,7 @@ def render_config(
                 notes += [
                     f"{f.folder}: learned by wingbox align ({f.via[len('align: '):]})" if f.via.startswith("align: ")
                     else f"{f.folder}: learned by agent: {f.via[len('agent: '):]}" if f.via.startswith("agent: ")
+                    else f"{f.folder}: answered by a person: {f.via[len('person: '):]}" if f.via.startswith("person: ")
                     else f"{f.folder}: learned from advice {f.via}"
                     for f in folders if f.match == "learned"
                 ]

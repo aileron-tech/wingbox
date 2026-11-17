@@ -120,17 +120,70 @@ class LearnTest(unittest.TestCase):
         self.assertNotIn('(learn-folder "." "connectors"', task)
         self.assertIn('(learn-folder "." "connectors"', _run(["learn", "--sexp", "--agent", "--again"], self.root)[1])
 
-    def test_a_person_in_a_terminal_confirms_the_deterministic_learning(self) -> None:
-        """/* REQ-LEARN-006: run by a person (--human or a terminal), learn shows what align --learn would learn, asks per part (y, n or all) and writes only what was confirmed; --yes writes without asking. */"""
-        status, text = _run(["learn", "--human"], self.root, "n\n")
+    def test_a_person_in_a_terminal_answers_a_questionnaire_and_may_open_the_config(self) -> None:
+        """/* REQ-LEARN-006: run by a person (--human or a terminal), learn asks the style of each part among its candidates (score and a one-line description; Enter keeps the closest), then one question per open folder with its files and imports (an invalid layer is asked again); it records the answers like an agent's, and at the end offers to open .wingbox/config.yaml in $VISUAL or $EDITOR. --yes takes the closest style and the guesses without asking and opens nothing. */"""
+        marker = self.root / "opened.txt"
+        saved = dict(os.environ)
+        os.environ["EDITOR"] = f"touch {marker}"
+        os.environ.pop("VISUAL", None)
+        try:
+            status, text = _run(["learn", "--human"], self.root, "\nkitchen\ninfra\ny\n")
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
         self.assertEqual(0, status, text)
         self.assertIn("learn: interactive (--human)", text)
-        self.assertIn("learned: connectors/ -> infra (imports:", text)
-        self.assertFalse((self.root / ".wingbox" / "learned.sexp").exists())
-        status, text = _run(["learn", "--human", "--yes"], self.root)
-        self.assertEqual(0, status, text)
-        self.assertIn("connectors", (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8"))
+        self.assertIn("Part .: which style does it follow?", text)
+        self.assertRegex(text, r"1\) layered 1\.00 - Code is split by technical role into horizontal layers; an upper layer calls the layer below it\.")
+        self.assertIn("folder connectors/  files: src/connectors/mail.ts src/connectors/pay.ts", text)
+        self.assertIn("one of: ", text)
+        config = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
+        self.assertRegex(config, r"infra: \[[^]]*connectors[^]]*\]")
+        self.assertIn("connectors: answered by a person: operator: answered in the questionnaire", config)
         self.assertIn(":mode human", (self.root / ".wingbox" / "learned.sexp").read_text(encoding="utf-8"))
+        self.assertTrue(marker.is_file())
+        marker.unlink()
+        status, text = _run(["learn", "--human", "--yes", "--again"], self.root)
+        self.assertEqual(0, status, text)
+        self.assertNotIn("which style", text)
+        self.assertFalse(marker.exists())
+
+    def test_align_learn_at_a_terminal_runs_the_questionnaire(self) -> None:
+        """/* REQ-LEARN-011: `wingbox align --learn` run by a person (--human or a terminal) runs the questionnaire of learn; run by an agent or without a terminal it keeps writing what it derives. */"""
+        status, text = _run(["align", "--learn", "--human"], self.root, "\n\nn\n")
+        self.assertEqual(0, status, text)
+        self.assertIn("Part .: which style does it follow?", text)
+        status, text = _run(["align", "--learn", "--sexp"], self.root)
+        self.assertEqual(0, status, text)
+        self.assertNotIn("which style", text)
+
+    def test_the_task_tells_the_agent_to_ask_the_operator(self) -> None:
+        """/* REQ-LEARN-012: the learn task says that when the code does not decide, the agent asks the operator in its chat and passes the answer on (:because "operator: ..."), and never guesses. */"""
+        task = _run(["learn", "--sexp", "--agent"], self.root)[1]
+        self.assertIn("(learn-rule \"If you cannot decide from the code", task)
+        self.assertIn("ask the operator in your chat and pass the answer on", task)
+        self.assertIn("Never guess", _run(["learn", "--agent"], self.root)[1])
+
+    def test_the_config_starts_with_instructions_rewritten_on_every_write(self) -> None:
+        """/* REQ-LEARN-013: .wingbox/config.yaml starts with a header of instructions (each key, the rule that decides a file's layer, how to move a folder, baseline, run build and boundaries after a change, run align --learn when unsure); every write puts the current header on top once and keeps the parts below it. */"""
+        self.assertEqual(0, _run(["init"], self.root)[0])
+        config = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
+        self.assertTrue(config.startswith("# Wingbox architecture config. Read this before you change the file"))
+        for phrase in ("# - layers: layer -> folders.", "# - The layer of a file, first rule that applies: a test file is in no layer",
+                       "# - To move a folder to another layer", ".wingbox/baseline.sexp",
+                       "run `wingbox build` and `wingbox boundaries`", "Run `wingbox align --learn`"):
+            self.assertIn(phrase, config)
+        status, text = _run(["learn", "--apply"], self.root, '(layer "." connectors infra :because "pay.ts is a client")\n')
+        self.assertEqual(0, status, text)
+        again = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
+        self.assertEqual(1, again.count("# Wingbox architecture config."))
+        self.assertIn("api: [routes]", again)
+        from scripts.architecture.config import with_header
+        from scripts.architecture.library import load_library
+
+        rewritten = with_header("# old words\n# more\nparts:\n  .:\n    style: layered\n", load_library(), "2026-11-17")
+        self.assertNotIn("old words", rewritten)
+        self.assertTrue(rewritten.endswith("parts:\n  .:\n    style: layered\n"))
 
     def test_nested_folders_that_break_rules_are_asked_and_an_answer_relabels_them(self) -> None:
         """/* REQ-LEARN-009: the task also lists nested folders whose files break a rule or rest on a weak label, at the deepest folder holding the files, most breaks first and capped; an answer for such a folder path relabels exactly that folder and its breaks go away. */"""

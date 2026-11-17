@@ -22,6 +22,11 @@ from .sexp import keyword, parse, positional, q
 AGENT_VARIABLES = (("CLAUDECODE", "1", "Claude Code"), ("GEMINI_CLI", "1", "Gemini CLI"))
 LEARNED_FILE = ".wingbox/learned.sexp"
 MAX_FOLDERS = 25   # folders asked per part, most rule breaks first
+# What the agent does when the code does not decide: it asks the person it works for, then answers.
+OPERATOR_RULE = (
+    "If you cannot decide from the code (for example whether a folder is a public API or an internal "
+    "helper), ask the operator in your chat and pass the answer on, with :because \"operator: <their words>\"."
+)
 ANSWER_FORMAT = (
     "(style <part> <style-name>)",
     '(layer <part> <folder> <layer-name> :because "<one sentence citing the files read>")',
@@ -105,7 +110,7 @@ def task_facts(tasks: tuple[PartTask, ...], apply_command: str) -> list[str]:
     question = "For each listed folder: which layer of the part's style does it belong to? Confirm or change the style."
     facts.append(f"(learn-question {q(question)})")
     for rule in ("Read the listed files before answering.", "Use only the layer names given for the part.",
-                 "Answer unknown rather than guess."):
+                 OPERATOR_RULE, "Never guess; answer unknown only when the operator does not know either."):
         facts.append(f"(learn-rule {q(rule)})")
     facts += [f"(learn-answer-format {q(line)})" for line in ANSWER_FORMAT]
     facts.append(f"(learn-apply {q(apply_command)})")

@@ -100,6 +100,17 @@
 - The files a person or an agent decides on stay in `.wingbox/` next to the
   index and are not in `.wingbox/.gitignore`: `config.yaml`, `decisions.sexp`,
   `learned.sexp` and `baseline.sexp` can be committed.
+- Nobody edits the layer config by hand: the `learn` task tells the agent to
+  ask the operator in its chat when the code does not decide a folder, and to
+  pass the answer on (`:because "operator: ..."`). A person at a terminal
+  (`wingbox learn`, or `wingbox align --learn`) gets a questionnaire: the style
+  of each part among its candidates with scores and one-line descriptions,
+  then one question per open folder; the answers are recorded like an
+  agent's, and at the end `learn` offers to open `.wingbox/config.yaml` in
+  `$VISUAL` or `$EDITOR`. `.wingbox/config.yaml` starts with a header of
+  instructions (each key, the rule that decides a file's layer, how to move a
+  folder, the baseline, what to run after a change, `align --learn` when
+  unsure), rewritten on every write above the parts.
 - The Flutter and Laravel layer conventions are label rules of the parts: a
   Dart file takes its layer from the Flutter folders (`features/*/presentation`
   ui, `domain`, `data` infra, `bloc`/`cubit`/`state` service, `lib/core`

@@ -12,6 +12,21 @@
 - A TypeScript `new S(...)` is a site of class S: SCIP files it under the constructor symbol.
 - Every tool is asked for its whole list (`--all`, `--limit 1000000`); tokens are characters of the text answer / 4, as in the other benchmarks. No timing: accuracy and answer size only.
 - CodeGraph runs with the environment of `benchmarks/graphify/run.sh` (private HOME, no daemon, no watcher). Graphify has no find-usages command; `affected` is the nearest and is reported at both depths.
+## 2026-11-17 - layer config settled through agents: operator rule, questionnaire, config header
+
+### Changes
+- `scripts/architecture/agent_learn.py`: `OPERATOR_RULE` in the learn task: when the code does not decide, ask the operator in the chat and pass the answer on (`:because "operator: ..."`); "never guess" replaces "answer unknown rather than guess".
+- `src/wingbox/cli.py`: `learn` in human mode runs `_questionnaire` (style among the candidates of `judge`, with score and the first sentence of the style's summary; one question per open folder of the task, re-asked on an invalid layer; `--yes` takes the closest style and the guesses) and records the answers through `_learn_record`, then `_offer_editor` ($VISUAL or $EDITOR). The task of one part is built by `part_task(part, style)`, shared by the agent task and the questionnaire. `align --learn` by a person (terminal or `--human`, without `--to` or `--sexp`) runs the same questionnaire. The old confirm-per-part flow (`_learn_human`) is gone. A layer answered by a person is noted `answered by a person: ...` in the config.
+- `scripts/architecture/config.py`: `config_header()` (instructions written at the top of every `.wingbox/config.yaml`) and `with_header()` (replaces the leading comment block, keeps the rest; used when init appends a part).
+- Tests: REQ-LEARN-006 (questionnaire), REQ-LEARN-011 (align --learn at a terminal), REQ-LEARN-012 (operator rule), REQ-LEARN-013 (header).
+- Why: the maintainer's rule "a person edits nothing by hand"; design in docs/layer-control.md (main).
+
+### Not done
+- The header states only what the config supports today: pinned single files and `required` imports are not keys of the config yet (the header says a single file cannot be pinned); `wingbox check` does not exist yet, so the header says to run `wingbox build` and `wingbox boundaries`.
+
+### Verification
+- tests.test_learn 13 OK; test_cli, test_architecture, test_align, test_place, test_new_project, test_compare, test_review_fixes, test_overview, test_plugins 108 OK (Python 3.12).
+
 ## 2026-11-17 - rebased on main 0.5.1: the graph is .wingbox/index.sexp
 
 ### Changes

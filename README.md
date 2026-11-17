@@ -486,12 +486,21 @@ wrote .wingbox/config.yaml (edit it, then: wingbox build)
   command without a terminal counts as an agent. An agent gets a task: the
   closest style, its layers, and each folder the style cannot place with real
   files and imports; it reads the files and answers in a fixed S-expression
-  format, which `wingbox learn --apply` validates (the whole answer is
-  rejected with every error when a line is wrong), writes into
+  format. When the code does not tell (a public API or an internal helper?),
+  the task tells the agent to ask the operator in its chat and pass the answer
+  on, never to guess. `wingbox learn --apply` validates the answer (the whole
+  answer is rejected with every error when a line is wrong), writes into
   `.wingbox/config.yaml` with `learned by agent: <because>` (an entry you
   wrote is kept), records in `.wingbox/learned.sexp` and rebuilds. A person in
-  a terminal gets the deterministic learning of `align --learn` to confirm part
-  by part (`--yes` applies). Commit `.wingbox/`: its `.gitignore` keeps out
+  a terminal (`learn`, or `align --learn`) gets a questionnaire: the style of
+  each part among its candidates, with scores and one-line descriptions, then
+  one question per open folder with its files and imports; the answers are
+  recorded the same way, and at the end `learn` offers to open
+  `.wingbox/config.yaml` in `$VISUAL` or `$EDITOR` (`--yes` takes the closest
+  style and the guesses). Nobody needs to edit the file by hand; it starts
+  with a header of instructions (what each key means, the rule that decides a
+  file's layer, how to move a folder, what to run after a change), rewritten
+  on every write, so that an agent asked to change it does so correctly. Commit `.wingbox/`: its `.gitignore` keeps out
   the generated files (index, cache, report, map), so the folder shares
   `config.yaml`, `learned.sexp`, `decisions.sexp` and `baseline.sexp`.
 

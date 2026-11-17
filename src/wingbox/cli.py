@@ -366,6 +366,12 @@ def _align_command(args: list[str], cwd: str) -> int:
     from architecture.words import normalise
 
     sexp, learn = "--sexp" in args, "--learn" in args
+    if learn and "--to" not in args and not sexp:
+        from architecture import agent_learn
+
+        if agent_learn.learn_mode(tuple(args), os.environ, sys.stdin.isatty(), sys.stdout.isatty()).mode == "human":
+            # A person at a terminal: the questionnaire of `wingbox learn` (an agent gets the task there).
+            return _learn_command(["--human", *[a for a in args if a != "--learn"]], cwd)
     to_style = args[args.index("--to") + 1] if "--to" in args and args.index("--to") + 1 < len(args) else ""
     rest = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--to")]
     root = _find_root(cwd)
@@ -785,20 +791,18 @@ def _learn_command(args: list[str], cwd: str) -> int:
         return _learn_record(root, plan.value, answer.entries, mode, by_path, top_folders, library, sexp, "--verbose" in args)
     print(f"(learn-mode {mode.mode} :because {q(mode.because)})" if sexp or mode.mode == "agent"
           else f"learn: interactive ({mode.because}); inside a coding agent, /wingbox learn lets the agent read the code and decide the unclear folders")
-    if mode.mode == "human":
-        return _learn_human(root, args, library)
     search = load_script("code_graph_search")
     graph = search.CodeGraph()
     graph.load(_graph_file(root), root)
     known = agent_learn.read_learned(_read_text(os.path.join(root, agent_learn.LEARNED_FILE)))
     file_module = {search.module_file(graph, module): module for module in graph.nodes}   # once: it probes the disk
-    tasks = []
-    for part in styled:
+    def part_task(part, style_id: str = ""):
+        """What to ask about one part: the folders its style (the closest one unless style_id) leaves open."""
         files = by_path[part.path]
         closest = closest_style(judge(files, library))
         if closest is None:
-            continue
-        style = library.style(closest.style)
+            return None
+        style = library.style(style_id or closest.style)
         layers, routing = layer_folders(style, files, DEFAULT_SETTINGS, library)
         base = _replace(part, style=style.id, state="configured", layers=layers, routing_root=routing)
         folders = top_folders(files.files)
@@ -863,9 +867,20 @@ def _learn_command(args: list[str], cwd: str) -> int:
         placed: dict[str, list[str]] = {}
         for f in layers:
             placed.setdefault(f.layer, []).append(f.folder)
-        tasks.append(agent_learn.PartTask(part.path, style.id, closest.score, closest.runner_up, closest.runner_up_score,
-                                          meanings, tuple((k, tuple(v)) for k, v in placed.items()), tuple(infos), tuple(known_rows),
-                                          more))
+        return agent_learn.PartTask(part.path, style.id, closest.score, closest.runner_up, closest.runner_up_score,
+                                    meanings, tuple((k, tuple(v)) for k, v in placed.items()), tuple(infos), tuple(known_rows),
+                                    more)
+
+    if mode.mode == "human":
+        entries = _questionnaire(styled, by_path, part_task, library, "--yes" in args)
+        if not entries:
+            print("Nothing to learn.")
+            return 0
+        status = _learn_record(root, plan.value, entries, mode, by_path, top_folders, library, sexp, "--verbose" in args)
+        if status == 0 and "--yes" not in args:
+            _offer_editor(os.path.join(root, ".wingbox", "config.yaml"))
+        return status
+    tasks = [task for task in (part_task(part) for part in styled) if task is not None]
     facts = agent_learn.task_facts(tuple(tasks), "wingbox learn --apply < answer.sexp   (or: wingbox learn --apply answer.sexp)")
     print("\n".join(facts) if sexp else agent_learn.task_text(facts), end="\n" if sexp else "")
     return 0
@@ -938,7 +953,7 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
             if (part.path, e.folder) in stated:
                 out.append(f"(learn-kept {q(part.path)} {q(e.folder)} {stated[(part.path, e.folder)]} :reason \"stated in {CONFIG_FILE}\")")
                 continue
-            taught.append(LayerFolder(e.folder, e.value, "learned", f"agent: {e.because}", 0))
+            taught.append(LayerFolder(e.folder, e.value, "learned", f"{'agent' if mode.mode == 'agent' else 'person'}: {e.because}", 0))
             out.append(f"(learn-learned {q(part.path)} {q(e.folder)} {e.value} :because {q(e.because)})")
         if style != part.style:
             out.append(f"(learn-style {q(part.path)} {style})")
@@ -996,59 +1011,91 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
     return 0
 
 
-def _learn_human(root: str, args: list[str], library) -> int:
-    """A person in a terminal: the deterministic learning of align --learn, confirmed part by part."""
-    from architecture import agent_learn
+def _ask(prompt: str, default: str) -> str:
+    """One answer from the person; an empty line or the end of input means the default."""
+    print(prompt, end="", flush=True)
+    line = sys.stdin.readline()
+    if not line:
+        print()
+    return line.strip() or default
 
-    search = load_script("code_graph_search")
-    graph = search.CodeGraph()
-    graph.load(_graph_file(root), root)
-    parts, modules, _dependents, dependencies = search.architecture_inputs(graph)
-    context = _learn_context(root, library)
-    facts: list[str] = []
-    bases: dict = {}
-    learned: dict = {}
+
+def _questionnaire(parts, by_path, part_task, library, accept: bool) -> tuple:
+    """A person in a terminal: the style of each part among its candidates, then one question per open folder.
+
+    accept (--yes) takes the closest style and each folder's guess (unknown without one) without asking.
+    Returns the answer as the entries an agent's answer gives.
+    """
+    from architecture import agent_learn
+    from architecture.detect import judge
+
+    entries: list = []
     for part in parts:
-        if part.denies and part.style != "declared":
-            items = _learn_part(part, library, modules, dependencies, context, facts, bases)
-            if items:
-                learned[part.path] = list(items)
-    print(_align_text(facts))
-    if not learned and not bases:
-        print("Nothing to learn.")
-        return 0
-    chosen = set(learned) | set(bases)
-    if "--yes" not in args:
-        everything = False
-        for part in sorted(chosen):
-            if everything:
-                continue
-            print(f"Apply what was learned for {part}? [y/n/a(ll)]: ", end="", flush=True)
-            answer = sys.stdin.readline().strip().lower()
-            if answer in ("a", "all"):
-                everything = True
-            elif answer not in ("y", "yes"):
-                chosen.discard(part)
-    if not chosen:
-        print("Nothing applied.")
-        return 0
-    error = _write_learned(root, {k: v for k, v in learned.items() if k in chosen},
-                           {k: v for k, v in bases.items() if k in chosen}, [], [])
-    if error:
-        print(f"[wingbox] ERROR: {error}", file=sys.stderr)
-        return 1
-    mode = agent_learn.Mode("human", "terminal", "")
-    entries = tuple(agent_learn.Entry("layer", part, item.folder, item.layer, item.why) for part in sorted(chosen)
-                    for item in learned.get(part, []))
+        judgement = judge(by_path[part.path], library)
+        scores = sorted({s.style: s for s in (*judgement.candidates, *judgement.near)}.values(),
+                        key=lambda s: (judgement.best is None or s.style != judgement.best.style, -s.score, s.style))[:4]
+        task = part_task(part)
+        if task is None or not scores:
+            continue
+        style_id = task.style
+        if not accept:
+            print(f"\nPart {part.path}: which style does it follow?")
+            for number, score in enumerate(scores, start=1):
+                style = library.style(score.style)
+                summary = (style.summary.split(". ")[0].rstrip(".") + ".") if style and style.summary else ""
+                print(f"  {number}) {score.style} {score.score:.2f} - {summary}")
+            names = [score.style for score in scores]
+            while True:
+                answer = _ask(f"Style [1 = {style_id}]: ", "1")
+                if answer.isdigit() and 1 <= int(answer) <= len(names):
+                    chosen = names[int(answer) - 1]
+                    break
+                if library.style(answer) is not None:
+                    chosen = library.style(answer).id
+                    break
+                print(f"  answer a number from 1 to {len(names)} or a style name")
+            if chosen != style_id:
+                task = part_task(part, chosen) or task
+                style_id = chosen
+        entries.append(agent_learn.Entry("style", part.path, "", style_id,
+                                         "operator: closest style (--yes)" if accept else "operator: chosen in the questionnaire"))
+        layers = [layer for layer, _ in task.layers]
+        for info in task.folders:
+            default = info.guess or "unknown"
+            if accept:
+                answer = default
+            else:
+                print(f"\n  {part.path}: folder {info.folder}/  files: {' '.join(info.files) or '-'}")
+                print(f"    imports: {agent_learn._counts(info.imports) or 'none'}; "
+                      f"imported by: {agent_learn._counts(info.imported_by) or 'none'}")
+                while True:
+                    answer = _ask(f"    layer ({', '.join(layers)}, unknown) [{default}]: ", default)
+                    if answer in layers or answer == "unknown":
+                        break
+                    print(f"    one of: {', '.join(layers)}, unknown")
+            if answer == "unknown":
+                entries.append(agent_learn.Entry("unknown", part.path, info.folder, "", "operator: does not know"))
+            else:
+                why = "operator: guess accepted (--yes)" if accept else "operator: answered in the questionnaire"
+                entries.append(agent_learn.Entry("layer", part.path, info.folder, answer, why))
+    return tuple(entries)
+
+
+def _offer_editor(path: str) -> None:
+    """At the end of the questionnaire: open the config in $VISUAL or $EDITOR for a final look."""
+    import shlex
+    import subprocess
+
+    if _ask(f"\nOpen {path} in your editor for a final look? [y/N]: ", "n").lower() not in ("y", "yes"):
+        return
+    editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
+    if not editor:
+        print(f"no editor set (EDITOR or VISUAL); the file is {path}")
+        return
     try:
-        with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8") as handle:
-            handle.write("\n".join(agent_learn.learned_lines(entries, date.today().isoformat(), mode, {}, {})) + "\n")
+        subprocess.run([*shlex.split(editor), path], check=False)
     except OSError as error:
-        print(f"[wingbox] ERROR: {error}", file=sys.stderr)
-        return 1
-    print(f"applied for: {', '.join(sorted(chosen)) or 'nothing'}; saved in .wingbox/ - commit config.yaml, learned.sexp, "
-          "decisions.sexp and baseline.sexp; run wingbox build")
-    return 0
+        print(f"[wingbox] ERROR: cannot start {editor}: {error}", file=sys.stderr)
 
 
 def write_outputs(root: str, graph_path: str) -> OutputsResult:
@@ -1179,7 +1226,7 @@ def _siblings(root: str, library) -> tuple[dict[str, str], str]:
 
 def _init_new_project(parsed: "InitArguments", library) -> int:
     """`wingbox init` in a folder without source files: choose a language and a style, write the config."""
-    from architecture.config import CONFIG_FILE, render_config
+    from architecture.config import CONFIG_FILE, render_config, with_header
     from architecture.newproject import LANGUAGES, choices
     from architecture.plan import PartPlan, RepositoryPlan
     from architecture.sexp import q
@@ -1250,7 +1297,7 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
                 existing = handle.read()
             block = text.split("parts:\n", 1)[1]
             with open(config_path, "w", encoding="utf-8") as handle:
-                handle.write(existing.rstrip("\n") + "\n" + block)
+                handle.write(with_header(existing.rstrip("\n") + "\n" + block, library, date.today().isoformat()))
         else:
             with open(config_path, "w", encoding="utf-8") as handle:
                 handle.write(text)
