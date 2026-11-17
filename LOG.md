@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.8.1: init on a small repository
+
+### Changes
+- `scripts/architecture/config.py`: `render_config` writes `parts: {}` when no part is judged (a repository below `min_source_files`); `parse_config` reads an empty file, an empty or missing `parts` as one undetermined part `.` with the note ".wingbox/config.yaml declares no parts: the whole repository is one undetermined part"; errors name the line of `parts` and of each part key (from `yaml.compose`).
+- `scripts/build_code_graph.py`: `architecture_plan` prints the note once on stderr.
+- Tests REQ-ARCH-042..045 (`tests/test_small_repository.py`): init then build on repositories with 1, 3 and 11 source files, and a new project with no source file (init with --language and --style); configs with empty or missing `parts` from 0.6.0 to 0.8.0; broken configs name the line; learn, align, advice, place, compare, boundaries and the search hook on a small repository.
+- `pyproject.toml`, `server.json` and `WINGBOX_VERSION`: 0.8.1.
+- Why: found while preparing the GitHub Action: on a fixture of eight files `wingbox init --yes` wrote a config that made the next build fail.
+
 ## 2026-11-17 - Search hook: a hint without a graph, smart case
 
 ### Changes

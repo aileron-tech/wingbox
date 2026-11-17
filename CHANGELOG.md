@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.1 - 2026-11-17
+
+### Fixes
+
+- `wingbox init` on a repository with fewer than 12 source files wrote
+  `parts:` with no entry into `.wingbox/config.yaml`, and the next
+  `wingbox build` stopped with "must have a mapping `parts`" and wrote no
+  graph. Init now writes `parts: {}`, and a config whose `parts` is empty or
+  missing (as 0.6.0 to 0.8.0 wrote it) is read as no parts declared: the whole
+  repository is one undetermined part, and the commands say so in one line.
+- An error in `.wingbox/config.yaml` names the line of the file
+  (`.wingbox/config.yaml line 4: part app: unknown style ...`).
+
 ## 0.8.0 - 2026-11-17
 
 ### Changes
