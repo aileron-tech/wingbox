@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import os
 import platform
-import resource
 import shutil
 import statistics
 import subprocess
@@ -121,6 +120,7 @@ def export(work: str, parts: list[str], target: str) -> int:
 
 
 def timed(command: list[str], cwd: str, env: dict) -> tuple[float, float, int]:
+    import resource  # POSIX only: CPU time of the child processes; imported where it is measured
     before = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.perf_counter()
     code = subprocess.run(command, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode

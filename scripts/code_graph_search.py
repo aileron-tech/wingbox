@@ -404,7 +404,7 @@ _OTHER_EXTENSIONS = (".go", ".java", ".cs", ".dart")
 
 def _module_id_to_file(module_id: str, root: str) -> str:
     """Convert a module ID back to a file path relative to root."""
-    base = os.path.join(root, module_id)
+    base = os.path.join(root, *module_id.split("/"))   # a module ID uses /, the file system its own separator
     if os.path.isfile(base):
         return base
     source_extensions = (
@@ -2048,7 +2048,7 @@ def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str, show_all: bool = False
     regex = re.compile(re.escape(keyword), re.IGNORECASE)
     seen_modules: list[str] = []
     seen_set: set[str] = set()
-    with open(sexp_path, "r") as f:
+    with open(sexp_path, "r", encoding="utf-8") as f:
         for line in f:
             if not regex.search(line):
                 continue
@@ -3005,7 +3005,7 @@ def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
         if not os.path.isfile(fpath):
             continue
         try:
-            with open(fpath, "r", errors="replace") as f:
+            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
         except OSError as error:
             print(

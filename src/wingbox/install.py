@@ -45,6 +45,11 @@ DIRTY_TIMEOUT_SECONDS = 5
 _HOOK_EVENTS = ("PreToolUse", "PostToolUse")
 BACKUP_SUFFIX = ".wingbox-bak"
 RECORD_RELATIVE = os.path.join(".wingbox", "installed.sexp")
+
+
+def _join(base: str, *relatives: str) -> str:
+    """base joined with paths written with / (".claude/skills", "references/x.md"), in the system's form."""
+    return os.path.join(base, *(part for relative in relatives for part in relative.split("/")))
 PROJECT_HOOK_COMMAND = f"wingbox {HOOK_SUBCOMMAND}"
 
 ALWAYS_ON_BLOCK = f"""{BEGIN_MARKER}
@@ -195,7 +200,7 @@ def detect_assistants(home: str, created: frozenset[str] = frozenset()) -> tuple
     """Assistants whose configuration folder exists and was not created by a Wingbox install."""
     found = []
     for name in ASSISTANTS:
-        folder = os.path.join(home, _CONFIG_FOLDERS[name])
+        folder = _join(home, _CONFIG_FOLDERS[name])
         if os.path.isdir(folder) and folder not in created:
             found.append(name)
     return tuple(found)
@@ -235,11 +240,11 @@ def plan_targets(scope: Scope, assistants: tuple[str, ...]) -> list[Target]:
     blocks = _GLOBAL_BLOCKS if scope.kind == "global" else _PROJECT_BLOCKS
     wanted: list[tuple[What, str, str]] = []
     for name in assistants:
-        wanted.append(("skill", os.path.join(scope.root, skills[name], SKILL_NAME), name))
+        wanted.append(("skill", _join(scope.root, skills[name], SKILL_NAME), name))
     for name in assistants:
         block = blocks[name]
         if block is not None:
-            wanted.append(("block", os.path.join(scope.root, block), name))
+            wanted.append(("block", _join(scope.root, block), name))
     if "claude-code" in assistants:
         wanted.append(("hook", os.path.join(scope.root, ".claude", "settings.json"), "claude-code"))
 
@@ -534,12 +539,12 @@ def _install_skill(target: Target, payload: Mapping[str, bytes], version: str, d
     if os.path.isdir(target.path) and os.listdir(target.path) and not os.path.isfile(stamp):
         return make_fact("install-kept", target.path, what="skill", assistant=target.assistants,
                          reason="installed-by-another-tool")
-    changed = [rel for rel, data in sorted(payload.items()) if _read_bytes(os.path.join(target.path, rel)) != data]
+    changed = [rel for rel, data in sorted(payload.items()) if _read_bytes(_join(target.path, rel)) != data]
     if not changed:
         return make_fact("install-kept", target.path, what="skill", assistant=target.assistants, reason="unchanged")
     if not dry_run:
         for rel in changed:
-            destination = os.path.join(target.path, rel)
+            destination = _join(target.path, rel)
             os.makedirs(os.path.dirname(destination), exist_ok=True)
             with open(destination, "wb") as handle:
                 handle.write(payload[rel])
@@ -637,10 +642,10 @@ def _remove_skill(target: Target, payload: Mapping[str, bytes]) -> list[Fact]:
         return [make_fact("uninstall-kept", target.path, what="skill", assistant=target.assistants,
                           reason="installed-by-another-tool")]
     for rel in sorted(payload, key=lambda name: name.count("/"), reverse=True):
-        path = os.path.join(target.path, rel)
+        path = _join(target.path, rel)
         if os.path.isfile(path):
             os.remove(path)
-    for folder in sorted({os.path.dirname(os.path.join(target.path, rel)) for rel in payload}, key=len, reverse=True):
+    for folder in sorted({os.path.dirname(_join(target.path, rel)) for rel in payload}, key=len, reverse=True):
         try:
             os.rmdir(folder)
         except OSError:

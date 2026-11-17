@@ -297,7 +297,7 @@ def write_json_atomic(path: str, value: object) -> None:
     os.makedirs(directory, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(path) + ".", suffix=".tmp")
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(value, handle, separators=(",", ":"))
         _portable().replace(temporary, path)
     except BaseException:
@@ -678,7 +678,7 @@ def _check_due(root: str) -> bool:
     except OSError:
         pass
     try:
-        with open(marker, "a", encoding="utf-8"):
+        with open(marker, "a", encoding="utf-8", newline="\n"):
             pass
         os.utime(marker)
     except OSError as error:

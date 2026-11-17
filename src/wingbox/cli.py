@@ -74,6 +74,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date
 from importlib import import_module
+from pathlib import Path
 from types import ModuleType
 from typing import Optional
 
@@ -221,7 +222,7 @@ def _append(path: str, lines: list[str]) -> Optional[str]:
         return None
     try:
         _prepare_wingbox(os.path.dirname(os.path.dirname(path)))
-        with open(path, "a", encoding="utf-8") as handle:
+        with open(path, "a", encoding="utf-8", newline="\n") as handle:
             handle.write("\n".join(lines) + "\n")
     except OSError as error:
         return f"cannot write {path}: {error}"
@@ -578,11 +579,11 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
     try:
         _prepare_wingbox(root)
         if bases:   # nothing learned and no style change: the config stays as it is
-            with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8") as handle:
+            with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(render_config(RepositoryPlan(tuple(parts), plan.value.roots), library, today,
                                            list_files(root, skip, frozenset())))
             facts.append(f"(align-config-written {q(CONFIG_FILE)})")
-        with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8") as handle:
+        with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(f"; written by wingbox align --learn on {today}: rule breaks known at that time\n")
             handle.write("\n".join(baseline_lines) + ("\n" if baseline_lines else ""))
     except OSError as error:
@@ -923,7 +924,7 @@ class _quiet:
             os.dup2(null, fd)
         os.close(null)
         self.streams = (sys.stdout, sys.stderr)
-        self.sink = open(os.devnull, "w", encoding="utf-8")
+        self.sink = open(os.devnull, "w", encoding="utf-8", newline="\n")
         sys.stdout = sys.stderr = self.sink
 
     def __exit__(self, *exc: object) -> None:
@@ -980,9 +981,9 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
     skip = frozenset(builder.SKIP_DIRS)
     try:
         _prepare_wingbox(root)
-        with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8") as handle:
+        with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(render_config(RepositoryPlan(tuple(parts), plan.roots), library, today, list_files(root, skip, frozenset())))
-        with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8") as handle:
+        with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8", newline="\n") as handle:
             handle.write("\n".join(agent_learn.learned_lines(entries, today, mode, styles, counts)) + "\n")
     except OSError as error:
         print(f"[wingbox] ERROR: {error}", file=sys.stderr)
@@ -1128,9 +1129,9 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
     directory = os.path.dirname(page)
     try:
         os.makedirs(directory, exist_ok=True)
-        with open(report, "w", encoding="utf-8") as handle:
+        with open(report, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(overview.render_report(view, generated, _version()))
-        with open(page, "w", encoding="utf-8") as handle:
+        with open(page, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(map_page.render_map(view, generated, _version(), map_page.read_assets()))
     except OSError as error:
         return OutputsFailed(f"cannot write {directory}: {error}")
@@ -1196,7 +1197,7 @@ def _graph_advice(root: str) -> tuple:
 
 def _home_defaults(library) -> dict[str, str]:
     """language -> favourite style, from $HOME/.wingbox/config.yaml (`defaults:`)."""
-    path = os.path.join(os.path.expanduser("~"), ".wingbox", "config.yaml")
+    path = os.path.join(str(Path.home()), ".wingbox", "config.yaml")
     if not os.path.isfile(path):
         return {}
     try:
@@ -1308,10 +1309,10 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
             with open(config_path, "r", encoding="utf-8") as handle:
                 existing = handle.read()
             block = text.split("parts:\n", 1)[1]
-            with open(config_path, "w", encoding="utf-8") as handle:
+            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(with_header(existing.rstrip("\n") + "\n" + block, library, date.today().isoformat()))
         else:
-            with open(config_path, "w", encoding="utf-8") as handle:
+            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
     except OSError as error:
         print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
@@ -1373,7 +1374,7 @@ def _init(args: list[str], cwd: str) -> int:
     else:
         try:
             _prepare_wingbox(os.path.dirname(os.path.dirname(config_path)))
-            with open(config_path, "w", encoding="utf-8") as handle:
+            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(render_config(plan, library, date.today().isoformat(), paths))
         except OSError as error:
             print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
@@ -1449,14 +1450,14 @@ def _open_command(rest: list[str], cwd: str) -> int:
 def _print_facts(facts: list, sexp: bool) -> None:
     from wingbox.facts import render_sexp, render_text
 
-    sys.stdout.write(render_sexp(facts) if sexp else render_text(facts, os.path.expanduser("~")))
+    sys.stdout.write(render_sexp(facts) if sexp else render_text(facts, str(Path.home())))
 
 
 def _machine(cwd: str):
     from wingbox import install
 
     return install.Machine(
-        home=os.path.expanduser("~"),
+        home=str(Path.home()),
         cwd=cwd,
         version=_version(),
         skill_files=read_skill_files(skill_directory(_PACKAGE_DIR)),
@@ -1504,7 +1505,7 @@ def _update_command(rest: list[str]) -> int:
     if isinstance(options, update.UsageError):
         print(f"[wingbox] update: {options.message}", file=sys.stderr)
         return 2
-    home = os.path.expanduser("~")
+    home = str(Path.home())
     record = install.record_path(home)
     try:
         with open(record, "r", encoding="utf-8") as handle:
@@ -1529,7 +1530,8 @@ def _update_command(rest: list[str]) -> int:
         _print_facts(facts + warnings, True)
     else:
         _print_facts(facts, False)
-        color = update.use_color(sys.stdout.isatty(), os.environ)
+        # On Windows the console must accept ANSI sequences too (virtual terminal processing).
+        color = update.use_color(sys.stdout.isatty(), os.environ) and (os.name != "nt" or load_script("portable").ansi_colours(sys.stdout))
         for warning in warnings:
             print(update.warning_text(warning, color))
     return update.exit_status(facts)
@@ -1537,6 +1539,8 @@ def _update_command(rest: list[str]) -> int:
 
 def main(argv: Optional[list[str]] = None) -> int:
     """Run a command; a reader that closes the pipe (`| head`) ends it quietly."""
+    # A Windows console with a legacy code page must never stop a command on a character it cannot show.
+    load_script("portable").utf8_streams()
     try:
         return _run(argv)
     except BrokenPipeError:

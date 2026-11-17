@@ -26,7 +26,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Literal, Mapping, Optional, Union
 
@@ -231,7 +233,7 @@ def old_layout_warnings(cwd: str, installed: list[Installed]) -> list[Fact]:
     for folder in dict.fromkeys(os.path.abspath(item) for item in folders):
         names = _old_files(folder)
         if names:
-            facts.append(make_fact("update-warning", folder, old_files=names))
+            facts.append(make_fact("update-warning", Path(folder).as_posix(), old_files=names))   # POSIX on every system
     return facts
 
 
@@ -259,9 +261,12 @@ def exit_status(facts: list[Fact]) -> int:
 
 def run_installer(command: tuple[str, ...]) -> Ran:
     """Run an installer; a missing program or a time-out is a failed run, never an exception."""
+    # shutil.which finds the program as the system does (PATHEXT on Windows: pipx.exe, uv.exe, a .cmd shim).
+    program = shutil.which(command[0]) or command[0]
     try:
         completed = subprocess.run(
-            list(command), capture_output=True, text=True, timeout=_INSTALLER_TIMEOUT_SECONDS, check=False
+            [program, *command[1:]], capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=_INSTALLER_TIMEOUT_SECONDS, check=False,
         )
     except FileNotFoundError:
         return Ran(127, f"{command[0]}: not found")

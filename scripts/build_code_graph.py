@@ -625,7 +625,7 @@ def _report_dependency_issues(
     for issue in issues:
         requirements_path = skill_root / "requirements" / f"{issue.language.name}.txt"
         print(
-            f'[code-graph]   python3 -m pip install -r "{requirements_path}"',
+            f'[code-graph]   {"python" if portable.WINDOWS else "python3"} -m pip install -r "{requirements_path.as_posix()}"',
             file=sys.stderr,
         )
         extra = OPTIONAL_LANGUAGE_EXTRAS.get(issue.language.name)
@@ -1312,7 +1312,7 @@ def module_node(node_id: str, r: FileResult, root: str, purpose: str) -> dict:
     node: dict = {
         "id": node_id,
         "language": r.language,
-        "path": os.path.relpath(r.path, root),
+        "path": os.path.relpath(r.path, root).replace(os.sep, "/"),   # repository-relative, POSIX on every system
         "repo": r.repo,
         "invariant": {
             "naming": r.naming_convention,

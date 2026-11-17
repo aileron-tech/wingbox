@@ -134,7 +134,7 @@ def main(args: list[str]) -> int:
         return 2
     changed = stale_files(REPO) if check else sync(REPO)
     for path in changed:
-        print(f"{'stale' if check else 'updated'} {PLUGIN_PATH / path}")
+        print(f"{'stale' if check else 'updated'} {(PLUGIN_PATH / path).as_posix()}")
     if check and changed:
         print("run: python3 tools/sync_plugin.py", file=sys.stderr)
         return 1

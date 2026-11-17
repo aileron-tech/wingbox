@@ -1,4 +1,3 @@
-import fcntl
 import json
 import os
 import subprocess
@@ -13,6 +12,8 @@ from tests.test_audit_regressions import (
     code_graph_search,
     build_code_graph,
 )
+
+portable = build_code_graph.portable
 
 
 class IssueOneRegressionTest(unittest.TestCase):
@@ -329,7 +330,7 @@ class IssueOneRegressionTest(unittest.TestCase):
             canonical_root = os.path.realpath(root)
             lock_path = build_code_graph._lock_path(canonical_root)
             with open(lock_path, "a+", encoding="utf-8") as lock_file:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                portable.lock(lock_file)
                 result = subprocess.run(
                     [
                         sys.executable,
@@ -340,7 +341,7 @@ class IssueOneRegressionTest(unittest.TestCase):
                     capture_output=True,
                     text=True,
                 )
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                portable.unlock(lock_file)
             map_exists = (root / ".wingbox/index.sexp").exists()
 
         self.assertEqual(result.returncode, 1)

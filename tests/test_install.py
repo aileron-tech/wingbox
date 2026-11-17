@@ -21,7 +21,7 @@ def snapshot(root: Path) -> dict[str, bytes]:
     """Every file under root with its bytes, and every folder (value b'<dir>')."""
     result: dict[str, bytes] = {}
     for path in sorted(root.rglob("*")):
-        relative = str(path.relative_to(root))
+        relative = path.relative_to(root).as_posix()
         if path.is_symlink():
             result[relative] = b"<link>" + os.readlink(path).encode()
         elif path.is_dir():
@@ -291,7 +291,7 @@ class InstallOutputTest(InstallTestCase):
         """/* REQ-INSTALL-013: `wingbox install --sexp` must print one `(install-wrote <path> :what ... :assistant ...)` fact per target; the default output is the same facts as aligned text, with the home folder shown as ~. */"""
         (self.home / ".claude").mkdir()
         output = io.StringIO()
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}), redirect_stdout(output):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), redirect_stdout(output):
             os.chdir(self.project)
             self.addCleanup(os.chdir, str(REPO))
             status = cli.main(["install", "--sexp"])
@@ -302,7 +302,7 @@ class InstallOutputTest(InstallTestCase):
         self.assertIn(f"(install-wrote {self.home / '.claude' / 'settings.json'} :what hook :assistant (claude-code))", lines)
 
         text = io.StringIO()
-        with mock.patch.dict(os.environ, {"HOME": str(self.home)}), redirect_stdout(text):
+        with mock.patch.dict(os.environ, {"HOME": str(self.home), "USERPROFILE": str(self.home)}), redirect_stdout(text):
             cli.main(["install"])
         first = text.getvalue().splitlines()[0].split()
         self.assertEqual(["kept", "skill", "claude-code", "~/.claude/skills/wingbox", "(unchanged)"], first)

@@ -164,9 +164,13 @@ class ProjectFolderTest(unittest.TestCase):
         """/* REQ-CLI-009: `wingbox open` must open .wingbox/map.html of the project in the browser and print its path; without a project it says to run wingbox build. */"""
         self.build()
         opened = self.base / "opened.txt"
-        browser = self.base / "browser.sh"
-        browser.write_text(f'#!/bin/sh\necho "$1" > "{opened}"\n', encoding="utf-8")
-        browser.chmod(0o755)
+        if os.name == "nt":   # Windows starts a .cmd file as a program; elsewhere a script with a #! line
+            browser = self.base / "browser.cmd"
+            browser.write_text(f'@echo %1> "{opened}"\r\n', encoding="utf-8")
+        else:
+            browser = self.base / "browser.sh"
+            browser.write_text(f'#!/bin/sh\necho "$1" > "{opened}"\n', encoding="utf-8")
+            browser.chmod(0o755)
         completed = self.wingbox("open", cwd=self.root / "shop", BROWSER=str(browser))
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIn(str(self.root / ".wingbox" / "map.html"), completed.stdout)

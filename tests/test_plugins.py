@@ -139,7 +139,7 @@ class SkillCopyTest(unittest.TestCase):
     def test_copy_is_identical(self) -> None:
         """/* REQ-PLUGIN-003: the plugin's skill must be byte for byte SKILL.md and references/ of the repository, and its LICENSE the repository's; `tools/sync_plugin.py --check` must pass on the repository. */"""
         skill = PLUGIN / "skills" / "wingbox"
-        copied = sorted(str(p.relative_to(skill)) for p in skill.rglob("*") if p.is_file())
+        copied = sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file())
         self.assertEqual(copied, sorted(SKILL_SOURCES))
         for name in SKILL_SOURCES:
             self.assertEqual((skill / name).read_bytes(), (REPO / name).read_bytes(), name)
@@ -213,7 +213,8 @@ class LauncherTest(unittest.TestCase):
 
     def test_version_and_mode(self) -> None:
         """/* REQ-PLUGIN-005: the launcher must be executable and pin uvx to a full 40-character commit of the repository (the Claude plugin directory refuses a PyPI version as a pin), the commit of a vX.Y.Z tag when the tags are present. */"""
-        self.assertTrue(LAUNCHER.stat().st_mode & stat.S_IXUSR)
+        if os.name != "nt":   # Windows has no executable bit; the mode is kept in the Git index
+            self.assertTrue(LAUNCHER.stat().st_mode & stat.S_IXUSR)
         text = LAUNCHER.read_text(encoding="utf-8")
         self.assertNotIn("wingbox==", text)
         commits = sorted(set(PIN.findall(text)))
@@ -223,6 +224,7 @@ class LauncherTest(unittest.TestCase):
         if subprocess.run(["git", "-C", str(REPO), "tag", "--list", "v*"], capture_output=True, text=True).stdout.strip():
             self.assertTrue(any(re.fullmatch(r"v\d+\.\d+\.\d+", t) for t in tags), tags)
 
+    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
     def test_installed_command_first(self) -> None:
         """/* REQ-PLUGIN-006: with `wingbox` on PATH the launcher must run it with the given arguments and pass its output and exit code through, even when uvx is present. */"""
         fake_command(self.bin, "wingbox", 'echo "wingbox $*"; exit 3')
@@ -230,6 +232,7 @@ class LauncherTest(unittest.TestCase):
         result = self.run_launcher(self.path, "mcp", "--root", "x")
         self.assertEqual((result.stdout, result.returncode), ("wingbox mcp --root x\n", 3))
 
+    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
     def test_uvx_fallback(self) -> None:
         """/* REQ-PLUGIN-007: without `wingbox` on PATH the launcher must run `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox <arguments>`; the hook goes through uvx offline only. */"""
         fake_command(self.bin, "uvx", 'echo "uvx $*"')
@@ -239,6 +242,7 @@ class LauncherTest(unittest.TestCase):
         result = self.run_launcher(self.path, "hook", "pre-search")
         self.assertEqual(result.stdout, f"uvx --offline --quiet --from {source} wingbox hook pre-search\n")
 
+    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
     def test_neither_available(self) -> None:
         """/* REQ-PLUGIN-008: without `wingbox` and uvx the launcher must exit 127 with a message naming `pipx install wingbox`, and the hook must print nothing and exit 0. */"""
         result = self.run_launcher(self.path, "mcp")
@@ -248,6 +252,7 @@ class LauncherTest(unittest.TestCase):
         result = self.run_launcher(self.path, "hook", "pre-search", stdin='{"tool_name": "Grep"}')
         self.assertEqual((result.stdout, result.stderr, result.returncode), ("", "", 0))
 
+    @unittest.skipIf(os.name == "nt", "the plugin launcher is a POSIX sh script; Windows runs no sh by default")
     def test_hook_never_blocks(self) -> None:
         """/* REQ-PLUGIN-009: when uvx fails in the hook (exit code 2 would block the tool call in Claude Code) the launcher must print nothing and exit 0. */"""
         fake_command(self.bin, "uvx", 'echo "error: offline" >&2; exit 2')

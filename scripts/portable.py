@@ -106,6 +106,27 @@ def start_method(prefer_fork: bool = False) -> str:
     return multiprocessing.get_start_method(allow_none=True) or available[0]
 
 
+def ansi_colours(stream: Any) -> bool:
+    """Whether ANSI colours can be written to stream: a terminal, NO_COLOR unset, and on Windows a console
+    where virtual terminal processing could be turned on."""
+    if "NO_COLOR" in os.environ or not getattr(stream, "isatty", lambda: False)():
+        return False
+    if not WINDOWS:
+        return True
+    try:
+        import ctypes
+        import msvcrt
+
+        kernel32 = ctypes.windll.kernel32
+        handle = msvcrt.get_osfhandle(stream.fileno())
+        mode = ctypes.c_uint32()
+        if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            return False
+        return bool(kernel32.SetConsoleMode(handle, mode.value | 0x0004))   # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
 def utf8_streams() -> None:
     """stdout and stderr write UTF-8, and replace what they cannot encode, whatever the console code page."""
     for stream in (sys.stdout, sys.stderr):

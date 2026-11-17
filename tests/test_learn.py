@@ -226,6 +226,7 @@ class LearnModeTest(unittest.TestCase):
         self.assertEqual(("agent", "stdin or stdout is not a terminal"), learn_mode((), {}, True, False)[:2])
         self.assertEqual(("human", "terminal"), learn_mode((), {}, True, True)[:2])
 
+    @unittest.skipIf(os.name == "nt", "Windows has no pseudo-terminals (the pty module needs a POSIX system)")
     def test_a_pseudo_terminal_is_a_person_and_a_pipe_an_agent(self) -> None:
         """/* REQ-LEARN-008: the terminal test uses the real file descriptors: a pseudo-terminal counts as a person, a pipe as an agent. */"""
         import pty
