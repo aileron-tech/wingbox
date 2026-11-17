@@ -1,4 +1,4 @@
-# Wingbox: Code Graph and Blast Radius Analysis for AI Coding Agents
+# Wingbox: a map of your codebase for AI coding agents
 
 <!-- mcp-name: io.github.aileron-tech/wingbox -->
 
@@ -20,6 +20,9 @@
 >
 > **Runs fully locally:** no network access, no model, no telemetry. It can be
 > used inside a security perimeter and on a machine with no internet.
+>
+> **macOS, Linux and Windows:** on Windows it runs natively, from PowerShell,
+> cmd or Git Bash, with no WSL.
 >
 > **Website:** [wingbox.dev](https://wingbox.dev): benchmarks with charts, a
 > sample report and the live map.
@@ -91,7 +94,7 @@ that opens network connections, and the map page loads no outside resource.
 </p>
 
 Once the graph is built, an agent asks what a change breaks before it edits
-anything. Real output, Wingbox 0.2.6 on the server of
+anything. Real output, Wingbox 0.7.1 on the server of
 [immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
 
 ```text
@@ -217,26 +220,55 @@ docker build -f Dockerfile.benchmark -t wingbox-benchmark .
 docker run --rm wingbox-benchmark
 ```
 
-## Wingbox and Graphify on the same tests
+## Wingbox, Graphify, CodeGraph and OntoIndex on the same tests
 
 [Graphify](https://github.com/Graphify-Labs/graphify) builds a knowledge graph
-of a codebase, documents and images for coding agents. Wingbox is narrower: a
-deterministic graph of the code alone, built without a model, and exact lists
-of what depends on a file. Both were run on the same public repositories
-(Wingbox 0.2.0, Graphify 0.9.110, no model on either side):
+of a codebase, documents and images for coding agents; CodeGraph and OntoIndex
+index code for agents. Wingbox is narrower: a deterministic graph of the code
+alone, built without a model, and exact lists of what depends on a file. The
+four ran on the same public repositories, questions, reference lists and
+scoring (Wingbox 0.5.1, Graphify 0.9.110, CodeGraph 1.6.2, OntoIndex 3.1.9;
+no model inside any of the tools):
 
-| Test | Wingbox | Graphify |
-|---|---|---|
-| Exact list of dependent files, five questions (`wingbox impact`, `graphify affected`) | 5 of 5 | 1 of 5 |
-| Dependencies against the 1,801 import pairs of FastAPI | 0 wrong, 0 missing | 22 wrong, 32 missing |
-| Tokens a coding agent spends per answer (built-in search alone: 59,367) | 25,598 | 109,071 |
-| Graph of FastAPI on a hosted runner | 2.2 s | 17.9 s |
+| Test | Wingbox | Graphify | CodeGraph | OntoIndex |
+|---|---|---|---|---|
+| Exact list of dependent files, five questions | 5 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
+| File dependencies of FastAPI against its 1,801 import pairs, wrong / missing | 0 / 0 | 19 / 16 | 106 / 24 | 22 / 117 |
+| Tokens a coding agent spends per answer (built-in search alone: 59,367) | 23,768 | 109,071 | 81,151 | 78,070 |
+| Cost per answer in that test, USD (built-in search alone: 0.075) | 0.021 | 0.095 | 0.070 | 0.075 |
+| Answer quality in that test, F1 (built-in search alone: 0.999) | 1.000 | 0.997 | 0.993 | 0.977 |
 
-`graphify affected` follows calls and references as well as imports, so it
-answers a wider question than "who imports this file"; the report gives its
-figures restricted to imports too. The scripts, the reference lists, every
-result file and the token formula Graphify publishes are in
+Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
+Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).
+
+What the others do better: CodeGraph's answers are the shortest where it
+answers (1,000 tokens against 1,065 for Wingbox on the same three questions),
+and per its documentation it covers more languages (Swift, Kotlin, C, C++, Lua
+and others); per its documentation Graphify also maps documents, PDFs, images
+and videos. `graphify affected` follows calls and references as well as
+imports, so it answers a wider question than "who imports this file"; the
+report gives its figures restricted to imports too. The scripts, the reference
+lists, every result file and the token formula Graphify publishes are in
 [benchmarks/graphify](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md).
+
+## Find usages: 100 questions, three tools
+
+"I will change exported symbol S of file X. Where is S used?" One hundred
+questions on five public repositories in TypeScript, Rust and Python. Every
+answer is checked against the language tooling (the TypeScript language
+service, pyright, rust-analyzer) and the use sites against a SCIP index
+(Wingbox 0.5.1, CodeGraph 1.6.2, Graphify 0.9.110):
+
+| Tool | Exact list of files | Use sites found |
+|---|---|---|
+| `wingbox usages` | 100 of 100 | 1,660 of 1,660 |
+| `codegraph callers` | 79 of 100 | 680 of 1,660 |
+| `graphify affected --depth 1` | 76 of 100 (91 answered) | 604 of 1,660 |
+
+CodeGraph keeps one entry per calling function and kind of use, which is why
+it lists fewer sites; Graphify has no command that lists the uses of a symbol,
+and `affected` is the nearest one. The questions, the reference lists and the
+scripts are in [benchmarks/usages](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/usages/README.md).
 
 ## Wingbox on Theory of Code Space
 
@@ -297,13 +329,13 @@ and the MCP server `wingbox mcp`, and in Claude Code the search hook that
 
 Claude Code:
 
-```bash
-/plugin install wingbox --marketplace aileron-tech/wingbox
+```text
+/plugin marketplace add aileron-tech/wingbox
+/plugin install wingbox@aileron-tech
 ```
 
-or `/plugin marketplace add aileron-tech/wingbox`, then
-`/plugin install wingbox@aileron-tech` (from a shell:
-`claude plugin marketplace add aileron-tech/wingbox` and
+From a shell, in one line: `claude plugin install wingbox --marketplace aileron-tech/wingbox`
+(or `claude plugin marketplace add aileron-tech/wingbox`, then
 `claude plugin install wingbox@aileron-tech`). The skill is `/wingbox:wingbox`.
 The Claude Code plugin needs [uv](https://docs.astral.sh/uv/): its MCP server and hooks run
 `uvx --from git+https://github.com/aileron-tech/wingbox@<commit> wingbox`, pinned to the commit of
@@ -1238,6 +1270,13 @@ Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on
 Rails, PHP and Laravel (Blade and Livewire), Dart and Flutter, Free Pascal and
 Lazarus, plus infrastructure relationships from Kustomize, Helm and Terraform.
 
+### Which operating systems does it run on?
+
+macOS, Linux and Windows, with Python 3.11 or newer. On Windows it runs
+natively: the command, the hooks and the plugin start the program directly, so
+they work from PowerShell, cmd or Git Bash, with no WSL. The test suite runs
+on the three systems with Python 3.11, 3.12 and 3.13.
+
 ## Where Wingbox comes from
 
 Wingbox grew out of the paper
@@ -1268,7 +1307,9 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 - [Skill workflow and complete command reference](https://github.com/aileron-tech/wingbox/blob/main/SKILL.md)
 - [S-expression map format](https://github.com/aileron-tech/wingbox/blob/main/references/sexp-notation.md)
 - [Composable query language](https://github.com/aileron-tech/wingbox/blob/main/references/scheme-queries.md)
+- Benchmarks: [impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md), [find usages](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/usages/README.md), [comparison with other tools](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md), with charts on [wingbox.dev/benchmarks](https://wingbox.dev/benchmarks)
 - [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md)
+- [Roadmap](https://github.com/aileron-tech/wingbox/blob/main/ROADMAP.md)
 - [Completion log](https://github.com/aileron-tech/wingbox/blob/main/LOG.md)
 
 ## License

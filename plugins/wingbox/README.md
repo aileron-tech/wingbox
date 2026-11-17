@@ -39,12 +39,12 @@ MCP server is `wingbox mcp` from your PATH, so install the command.
 
 Claude Code:
 
-```bash
-/plugin install wingbox --marketplace aileron-tech/wingbox
+```text
+/plugin marketplace add aileron-tech/wingbox
+/plugin install wingbox@aileron-tech
 ```
 
-or `/plugin marketplace add aileron-tech/wingbox` and then
-`/plugin install wingbox@aileron-tech`.
+From a shell, in one line: `claude plugin install wingbox --marketplace aileron-tech/wingbox`.
 
 Codex:
 
