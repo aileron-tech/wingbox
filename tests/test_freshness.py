@@ -305,3 +305,43 @@ class FirstBuildTest(FreshnessTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConcurrentRefreshTest(FreshnessTestCase):
+    def test_two_hooks_at_once_build_once_and_never_for_zero_changed_files(self) -> None:
+        """/* REQ-FRESH-041: two search hooks that run at the same time (Claude Code runs Grep and Read in parallel) after one edit both get context; the marked file is refreshed once, and the second refresh, which finds nothing changed once it holds the lock, ends at once without a build (no "build ... for 0 changed files" in .wingbox/refresh.log). */"""
+        self.build()
+        self.edited("shop/cart.py", "from shop.pricing import order_total\n\n\ndef pay(items):\n    return order_total(items) + 1\n")
+        payloads = [
+            {"hook_event_name": "PreToolUse", "tool_name": "Read", "cwd": str(self.root), "tool_input": {"file_path": str(self.root / "shop/cart.py")}},
+            {"hook_event_name": "PreToolUse", "tool_name": "Grep", "cwd": str(self.root), "tool_input": {"pattern": "order_total"}},
+        ]
+        processes = [
+            subprocess.Popen([sys.executable, "-m", "wingbox.cli", "hook", "pre-search"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, cwd=self.root, env=_environment())
+            for _ in payloads
+        ]
+        outputs = [process.communicate(json.dumps(payload), timeout=300)[0] for process, payload in zip(processes, payloads)]
+        for output in outputs:
+            self.assertIn("wingbox-graph", output)
+            self.assertNotIn("wingbox-graph-stale", output)
+        self.wait_until_fresh()
+        log = (self.root / ".wingbox" / "refresh.log").read_text(encoding="utf-8")
+        self.assertNotIn("for 0 changed files", log)
+        self.assertEqual(1, log.count("for 1 changed files"), log)
+
+    def test_a_refresh_that_finds_nothing_changed_returns_at_once(self) -> None:
+        """/* REQ-FRESH-042: `python -m wingbox.refresh` on a graph with nothing marked returns status 0 in under 100 ms of its own work, writes no build and leaves the graph as it is. */"""
+        self.build()
+        before = (self.root / ".wingbox" / "index.sexp").read_bytes()
+        refresh = cli.load_script("build_code_graph")  # warm the imports the refresh shares
+        del refresh
+        from wingbox import refresh as refresh_module
+        started = time.monotonic()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            status = refresh_module.refresh(str(self.root))
+        seconds = time.monotonic() - started
+        self.assertEqual(0, status)
+        self.assertLess(seconds, 0.1, err.getvalue())
+        self.assertNotIn("build", err.getvalue())
+        self.assertEqual(before, (self.root / ".wingbox" / "index.sexp").read_bytes())
