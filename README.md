@@ -686,7 +686,11 @@ home directory (`%USERPROFILE%` on Windows): `~/.claude`, `~/.codex`, `~/.gemini
   definitions that match the pattern with their direct dependents, or for a
   file its dependents and the hint to run `wingbox impact`. It answers in
   0.4 to 0.7 s on a graph of 8,000 files, Python start included, never blocks the tool, opens no
-  network connection, and says nothing in a project without a graph. The edit
+  network connection. In a source repository without a graph it says so once per
+  session, as `(wingbox-no-graph :root <root> :hint ...)` naming `wingbox build`
+  (it never builds by itself; the "already told" mark is kept under
+  `~/.wingbox/hook-hints`, not in the project); elsewhere it says nothing. A Grep
+  pattern matches with smart case: without an upper-case letter it ignores case. The edit
   hook only marks the edited file (see "Keeping the graph fresh"). Other
   settings and hooks are kept; the file is backed up once to
   `settings.json.wingbox-bak` before the first change.

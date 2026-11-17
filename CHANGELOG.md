@@ -16,6 +16,11 @@
 
 ### Fixes
 
+- The search hook no longer stays silent in a source repository without a
+  graph: once per session it answers `(wingbox-no-graph :root <root> :hint
+  ...)`, naming `wingbox build`, so the agent learns that Wingbox is there. It
+  never builds by itself, writes nothing into the project, and says nothing
+  outside a source repository (the home folder, a folder of documents).
 - The search hook matches a Grep pattern with smart case, as `wingbox quick`
   does: `subscription` now finds `Subscription`; a pattern with an upper-case
   letter keeps its case, and Grep's `-i` always ignores it.
