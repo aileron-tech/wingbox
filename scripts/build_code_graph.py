@@ -4471,6 +4471,8 @@ def architecture_plan(
     config = read_config(read, library)
     if isinstance(config, ConfigErr):
         return Err(config.error)
+    if config is not None and config.note:
+        print(f"[wingbox] note: {config.note}", file=sys.stderr)
     learned = learned_layers(read_store(read(STORE_FILE) or ""))
     if config is None:
         plan = detect_plan(paths, read, library, settings)

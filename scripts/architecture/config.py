@@ -74,6 +74,10 @@ class TargetEntry:
 @dataclass(frozen=True)
 class ConfigOk:
     parts: tuple[PartConfig, ...]
+    note: str = ""   # one line for the reader, when the file was read in a way it does not say itself
+
+
+NO_PARTS_NOTE = f"{CONFIG_FILE} declares no parts: the whole repository is one undetermined part"
 
 
 @dataclass(frozen=True)
@@ -102,14 +106,22 @@ def parse_config(text: str, library: Library) -> ConfigResult:
         return ConfigErr(f"{CONFIG_FILE} needs PyYAML: python3 -m pip install -r requirements.txt")
     try:
         data = yaml.safe_load(text)
+        lines = _key_lines(yaml.compose(text))
     except yaml.YAMLError as error:
         return ConfigErr(f"{CONFIG_FILE} is not valid YAML: {error}")
-    if not isinstance(data, dict) or not isinstance(data.get("parts"), dict):
-        return ConfigErr(f"{CONFIG_FILE} must have a mapping `parts`")
+    data = {} if data is None else data
+    if not isinstance(data, dict):
+        return ConfigErr(f"{CONFIG_FILE} line 1: expected a mapping with `parts`")
+    if data.get("parts") in (None, {}):
+        # A small repository: 0.6.0 to 0.8.0 wrote `parts:` with no entry. Nothing is declared, so nothing is checked.
+        empty = PartConfig(path=".", style=UNDETERMINED, level="", layers=(), routing_root=(), declared=())
+        return ConfigOk((empty,), note=NO_PARTS_NOTE)
+    if not isinstance(data["parts"], dict):
+        return ConfigErr(f"{CONFIG_FILE} line {lines.get(('parts',), 1)}: `parts` must map each part folder to its style")
     known = {style.id for style in library.styles} | {alias for style in library.styles for alias in style.aliases}
     parts: list[PartConfig] = []
     for path, entry in data["parts"].items():
-        where = f"{CONFIG_FILE}: part {path}"
+        where = f"{CONFIG_FILE} line {lines.get(('parts', str(path)), lines.get(('parts',), 1))}: part {path}"
         if not isinstance(path, str) or path.startswith("/") or ".." in path.split("/"):
             return ConfigErr(f"{where}: the part must be a folder relative to the repository root")
         if not isinstance(entry, dict):
@@ -162,6 +174,20 @@ def parse_config(text: str, library: Library) -> ConfigResult:
             ),
         ))
     return ConfigOk(tuple(parts))
+
+
+def _key_lines(node: Any) -> dict[tuple[str, ...], int]:
+    """Line (1-based) of the `parts` key and of each part key in the composed YAML document."""
+    lines: dict[tuple[str, ...], int] = {}
+    if node is None or not hasattr(node, "value") or not isinstance(node.value, list):
+        return lines
+    for key, value in node.value if node.tag.endswith(":map") else ():
+        if getattr(key, "value", None) == "parts":
+            lines[("parts",)] = key.start_mark.line + 1
+            if value.tag.endswith(":map"):
+                for part_key, _entry in value.value:
+                    lines[("parts", str(part_key.value))] = part_key.start_mark.line + 1
+    return lines
 
 
 def _capabilities(value: Any, style: Any, where: str) -> tuple[CapabilityRule, ...] | str:
@@ -301,7 +327,9 @@ def render_config(
     with_target: bool = False, chosen: str = "",
 ) -> str:
     """YAML text of .wingbox/config.yaml for a plan; comments say what each value means."""
-    lines = [*config_header(library, generated), "parts:"]
+    judged = [part for part in plan.parts if part.state != "not-judged"]
+    # An empty mapping, not `parts:` alone (that is null): a small repository has no part to declare.
+    lines = [*config_header(library, generated), "parts:" if judged else "parts: {}"]
     for part in plan.parts:
         if part.state == "not-judged":
             continue
