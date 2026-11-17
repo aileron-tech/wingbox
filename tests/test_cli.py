@@ -139,13 +139,15 @@ class WingboxInitTest(unittest.TestCase):
         _layered_project(self.root)
 
     def test_init_prints_the_styles_and_writes_the_config(self) -> None:
-        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build), creates nothing else, and ends with the line to edit it, then build. */"""
+        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build), creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
         before = {path for path in self.root.rglob("*")}
         status, text = _run(["init", str(self.root)])
         self.assertEqual(0, status, text)
         self.assertIn("layered (Martin Fowler)   1.00   container", text)
         self.assertIn("routes/ 4", text)
-        self.assertTrue(text.rstrip().endswith("wrote .wingbox/config.yaml (edit it, then: wingbox build)"), text)
+        self.assertIn("wrote .wingbox/config.yaml\nnext: wingbox learn settles the open points", text)
+        self.assertTrue(text.rstrip().endswith("then wingbox build"), text)
+        self.assertNotIn("edit it", text)
         config = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("    style: layered", config)
         self.assertIn("      api: [routes]", config)

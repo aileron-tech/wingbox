@@ -426,7 +426,11 @@ class InitOutputTest(unittest.TestCase):
         text = render_text(facts, 12)
         self.assertIn("layered (Martin Fowler)   1.00   container", text)
         self.assertIn("services/ 8", text)
-        self.assertTrue(text.rstrip().endswith("wrote .wingbox/config.yaml (edit it, then: wingbox build)"))
+        self.assertIn("wrote .wingbox/config.yaml\n", text)
+        self.assertTrue(text.rstrip().endswith("next: wingbox learn settles the open points (run by a coding agent it is the "
+                                               "agent's task, asking you when the code does not tell; in a terminal it asks "
+                                               "you), then wingbox build"), text)
+        self.assertNotIn("edit it", text)
         self.assertEqual(text, render_text(list(facts), 12))
 
 

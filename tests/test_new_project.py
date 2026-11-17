@@ -59,6 +59,8 @@ class NewProjectTest(unittest.TestCase):
         """/* REQ-NEW-002: with --language and --style init writes .wingbox/config.yaml (and the .wingbox/.gitignore of the build) with the chosen style and every folder of its target layout proposed; it creates no folder unless --scaffold, which creates the empty target folders and no file. */"""
         status, text = _run(["init", str(self.root), "--language", "python", "--style", "hexagonal", "--yes"], home=str(self.home))
         self.assertIn("new project: hexagonal (--style), python, container", text)
+        self.assertIn("next: wingbox learn settles the open points", text)
+        self.assertNotIn("edit it", text)
         self.assertEqual(0, status, text)
         config = (self.root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("    style: hexagonal   # chosen: --style", config)

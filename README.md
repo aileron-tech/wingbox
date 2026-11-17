@@ -429,7 +429,8 @@ platform/frontend  route-tree (Vercel)   1.00   container
   - move platform/frontend/src/app/llm/model-pools/_parts/pool-providers.tsx from the feature layer to ui ...
 crates/engine      Rust crate, no layer style   -   component
 
-wrote .wingbox/config.yaml (edit it, then: wingbox build)
+wrote .wingbox/config.yaml
+next: wingbox learn settles the open points (run by a coding agent it is the agent's task, asking you when the code does not tell; in a terminal it asks you), then wingbox build
 ```
 
 - **Parts.** A part starts at a folder that holds a manifest (`package.json`,

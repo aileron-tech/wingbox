@@ -34,6 +34,12 @@ from . import advice as _advice
 _EVIDENCE_SHOWN = 4
 
 
+# What comes after init. People do not edit the config by hand: `wingbox learn` settles the open points.
+NEXT_STEP = (
+    "next: wingbox learn settles the open points (run by a coding agent it is the agent's task, asking you "
+    "when the code does not tell; in a terminal it asks you), then wingbox build"
+)
+
 def _name(part: str) -> str:
     return q(part)
 
@@ -272,7 +278,7 @@ def render_text(facts: list[str], min_source_files: int) -> str:
     lines.append("")
     for tokens in parsed:
         if tokens and tokens[0] == "arch-config-written":
-            lines.append(f"wrote {tokens[1]} (edit it, then: wingbox build)")
+            lines += [f"wrote {tokens[1]}", NEXT_STEP]
         elif tokens and tokens[0] == "arch-config-kept":
             lines.append(f"kept {tokens[1]}: {keyword(tokens, 'reason')}")
     return "\n".join(lines) + "\n"

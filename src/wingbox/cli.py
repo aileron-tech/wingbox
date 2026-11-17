@@ -3,7 +3,7 @@
     wingbox init [PATH] [--force] [--sexp] [--synonyms] [--language L --style S --yes --scaffold]
                                             Detect the parts of a repository and the architecture style of each,
                                             print the candidates and write .wingbox/config.yaml (kept if present
-                                            unless --force); edit it, then run wingbox build
+                                            unless --force); then wingbox learn settles the open points
     wingbox advice [--sexp] [--learned]     The open recommendations (or what was learned from past ones);
     wingbox advice accept|reject <id> [--reason TEXT]   record the decision in .wingbox/decisions.sexp
     wingbox align [PART] [--to STYLE] [--learn] [--sexp]
@@ -1233,6 +1233,7 @@ def _siblings(root: str, library) -> tuple[dict[str, str], str]:
 def _init_new_project(parsed: "InitArguments", library) -> int:
     """`wingbox init` in a folder without source files: choose a language and a style, write the config."""
     from architecture.config import CONFIG_FILE, render_config, with_header
+    from architecture.init import NEXT_STEP
     from architecture.newproject import LANGUAGES, choices
     from architecture.plan import PartPlan, RepositoryPlan
     from architecture.sexp import q
@@ -1314,7 +1315,7 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
             f":level {level} :config {q(os.path.relpath(config_path, parsed.root))})")
     print(fact if parsed.sexp else
           f"{part_path if in_repo else 'new project'}: {style.id} ({origin}), {language}, {level}\n"
-          f"wrote {os.path.relpath(config_path, parsed.root)} (edit it, then: wingbox build)")
+          f"wrote {os.path.relpath(config_path, parsed.root)}\n{NEXT_STEP}")
     if parsed.scaffold:
         for item in target_layout(_replace(part, path="."), (), library):
             if "<" in item.folder:

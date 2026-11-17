@@ -1,6 +1,7 @@
 """.wingbox/config.yaml: the architecture of a repository as people state it.
 
-`wingbox init` writes it from what it detects; people edit it; `wingbox build`
+`wingbox init` writes it from what it detects; `wingbox learn` settles the open
+points through the coding agent (or questions in a terminal); `wingbox build`
 reads it. Format:
 
     parts:

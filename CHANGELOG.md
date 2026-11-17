@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- `wingbox init` no longer tells people to edit `.wingbox/config.yaml`: it
+  names the next step, `wingbox learn`, which settles the open points (the
+  coding agent's task, asking the operator when the code does not tell, or
+  questions in a terminal), then `wingbox build`. The command help, the
+  README example and the style library notes say the same.
+
 ## 0.6.0 - 2026-11-17
 
 ### Changes

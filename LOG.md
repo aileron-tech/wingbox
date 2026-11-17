@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-17 - init names the next step instead of "edit it"
+
+### Changes
+- `scripts/architecture/init.py`: `NEXT_STEP`, printed after `wrote .wingbox/config.yaml` (also by the new-project init in `src/wingbox/cli.py`): `wingbox learn` settles the open points, then `wingbox build`.
+- Wording of the same rule in the `wingbox init` help, the `config.py` docstring, the `index.toml` note and the README example.
+- Tests: REQ-CLI-008, REQ-NEW-002 and the init printer test assert the next step and that no message says "edit it".
+- Why: the maintainer's rule that people do not edit the layer configuration by hand; the agent settles it, a terminal user answers questions.
+
+### Verification
+- test_architecture, test_cli, test_new_project, test_learn, test_plugins: 88 OK (Python 3.12).
+
 ## 2026-11-17 - version 0.6.0: architecture styles, layer config through the agent, capability rules
 
 ### Changes
