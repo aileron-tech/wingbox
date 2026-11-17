@@ -29,7 +29,7 @@
 >
 > **Skill only:** `npx skills add aileron-tech/wingbox` | [skills.sh](https://skills.sh)
 >
-> **Release notes:** [Changelog](CHANGELOG.md)
+> **Release notes:** [Changelog](CHANGELOG.md) · **What is next:** [Roadmap](ROADMAP.md)
 >
 > **Note:** Wingbox was formerly published as `codespaces`. The skill, the
 > scripts and the generated files were renamed on 2026-11-15; see the

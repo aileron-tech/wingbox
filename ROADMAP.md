@@ -1,0 +1,17 @@
+# Roadmap
+
+What is being built next. Items move to the [Changelog](CHANGELOG.md) when they ship.
+
+## In progress
+
+- **Architecture commands:** `wingbox init` detects the architecture style of each part of a repository and writes `.wingbox/config.yaml`; `wingbox place` says where new code belongs; `wingbox align` finds the gaps against a chosen style; `wingbox learn` lets a coding agent read the unclear folders and answer in a fixed format that Wingbox checks; `wingbox compare` lines up the parts of a monorepo. Rules a project already declares (dependency-cruiser layers and similar) come first.
+- **`wingbox export coderabbit`:** turns the architecture into CodeRabbit review configuration: review instructions per layer and ast-grep rules that flag forbidden imports.
+- **Benchmarks:** a public find-usages benchmark for `wingbox usages`, and build times of every compared tool measured on a quiet machine.
+
+## Next
+
+- **Confidence on every edge:** each dependency carries how it was found (resolved from the import, inferred, or ambiguous), so an agent knows which links to trust.
+- **A short verdict before an edit:** `SAFE`, `CAUTION` or `DANGEROUS` for a file, from its blast radius and the layers it touches, with capped lists and counts of what was left out.
+- **Failed queries say so:** a query that could not finish is marked as failed, so it never reads as "nothing depends on this".
+- **A size limit on answers:** long answers stop at a fixed size and the rest goes to a file in `.wingbox/`, with the path in the answer.
+- **A graph of uncommitted changes:** the working tree's edits as a separate layer over the committed graph, so impact can be asked for what is not committed yet.
