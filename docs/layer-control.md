@@ -21,7 +21,7 @@ Wingbox already builds the graph this needs: every file-to-file dependency, chec
 
 Goals:
 
-1. Propose a complete layer table for a project without one, from the graph and the architecture library, for a person to review and edit.
+1. Propose a complete layer table for a project without one, from the graph and the architecture library, and settle the unclear points with the coding agent (and, through it, with the operator) - not by asking a person to edit files.
 2. Hold the accepted layers: fail on a new upward import, keep the existing ones visible in a list that can only shrink, and never let a required rule become an exception.
 3. Work the same locally, in an agent's hooks and in CI, with no network and no model.
 4. Export the same rules to the tools a team already runs: CodeRabbit (review instructions and ast-grep rules) and dependency-cruiser.
@@ -32,11 +32,17 @@ Non-goals:
 - Replacing declared rules. A project that already declares its layers (dependency-cruiser, layers tables and similar) keeps them as the source of truth; Wingbox reads them and holds them, it does not propose different ones.
 - Splitting the build into compiler projects automatically. Wingbox can check the split; creating it stays with the team.
 
-## 3. Proposal (what a user does)
+## 3. Proposal (who does what)
+
+Nobody edits the layer table by hand in the normal flow. Wingbox drafts it, and the coding agent settles what Wingbox cannot decide:
+
+- **With an agent (the normal case).** `wingbox align --learn` (run by the agent, or `/wingbox learn`) proposes the table and prints, for the agent, the points it could not decide: unplaced folders with example files and their imports, ties between styles, files that could be pinned lower. The agent reads the code and answers in the fixed format `learn` defines; Wingbox checks the answer and writes the table. When the agent cannot tell from the code (for example, whether a folder is meant as a public API or an internal helper), it asks the operator in its chat and passes the answer on. Every answer is kept in `.wingbox/learned.sexp` with its reason, so the next run does not ask again.
+- **Without an agent (a person in a terminal).** `wingbox align --learn` runs an interactive questionnaire: which style the part follows (the closest candidates with their scores and one-line descriptions), then one question per unclear folder with its example files. It writes the table and then offers to open `.wingbox/config.yaml` in the editor for a final look.
+- **The file explains itself.** `.wingbox/config.yaml` starts with a header of instructions (what each key means, the rule that decides a file's layer, how to add a pinned file or a required import, and that `wingbox check` must pass after a change), so that an agent asked to "move this folder to the services layer" can edit it correctly, and a person can too.
 
 ```sh
 wingbox build .
-wingbox align --learn            # propose the layer table; a person edits .wingbox/config.yaml
+wingbox align --learn            # draft the layer table; the agent (or the questionnaire) settles the open points
 wingbox check                    # exit 1 on any new upward import; run in CI
 wingbox check --update           # rewrite the baseline after fixes; refuses to add new entries
 wingbox check --update --allow-new   # add new entries on purpose, each with a reason
@@ -50,9 +56,22 @@ The output of every command is a list of S-expression facts, printed as text for
 
 ### 4.1 The layer table
 
-Kept in `.wingbox/config.yaml`, which people edit and commit:
+Kept in `.wingbox/config.yaml`, committed with the project. Wingbox writes it; agents (and people, rarely) change it by following the header:
 
 ```yaml
+# Wingbox layer table. Read this before you change the file.
+# - Each part starts at its root folder. Layers are listed lowest first: a file
+#   may import its own layer and the layers below it, never a layer above.
+# - A file belongs to the layer that lists it under `files`, else to the first
+#   layer whose `paths` match it. Files matching `tests` are in no layer.
+# - To move a folder to another layer, move its pattern; to move one file, add
+#   it under `files` of the target layer with a `reason`.
+# - `required`: imports that must exist; they can never become exceptions.
+# - After any change run `wingbox check`; it must pass, or the new upward
+#   imports must be fixed or added to .wingbox/baseline.sexp on purpose with
+#   `wingbox check --update --allow-new` and a reason.
+# - Unsure where something belongs? Run `wingbox align --learn` and answer its
+#   questions instead of guessing.
 parts:
   - root: packages/backend
     style: layered            # from the architecture library, or "declared"
@@ -81,7 +100,7 @@ A file belongs to the layer that pins it, else to the first layer whose path mat
 2. Place each folder by the style; place the folders the style does not cover by their names and file patterns, as `learn` already does.
 3. Order the layers by the graph: count imports between candidate layers and choose the order with the fewest upward imports.
 4. Pin single files: a file whose importers sit below its folder's layer, and which imports nothing above them, is proposed for the lower layer, with the reason. On a real monorepo this kind of pinning removed about a third of the upward imports without touching code.
-5. Write the proposal into `.wingbox/config.yaml` with comments, and the remaining upward imports into the baseline.
+5. Settle the open points with the agent (the `learn` task and answer format) or, without an agent, with the interactive questionnaire; then write `.wingbox/config.yaml` with its instruction header, and the remaining upward imports into the baseline.
 
 A part with declared rules skips steps 1 to 4: its rules are read as they are.
 
