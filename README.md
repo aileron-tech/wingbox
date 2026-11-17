@@ -74,6 +74,9 @@ what it adds, lets you untick items, and writes only your own settings in your h
 folder. The second maps the repository you are in into its `.wingbox/` folder. Then
 ask your agent, or run `wingbox impact path/to/file`.
 
+With Homebrew, on macOS or Linux: `brew install aileron-tech/wingbox/wingbox && wingbox install`
+([tap](https://github.com/aileron-tech/homebrew-wingbox)).
+
 **No terminal? Install with a click**
 
 - **Claude Desktop:** [download the extension](https://github.com/aileron-tech/wingbox/releases/latest/download/wingbox.mcpb),
@@ -427,6 +430,12 @@ Install the `wingbox` command (Python 3.11 or newer, macOS, Linux or Windows):
 
 ```bash
 pipx install wingbox
+```
+
+Or with Homebrew, on macOS or Linux (upgrade with `brew upgrade wingbox`):
+
+```bash
+brew install aileron-tech/wingbox/wingbox
 ```
 
 Or run it without installing:
