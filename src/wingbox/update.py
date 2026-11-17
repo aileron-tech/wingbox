@@ -12,8 +12,9 @@ when asked; that installer reaches the package index.
   `uv venv`) `uv pip install --python <this interpreter>` when uv is on PATH, else a message saying what to
   run.
 
-A Docker image and an editable or local install cannot update themselves: the
-command says so and prints what to run instead. After an upgrade the new
+A Docker image, a Homebrew install (`brew upgrade wingbox`) and an editable or
+local install cannot update themselves: the command says so and prints what to
+run instead. After an upgrade the new
 version refreshes what `wingbox install` put in place, as recorded in
 ~/.wingbox/installed.sexp.
 
@@ -150,11 +151,20 @@ def _runs_from(prefix: str, run: Runner, command: tuple[str, ...]) -> bool:
     return bool(folder) and os.path.realpath(prefix) == os.path.realpath(os.path.join(folder, PACKAGE))
 
 
+def homebrew_keg(prefix: str) -> bool:
+    """True when the environment folder lies in a Homebrew keg of Wingbox: .../Cellar/wingbox/<version>/..."""
+    parts = Path(os.path.realpath(prefix)).parts
+    return any(pair == ("Cellar", PACKAGE) for pair in zip(parts, parts[1:]))
+
+
 def choose_method(
     origin: Origin, python: str, prefix: str, run: Runner, has_pip: bool = True
 ) -> Union[Method, CannotUpdate]:
     if isinstance(origin, InDocker):
         return CannotUpdate("docker-image", "git -C wingbox pull && docker build -t wingbox wingbox")
+    if homebrew_keg(prefix):
+        # Homebrew owns the keg: an upgrade by pip or uv inside it would change files behind its back.
+        return CannotUpdate("homebrew-install", "brew upgrade wingbox")
     if isinstance(origin, FromLocal):
         if origin.editable:
             return CannotUpdate("editable-install", f"git -C {origin.location} pull")
