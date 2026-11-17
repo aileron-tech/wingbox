@@ -14,15 +14,18 @@ from scripts.lang.rust import parse_rust_treesitter
 FILES = {
     "src/main.rs": "mod app;\nmod domain;\nmod store;\nmod net;\nmod shapes;\nmod platform;\nmod api;\nmod prelude;\nfn main() {}\n",
     "src/domain/mod.rs": (
-        "mod types;\nmod timeline;\nmod gemini;\nmod skill_span;\n"
-        "pub use types::*;\npub use timeline::*;\npub use gemini::*;\npub use skill_span::*;\n"
+        "mod types;\nmod stats;\nmod timeline;\nmod gemini;\nmod skill_span;\n"
+        "pub use types::*;\npub use stats::*;\npub use timeline::*;\npub use gemini::*;\npub use skill_span::*;\n"
         "pub fn helper() {}\n"
     ),
     "src/domain/types.rs": (
         "pub struct ForkContext;\npub enum ForkCut { Before }\npub const LIMIT: usize = 3;\n"
         "pub type Alias = u8;\npub static NAME: &str = \"x\";\npub trait Render {}\n"
     ),
-    "src/domain/timeline.rs": "mod detail;\npub use detail::TimelineItem;\n",
+    "src/domain/timeline.rs": "mod detail;\npub use detail::TimelineItem;\npub(crate) fn parse_time() {}\n",
+    # A private item of the same name in a child the facade globs earlier: a glob re-export does not carry it.
+    "src/domain/stats.rs": "fn parse_time() {}\npub struct Stats;\n",
+    "src/app/time_user.rs": "use crate::domain::{parse_time, Stats};\npub fn t(_: Stats) { parse_time(); }\n",
     "src/domain/timeline/detail.rs": "pub struct TimelineItem;\n",
     "src/domain/gemini.rs": "pub fn gemini_fn() {}\n",
     "src/domain/skill_span.rs": "pub struct Span;\n",
@@ -37,7 +40,7 @@ FILES = {
     "src/app/mod.rs": (
         "mod fork;\nmod view;\nmod save;\nmod glob_user;\nmod path_user;\nmod helper_user;\nmod unknown_user;\n"
         "mod net_user;\nmod inner;\nmod tools;\nmod shape_user;\nmod platform_user;\nmod api_user;\nmod prelude_user;\n"
-        "mod rename_user;\nmod glob_chain_user;\npub use tools::Tool;\n"
+        "mod rename_user;\nmod glob_chain_user;\nmod time_user;\npub use tools::Tool;\n"
     ),
     "src/app/tools.rs": "pub struct Tool;\n",
     "src/app/fork.rs": "use crate::domain::{ForkContext, ForkCut, LIMIT, Alias, NAME, Render};\npub fn f(_: ForkContext) {}\n",
@@ -147,6 +150,13 @@ class RustReexportTest(unittest.TestCase):
         """/* REQ-RUST-026: `pub use child::Name as Alias` leads an importer of Alias to the child that defines Name, also when another facade re-exports Alias under a second name (`pub use crate::store::Storage as Store`). */"""
         self.assertEqual({"src/store": (), "src/store/disk": ("item",)}, self.targets("src/app/rename_user"))
         self.assertEqual(("item",), self.targets("src/app/prelude_user")["src/store/disk"])
+
+    def test_a_private_item_is_not_reexported_by_a_glob(self) -> None:
+        """/* REQ-RUST-028: a glob re-export (`pub use child::*`) carries only the items of the child that the facade can see (pub, pub(crate), pub(super), pub(in ...)); a private item of the same name in a child globbed earlier is skipped, and the importer gets its :item edge to the child that defines the visible item (seen in a public Rust repository: a private `fn parse_rfc3339_to_unix_ms` in stats.rs and a pub(crate) one in timeline.rs). */"""
+        time_user = self.targets("src/app/time_user")
+        self.assertEqual(("item",), time_user["src/domain/timeline"])
+        self.assertEqual(("item",), time_user["src/domain/stats"])   # Stats, a public item of stats.rs
+        self.assertEqual(("item",), self.targets("src/app/fork")["src/domain/types"])
 
     def test_the_graph_is_the_same_on_every_build(self) -> None:
         """/* REQ-RUST-027: two builds of the same Rust tree, with the files parsed in a different order, give the same import edges with the same relations. */"""

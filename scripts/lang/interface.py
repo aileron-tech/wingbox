@@ -14,6 +14,7 @@ class EntityPayload(EntityPayloadRequired, total=False):
     methods: list[str]
     decorators: list[str]
     bases: list[str]
+    private: bool  # Rust: an item without `pub`, which no re-export of another module carries
 
 
 class ImportedNamePayload(TypedDict):
@@ -93,6 +94,7 @@ class Entity:
     methods: list[str]
     decorators: list[str]
     bases: list[str]
+    private: bool = False
 
     def to_dict(self) -> EntityPayload:
         result: EntityPayload = {
@@ -106,6 +108,8 @@ class Entity:
             result["decorators"] = self.decorators
         if self.bases:
             result["bases"] = self.bases
+        if self.private:
+            result["private"] = True
         return result
 
 

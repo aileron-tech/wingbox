@@ -407,7 +407,11 @@ class BoundRustLanguage:
         result = results.get(module)
         if result is None:
             return None
-        if any(entity["name"] == name for entity in result.entities):
+        # The module the path names may define the item with any visibility (a child module sees the private items of
+        # its parent); a module reached through a re-export must make it visible to the facade (`pub`, `pub(crate)`,
+        # `pub(super)`, `pub(in ...)`): a glob re-export does not carry a private item.
+        reached = len(seen) > 1
+        if any(entity["name"] == name and not (reached and entity.get("private")) for entity in result.entities):
             return module
         for binding in result.bindings:
             if not binding.get("export"):
