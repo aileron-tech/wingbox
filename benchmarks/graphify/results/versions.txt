@@ -7,3 +7,5 @@ codegraph_date 2026-11-17
 wingbox_date 2026-11-17
 wingbox_test_b 0.9.1
 wingbox_test_b_date 2026-11-17
+wingbox_test_c 0.10.0
+wingbox_test_c_date 2026-11-17

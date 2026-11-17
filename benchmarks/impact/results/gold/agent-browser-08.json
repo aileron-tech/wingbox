@@ -5,10 +5,14 @@
   "file": "cli/src/native/flow/hint.rs"
  },
  "direct": [
+  "cli/src/native/actions.rs",
   "cli/src/native/flow/mod.rs"
  ],
  "through_one": [
-  "cli/src/native/actions.rs",
+  "cli/src/main.rs",
+  "cli/src/mcp.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/e2e_tests.rs",
   "cli/src/native/flow/hosts.rs",
   "cli/src/native/flow/http.rs",
   "cli/src/native/flow/memory.rs",
@@ -19,10 +23,15 @@
   "cli/src/native/flow/replay.rs",
   "cli/src/native/flow/send.rs",
   "cli/src/native/flow/template.rs",
-  "cli/src/native/mod.rs"
+  "cli/src/native/mod.rs",
+  "cli/src/native/parity_tests.rs"
  ],
  "gold": [
+  "cli/src/main.rs",
+  "cli/src/mcp.rs",
   "cli/src/native/actions.rs",
+  "cli/src/native/daemon.rs",
+  "cli/src/native/e2e_tests.rs",
   "cli/src/native/flow/hosts.rs",
   "cli/src/native/flow/http.rs",
   "cli/src/native/flow/memory.rs",
@@ -34,7 +43,8 @@
   "cli/src/native/flow/replay.rs",
   "cli/src/native/flow/send.rs",
   "cli/src/native/flow/template.rs",
-  "cli/src/native/mod.rs"
+  "cli/src/native/mod.rs",
+  "cli/src/native/parity_tests.rs"
  ],
  "also_accepted": [
   "cli/src/native/flow/model.rs"

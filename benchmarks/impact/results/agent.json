@@ -15,13 +15,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-01",
@@ -39,13 +39,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-04",
@@ -111,11 +111,11 @@
   "named": 21,
   "right": 9,
   "not_on_list": 1,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 11,
   "precision": 0.9,
-  "recall": 1.0,
-  "f1": 0.9474,
+  "recall": 0.8182,
+  "f1": 0.8571,
   "exact": false,
   "exact_strict": false
  },
@@ -135,13 +135,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-08",
@@ -159,13 +159,13 @@
   "named": 13,
   "right": 13,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 5,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.7222,
+  "f1": 0.8387,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-08",
@@ -183,13 +183,13 @@
   "named": 13,
   "right": 13,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 5,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.7222,
+  "f1": 0.8387,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-09",
@@ -207,13 +207,13 @@
   "named": 13,
   "right": 13,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 5,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.7222,
+  "f1": 0.8387,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-09",
@@ -231,13 +231,13 @@
   "named": 13,
   "right": 13,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 5,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.7222,
+  "f1": 0.8387,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-10",
@@ -255,12 +255,12 @@
   "named": 20,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 11,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
   "exact_strict": false
  },
  {
@@ -279,13 +279,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-11",
@@ -303,11 +303,11 @@
   "named": 21,
   "right": 9,
   "not_on_list": 1,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 11,
   "precision": 0.9,
-  "recall": 1.0,
-  "f1": 0.9474,
+  "recall": 0.8182,
+  "f1": 0.8571,
   "exact": false,
   "exact_strict": false
  },
@@ -327,13 +327,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-13",
@@ -351,13 +351,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-13",
@@ -375,13 +375,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-14",
@@ -399,13 +399,13 @@
   "named": 10,
   "right": 10,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8333,
+  "f1": 0.9091,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-14",
@@ -423,13 +423,13 @@
   "named": 10,
   "right": 10,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8333,
+  "f1": 0.9091,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-17",
@@ -447,13 +447,13 @@
   "named": 10,
   "right": 10,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8333,
+  "f1": 0.9091,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-17",
@@ -471,13 +471,13 @@
   "named": 10,
   "right": 10,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8333,
+  "f1": 0.9091,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-18",
@@ -495,13 +495,13 @@
   "named": 10,
   "right": 10,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8333,
+  "f1": 0.9091,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-18",
@@ -519,13 +519,13 @@
   "named": 10,
   "right": 10,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8333,
+  "f1": 0.9091,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "agent-browser-19",
@@ -1165,15 +1165,15 @@
    "claude-sonnet-5-5"
   ],
   "named": 19,
-  "right": 18,
+  "right": 19,
   "not_on_list": 0,
   "missing": 0,
-  "accepted_extra": 1,
+  "accepted_extra": 0,
   "precision": 1.0,
   "recall": 1.0,
   "f1": 1.0,
   "exact": true,
-  "exact_strict": false
+  "exact_strict": true
  },
  {
   "id": "claudes-c-compiler-01",
@@ -1191,13 +1191,13 @@
   "named": 18,
   "right": 18,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 1,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.9474,
+  "f1": 0.973,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-04",
@@ -1215,13 +1215,13 @@
   "named": 3,
   "right": 3,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 22,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.12,
+  "f1": 0.2143,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-04",
@@ -1239,13 +1239,13 @@
   "named": 3,
   "right": 3,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 22,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.12,
+  "f1": 0.2143,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-05",
@@ -1311,13 +1311,13 @@
   "named": 30,
   "right": 30,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 4,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8824,
+  "f1": 0.9375,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-07",
@@ -1335,13 +1335,13 @@
   "named": 30,
   "right": 30,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 4,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8824,
+  "f1": 0.9375,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-08",
@@ -1551,13 +1551,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-15",
@@ -1575,13 +1575,13 @@
   "named": 9,
   "right": 9,
   "not_on_list": 0,
-  "missing": 0,
+  "missing": 2,
   "accepted_extra": 0,
   "precision": 1.0,
-  "recall": 1.0,
-  "f1": 1.0,
-  "exact": true,
-  "exact_strict": true
+  "recall": 0.8182,
+  "f1": 0.9,
+  "exact": false,
+  "exact_strict": false
  },
  {
   "id": "claudes-c-compiler-17",

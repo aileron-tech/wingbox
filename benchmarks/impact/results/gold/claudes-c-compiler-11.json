@@ -161,6 +161,7 @@
   "src/backend/linker_common/parse_shared.rs",
   "src/backend/linker_common/symbols.rs",
   "src/backend/linker_common/types.rs",
+  "src/backend/liveness.rs",
   "src/backend/regalloc.rs",
   "src/backend/riscv/assembler/elf_writer.rs",
   "src/backend/riscv/assembler/encoder/atomics.rs",

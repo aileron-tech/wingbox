@@ -10,10 +10,10 @@ OntoIndex 3.1.9, run of 2026-11-17 in a Linux container (its indexing runs only 
 
 ## Which tool for which job
 
-- Choose Wingbox for the exact list of files a change reaches: exact lists 5 of 5 (Graphify 1, CodeGraph 1); FastAPI file edges 0 wrong / 0 missing (Graphify 19 wrong / 17 missing, CodeGraph 106 wrong / 25 missing); agent cost 0.021 USD per answer at F1 1.000 (Graphify 0.095 at 0.997, CodeGraph 0.070 at 0.993, built-in search 0.075 at 0.999). Per its documentation it also draws an architecture map with layers and boundaries, and runs fully local.
-- Where the others fall short for this job: `codegraph impact` named no file on Q2 and Q3 (Rust), and its file graph links imports to the files that define the names; `graphify affected` answers average 9.5 times the tokens of Wingbox's (7,896 against 827), and Graphify costs the most per answer in the agent test (0.095 USD).
+- Choose Wingbox for the exact list of files a change reaches: exact lists 5 of 5 (Graphify 1, CodeGraph 1); FastAPI file edges 0 wrong / 0 missing (Graphify 19 wrong / 17 missing, CodeGraph 106 wrong / 25 missing); agent cost 0.021 USD per answer at F1 0.895 (Graphify 0.095 at 0.892, CodeGraph 0.070 at 0.888, built-in search 0.075 at 0.894). Per its documentation it also draws an architecture map with layers and boundaries, and runs fully local.
+- Where the others fall short for this job: `codegraph impact` named no file on Q2 and Q3 (Rust), and its file graph links imports to the files that define the names; `graphify affected` answers average 7.9 times the tokens of Wingbox's (7,896 against 1,003), and Graphify costs the most per answer in the agent test (0.095 USD).
 - What the others do better: CodeGraph's answers are the shortest where it answers (1,000 tokens against 1,065 for Wingbox and 12,101 for Graphify on the same 3 questions). Per its documentation CodeGraph covers more languages (Swift, Kotlin, C, C++, Dart, Lua and others), keeps its index in sync with file changes automatically and answers symbol and call-flow questions; per its documentation Graphify also maps documents, PDFs, images and videos.
-- OntoIndex 3.1.9: exact lists 1 of 5 with `--include-tests` (0 of 5 with its default, which leaves test files out); FastAPI file edges 22 wrong / 118 missing; no file on Q2 and Q3 (Rust); complete lists in 20 of the 100 questions of `benchmarks/impact` (Wingbox 100). Where it does better: on Q4 it names 3 files beyond the reference list against Graphify's 366, and on chrome-devtools-mcp (TypeScript) its list is exact. Per its documentation it records calls, inheritance, routes, execution flows and clusters, maps a git diff to the symbols it touches and serves a web UI; its indexing runs on Linux only. In the agent test it costs 0.075 USD per answer at F1 0.977 and 78,070 tokens, fewer tokens than Graphify (109,071) and CodeGraph (81,151), more than Wingbox (23,768).
+- OntoIndex 3.1.9: exact lists 1 of 5 with `--include-tests` (0 of 5 with its default, which leaves test files out); FastAPI file edges 22 wrong / 118 missing; no file on Q2 and Q3 (Rust); complete lists in 20 of the 100 questions of `benchmarks/impact` (Wingbox 100). Where it does better: on Q4 it names 3 files beyond the reference list against Graphify's 366, and on chrome-devtools-mcp (TypeScript) its list is exact. Per its documentation it records calls, inheritance, routes, execution flows and clusters, maps a git diff to the symbols it touches and serves a web UI; its indexing runs on Linux only. In the agent test it costs 0.075 USD per answer at F1 0.873 and 78,070 tokens, fewer tokens than Graphify (109,071) and CodeGraph (81,151), more than Wingbox (23,768).
 
 ## Summary
 
@@ -21,9 +21,9 @@ OntoIndex 3.1.9, run of 2026-11-17 in a Linux container (its indexing runs only 
 - Asked which files depend on a file, `wingbox impact` names the exact list in 5 of 5 questions, `graphify affected` in 1 of 5, `codegraph impact` in 1 of 5 (test C).
 - File-to-file edges of FastAPI against its 1,802 import pairs, a link to the file that defines an imported name counted as right: Wingbox 0 wrong and 0 missing, Graphify 19 and 17, CodeGraph 106 and 25 (test B).
 - A coding agent answers the same questions correctly in all three setups. It spends 23,768 tokens with Wingbox, 59,367 with its built-in search alone and 109,071 with Graphify: Wingbox -60 % against plain search, Graphify +84 % (test D).
-- With CodeGraph the agent spends 81,151 tokens (F1 0.993): -26 % against Graphify, +37 % against plain search (test D).
+- With CodeGraph the agent spends 81,151 tokens (F1 0.888): -26 % against Graphify, +37 % against plain search (test D).
 - Building the graph of fastapi (1,227 source files) takes Wingbox 2.2 s (wingbox 0.2.0) and Graphify 17.9 s on a hosted runner; over the five corpora Graphify's extract takes 3.5 to 19.2 times as long as the whole Wingbox build (test E).
-- OntoIndex 3.1.9, `ontoindex impact File:<file> --depth 2 --include-tests` names the exact list in 1 of 5 questions and the complete list in 20 of 100 questions of `benchmarks/impact`; FastAPI file edges 22 wrong and 118 missing (precision 0.987, recall 0.934); with OntoIndex the agent spends 78,070 tokens at F1 0.977 (test D).
+- OntoIndex 3.1.9, `ontoindex impact File:<file> --depth 2 --include-tests` names the exact list in 1 of 5 questions and the complete list in 20 of 100 questions of `benchmarks/impact`; FastAPI file edges 22 wrong and 118 missing (precision 0.987, recall 0.934); with OntoIndex the agent spends 78,070 tokens at F1 0.873 (test D).
 
 ## What Graphify publishes in its repository
 
@@ -107,20 +107,20 @@ CodeGraph's README publishes a "measured cross-file coverage" per language (Pyth
 
 Question: every file that depends on file X directly or through one other file. Five files in four public repositories. `wingbox impact <file> 2`, `graphify affected "<file>" --depth 2` and `codegraph impact <file name> --file <file> --depth 2` are run as they are and the files they name are compared with the reference list.
 
-Reference lists (`gold/`), none taken from either tool: Q1 from an own TypeScript resolver (`tools/ts_resolve.py`); Q2 and Q3 from an own Rust resolver (`tools/rust_resolve.py`), every file of the two lists read against the source; Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. `run.sh` computes the five lists again and stops when one differs from the committed list.
+Reference lists (`gold/`), none taken from either tool: Q1 from an own TypeScript resolver (`tools/ts_resolve.py`); Q2 and Q3 from an own Rust resolver (`tools/rust_resolve.py`), every file of the two lists read against the source; Since 2026-11-17 (Wingbox 0.10.0) the Rust resolver also counts, for a path that names an item, the file that defines the item (followed through `pub use` re-exports), and the items a module names after a glob import (`use x::*`), found by scanning the module text. A file that uses an item depends on the file that defines it; the earlier reference stopped at the module facade that re-exports the item. The questions stay the same. Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. `run.sh` computes the five lists again and stops when one differs from the committed list.
 
 | Question | Reference files | Wingbox: right / wrong / missing | Wingbox output, tokens | Graphify: right / wrong / missing | Graphify output, tokens | CodeGraph: right / wrong / missing | CodeGraph output, tokens |
 |---|---|---|---|---|---|---|---|
 | Q1 `src/collectors/PageCollector.ts` (chrome-devtools-mcp) | 30 | 30 / 0 / 0 | 585 | 30 / 0 / 0 | 1,324 | 30 / 0 / 0 | 525 |
-| Q2 `cli/src/validation.rs` (agent-browser) | 30 | 30 / 0 / 0 | 440 | 17 / 2 / 13 | 2,550 | 0 / 0 / 30 | 43 |
-| Q3 `src/backend/elf/constants.rs` (claudes-c-compiler) | 31 | 31 / 0 / 0 | 498 | 21 / 9 / 10 | 625 | 0 / 0 / 31 | 47 |
+| Q2 `cli/src/validation.rs` (agent-browser) | 32 | 32 / 0 / 0 | 464 | 17 / 2 / 15 | 2,550 | 0 / 0 / 32 | 43 |
+| Q3 `src/backend/elf/constants.rs` (claudes-c-compiler) | 91 | 91 / 0 / 0 | 1,355 | 30 / 0 / 61 | 625 | 0 / 0 / 91 | 47 |
 | Q4 `fastapi/openapi/models.py` (fastapi) | 29 | 29 / 0 / 0 | 614 | 29 / 366 / 0 | 32,188 | 26 / 2 / 3 | 550 |
 | Q5 `fastapi/sse.py` (fastapi) | 99 | 99 / 0 / 0 | 1,997 | 98 / 0 / 1 | 2,791 | 96 / 0 / 3 | 1,925 |
-| Mean output, tokens | | | 827 | | 7,896 | | 618 |
+| Mean output, tokens | | | 1,003 | | 7,896 | | 618 |
 
-Exact list: Wingbox 5 of 5, Graphify 1 of 5, CodeGraph 1 of 5. `graphify affected` works on functions and methods and follows calls and references as well as imports; restricted to its import relations (`--relation imports_from --relation imports --relation re_exports --relation dynamic_import`) it gives: Q1 28 / 0 / 2; Q2 5 / 2 / 25; Q3 21 / 9 / 10; Q4 28 / 3 / 1; Q5 98 / 0 / 1.
+Exact list: Wingbox 5 of 5, Graphify 1 of 5, CodeGraph 1 of 5. `graphify affected` works on functions and methods and follows calls and references as well as imports; restricted to its import relations (`--relation imports_from --relation imports --relation re_exports --relation dynamic_import`) it gives: Q1 28 / 0 / 2; Q2 5 / 2 / 27; Q3 30 / 0 / 61; Q4 28 / 3 / 1; Q5 98 / 0 / 1.
 
-`codegraph impact` takes a symbol; a file is a node of CodeGraph's graph, and `--file` picks the node of that path. From a file node it follows the edges that point at the file itself. In Q2 and Q3 (Rust) no edge points at the file node, so the answer names no file. On the 3 questions it answers, its output averages 1,000 tokens against 1,065 for Wingbox. CodeGraph's file-level graph, walked two steps back from the file as `codegraph affected` walks it before it keeps only test files (`tools/cg_graph.js`; the file count equals what that command reports as traversed), gives: Q1 30 / 30 / 0; Q2 29 / 19 / 1; Q3 0 / 0 / 31; Q4 28 / 674 / 1; Q5 98 / 34 / 1.
+`codegraph impact` takes a symbol; a file is a node of CodeGraph's graph, and `--file` picks the node of that path. From a file node it follows the edges that point at the file itself. In Q2 and Q3 (Rust) no edge points at the file node, so the answer names no file. On the 3 questions it answers, its output averages 1,000 tokens against 1,065 for Wingbox. CodeGraph's file-level graph, walked two steps back from the file as `codegraph affected` walks it before it keeps only test files (`tools/cg_graph.js`; the file count equals what that command reports as traversed), gives: Q1 30 / 30 / 0; Q2 31 / 17 / 1; Q3 0 / 0 / 91; Q4 28 / 674 / 1; Q5 98 / 34 / 1.
 
 ## Test D. A coding agent answers the same five questions
 
@@ -130,10 +130,10 @@ Plain search and Graphify ran interleaved on 2026-11-16. The Wingbox 0.5.1 trial
 
 | Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | Seconds | USD per trial | Refused shell commands |
 |---|---|---|---|---|---|---|---|---|
-| Plain search (Read, Grep, Glob) | 15 | 0.999 | 0.984 | 59,367 | 5.2 | 25.2 | 0.075 | 1 |
-| Wingbox | 15 | 1.000 | 1.000 | 23,768 | 2.3 | 9.9 | 0.021 | 0 |
-| Graphify | 15 | 0.997 | 0.975 | 109,071 | 7.8 | 34.9 | 0.095 | 12 |
-| CodeGraph | 15 | 0.993 | 0.912 | 81,151 | 6.2 | 27.0 | 0.070 | 11 |
+| Plain search (Read, Grep, Glob) | 15 | 0.894 | 0.508 | 59,367 | 5.2 | 25.2 | 0.075 | 1 |
+| Wingbox | 15 | 0.895 | 0.508 | 23,768 | 2.3 | 9.9 | 0.021 | 0 |
+| Graphify | 15 | 0.892 | 0.508 | 109,071 | 7.8 | 34.9 | 0.095 | 12 |
+| CodeGraph | 15 | 0.888 | 0.508 | 81,151 | 6.2 | 27.0 | 0.070 | 11 |
 
 - Wingbox against Graphify: tokens -78 %, time -72 %, cost -78 %.
 - Wingbox against plain search: tokens -60 %, time -61 %, cost -72 %.
@@ -143,8 +143,8 @@ Plain search and Graphify ran interleaved on 2026-11-16. The Wingbox 0.5.1 trial
 | Question | Plain: F1 / tokens / s | Wingbox: F1 / tokens / s | Graphify: F1 / tokens / s | CodeGraph: F1 / tokens / s |
 |---|---|---|---|---|
 | Q1 (chrome-devtools-mcp, 30 files) | 0.995 / 39,364 / 16.8 | 1.000 / 26,403 / 7.6 | 1.000 / 83,439 / 26.1 | 1.000 / 31,575 / 10.7 |
-| Q2 (agent-browser, 30 files) | 1.000 / 69,193 / 25.5 | 1.000 / 24,259 / 7.5 | 1.000 / 158,897 / 40.4 | 1.000 / 81,990 / 24.4 |
-| Q3 (claudes-c-compiler, 31 files) | 1.000 / 63,529 / 26.2 | 1.000 / 19,988 / 9.2 | 1.000 / 81,091 / 33.0 | 1.000 / 90,432 / 28.9 |
+| Q2 (agent-browser, 32 files) | 0.968 / 69,193 / 25.5 | 0.968 / 24,259 / 7.5 | 0.968 / 158,897 / 40.4 | 0.968 / 81,990 / 24.4 |
+| Q3 (claudes-c-compiler, 91 files) | 0.508 / 63,529 / 26.2 | 0.508 / 19,988 / 9.2 | 0.508 / 81,091 / 33.0 | 0.508 / 90,432 / 28.9 |
 | Q4 (fastapi, 29 files) | 1.000 / 57,892 / 26.4 | 1.000 / 28,656 / 11.1 | 1.000 / 65,159 / 25.8 | 0.971 / 106,160 / 37.2 |
 | Q5 (fastapi, 99 files) | 1.000 / 66,858 / 31.1 | 1.000 / 19,535 / 14.3 | 0.983 / 156,768 / 49.1 | 0.995 / 95,597 / 34.0 |
 
@@ -200,8 +200,8 @@ Test C, the five questions: `ontoindex impact File:<file> --depth 2`, the files 
 | Question | Reference files | default (test files left out): right / wrong / missing | with `--include-tests`, as in its README: right / wrong / missing | its file-level IMPORTS edges, two steps back (`ontoindex cypher`): right / wrong / missing | output, tokens (default (test files left out)) | output, tokens (with `--include-tests`, as in its README) |
 |---|---|---|---|---|---|---|
 | Q1 (chrome-devtools-mcp) | 30 | 12 / 0 / 18 | 30 / 0 / 0 | 30 / 0 / 0 | 1,346 | 2,714 |
-| Q2 (agent-browser) | 30 | 0 / 0 / 30 | 0 / 0 / 30 | 0 / 0 / 30 | 468 | 468 |
-| Q3 (claudes-c-compiler) | 31 | 0 / 0 / 31 | 0 / 0 / 31 | 0 / 0 / 31 | 482 | 482 |
+| Q2 (agent-browser) | 32 | 0 / 0 / 32 | 0 / 0 / 32 | 0 / 0 / 32 | 468 | 468 |
+| Q3 (claudes-c-compiler) | 91 | 0 / 0 / 91 | 0 / 0 / 91 | 0 / 0 / 91 | 482 | 482 |
 | Q4 (fastapi) | 29 | 14 / 1 / 15 | 26 / 3 / 3 | 26 / 3 / 3 | 1,557 | 2,696 |
 | Q5 (fastapi) | 99 | 63 / 0 / 36 | 98 / 0 / 1 | 98 / 0 / 1 | 5,446 | 8,338 |
 
@@ -213,8 +213,8 @@ The 100 questions of `benchmarks/impact` (`ontoindex impact File:<file> --depth 
 |---|---|---|---|---|---|---|---|---|
 | chrome-devtools-mcp | 20 | 14 | 5 | 1,852 | 114x | 20 | 306 | 537x |
 | immich-server | 20 | 0 | 20 | 586 | 922x | 20 | 232 | 372x |
-| agent-browser | 20 | 1 | 19 | 582 | 1,191x | 20 | 159 | 4,233x |
-| claudes-c-compiler | 20 | 0 | 20 | 606 | 968x | 20 | 100 | 2,308x |
+| agent-browser | 20 | 1 | 19 | 582 | 1,191x | 20 | 172 | 4,233x |
+| claudes-c-compiler | 20 | 0 | 20 | 606 | 968x | 20 | 123 | 2,308x |
 | fastapi | 20 | 5 | 14 | 690 | 529x | 20 | 86 | 1,449x |
 
 Context ratio: Graphify's corpus estimate of the repository divided by the mean answer, as in `benchmarks/impact` (`tools/context_ratio.py`); a short answer that misses files gives a high ratio, so read it next to the complete answers.
@@ -223,11 +223,11 @@ Test D, the agent of test D with the `ontoindex` command (`tools/oi_agent_test.p
 
 | Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | Seconds | USD per trial | Refused shell commands |
 |---|---|---|---|---|---|---|---|---|
-| Plain search | 15 | 0.999 | 0.984 | 59,367 | 5.2 | 25.2 | 0.075 | 1 |
-| Wingbox | 15 | 1.000 | 1.000 | 23,768 | 2.3 | 9.9 | 0.021 | 0 |
-| Graphify | 15 | 0.997 | 0.975 | 109,071 | 7.8 | 34.9 | 0.095 | 12 |
-| CodeGraph | 15 | 0.993 | 0.912 | 81,151 | 6.2 | 27.0 | 0.070 | 11 |
-| OntoIndex | 15 | 0.977 | 0.897 | 78,070 | 6.0 | 28.3 | 0.075 | 10 |
+| Plain search | 15 | 0.894 | 0.508 | 59,367 | 5.2 | 25.2 | 0.075 | 1 |
+| Wingbox | 15 | 0.895 | 0.508 | 23,768 | 2.3 | 9.9 | 0.021 | 0 |
+| Graphify | 15 | 0.892 | 0.508 | 109,071 | 7.8 | 34.9 | 0.095 | 12 |
+| CodeGraph | 15 | 0.888 | 0.508 | 81,151 | 6.2 | 27.0 | 0.070 | 11 |
+| OntoIndex | 15 | 0.873 | 0.496 | 78,070 | 6.0 | 28.3 | 0.075 | 10 |
 
 Every trial is in `results/agent_summary.ontoindex.json`. Seconds include starting the container on every `ontoindex` call.
 

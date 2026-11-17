@@ -5,7 +5,12 @@
   "file": "src/backend/linker_common/write.rs"
  },
  "direct": [
-  "src/backend/linker_common/mod.rs"
+  "src/backend/linker_common/mod.rs",
+  "src/backend/riscv/linker/emit_exec.rs",
+  "src/backend/riscv/linker/emit_shared.rs",
+  "src/backend/riscv/linker/relocations.rs",
+  "src/backend/x86/linker/emit_exec.rs",
+  "src/backend/x86/linker/emit_shared.rs"
  ],
  "through_one": [
   "src/backend/arm/linker/elf.rs",
@@ -25,17 +30,16 @@
   "src/backend/linker_common/gc_sections.rs",
   "src/backend/mod.rs",
   "src/backend/riscv/linker/elf_read.rs",
-  "src/backend/riscv/linker/emit_exec.rs",
-  "src/backend/riscv/linker/emit_shared.rs",
   "src/backend/riscv/linker/input.rs",
   "src/backend/riscv/linker/link.rs",
-  "src/backend/riscv/linker/relocations.rs",
+  "src/backend/riscv/linker/mod.rs",
+  "src/backend/riscv/linker/reloc.rs",
+  "src/backend/riscv/linker/sections.rs",
   "src/backend/riscv/linker/symbols.rs",
   "src/backend/x86/linker/elf.rs",
-  "src/backend/x86/linker/emit_exec.rs",
-  "src/backend/x86/linker/emit_shared.rs",
   "src/backend/x86/linker/input.rs",
   "src/backend/x86/linker/link.rs",
+  "src/backend/x86/linker/mod.rs",
   "src/backend/x86/linker/types.rs"
  ],
  "gold": [
@@ -61,13 +65,17 @@
   "src/backend/riscv/linker/emit_shared.rs",
   "src/backend/riscv/linker/input.rs",
   "src/backend/riscv/linker/link.rs",
+  "src/backend/riscv/linker/mod.rs",
+  "src/backend/riscv/linker/reloc.rs",
   "src/backend/riscv/linker/relocations.rs",
+  "src/backend/riscv/linker/sections.rs",
   "src/backend/riscv/linker/symbols.rs",
   "src/backend/x86/linker/elf.rs",
   "src/backend/x86/linker/emit_exec.rs",
   "src/backend/x86/linker/emit_shared.rs",
   "src/backend/x86/linker/input.rs",
   "src/backend/x86/linker/link.rs",
+  "src/backend/x86/linker/mod.rs",
   "src/backend/x86/linker/types.rs"
  ],
  "also_accepted": [

@@ -1,7 +1,6 @@
 {
- "wingbox": "wingbox 0.2.3",
- "date": "2026-11-16",
+ "wingbox": "wingbox 0.10.0",
+ "date": "2026-11-17",
  "agent_wingbox": "0.2.1",
- "agent_note": "the 100 answers of `wingbox impact` are identical in 0.2.1, 0.2.2 and 0.2.3",
- "edge_test_python": "run again with Wingbox 0.9.1 on 2026-11-17, when `tools/py_edges.py` started to count modules loaded by a literal name (`importlib.import_module`, `__import__`)"
+ "agent_note": "the agent test ran with 0.2.1; its saved answers are scored against the reference lists of 2026-11-17 (Rust items followed to their definers), with no new session"
 }

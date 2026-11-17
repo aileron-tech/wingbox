@@ -28,6 +28,7 @@
   "src/backend/arm/codegen/inline_asm.rs",
   "src/backend/arm/codegen/intrinsics.rs",
   "src/backend/arm/codegen/memory.rs",
+  "src/backend/arm/codegen/peephole.rs",
   "src/backend/arm/codegen/prologue.rs",
   "src/backend/arm/codegen/returns.rs",
   "src/backend/arm/codegen/variadic.rs",

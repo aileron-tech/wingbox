@@ -11,6 +11,10 @@ Output JSON: {"files": [...], "crates": {...}, "refs": [ {from, line, to,
 to_followed, category, text} ], "modules": {modpath: file}}
   to          = file of the module the path reaches (module semantics)
   to_followed = file that defines the item, following `pub use` re-exports
+                (only public items and `pub use` lines once a re-export is followed)
+  category "glob-use": a `use m::*` (or `use super::*`) whose module body names an
+                item that m provides; to = m, to_followed = the file that defines it.
+                Found by scanning the identifiers of the module text, not by a parser.
 """
 import json
 import os
@@ -264,12 +268,17 @@ class Mod:
         self.child_dir = dir_for_children
         self.children = {}
         self.items = set()
+        self.private = set()  # items declared without `pub`: no re-export of another module carries them
         self.uses = []  # (segs, alias, glob, abs, pub, line)
         self.parent = None
 
 
 MOD_RE = re.compile(r"(?<![\w:])((?:pub\s*(?:\([^)]*\))?\s+)?)mod\s+(?:r#)?(\w+)\s*([;{])")
 ITEM_RE = re.compile(r"(?<![\w:])(fn|struct|enum|trait|type|const|static|union)\s+(?:r#)?(\w+)")
+PUB_BEFORE_RE = re.compile(r"(?<![\w])pub\s*(?:\([^)]*\))?\s*(?:(?:unsafe|const|async|default|extern)\s+)*$")
+IDENT_RE = re.compile(r"(?<![\w.])(?<!::)(?:r#)?([A-Za-z_]\w*)\b")
+RUST_KEYWORDS = frozenset("as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod "
+                          "move mut pub ref return self Self static struct super trait true type union unsafe use where while".split())
 MACRO_RE = re.compile(r"macro_rules!\s*(\w+)")
 USE_RE = re.compile(r"(?<![\w:])((?:pub\s*(?:\([^)]*\))?\s+)?)use\s+")
 
@@ -397,6 +406,8 @@ class Repo:
             o = owner(im.start())
             if d[im.start()] == o.body_depth and im.group(2) not in KEYWORDS_NOT_NAMES:
                 o.items.add(im.group(2))
+                if not PUB_BEFORE_RE.search(t[max(0, im.start() - 60): im.start()]):
+                    o.private.add(im.group(2))
         for im in MACRO_RE.finditer(t, top.body[0], top.body[1]):
             o = owner(im.start())
             pre = self.raw[f][max(0, im.start() - 200): im.start()]
@@ -499,24 +510,29 @@ class Repo:
             break
         return (cur, False, i)
 
-    def define_site(self, m, name, seen=None):
-        """Follow pub use re-exports from module m for item `name`; return Mod defining it."""
+    def define_site(self, m, name, seen=None, reached=False):
+        """Follow pub use re-exports from module m for item `name`; return Mod defining it.
+
+        m itself may define the item with any visibility; a module reached through a re-export provides only
+        its public items and its `pub use` lines (reached=True)."""
         seen = seen or set()
         key = (m.crate, m.path, name)
         if key in seen:
             return None
         seen.add(key)
-        if name in m.items:
+        if name in m.items and not (reached and name in m.private):
             return m
         if m.path == ():
             mf = self.macro_export.get((m.crate, name))
             if mf:
                 return ("file", mf)
         for segs, alias, glob, ab, is_pub, ln, s, e in m.uses:
+            if reached and not is_pub:
+                continue
             if glob:
                 r = self.resolve(m, segs, ab)
                 if r and r[2] == len(segs):
-                    d = self.define_site(r[0], name, seen)
+                    d = self.define_site(r[0], name, seen, True)
                     if d:
                         return d
                 continue
@@ -528,10 +544,71 @@ class Repo:
                 if k == len(segs):
                     return tgt
                 if k == len(segs) - 1:
-                    d = self.define_site(tgt, segs[-1], seen)
+                    d = self.define_site(tgt, segs[-1], seen, True)
                     return d or tgt
                 return tgt
         return None
+
+    def is_within(self, m, ancestor):
+        while m is not None:
+            if m is ancestor:
+                return True
+            m = m.parent
+        return False
+
+    def glob_uses(self):
+        """`use x::*` in module m and an identifier of m's own text that x provides: m uses that item."""
+        refs = []
+        for (cid, path), m in self.mods.items():
+            globs = [(segs, ab, ln) for segs, alias, glob, ab, is_pub, ln, s, e in m.uses if glob]
+            if not globs:
+                continue
+            t = self.text[m.file]
+            spans = [(s, e) for (_, _, _, _, _, _, s, e) in m.uses]
+            inner = [x.body for x in self.file_mods.get(m.file, []) if x.inline and x is not m and self.is_within(x, m)]
+            # The variants a local enum declares are names of that enum, not uses of an imported item.
+            variants = set()
+            for em in re.finditer(r"(?<![\w:])enum\s+\w+[^{;]*\{", t[m.body[0]:m.body[1]]):
+                open_pos = m.body[0] + em.end() - 1
+                close_pos = match_brace(t, open_pos)
+                body = t[open_pos + 1:close_pos]
+                depth = 0
+                start = True
+                for tok in re.finditer(r"[{}()\[\],]|[A-Za-z_]\w*", body):
+                    x = tok.group(0)
+                    if x in "{([":
+                        depth += 1
+                    elif x in "})]":
+                        depth -= 1
+                    elif x == ",":
+                        start = depth == 0
+                    elif start and depth == 0:
+                        variants.add((open_pos + 1 + tok.start()))
+                        start = False
+            names = set()
+            for im in IDENT_RE.finditer(t, m.body[0], m.body[1]):
+                pos = im.start()
+                if any(s <= pos < e for s, e in spans) or any(a <= pos <= b for a, b in inner) or pos in variants:
+                    continue
+                if re.match(r"\s*:(?!:)", t[im.end():im.end() + 8]):
+                    continue  # a field, a parameter or a binding with its type: a local name
+                name = im.group(1)
+                if name not in RUST_KEYWORDS and name not in m.items:
+                    names.add(name)
+            for segs, ab, ln in globs:
+                r = self.resolve(m, segs, ab)
+                if not r or r[2] != len(segs):
+                    continue
+                source = r[0]
+                for name in sorted(names):
+                    d = self.define_site(source, name, None, not self.is_within(m, source))
+                    if d is None:
+                        continue
+                    defined = self.file_of(d)
+                    if defined != m.file:
+                        refs.append(dict(frm=m.file, line=ln, to=source.file, to_followed=defined, category="glob-use",
+                                         text="::".join(segs) + "::* " + name, crate=cid))
+        return refs
 
     def file_of(self, x):
         if isinstance(x, tuple):
@@ -606,6 +683,7 @@ class Repo:
                     r = self.target_of(o, segs, False, False)
                     if r:
                         refs.append(dict(frm=f, line=line_of(t, pm.start()), to=r[0], to_followed=r[1], category=cat, text="::".join(segs), crate=o.crate))
+        refs.extend(self.glob_uses())
         # dedupe identical refs (same file reached via several crates)
         uniq = {}
         for r in refs:
