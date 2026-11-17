@@ -1,0 +1,43 @@
+# The test suite on Linux, macOS and Windows, with every supported Python version.
+# Installs the parsers the way local runs do (AGENTS.md): every requirements file, through uv.
+name: tests
+
+on:
+  push:
+    branches: [main, windows-support]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    env:
+      PYTHONUTF8: "0"   # the code must not rely on UTF-8 mode
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the plugin check reads the release tags
+      - name: Install uv
+        run: pipx install uv
+      - name: Requirements
+        shell: bash
+        run: cat requirements.txt requirements/*.txt | sort -u > "$RUNNER_TEMP/wingbox-requirements.txt"
+      - name: Tests
+        shell: bash
+        run: |
+          git config --global user.email "tests@example.invalid"
+          git config --global user.name "tests"
+          uv run --no-project --python "${{ matrix.python }}" --with-requirements "$RUNNER_TEMP/wingbox-requirements.txt" \
+            python -m unittest discover -s tests
