@@ -25,6 +25,27 @@
 - Fixtures built in-process: package and relative imports, the nearest pubspec among several, part and part of in both directions, a `part of` with a package URI, generated parts on disk and missing, and discovery of `.dart_tool` and Flutter `build` output. `benchmarks/dart/` checks the accuracy of the graph.
 - `python3 tools/sync_plugin.py` then `--check` exit 0; `tests.test_plugins` and `tests.test_local_only` pass.
 
+## 2026-11-17 - CodeGraph in the comparison benchmark
+
+### Changes
+- `benchmarks/graphify`: CodeGraph 1.6.2 (npm `@colbymchenry/codegraph`) as a third tool on the same repositories, commits, questions, reference lists and scoring. New `tools/cg_graph.js` (CodeGraph's file graph and file-dependents walk through its own library API), `tools/cg_command_check.py` (test C), `pairs.py codegraph` (test B), a `cg` setup in `tools/agent_test.py` (test D), `tools/time_builds_same_machine.py` (three tools on one machine, cold and after a one-line edit; not run yet). `run.sh` installs CodeGraph from npm into the work directory and runs it with a private HOME, no daemon and no file watcher. `make_report.py` writes the three-tool tables.
+- Results added: `command_check.codegraph.json`, `{karpathy,fastapi}.cg.{all,imports}.score.all.json`, `fastapi.cg.all.score.fastapi.json`, CodeGraph trials in `agent_summary.json`, `codegraph` lines in `versions.txt`. Wingbox and Graphify result files are unchanged except that `agent_summary.json` gains the 15 CodeGraph trials (the plain/wb/gf summary is recomputed equal).
+- Test: REQ-BENCH-010 (same-machine build summary); REQ-BENCH-008 covers the regenerated README.
+
+### Motivation
+- Maintainer: "надо ещё добавить тоже в сравнение" - people ask how CodeGraph compares.
+
+### Verification
+- `run.sh` from an empty work directory reproduces every CodeGraph result file byte for byte.
+- `python -m unittest tests.test_benchmark_report`: 10 tests OK.
+- The CodeGraph agent trials ran on 2026-11-17, a day after the other setups and not interleaved with them; 15 trials, 1.05 USD.
+- Build time of CodeGraph not measured: the machine was under heavy load (1-minute load up to 225); to be run on a quiet machine.
+
+### 2026-11-17, later: Wingbox 0.5.1 and the "why" sections
+- The Wingbox column is now 0.5.1 (PyPI), measured by the same scripts: `run.sh` pins `wingbox==0.5.1` (it pinned 0.2.0 while the tools already read the 0.5.x layout, so it did not run), and 15 new Wingbox agent trials replace the 0.2.0 ones. Test C and test B result files are byte-identical to 0.2.0; test A moves (fastapi `analyze` mean 624 -> 527 tokens, `impact` mean 261 -> 141); agent 25,598 -> 23,768 tokens, 0.016 -> 0.021 USD per answer, F1 1.000 both. Test E (hosted runner) stays 0.2.0 and says so.
+- `make_report.py` writes "Which tool for which job" (numbers from the results, documentation points labelled) and "Why the numbers differ" (each tool's design, from its own docs). Maintainer: the page answers why to choose Wingbox, without judging the other tools.
+- Graphify and CodeGraph result files are unchanged by the 0.5.1 run (compared byte for byte).
+
 ## 2026-11-17 - .wingbox/ holds everything and marks the project; a graph is never refreshed into another folder
 
 ### Changes

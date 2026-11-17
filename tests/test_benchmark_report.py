@@ -126,6 +126,31 @@ class BenchmarkReportTest(unittest.TestCase):
                         offenders.append(f"{path.relative_to(PHP_BENCHMARK.parent)}:{number}")
         self.assertEqual(offenders, [])
 
+    def test_same_machine_build_summary_takes_medians_and_refuses_different_graphs(self) -> None:
+        """/* REQ-BENCH-010: the same-machine build summary of the three tools must give the median wall time of every step, cold and after an edit, and stop when two cold runs, or two runs after the edit, of one tool wrote graphs of different size. */"""
+        path = COMPARISON / "tools" / "time_builds_same_machine.py"
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sizes = {"wingbox": {"modules": 3, "import_edges": 2}, "graphify": {"nodes": 9, "links": 8}, "codegraph": {"files": 3, "nodes": 7, "edges": 6}}
+        runs = []
+        for round_no, wall in enumerate([2.0, 4.0, 3.0], start=1):
+            for tool, steps in (("wingbox", ["build", "edit"]), ("graphify", ["extract", "cluster", "edit"]), ("codegraph", ["init", "edit"])):
+                for step in steps:
+                    run = {"round": round_no, "corpus": "demo", "source_files": 3, "tool": tool, "step": step, "wall_s": wall, "cpu_s": wall}
+                    if step != "cluster":
+                        run["graph"] = sizes[tool]
+                    runs.append(run)
+        row = module.summarise(runs)[0]
+        self.assertEqual((row["wingbox_build_wall_s"], row["graphify_cluster_wall_s"], row["codegraph_init_wall_s"], row["codegraph_edit_wall_s"]), (3.0, 3.0, 3.0, 3.0))
+        self.assertEqual((row["codegraph_graph"], row["codegraph_edit_graph"]), (sizes["codegraph"], sizes["codegraph"]))
+        self.assertIn("| demo | 3 | 3.00 | 6.00 | 3.00 | 3.00 | 3.00 | 3.00 |", module.table([row]))
+        edited = [dict(run, graph={"files": 3, "nodes": 8, "edges": 6}) if run["tool"] == "codegraph" and run["step"] == "edit" else run for run in runs]
+        self.assertEqual(module.summarise(edited)[0]["codegraph_edit_graph"], {"files": 3, "nodes": 8, "edges": 6})
+        runs[-1] = dict(runs[-1], graph={"files": 3, "nodes": 7, "edges": 5})
+        with self.assertRaises(SystemExit):
+            module.summarise(runs)
+
     def test_a_rust_path_accepts_the_modules_it_passes_through(self) -> None:
         """/* REQ-BENCH-007: for a Rust path crate::a::b the file of module a must be accepted for the file that wrote the path, and not required. */"""
         module = load("impact100.py")

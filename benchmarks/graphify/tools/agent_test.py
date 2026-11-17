@@ -1,4 +1,4 @@
-"""Agent test: plain search, Wingbox and Graphify on "what depends on this file" questions.
+"""Agent test: plain search, Wingbox, Graphify and CodeGraph on "what depends on this file" questions.
 
 Usage: python3 -I agent_test.py <work dir> run [filter] [workers]   run the trials; filter = regular expression on the trial name
        python3 -I agent_test.py <work dir> report                  print the summary and save <work dir>/out/agent_summary.json
@@ -24,7 +24,7 @@ BENCH = os.path.join(P, "bench")
 TRIALS = os.path.join(BENCH, "trials")
 CLAUDE = os.environ.get("CLAUDE_BIN") or shutil.which("claude") or "claude"
 QUESTIONS = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "questions.json")))
-SETUPS = ("plain", "wb", "gf")
+SETUPS = ("plain", "wb", "gf", "cg")
 REPEATS = 3
 TASK = (
     "Before changing `{file}`, I need a complete review list: every file of this repository, test files included, that depends on "
@@ -37,6 +37,11 @@ TASK = (
 GRAPHIFY_NOTE = (
     "\n\nA Graphify knowledge graph of this repository is already built in `graphify-out/`. The command "
     "`graphify affected \"<file>\" --depth 2` does a reverse traversal of it and prints what is impacted by a file, "
+    "at depth 1 (directly) and at depth 2 (through one other node)."
+)
+CODEGRAPH_NOTE = (
+    "\n\nA CodeGraph index of this repository is already built in `.codegraph/`. The command "
+    "`codegraph impact <file name> --file <file> --depth 2` prints what is affected by changing a file, "
     "at depth 1 (directly) and at depth 2 (through one other node)."
 )
 WINGBOX_NOTE = (
@@ -65,12 +70,26 @@ def score(answer: list[str], gold: list[str]) -> dict:
     return {"precision": round(precision, 3), "recall": round(recall, 3), "f1": round(f1, 3), "listed": len(got)}
 
 
+def codegraph_wrapper() -> str:
+    """A folder with a `codegraph` command that runs CodeGraph with a private HOME, no daemon, no file watcher
+    and no background network calls; the agent's own environment stays as it is."""
+    folder = os.path.join(BENCH, "cg_bin")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, "codegraph")
+    with open(path, "w") as handle:
+        handle.write("#!/bin/sh\n"
+                     f"HOME='{os.path.join(P, 'cg_home')}' DO_NOT_TRACK=1 CODEGRAPH_NO_DAEMON=1 CODEGRAPH_NO_WATCH=1 "
+                     f"CODEGRAPH_NO_DOWNLOAD=1 exec '{os.path.join(P, 'cg', 'node_modules', '.bin', 'codegraph')}' \"$@\"\n")
+    os.chmod(path, 0o755)
+    return folder
+
+
 def run_trial(question: dict, setup: str, repeat: int) -> dict:
     name = f"{question['id']}_{setup}_{repeat}"
     out_path = os.path.join(TRIALS, name + ".json")
     if os.path.exists(out_path):
         return json.load(open(out_path))
-    prompt = TASK.format(file=question["file"]) + {"wb": WINGBOX_NOTE, "gf": GRAPHIFY_NOTE}.get(setup, "")
+    prompt = TASK.format(file=question["file"]) + {"wb": WINGBOX_NOTE, "gf": GRAPHIFY_NOTE, "cg": CODEGRAPH_NOTE}.get(setup, "")
     command = [
         CLAUDE, "-p", prompt, "--model", "sonnet", "--output-format", "json", "--max-budget-usd", "2",
         "--setting-sources", "project", "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence",
@@ -86,6 +105,9 @@ def run_trial(question: dict, setup: str, repeat: int) -> dict:
         command += ["--allowedTools", "Bash(graphify:*)", *text_tools]
         env["PATH"] = os.path.join(P, "venv_gf", "bin") + os.pathsep + env["PATH"]
         env["GRAPHIFY_BACKEND"] = "none"
+    if setup == "cg":
+        command += ["--allowedTools", "Bash(codegraph:*)", *text_tools]
+        env["PATH"] = codegraph_wrapper() + os.pathsep + env["PATH"]
     started = time.time()
     try:
         done = subprocess.run(command, cwd=os.path.join(BENCH, setup, question["repo"]), env=env,
@@ -137,7 +159,7 @@ def main() -> None:
         raise SystemExit("action: run or report")
     trials = []
     for name in sorted(os.listdir(TRIALS)):
-        if re.match(r"Q\d_(plain|wb|gf)_\d\.json$", name):
+        if re.match(r"Q\d_(plain|wb|gf|cg)_\d\.json$", name):
             trials.append(json.load(open(os.path.join(TRIALS, name)))["trial"])
     rows = collections.defaultdict(list)
     for t in trials:

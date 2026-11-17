@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- `benchmarks/graphify` measures CodeGraph 1.6.2 (npm `@colbymchenry/codegraph`)
+  next to Wingbox and Graphify on the same repositories, questions, reference
+  lists and scoring: the impact command, every file-to-file edge against the
+  import statements, the agent test, and a new build-time test of the three
+  tools on one machine, cold and after a one-line edit. `run.sh` installs
+  CodeGraph from npm. The Wingbox column is measured with 0.5.1 and `run.sh`
+  pins it; the report opens with "Which tool for which job" and explains in
+  "Why the numbers differ" how each tool's design produces its numbers.
+
 ## 0.5.1 - 2026-11-17
 
 ### Changes
@@ -16,7 +29,6 @@
   (`get_it`, `go_router`, `retrofit`) is not visible to static analysis.
   The Dart grammar is an opt-in extra, `pipx install "wingbox[dart]"`;
   without it `.dart` files are skipped with a warning and the build goes on.
-
 ## 0.5.0 - 2026-11-17
 
 ### Changes

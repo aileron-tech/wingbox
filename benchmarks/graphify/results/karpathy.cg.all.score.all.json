@@ -1,0 +1,104 @@
+{
+ "label": "karpathy: codegraph all",
+ "scope": "(whole tree)",
+ "reference_pairs": 15,
+ "tool_edges": 25,
+ "strict": {
+  "right": 15,
+  "of_them_implied_package_init": 0,
+  "precision": 0.6,
+  "recall": 1.0
+ },
+ "either": {
+  "right": 15,
+  "precision": 0.6,
+  "found": 15,
+  "recall": 1.0
+ },
+ "tool_edges_not_in_code": [
+  [
+   "micrograd/micrograd/nn.py",
+   "nanoGPT/data/shakespeare/prepare.py"
+  ],
+  [
+   "minGPT/mingpt/trainer.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "micrograd/micrograd/engine.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/model.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/model.py",
+   "nanoGPT/config/train_shakespeare_char.py"
+  ],
+  [
+   "nanoGPT/sample.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/train.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/train.py",
+   "minGPT/mingpt/model.py"
+  ]
+ ],
+ "tool_edges_wrong_strict": [
+  [
+   "micrograd/micrograd/nn.py",
+   "nanoGPT/data/shakespeare/prepare.py"
+  ],
+  [
+   "minGPT/mingpt/trainer.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "micrograd/micrograd/engine.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/bench.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/model.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/model.py",
+   "nanoGPT/config/train_shakespeare_char.py"
+  ],
+  [
+   "nanoGPT/sample.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/train.py",
+   "micrograd/micrograd/nn.py"
+  ],
+  [
+   "nanoGPT/train.py",
+   "minGPT/mingpt/model.py"
+  ]
+ ],
+ "code_pairs_missing_strict": [],
+ "code_pairs_missing_either": []
+}
