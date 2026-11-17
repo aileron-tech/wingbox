@@ -880,3 +880,12 @@
 ### Motivation
 - The maintainer: "да" to releasing Dart as 0.5.1.
 
+## 2026-11-17 - OntoIndex as the fourth tool of the Graphify comparison (branch ontoindex-comparison, not merged)
+
+### Changes
+- OntoIndex 3.1.9 measured with the same corpus, reference lists and scoring; its lines in the title, "Which tool for which job", "Summary", "Why the numbers differ" and its own section come from `tools/other_tools.py` (the tool name is a parameter). Scripts: `tools/oi_run.sh`, `oi.Dockerfile`, `oi_edges.py`, `oi_command_check.py`, `oi_agent_test.py`, `time_builds_tools.py`, `../impact/tools/oi_impact100.py`.
+- Results: FastAPI edges precision 0.987, recall 0.935 (Wingbox 1.000 / 1.000); exact dependent lists 1 of 5 with `--include-tests` (Wingbox 5 of 5); complete lists in 20 of the 100 questions of `benchmarks/impact` (Wingbox 100); agent test 78,070 tokens, F1 0.977, 0.075 USD per answer (Wingbox 23,768, 1.000, 0.021); 15 trials cost 1.13 USD.
+- Not measured: build time (the machine is shared; the script is in place).
+
+### Motivation
+- The maintainer asked to study OntoIndex and add it next to Graphify and CodeGraph, ideas only (AGPL), then "finish everything".
