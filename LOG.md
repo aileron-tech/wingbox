@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.6.2: package page and documents
+
+- The maintainer asked for the PyPI page to be brought up to date; PyPI shows what the last release carries, so the metadata and README changes of #66 go out as a release.
+- `pyproject.toml`, `server.json` and `WINGBOX_VERSION` say 0.6.2; no code change since 0.6.1.
+- New test REQ-DOC-002: the README has no repository-relative link (such links lead nowhere on the PyPI page).
+- Feature work is paused by the maintainer after 0.6.1; the agreed design of the edge model is kept in `docs/edge-model.md`.
+- Verification: full suite on Python 3.12 and 3.11; the built wheel's metadata read back.
+
 ## 2026-11-17 - version 0.6.1: boundaries never passes a part it did not check
 
 ### Changes
