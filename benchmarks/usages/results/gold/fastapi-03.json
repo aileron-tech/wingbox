@@ -1,0 +1,38 @@
+{
+ "question": {
+  "id": "fastapi-03",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/generate_clients/tutorial003.py",
+  "name": "app",
+  "kind": "variable",
+  "line": 10,
+  "col": 0
+ },
+ "files": [
+  "tests/test_tutorial/test_generate_clients/test_tutorial003.py",
+  "tests/test_tutorial/test_generate_clients/test_tutorial004.py"
+ ],
+ "references": 6,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.generate_clients.tutorial003`/app.",
+  "sites": [
+   [
+    "tests/test_tutorial/test_generate_clients/test_tutorial003.py",
+    4,
+    51
+   ],
+   [
+    "tests/test_tutorial/test_generate_clients/test_tutorial003.py",
+    6,
+    21
+   ],
+   [
+    "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
+    13,
+    32
+   ]
+  ]
+ }
+}

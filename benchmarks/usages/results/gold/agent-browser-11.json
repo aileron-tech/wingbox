@@ -1,0 +1,33 @@
+{
+ "question": {
+  "id": "agent-browser-11",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/flow/send.rs",
+  "name": "Senders",
+  "kind": "trait",
+  "line": 108,
+  "col": 10
+ },
+ "files": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/flow/memory.rs"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/flow/send/Senders#",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    13020,
+    19
+   ],
+   [
+    "cli/src/native/flow/memory.rs",
+    74,
+    6
+   ]
+  ]
+ }
+}

@@ -1,0 +1,42 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-19",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "tests/mocks.ts",
+  "name": "createMockDiffObject",
+  "kind": "function",
+  "line": 1239,
+  "col": 16
+ },
+ "files": [
+  "tests/McpResponse.test.ts"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 tests/`mocks.ts`/createMockDiffObject().",
+  "sites": [
+   [
+    "tests/McpResponse.test.ts",
+    51,
+    3
+   ],
+   [
+    "tests/McpResponse.test.ts",
+    2053,
+    7
+   ],
+   [
+    "tests/McpResponse.test.ts",
+    2054,
+    7
+   ],
+   [
+    "tests/McpResponse.test.ts",
+    2055,
+    7
+   ]
+  ]
+ }
+}

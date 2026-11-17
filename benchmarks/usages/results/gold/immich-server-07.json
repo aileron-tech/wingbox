@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-07",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/dtos/editing.dto.ts",
+  "name": "CropParameters",
+  "kind": "type",
+  "line": 136,
+  "col": 12
+ },
+ "files": [
+  "src/services/media.service.ts"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/dtos/`editing.dto.ts`/CropParameters#",
+  "sites": [
+   [
+    "src/services/media.service.ts",
+    7,
+    27
+   ],
+   [
+    "src/services/media.service.ts",
+    465,
+    6
+   ]
+  ]
+ }
+}

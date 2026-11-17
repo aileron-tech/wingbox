@@ -1,0 +1,125 @@
+{
+ "question": {
+  "id": "fastapi-20",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "tests/test_request_params/test_form/utils.py",
+  "name": "get_body_model_name",
+  "kind": "function",
+  "line": 4,
+  "col": 4
+ },
+ "files": [
+  "tests/test_request_params/test_form/test_list.py",
+  "tests/test_request_params/test_form/test_optional_list.py",
+  "tests/test_request_params/test_form/test_optional_str.py",
+  "tests/test_request_params/test_form/test_required_str.py"
+ ],
+ "references": 20,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `tests.test_request_params.test_form.utils`/get_body_model_name().",
+  "sites": [
+   [
+    "tests/test_request_params/test_form/test_list.py",
+    9,
+    20
+   ],
+   [
+    "tests/test_request_params/test_form/test_list.py",
+    37,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_list.py",
+    113,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_list.py",
+    216,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_list.py",
+    331,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_list.py",
+    8,
+    20
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_list.py",
+    38,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_list.py",
+    108,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_list.py",
+    191,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_list.py",
+    283,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_str.py",
+    8,
+    20
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_str.py",
+    36,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_str.py",
+    101,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_str.py",
+    178,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_optional_str.py",
+    270,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_required_str.py",
+    9,
+    20
+   ],
+   [
+    "tests/test_request_params/test_form/test_required_str.py",
+    37,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_required_str.py",
+    107,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_required_str.py",
+    200,
+    23
+   ],
+   [
+    "tests/test_request_params/test_form/test_required_str.py",
+    314,
+    23
+   ]
+  ]
+ }
+}

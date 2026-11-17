@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-01",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/commands/grant-admin.ts",
+  "name": "GrantAdminCommand",
+  "kind": "class",
+  "line": 14,
+  "col": 13
+ },
+ "files": [
+  "src/commands/index.ts"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/commands/`grant-admin.ts`/GrantAdminCommand#",
+  "sites": [
+   [
+    "src/commands/index.ts",
+    1,
+    10
+   ],
+   [
+    "src/commands/index.ts",
+    27,
+    3
+   ]
+  ]
+ }
+}

@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-06",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/python_types/tutorial007.py",
+  "name": "process_items",
+  "kind": "function",
+  "line": 1,
+  "col": 4
+ },
+ "files": [
+  "tests/test_tutorial/test_python_types/test_tutorial007.py"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.python_types.tutorial007`/process_items().",
+  "sites": [
+   [
+    "tests/test_tutorial/test_python_types/test_tutorial007.py",
+    1,
+    47
+   ],
+   [
+    "tests/test_tutorial/test_python_types/test_tutorial007.py",
+    8,
+    12
+   ]
+  ]
+ }
+}

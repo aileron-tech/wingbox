@@ -1,0 +1,52 @@
+{
+ "question": {
+  "id": "fastapi-13",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "fastapi/dependencies/utils.py",
+  "name": "multipart_incorrect_install_error",
+  "kind": "variable",
+  "line": 109,
+  "col": 0
+ },
+ "files": [
+  "tests/test_multipart_installation.py"
+ ],
+ "references": 8,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `fastapi.dependencies.utils`/multipart_incorrect_install_error.",
+  "sites": [
+   [
+    "tests/test_multipart_installation.py",
+    6,
+    5
+   ],
+   [
+    "tests/test_multipart_installation.py",
+    16,
+    44
+   ],
+   [
+    "tests/test_multipart_installation.py",
+    29,
+    44
+   ],
+   [
+    "tests/test_multipart_installation.py",
+    42,
+    44
+   ],
+   [
+    "tests/test_multipart_installation.py",
+    55,
+    44
+   ],
+   [
+    "tests/test_multipart_installation.py",
+    68,
+    44
+   ]
+  ]
+ }
+}

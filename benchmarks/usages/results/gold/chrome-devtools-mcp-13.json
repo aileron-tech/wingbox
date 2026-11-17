@@ -1,0 +1,73 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-13",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/network.ts",
+  "name": "removeNetworkMock",
+  "kind": "variable",
+  "line": 326,
+  "col": 13
+ },
+ "files": [
+  "tests/network_overrides.test.ts",
+  "tests/tools/network.test.ts"
+ ],
+ "references": 10,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`network.ts`/removeNetworkMock.",
+  "sites": [
+   [
+    "tests/network_overrides.test.ts",
+    14,
+    22
+   ],
+   [
+    "tests/network_overrides.test.ts",
+    94,
+    13
+   ],
+   [
+    "tests/network_overrides.test.ts",
+    180,
+    13
+   ],
+   [
+    "tests/network_overrides.test.ts",
+    240,
+    13
+   ],
+   [
+    "tests/network_overrides.test.ts",
+    344,
+    13
+   ],
+   [
+    "tests/tools/network.test.ts",
+    17,
+    3
+   ],
+   [
+    "tests/tools/network.test.ts",
+    36,
+    46
+   ],
+   [
+    "tests/tools/network.test.ts",
+    372,
+    15
+   ],
+   [
+    "tests/tools/network.test.ts",
+    392,
+    13
+   ],
+   [
+    "tests/tools/network.test.ts",
+    413,
+    9
+   ]
+  ]
+ }
+}

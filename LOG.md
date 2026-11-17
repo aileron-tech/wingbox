@@ -1,5 +1,18 @@
 # Completion Log
 
+## 2026-11-17 - Find-usages benchmark: Wingbox, CodeGraph and Graphify on 100 symbols
+
+### Changes
+- `benchmarks/usages/` (new): 100 exported symbols drawn with a fixed seed from five public repositories (TypeScript 40, Rust 40, Python 20). Each tool answers "where is S of file X used" with its own command: `wingbox usages <X>::<S> --all`, `codegraph callers <S> --file <X>`, `graphify affected "<X>::<S>"` at depth 1 and at its default depth 2. Files are checked against the language tooling's find usages (TypeScript language service, pyright, rust-analyzer), use sites against the SCIP index of the same engines.
+- Wingbox 0.5.1: exact files 100 of 100, 1,660 of 1,660 SCIP use lines, 0 outside, same column at 1,668 of 1,668 sites, median 62 tokens. CodeGraph 1.6.2: exact 79, 680 lines, 0 files outside, 48 missing (45 in Rust), median 73 tokens. Graphify 0.9.110: 91 answered; exact 76 at depth 1, 34 at depth 2 with 1,899 files outside.
+- `run.sh` reproduces everything from nothing; `make_report.py` writes the README, which opens with "Which tool for which job" and keeps a "Why the numbers differ" section citing each tool's documentation and code; `verify.py` compares a rerun with the committed results. Tests REQ-BENCH-011 (README equals the generated report) and REQ-BENCH-012 (a site is scored by file and line); REQ-BENCH-002 covers the new folder.
+
+### Decisions
+- Sites are scored by file and line because Graphify prints no column; column agreement is reported for the two tools that print one.
+- A TypeScript `new S(...)` is a site of class S: SCIP files it under the constructor symbol.
+- Every tool is asked for its whole list (`--all`, `--limit 1000000`); tokens are characters of the text answer / 4, as in the other benchmarks. No timing: accuracy and answer size only.
+- CodeGraph runs with the environment of `benchmarks/graphify/run.sh` (private HOME, no daemon, no watcher). Graphify has no find-usages command; `affected` is the nearest and is reported at both depths.
+
 ## 2026-11-17 - Dart and Flutter language support
 
 ### Changes

@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "agent-browser-07",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/flow/mod.rs",
+  "name": "is_write",
+  "kind": "function",
+  "line": 2387,
+  "col": 7
+ },
+ "files": [
+  "cli/src/native/flow/http.rs"
+ ],
+ "references": 9,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/flow/is_write().",
+  "sites": [
+   [
+    "cli/src/native/flow/http.rs",
+    80,
+    8
+   ],
+   [
+    "cli/src/native/flow/http.rs",
+    163,
+    25
+   ]
+  ]
+ }
+}

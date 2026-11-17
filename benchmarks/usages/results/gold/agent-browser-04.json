@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "agent-browser-04",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/cdp/lightpanda.rs",
+  "name": "LightpandaLaunchOptions",
+  "kind": "struct",
+  "line": 36,
+  "col": 11
+ },
+ "files": [
+  "cli/src/native/browser.rs"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/cdp/lightpanda/LightpandaLaunchOptions#",
+  "sites": [
+   [
+    "cli/src/native/browser.rs",
+    11,
+    49
+   ],
+   [
+    "cli/src/native/browser.rs",
+    683,
+    34
+   ]
+  ]
+ }
+}

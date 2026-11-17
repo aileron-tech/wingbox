@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "immich-server-09",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/dtos/shared-link.dto.ts",
+  "name": "SharedLinkLoginDto",
+  "kind": "class",
+  "line": 101,
+  "col": 13
+ },
+ "files": [
+  "src/controllers/shared-link.controller.ts",
+  "src/services/shared-link.service.ts"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/dtos/`shared-link.dto.ts`/SharedLinkLoginDto#",
+  "sites": [
+   [
+    "src/controllers/shared-link.controller.ts",
+    25,
+    3
+   ],
+   [
+    "src/controllers/shared-link.controller.ts",
+    78,
+    18
+   ],
+   [
+    "src/services/shared-link.service.ts",
+    10,
+    3
+   ],
+   [
+    "src/services/shared-link.service.ts",
+    29,
+    35
+   ]
+  ]
+ }
+}

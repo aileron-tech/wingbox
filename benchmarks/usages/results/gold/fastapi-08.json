@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "fastapi-08",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/settings/app02/main.py",
+  "name": "app",
+  "kind": "variable",
+  "line": 8,
+  "col": 0
+ },
+ "files": [
+  "docs_src/settings/app02/test_main.py"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.settings.app02.main`/app.",
+  "sites": [
+   [
+    "docs_src/settings/app02/test_main.py",
+    4,
+    19
+   ],
+   [
+    "docs_src/settings/app02/test_main.py",
+    6,
+    21
+   ],
+   [
+    "docs_src/settings/app02/test_main.py",
+    13,
+    1
+   ]
+  ]
+ }
+}

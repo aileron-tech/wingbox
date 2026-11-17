@@ -1,0 +1,68 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-07",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/elf/constants.rs",
+  "name": "DT_JMPREL",
+  "kind": "constant",
+  "line": 143,
+  "col": 10
+ },
+ "files": [
+  "src/backend/arm/linker/elf.rs",
+  "src/backend/arm/linker/emit_dynamic.rs",
+  "src/backend/arm/linker/emit_shared.rs",
+  "src/backend/riscv/linker/emit_exec.rs",
+  "src/backend/x86/linker/elf.rs",
+  "src/backend/x86/linker/emit_exec.rs",
+  "src/backend/x86/linker/emit_shared.rs"
+ ],
+ "references": 8,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/elf/constants/DT_JMPREL.",
+  "sites": [
+   [
+    "src/backend/arm/linker/elf.rs",
+    23,
+    50
+   ],
+   [
+    "src/backend/arm/linker/emit_dynamic.rs",
+    615,
+    59
+   ],
+   [
+    "src/backend/arm/linker/emit_shared.rs",
+    1006,
+    33
+   ],
+   [
+    "src/backend/riscv/linker/emit_exec.rs",
+    24,
+    5
+   ],
+   [
+    "src/backend/riscv/linker/emit_exec.rs",
+    734,
+    17
+   ],
+   [
+    "src/backend/x86/linker/elf.rs",
+    21,
+    5
+   ],
+   [
+    "src/backend/x86/linker/emit_exec.rs",
+    779,
+    73
+   ],
+   [
+    "src/backend/x86/linker/emit_shared.rs",
+    1011,
+    27
+   ]
+  ]
+ }
+}

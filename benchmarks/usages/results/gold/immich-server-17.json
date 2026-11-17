@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "immich-server-17",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "test/factories/types.ts",
+  "name": "PersonGroupLike",
+  "kind": "type",
+  "line": 42,
+  "col": 12
+ },
+ "files": [
+  "test/factories/person-group.factory.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 test/factories/`types.ts`/PersonGroupLike#",
+  "sites": [
+   [
+    "test/factories/person-group.factory.ts",
+    3,
+    10
+   ],
+   [
+    "test/factories/person-group.factory.ts",
+    9,
+    22
+   ],
+   [
+    "test/factories/person-group.factory.ts",
+    13,
+    20
+   ]
+  ]
+ }
+}

@@ -1,0 +1,42 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-03",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/arm/assembler/encoder/load_store.rs",
+  "name": "encode_ldxp_stxp",
+  "kind": "function",
+  "line": 604,
+  "col": 14
+ },
+ "files": [
+  "src/backend/arm/assembler/encoder/mod.rs"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/arm/assembler/encoder/load_store/encode_ldxp_stxp().",
+  "sites": [
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    366,
+    19
+   ],
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    367,
+    20
+   ],
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    368,
+    19
+   ],
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    369,
+    20
+   ]
+  ]
+ }
+}

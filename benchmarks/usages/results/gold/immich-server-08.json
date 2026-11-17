@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "immich-server-08",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/dtos/queue-legacy.dto.ts",
+  "name": "QueuesResponseLegacyDto",
+  "kind": "class",
+  "line": 45,
+  "col": 13
+ },
+ "files": [
+  "src/controllers/job.controller.ts",
+  "src/services/queue.service.ts"
+ ],
+ "references": 6,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/dtos/`queue-legacy.dto.ts`/QueuesResponseLegacyDto#",
+  "sites": [
+   [
+    "src/controllers/job.controller.ts",
+    6,
+    34
+   ],
+   [
+    "src/controllers/job.controller.ts",
+    28,
+    51
+   ],
+   [
+    "src/services/queue.service.ts",
+    7,
+    3
+   ],
+   [
+    "src/services/queue.service.ts",
+    150,
+    46
+   ]
+  ]
+ }
+}

@@ -1,0 +1,52 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-08",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/ToolDefinition.ts",
+  "name": "LighthouseAuditNode",
+  "kind": "interface",
+  "line": 188,
+  "col": 17
+ },
+ "files": [
+  "src/tools/lighthouse.ts"
+ ],
+ "references": 7,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`ToolDefinition.ts`/LighthouseAuditNode#",
+  "sites": [
+   [
+    "src/tools/lighthouse.ts",
+    25,
+    8
+   ],
+   [
+    "src/tools/lighthouse.ts",
+    59,
+    55
+   ],
+   [
+    "src/tools/lighthouse.ts",
+    60,
+    15
+   ],
+   [
+    "src/tools/lighthouse.ts",
+    82,
+    22
+   ],
+   [
+    "src/tools/lighthouse.ts",
+    104,
+    22
+   ],
+   [
+    "src/tools/lighthouse.ts",
+    149,
+    35
+   ]
+  ]
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-10",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/i686/linker/types.rs",
+  "name": "DT_SONAME",
+  "kind": "constant",
+  "line": 99,
+  "col": 17
+ },
+ "files": [
+  "src/backend/i686/linker/shared.rs"
+ ],
+ "references": 1,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/i686/linker/types/DT_SONAME.",
+  "sites": [
+   [
+    "src/backend/i686/linker/shared.rs",
+    777,
+    37
+   ]
+  ]
+ }
+}

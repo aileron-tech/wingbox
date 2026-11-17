@@ -1,0 +1,168 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-14",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/pages.ts",
+  "name": "newPage",
+  "kind": "variable",
+  "line": 107,
+  "col": 13
+ },
+ "files": [
+  "tests/McpResponse.test.ts",
+  "tests/tools/pages.test.ts"
+ ],
+ "references": 29,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`pages.ts`/newPage.",
+  "sites": [
+   [
+    "tests/McpResponse.test.ts",
+    27,
+    3
+   ],
+   [
+    "tests/McpResponse.test.ts",
+    1600,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    16,
+    3
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    237,
+    13
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    278,
+    9
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    305,
+    9
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    325,
+    9
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    343,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    357,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    375,
+    20
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    422,
+    20
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    454,
+    20
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    473,
+    20
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    503,
+    20
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    522,
+    22
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    546,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    567,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    593,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    617,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    629,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    650,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    662,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    682,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    705,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    719,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    752,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    768,
+    13
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    935,
+    15
+   ],
+   [
+    "tests/tools/pages.test.ts",
+    948,
+    15
+   ]
+  ]
+ }
+}

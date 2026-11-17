@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-16",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/riscv/linker/relocations.rs",
+  "name": "R_RISCV_RVC_BRANCH",
+  "kind": "constant",
+  "line": 50,
+  "col": 10
+ },
+ "files": [
+  "src/backend/riscv/linker/reloc.rs"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/riscv/linker/relocations/R_RISCV_RVC_BRANCH.",
+  "sites": [
+   [
+    "src/backend/riscv/linker/reloc.rs",
+    22,
+    20
+   ],
+   [
+    "src/backend/riscv/linker/reloc.rs",
+    291,
+    9
+   ]
+  ]
+ }
+}

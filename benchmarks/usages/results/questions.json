@@ -1,0 +1,1053 @@
+{
+ "seed": 20261116,
+ "per_repo": 20,
+ "repos": [
+  {
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "reference_tool": "typescript 6.0.3",
+   "source_files": 296,
+   "exported_symbols": 639,
+   "tried": 26,
+   "used": 20
+  },
+  {
+   "repo": "immich-server",
+   "language": "typescript",
+   "reference_tool": "typescript 6.0.3",
+   "source_files": 707,
+   "exported_symbols": 1720,
+   "tried": 29,
+   "used": 20
+  },
+  {
+   "repo": "agent-browser",
+   "language": "rust",
+   "reference_tool": "rust-analyzer 2026-11-02",
+   "source_files": 122,
+   "exported_symbols": 756,
+   "tried": 25,
+   "used": 20
+  },
+  {
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "reference_tool": "rust-analyzer 2026-11-02",
+   "source_files": 351,
+   "exported_symbols": 1479,
+   "tried": 24,
+   "used": 20
+  },
+  {
+   "repo": "fastapi",
+   "language": "python",
+   "reference_tool": "pyright 1.1.414",
+   "source_files": 1223,
+   "exported_symbols": 6716,
+   "tried": 607,
+   "used": 20
+  }
+ ],
+ "questions": [
+  {
+   "id": "chrome-devtools-mcp-01",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/LogpointManager.ts",
+   "name": "LogpointManager",
+   "kind": "class",
+   "line": 179,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-02",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/ToolHandler.ts",
+   "name": "ToolHandler",
+   "kind": "class",
+   "line": 242,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-03",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/formatters/ConsoleFormatter.ts",
+   "name": "ConsoleFormatter",
+   "kind": "class",
+   "line": 69,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-04",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/formatters/HeapSnapshotFormatter.ts",
+   "name": "formatName",
+   "kind": "function",
+   "line": 34,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-05",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/telemetry/metricsRegistry.ts",
+   "name": "validateEnumHomogeneity",
+   "kind": "function",
+   "line": 22,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-06",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/telemetry/transformation.ts",
+   "name": "stripUnderscoreBeforeNumber",
+   "kind": "function",
+   "line": 157,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-07",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/telemetry/watchdog/ClearcutSender.ts",
+   "name": "ClearcutSender",
+   "kind": "class",
+   "line": 42,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-08",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/ToolDefinition.ts",
+   "name": "LighthouseAuditNode",
+   "kind": "interface",
+   "line": 188,
+   "col": 17
+  },
+  {
+   "id": "chrome-devtools-mcp-09",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/ToolDefinition.ts",
+   "name": "BrowserlessContext",
+   "kind": "type",
+   "line": 412,
+   "col": 12
+  },
+  {
+   "id": "chrome-devtools-mcp-10",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/comments.ts",
+   "name": "resolveDevtoolsComment",
+   "kind": "variable",
+   "line": 123,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-11",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/memory.ts",
+   "name": "takeHeapSnapshot",
+   "kind": "variable",
+   "line": 56,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-12",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/memory.ts",
+   "name": "getHeapSnapshotRetainingPaths",
+   "kind": "variable",
+   "line": 300,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-13",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/network.ts",
+   "name": "removeNetworkMock",
+   "kind": "variable",
+   "line": 326,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-14",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/tools/pages.ts",
+   "name": "newPage",
+   "kind": "variable",
+   "line": 107,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-15",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/utils/logger.ts",
+   "name": "logger",
+   "kind": "variable",
+   "line": 134,
+   "col": 13
+  },
+  {
+   "id": "chrome-devtools-mcp-16",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "src/utils/network.ts",
+   "name": "validateNetworkUrl",
+   "kind": "function",
+   "line": 55,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-17",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "tests/mocks.ts",
+   "name": "createMockDialog",
+   "kind": "function",
+   "line": 456,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-18",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "tests/mocks.ts",
+   "name": "createMockCSSAtRule",
+   "kind": "function",
+   "line": 875,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-19",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "tests/mocks.ts",
+   "name": "createMockDiffObject",
+   "kind": "function",
+   "line": 1239,
+   "col": 16
+  },
+  {
+   "id": "chrome-devtools-mcp-20",
+   "repo": "chrome-devtools-mcp",
+   "language": "typescript",
+   "file": "tests/utils.ts",
+   "name": "getTextContent",
+   "kind": "function",
+   "line": 61,
+   "col": 16
+  },
+  {
+   "id": "immich-server-01",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/commands/grant-admin.ts",
+   "name": "GrantAdminCommand",
+   "kind": "class",
+   "line": 14,
+   "col": 13
+  },
+  {
+   "id": "immich-server-02",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/controllers/library.controller.ts",
+   "name": "LibraryController",
+   "kind": "class",
+   "line": 19,
+   "col": 13
+  },
+  {
+   "id": "immich-server-03",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/database.ts",
+   "name": "AlbumUser",
+   "kind": "type",
+   "line": 32,
+   "col": 12
+  },
+  {
+   "id": "immich-server-04",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/decorators.ts",
+   "name": "EventConfig",
+   "kind": "type",
+   "line": 143,
+   "col": 12
+  },
+  {
+   "id": "immich-server-05",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/activity.dto.ts",
+   "name": "ActivityDto",
+   "kind": "class",
+   "line": 78,
+   "col": 13
+  },
+  {
+   "id": "immich-server-06",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/album.dto.ts",
+   "name": "MapAlbumDto",
+   "kind": "type",
+   "line": 219,
+   "col": 12
+  },
+  {
+   "id": "immich-server-07",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/editing.dto.ts",
+   "name": "CropParameters",
+   "kind": "type",
+   "line": 136,
+   "col": 12
+  },
+  {
+   "id": "immich-server-08",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/queue-legacy.dto.ts",
+   "name": "QueuesResponseLegacyDto",
+   "kind": "class",
+   "line": 45,
+   "col": 13
+  },
+  {
+   "id": "immich-server-09",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/dtos/shared-link.dto.ts",
+   "name": "SharedLinkLoginDto",
+   "kind": "class",
+   "line": 101,
+   "col": 13
+  },
+  {
+   "id": "immich-server-10",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/enum.ts",
+   "name": "ImageFormatSchema",
+   "kind": "variable",
+   "line": 616,
+   "col": 13
+  },
+  {
+   "id": "immich-server-11",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/enum.ts",
+   "name": "ImmichWorker",
+   "kind": "enum",
+   "line": 679,
+   "col": 12
+  },
+  {
+   "id": "immich-server-12",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/middleware/auth.guard.ts",
+   "name": "AuthenticatedOptions",
+   "kind": "type",
+   "line": 24,
+   "col": 12
+  },
+  {
+   "id": "immich-server-13",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/repositories/search.repository.ts",
+   "name": "AssetDuplicateResult",
+   "kind": "interface",
+   "line": 182,
+   "col": 17
+  },
+  {
+   "id": "immich-server-14",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/repositories/workflow.repository.ts",
+   "name": "WorkflowRepository",
+   "kind": "class",
+   "line": 18,
+   "col": 13
+  },
+  {
+   "id": "immich-server-15",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/schema/tables/asset.table.ts",
+   "name": "AssetTable",
+   "kind": "class",
+   "line": 71,
+   "col": 13
+  },
+  {
+   "id": "immich-server-16",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "src/utils/asset.util.ts",
+   "name": "onBeforeLink",
+   "kind": "variable",
+   "line": 145,
+   "col": 13
+  },
+  {
+   "id": "immich-server-17",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "test/factories/types.ts",
+   "name": "PersonGroupLike",
+   "kind": "type",
+   "line": 42,
+   "col": 12
+  },
+  {
+   "id": "immich-server-18",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "test/medium.factory.ts",
+   "name": "SyncTestContext",
+   "kind": "class",
+   "line": 410,
+   "col": 13
+  },
+  {
+   "id": "immich-server-19",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "test/repositories/telemetry.repository.mock.ts",
+   "name": "ITelemetryRepositoryMock",
+   "kind": "type",
+   "line": 16,
+   "col": 12
+  },
+  {
+   "id": "immich-server-20",
+   "repo": "immich-server",
+   "language": "typescript",
+   "file": "test/utils.ts",
+   "name": "mockDuplex",
+   "kind": "variable",
+   "line": 560,
+   "col": 13
+  },
+  {
+   "id": "agent-browser-01",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/connection.rs",
+   "name": "INTERNAL_DAEMON_SHUTDOWN_ACTION",
+   "kind": "constant",
+   "line": 25,
+   "col": 17
+  },
+  {
+   "id": "agent-browser-02",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/connection.rs",
+   "name": "Response",
+   "kind": "struct",
+   "line": 37,
+   "col": 11
+  },
+  {
+   "id": "agent-browser-03",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/connection.rs",
+   "name": "is_agent_browser_process",
+   "kind": "function",
+   "line": 201,
+   "col": 7
+  },
+  {
+   "id": "agent-browser-04",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/cdp/lightpanda.rs",
+   "name": "LightpandaLaunchOptions",
+   "kind": "struct",
+   "line": 36,
+   "col": 11
+  },
+  {
+   "id": "agent-browser-05",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/mod.rs",
+   "name": "may_become_candidate",
+   "kind": "function",
+   "line": 676,
+   "col": 14
+  },
+  {
+   "id": "agent-browser-06",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/mod.rs",
+   "name": "list_flows",
+   "kind": "function",
+   "line": 1944,
+   "col": 7
+  },
+  {
+   "id": "agent-browser-07",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/mod.rs",
+   "name": "is_write",
+   "kind": "function",
+   "line": 2387,
+   "col": 7
+  },
+  {
+   "id": "agent-browser-08",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/net.rs",
+   "name": "RecordedReach",
+   "kind": "enum",
+   "line": 189,
+   "col": 9
+  },
+  {
+   "id": "agent-browser-09",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/outcome.rs",
+   "name": "TierResult",
+   "kind": "struct",
+   "line": 63,
+   "col": 11
+  },
+  {
+   "id": "agent-browser-10",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/replay.rs",
+   "name": "replay_commands",
+   "kind": "function",
+   "line": 8,
+   "col": 7
+  },
+  {
+   "id": "agent-browser-11",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/flow/send.rs",
+   "name": "Senders",
+   "kind": "trait",
+   "line": 108,
+   "col": 10
+  },
+  {
+   "id": "agent-browser-12",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/screenshot.rs",
+   "name": "take_screenshot",
+   "kind": "function",
+   "line": 98,
+   "col": 13
+  },
+  {
+   "id": "agent-browser-13",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/tab_binding.rs",
+   "name": "TabBinding",
+   "kind": "struct",
+   "line": 26,
+   "col": 11
+  },
+  {
+   "id": "agent-browser-14",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/tab_binding.rs",
+   "name": "pinned_owner",
+   "kind": "function",
+   "line": 149,
+   "col": 7
+  },
+  {
+   "id": "agent-browser-15",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/webdriver/client.rs",
+   "name": "WebDriverClient",
+   "kind": "struct",
+   "line": 4,
+   "col": 11
+  },
+  {
+   "id": "agent-browser-16",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/native/webmcp.rs",
+   "name": "cancel_error",
+   "kind": "function",
+   "line": 630,
+   "col": 7
+  },
+  {
+   "id": "agent-browser-17",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/output.rs",
+   "name": "format_webmcp_context",
+   "kind": "function",
+   "line": 565,
+   "col": 14
+  },
+  {
+   "id": "agent-browser-18",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/plugins.rs",
+   "name": "close_browser_provider_with_plugins",
+   "kind": "function",
+   "line": 371,
+   "col": 13
+  },
+  {
+   "id": "agent-browser-19",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/session_settings/patch.rs",
+   "name": "Requested",
+   "kind": "enum",
+   "line": 15,
+   "col": 9
+  },
+  {
+   "id": "agent-browser-20",
+   "repo": "agent-browser",
+   "language": "rust",
+   "file": "cli/src/session_settings/store.rs",
+   "name": "orphan_sessions",
+   "kind": "function",
+   "line": 302,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-01",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/assembler/encoder/compare_branch.rs",
+   "name": "encode_ccmp_ccmn",
+   "kind": "function",
+   "line": 52,
+   "col": 14
+  },
+  {
+   "id": "claudes-c-compiler-02",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/assembler/encoder/fp_scalar.rs",
+   "name": "encode_fneg",
+   "kind": "function",
+   "line": 82,
+   "col": 14
+  },
+  {
+   "id": "claudes-c-compiler-03",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/assembler/encoder/load_store.rs",
+   "name": "encode_ldxp_stxp",
+   "kind": "function",
+   "line": 604,
+   "col": 14
+  },
+  {
+   "id": "claudes-c-compiler-04",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/assembler/encoder/neon.rs",
+   "name": "encode_neon_ldnr",
+   "kind": "function",
+   "line": 1528,
+   "col": 14
+  },
+  {
+   "id": "claudes-c-compiler-05",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/arm/linker/types.rs",
+   "name": "arm_should_replace_extra",
+   "kind": "function",
+   "line": 91,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-06",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/elf/constants.rs",
+   "name": "PT_DYNAMIC",
+   "kind": "constant",
+   "line": 108,
+   "col": 10
+  },
+  {
+   "id": "claudes-c-compiler-07",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/elf/constants.rs",
+   "name": "DT_JMPREL",
+   "kind": "constant",
+   "line": 143,
+   "col": 10
+  },
+  {
+   "id": "claudes-c-compiler-08",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/elf/io.rs",
+   "name": "w32",
+   "kind": "function",
+   "line": 67,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-09",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/generation.rs",
+   "name": "is_i128_type",
+   "kind": "function",
+   "line": 1380,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-10",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/i686/linker/types.rs",
+   "name": "DT_SONAME",
+   "kind": "constant",
+   "line": 99,
+   "col": 17
+  },
+  {
+   "id": "claudes-c-compiler-11",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/linker_common/archive.rs",
+   "name": "load_thin_archive_elf64",
+   "kind": "function",
+   "line": 109,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-12",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/assembler/encoder/vector.rs",
+   "name": "encode_vsetivli",
+   "kind": "function",
+   "line": 59,
+   "col": 14
+  },
+  {
+   "id": "claudes-c-compiler-13",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/assembler/encoder/vector.rs",
+   "name": "encode_vmv_v_x",
+   "kind": "function",
+   "line": 163,
+   "col": 14
+  },
+  {
+   "id": "claudes-c-compiler-14",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/assembler/parser.rs",
+   "name": "SizeExpr",
+   "kind": "enum",
+   "line": 79,
+   "col": 9
+  },
+  {
+   "id": "claudes-c-compiler-15",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/linker/input.rs",
+   "name": "resolve_archives",
+   "kind": "function",
+   "line": 204,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-16",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/riscv/linker/relocations.rs",
+   "name": "R_RISCV_RVC_BRANCH",
+   "kind": "constant",
+   "line": 50,
+   "col": 10
+  },
+  {
+   "id": "claudes-c-compiler-17",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/backend/x86/linker/link.rs",
+   "name": "link_shared",
+   "kind": "function",
+   "line": 208,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-18",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/frontend/preprocessor/utils.rs",
+   "name": "is_ident_start",
+   "kind": "function",
+   "line": 10,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-19",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/frontend/sema/type_checker.rs",
+   "name": "enum_constant_type",
+   "kind": "function",
+   "line": 39,
+   "col": 7
+  },
+  {
+   "id": "claudes-c-compiler-20",
+   "repo": "claudes-c-compiler",
+   "language": "rust",
+   "file": "src/ir/lowering/lower.rs",
+   "name": "Lowerer",
+   "kind": "struct",
+   "line": 50,
+   "col": 11
+  },
+  {
+   "id": "fastapi-01",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/bigger_applications/app/internal/admin.py",
+   "name": "router",
+   "kind": "variable",
+   "line": 3,
+   "col": 0
+  },
+  {
+   "id": "fastapi-02",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/events/tutorial003.py",
+   "name": "fake_answer_to_everything_ml_model",
+   "kind": "function",
+   "line": 6,
+   "col": 4
+  },
+  {
+   "id": "fastapi-03",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/generate_clients/tutorial003.py",
+   "name": "app",
+   "kind": "variable",
+   "line": 10,
+   "col": 0
+  },
+  {
+   "id": "fastapi-04",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/graphql_/tutorial001.py",
+   "name": "app",
+   "kind": "variable",
+   "line": 24,
+   "col": 0
+  },
+  {
+   "id": "fastapi-05",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/python_types/tutorial004.py",
+   "name": "get_name_with_age",
+   "kind": "function",
+   "line": 1,
+   "col": 4
+  },
+  {
+   "id": "fastapi-06",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/python_types/tutorial007.py",
+   "name": "process_items",
+   "kind": "function",
+   "line": 1,
+   "col": 4
+  },
+  {
+   "id": "fastapi-07",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/response_cookies/tutorial001.py",
+   "name": "app",
+   "kind": "variable",
+   "line": 4,
+   "col": 0
+  },
+  {
+   "id": "fastapi-08",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/settings/app02/main.py",
+   "name": "app",
+   "kind": "variable",
+   "line": 8,
+   "col": 0
+  },
+  {
+   "id": "fastapi-09",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "docs_src/settings/app03/config.py",
+   "name": "Settings",
+   "kind": "class",
+   "line": 4,
+   "col": 6
+  },
+  {
+   "id": "fastapi-10",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/_compat/shared.py",
+   "name": "lenient_issubclass",
+   "kind": "function",
+   "line": 47,
+   "col": 4
+  },
+  {
+   "id": "fastapi-11",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/_compat/v2.py",
+   "name": "get_missing_field_error",
+   "kind": "function",
+   "line": 406,
+   "col": 4
+  },
+  {
+   "id": "fastapi-12",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/datastructures.py",
+   "name": "DefaultPlaceholder",
+   "kind": "class",
+   "line": 153,
+   "col": 6
+  },
+  {
+   "id": "fastapi-13",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/dependencies/utils.py",
+   "name": "multipart_incorrect_install_error",
+   "kind": "variable",
+   "line": 109,
+   "col": 0
+  },
+  {
+   "id": "fastapi-14",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/encoders.py",
+   "name": "jsonable_encoder",
+   "kind": "function",
+   "line": 129,
+   "col": 4
+  },
+  {
+   "id": "fastapi-15",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "fastapi/params.py",
+   "name": "Header",
+   "kind": "class",
+   "line": 321,
+   "col": 6
+  },
+  {
+   "id": "fastapi-16",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "scripts/prepare_release.py",
+   "name": "BumpType",
+   "kind": "variable",
+   "line": 23,
+   "col": 0
+  },
+  {
+   "id": "fastapi-17",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "scripts/prepare_release.py",
+   "name": "update_version_file",
+   "kind": "function",
+   "line": 55,
+   "col": 4
+  },
+  {
+   "id": "fastapi-18",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "tests/benchmarks/utils.py",
+   "name": "ROUTE_COUNT",
+   "kind": "variable",
+   "line": 7,
+   "col": 0
+  },
+  {
+   "id": "fastapi-19",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "tests/main.py",
+   "name": "app",
+   "kind": "variable",
+   "line": 10,
+   "col": 0
+  },
+  {
+   "id": "fastapi-20",
+   "repo": "fastapi",
+   "language": "python",
+   "file": "tests/test_request_params/test_form/utils.py",
+   "name": "get_body_model_name",
+   "kind": "function",
+   "line": 4,
+   "col": 4
+  }
+ ]
+}

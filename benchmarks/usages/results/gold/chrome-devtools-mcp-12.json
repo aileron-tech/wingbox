@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-12",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/memory.ts",
+  "name": "getHeapSnapshotRetainingPaths",
+  "kind": "variable",
+  "line": 300,
+  "col": 13
+ },
+ "files": [
+  "tests/tools/memory.test.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`memory.ts`/getHeapSnapshotRetainingPaths.",
+  "sites": [
+   [
+    "tests/tools/memory.test.ts",
+    21,
+    3
+   ],
+   [
+    "tests/tools/memory.test.ts",
+    442,
+    13
+   ],
+   [
+    "tests/tools/memory.test.ts",
+    468,
+    13
+   ]
+  ]
+ }
+}

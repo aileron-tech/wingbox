@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-01",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/arm/assembler/encoder/compare_branch.rs",
+  "name": "encode_ccmp_ccmn",
+  "kind": "function",
+  "line": 52,
+  "col": 14
+ },
+ "files": [
+  "src/backend/arm/assembler/encoder/mod.rs"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/arm/assembler/encoder/compare_branch/encode_ccmp_ccmn().",
+  "sites": [
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    304,
+    19
+   ],
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    305,
+    19
+   ]
+  ]
+ }
+}

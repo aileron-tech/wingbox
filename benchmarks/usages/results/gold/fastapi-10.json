@@ -1,0 +1,166 @@
+{
+ "question": {
+  "id": "fastapi-10",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "fastapi/_compat/shared.py",
+  "name": "lenient_issubclass",
+  "kind": "function",
+  "line": 47,
+  "col": 4
+ },
+ "files": [
+  "fastapi/_compat/__init__.py",
+  "fastapi/_compat/v2.py",
+  "fastapi/dependencies/utils.py",
+  "fastapi/openapi/utils.py",
+  "fastapi/routing.py"
+ ],
+ "references": 37,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `fastapi._compat.shared`/lenient_issubclass().",
+  "sites": [
+   [
+    "fastapi/_compat/__init__.py",
+    19,
+    21
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    18,
+    29
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    250,
+    8
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    428,
+    12
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    481,
+    16
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    484,
+    24
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    495,
+    8
+   ],
+   [
+    "fastapi/_compat/v2.py",
+    500,
+    10
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    49,
+    5
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    179,
+    8
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    188,
+    8
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    389,
+    8
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    392,
+    10
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    395,
+    10
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    398,
+    10
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    401,
+    10
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    404,
+    10
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    513,
+    28
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    1005,
+    16
+   ],
+   [
+    "fastapi/dependencies/utils.py",
+    1098,
+    17
+   ],
+   [
+    "fastapi/openapi/utils.py",
+    16,
+    5
+   ],
+   [
+    "fastapi/openapi/utils.py",
+    450,
+    24
+   ],
+   [
+    "fastapi/routing.py",
+    50,
+    5
+   ],
+   [
+    "fastapi/routing.py",
+    422,
+    21
+   ],
+   [
+    "fastapi/routing.py",
+    1128,
+    44
+   ],
+   [
+    "fastapi/routing.py",
+    1136,
+    12
+   ],
+   [
+    "fastapi/routing.py",
+    1149,
+    24
+   ],
+   [
+    "fastapi/routing.py",
+    1150,
+    27
+   ]
+  ]
+ }
+}

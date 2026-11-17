@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "agent-browser-17",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/output.rs",
+  "name": "format_webmcp_context",
+  "kind": "function",
+  "line": 565,
+  "col": 14
+ },
+ "files": [
+  "cli/src/mcp.rs"
+ ],
+ "references": 7,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/output/format_webmcp_context().",
+  "sites": [
+   [
+    "cli/src/mcp.rs",
+    4647,
+    34
+   ]
+  ]
+ }
+}

@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "agent-browser-14",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/tab_binding.rs",
+  "name": "pinned_owner",
+  "kind": "function",
+  "line": 149,
+  "col": 7
+ },
+ "files": [
+  "cli/src/native/actions.rs"
+ ],
+ "references": 9,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/tab_binding/pinned_owner().",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    8555,
+    50
+   ]
+  ]
+ }
+}

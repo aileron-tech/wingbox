@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-19",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "test/repositories/telemetry.repository.mock.ts",
+  "name": "ITelemetryRepositoryMock",
+  "kind": "type",
+  "line": 16,
+  "col": 12
+ },
+ "files": [
+  "test/utils.ts"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 test/repositories/`telemetry.repository.mock.ts`/ITelemetryRepositoryMock#",
+  "sites": [
+   [
+    "test/utils.ts",
+    96,
+    10
+   ],
+   [
+    "test/utils.ts",
+    310,
+    49
+   ]
+  ]
+ }
+}

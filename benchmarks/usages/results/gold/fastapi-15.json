@@ -1,0 +1,64 @@
+{
+ "question": {
+  "id": "fastapi-15",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "fastapi/params.py",
+  "name": "Header",
+  "kind": "class",
+  "line": 321,
+  "col": 6
+ },
+ "files": [
+  "fastapi/dependencies/utils.py",
+  "fastapi/param_functions.py",
+  "tests/test_params_repr.py"
+ ],
+ "references": 8,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `fastapi.params`/Header#",
+  "sites": [
+   [
+    "fastapi/dependencies/utils.py",
+    186,
+    59
+   ],
+   [
+    "fastapi/param_functions.py",
+    1030,
+    19
+   ],
+   [
+    "tests/test_params_repr.py",
+    3,
+    42
+   ],
+   [
+    "tests/test_params_repr.py",
+    58,
+    17
+   ],
+   [
+    "tests/test_params_repr.py",
+    62,
+    17
+   ],
+   [
+    "tests/test_params_repr.py",
+    66,
+    17
+   ],
+   [
+    "tests/test_params_repr.py",
+    70,
+    17
+   ],
+   [
+    "tests/test_params_repr.py",
+    74,
+    17
+   ]
+  ]
+ }
+}

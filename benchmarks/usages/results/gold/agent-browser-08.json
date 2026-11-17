@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "agent-browser-08",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/flow/net.rs",
+  "name": "RecordedReach",
+  "kind": "enum",
+  "line": 189,
+  "col": 9
+ },
+ "files": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/flow/mod.rs"
+ ],
+ "references": 19,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/flow/net/RecordedReach#",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    12520,
+    26
+   ],
+   [
+    "cli/src/native/actions.rs",
+    12521,
+    26
+   ],
+   [
+    "cli/src/native/actions.rs",
+    12522,
+    26
+   ],
+   [
+    "cli/src/native/flow/mod.rs",
+    30,
+    36
+   ]
+  ]
+ }
+}

@@ -1,0 +1,84 @@
+{
+ "question": {
+  "id": "agent-browser-15",
+  "repo": "agent-browser",
+  "language": "rust",
+  "file": "cli/src/native/webdriver/client.rs",
+  "name": "WebDriverClient",
+  "kind": "struct",
+  "line": 4,
+  "col": 11
+ },
+ "files": [
+  "cli/src/native/actions.rs",
+  "cli/src/native/webdriver/appium.rs",
+  "cli/src/native/webdriver/backend.rs"
+ ],
+ "references": 20,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo agent-browser 0.43.0 bin/agent_browser/native/webdriver/client/WebDriverClient#",
+  "sites": [
+   [
+    "cli/src/native/actions.rs",
+    6213,
+    51
+   ],
+   [
+    "cli/src/native/actions.rs",
+    6256,
+    48
+   ],
+   [
+    "cli/src/native/actions.rs",
+    16757,
+    47
+   ],
+   [
+    "cli/src/native/actions.rs",
+    16822,
+    51
+   ],
+   [
+    "cli/src/native/actions.rs",
+    18358,
+    47
+   ],
+   [
+    "cli/src/native/actions.rs",
+    18392,
+    47
+   ],
+   [
+    "cli/src/native/actions.rs",
+    18427,
+    47
+   ],
+   [
+    "cli/src/native/webdriver/appium.rs",
+    5,
+    20
+   ],
+   [
+    "cli/src/native/webdriver/appium.rs",
+    11,
+    17
+   ],
+   [
+    "cli/src/native/webdriver/appium.rs",
+    19,
+    22
+   ],
+   [
+    "cli/src/native/webdriver/backend.rs",
+    45,
+    28
+   ],
+   [
+    "cli/src/native/webdriver/backend.rs",
+    49,
+    39
+   ]
+  ]
+ }
+}

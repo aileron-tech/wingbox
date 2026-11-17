@@ -1,0 +1,42 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-18",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "tests/mocks.ts",
+  "name": "createMockCSSAtRule",
+  "kind": "function",
+  "line": 875,
+  "col": 16
+ },
+ "files": [
+  "tests/formatters/CssFormatter.test.ts"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 tests/`mocks.ts`/createMockCSSAtRule().",
+  "sites": [
+   [
+    "tests/formatters/CssFormatter.test.ts",
+    16,
+    3
+   ],
+   [
+    "tests/formatters/CssFormatter.test.ts",
+    522,
+    20
+   ],
+   [
+    "tests/formatters/CssFormatter.test.ts",
+    536,
+    20
+   ],
+   [
+    "tests/formatters/CssFormatter.test.ts",
+    547,
+    20
+   ]
+  ]
+ }
+}

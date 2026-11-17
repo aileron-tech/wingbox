@@ -1,0 +1,27 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-12",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/riscv/assembler/encoder/vector.rs",
+  "name": "encode_vsetivli",
+  "kind": "function",
+  "line": 59,
+  "col": 14
+ },
+ "files": [
+  "src/backend/riscv/assembler/encoder/mod.rs"
+ ],
+ "references": 1,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/riscv/assembler/encoder/vector/encode_vsetivli().",
+  "sites": [
+   [
+    "src/backend/riscv/assembler/encoder/mod.rs",
+    865,
+    23
+   ]
+  ]
+ }
+}

@@ -1,0 +1,43 @@
+{
+ "question": {
+  "id": "immich-server-05",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/dtos/activity.dto.ts",
+  "name": "ActivityDto",
+  "kind": "class",
+  "line": 78,
+  "col": 13
+ },
+ "files": [
+  "src/controllers/activity.controller.ts",
+  "src/services/activity.service.ts"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/dtos/`activity.dto.ts`/ActivityDto#",
+  "sites": [
+   [
+    "src/controllers/activity.controller.ts",
+    7,
+    3
+   ],
+   [
+    "src/controllers/activity.controller.ts",
+    61,
+    62
+   ],
+   [
+    "src/services/activity.service.ts",
+    5,
+    3
+   ],
+   [
+    "src/services/activity.service.ts",
+    32,
+    43
+   ]
+  ]
+ }
+}

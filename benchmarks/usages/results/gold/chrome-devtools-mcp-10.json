@@ -1,0 +1,47 @@
+{
+ "question": {
+  "id": "chrome-devtools-mcp-10",
+  "repo": "chrome-devtools-mcp",
+  "language": "typescript",
+  "file": "src/tools/comments.ts",
+  "name": "resolveDevtoolsComment",
+  "kind": "variable",
+  "line": 123,
+  "col": 13
+ },
+ "files": [
+  "tests/tools/comments.test.ts"
+ ],
+ "references": 5,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm chrome-devtools-mcp 1.13.0 src/tools/`comments.ts`/resolveDevtoolsComment.",
+  "sites": [
+   [
+    "tests/tools/comments.test.ts",
+    16,
+    3
+   ],
+   [
+    "tests/tools/comments.test.ts",
+    268,
+    13
+   ],
+   [
+    "tests/tools/comments.test.ts",
+    288,
+    13
+   ],
+   [
+    "tests/tools/comments.test.ts",
+    314,
+    13
+   ],
+   [
+    "tests/tools/comments.test.ts",
+    331,
+    13
+   ]
+  ]
+ }
+}

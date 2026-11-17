@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-05",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "docs_src/python_types/tutorial004.py",
+  "name": "get_name_with_age",
+  "kind": "function",
+  "line": 1,
+  "col": 4
+ },
+ "files": [
+  "tests/test_tutorial/test_python_types/test_tutorial004.py"
+ ],
+ "references": 2,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `docs_src.python_types.tutorial004`/get_name_with_age().",
+  "sites": [
+   [
+    "tests/test_tutorial/test_python_types/test_tutorial004.py",
+    1,
+    47
+   ],
+   [
+    "tests/test_tutorial/test_python_types/test_tutorial004.py",
+    5,
+    12
+   ]
+  ]
+ }
+}

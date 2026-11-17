@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "immich-server-12",
+  "repo": "immich-server",
+  "language": "typescript",
+  "file": "src/middleware/auth.guard.ts",
+  "name": "AuthenticatedOptions",
+  "kind": "type",
+  "line": 24,
+  "col": 12
+ },
+ "files": [
+  "src/controllers/index.spec.ts"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-typescript npm immich 3.4.0-rc.0 src/middleware/`auth.guard.ts`/AuthenticatedOptions#",
+  "sites": [
+   [
+    "src/controllers/index.spec.ts",
+    5,
+    10
+   ],
+   [
+    "src/controllers/index.spec.ts",
+    68,
+    40
+   ]
+  ]
+ }
+}

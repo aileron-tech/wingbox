@@ -1,0 +1,32 @@
+{
+ "question": {
+  "id": "fastapi-16",
+  "repo": "fastapi",
+  "language": "python",
+  "file": "scripts/prepare_release.py",
+  "name": "BumpType",
+  "kind": "variable",
+  "line": 23,
+  "col": 0
+ },
+ "files": [
+  "tests/test_prepare_release.py"
+ ],
+ "references": 4,
+ "scip": {
+  "found": true,
+  "symbol": "scip-python python fastapi pinned `scripts.prepare_release`/BumpType.",
+  "sites": [
+   [
+    "tests/test_prepare_release.py",
+    9,
+    5
+   ],
+   [
+    "tests/test_prepare_release.py",
+    32,
+    51
+   ]
+  ]
+ }
+}

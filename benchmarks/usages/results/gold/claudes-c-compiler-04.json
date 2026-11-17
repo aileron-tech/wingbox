@@ -1,0 +1,37 @@
+{
+ "question": {
+  "id": "claudes-c-compiler-04",
+  "repo": "claudes-c-compiler",
+  "language": "rust",
+  "file": "src/backend/arm/assembler/encoder/neon.rs",
+  "name": "encode_neon_ldnr",
+  "kind": "function",
+  "line": 1528,
+  "col": 14
+ },
+ "files": [
+  "src/backend/arm/assembler/encoder/mod.rs"
+ ],
+ "references": 3,
+ "scip": {
+  "found": true,
+  "symbol": "rust-analyzer cargo ccc 0.1.0 lib/backend/arm/assembler/encoder/neon/encode_neon_ldnr().",
+  "sites": [
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    655,
+    19
+   ],
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    656,
+    19
+   ],
+   [
+    "src/backend/arm/assembler/encoder/mod.rs",
+    657,
+    19
+   ]
+  ]
+ }
+}
