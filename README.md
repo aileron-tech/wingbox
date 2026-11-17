@@ -59,6 +59,32 @@ static parsing: no LLM call, no vector database, and no network access to build
 or query it. Wingbox does not embed your code; to read folder names it uses a
 built-in table of word vectors for architecture terms.
 
+## INSTALL AND RUN
+
+```sh
+pipx install wingbox && wingbox install
+```
+
+```sh
+wingbox build .
+```
+
+The first line installs the command and sets it up for every coding assistant on
+the machine; the second maps the repository you are in. Then ask your agent, or
+run `wingbox impact path/to/file`.
+
+**No terminal? Install with a click**
+
+- **Claude Desktop:** [download the extension](https://github.com/aileron-tech/wingbox/releases/latest/download/wingbox.mcpb),
+  open the file, press Install, choose your project folder and switch it on.
+  Wingbox builds the map the first time you ask.
+- **Codex app:** Settings > Plugins > Add > Add a marketplace, paste
+  `aileron-tech/wingbox` as the source, then press + next to Wingbox under
+  Personal.
+
+Both start Wingbox with [uv](https://docs.astral.sh/uv/), which has to be on the
+machine.
+
 ## Runs fully locally, inside your security perimeter
 
 Wingbox is safe to run on code that must not leave the company:
