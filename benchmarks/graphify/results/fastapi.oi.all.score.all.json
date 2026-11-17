@@ -1,19 +1,19 @@
 {
  "label": "fastapi: ontoindex all",
  "scope": "(whole tree)",
- "reference_pairs": 1801,
+ "reference_pairs": 1802,
  "tool_edges": 2876,
  "strict": {
   "right": 1702,
   "of_them_implied_package_init": 12,
   "precision": 0.5918,
-  "recall": 0.9384
+  "recall": 0.9378
  },
  "either": {
   "right": 2835,
   "precision": 0.9857,
   "found": 1690,
-  "recall": 0.9384
+  "recall": 0.9378
  },
  "tool_edges_not_in_code": [
   [
@@ -5093,6 +5093,10 @@
    "docs_src/generate_clients/tutorial003.py"
   ],
   [
+   "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
+   "docs_src/generate_clients/tutorial004.py"
+  ],
+  [
    "tests/test_tutorial/test_graphql/test_tutorial001.py",
    "docs_src/graphql_/tutorial001.py"
   ],
@@ -5537,6 +5541,10 @@
   [
    "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
    "docs_src/generate_clients/tutorial003.py"
+  ],
+  [
+   "tests/test_tutorial/test_generate_clients/test_tutorial004.py",
+   "docs_src/generate_clients/tutorial004.py"
   ],
   [
    "tests/test_tutorial/test_graphql/test_tutorial001.py",

@@ -205,10 +205,16 @@ add("")
 add("The formula above does not check a single answer. This test does: every file-to-file dependency edge of each tool against the import statements of the code.")
 add("")
 gr = load("fastapi.grimp_check.json")
-add(f"Reference: `tools/py_edges.py` reads every `import` with Python's own parser (`ast`) and resolves it to a file. "
-    f"Check of the reference itself: the import graph built by grimp {versions['grimp']} (the engine of import-linter) on FastAPI gives {gr['grimp_pairs']:,} file pairs; "
-    f"{gr['in_both']:,} of them are the reference's {gr['reference_pairs_between_covered_files']:,} pairs; "
-    f"{len(gr['grimp_only_unexplained'])} only in grimp, {len(gr['reference_only'])} only in the reference.")
+loaded = gr.get("reference_only_loaded_by_name", [])
+add(f"Reference: `tools/py_edges.py` reads every `import` with Python's own parser (`ast`) and resolves it to a file"
+    + (", and counts a module loaded by a literal name (`importlib.import_module(\"a.b\")`, `__import__(\"a.b\")`) like an import" if loaded else "")
+    + f". Check of the reference itself: the import graph built by grimp {versions['grimp']} (the engine of import-linter) on FastAPI gives {gr['grimp_pairs']:,} file pairs; "
+    f"{gr['in_both']:,} of them are the reference's {gr['reference_pairs_between_covered_files']:,} pairs of import statements; "
+    f"{len(gr['grimp_only_unexplained'])} only in grimp, {len(gr['reference_only'])} only in the reference"
+    + (f"; grimp reads import statements only, so the {len(loaded)} pair of a module loaded by name is not in its graph" if loaded else "") + "."
+    + (f" The Wingbox rows of this test were run again with Wingbox {versions['wingbox_test_b']} on {versions['wingbox_test_b_date']}, when the "
+       "reference started to count modules loaded by a literal name; the other tools' saved edges were scored again against the same reference."
+       if "wingbox_test_b" in versions else ""))
 add("")
 add("| Corpus | Pairs in the code | Tool | Edges | Wrong | Missing | Precision | Recall |")
 add("|---|---|---|---|---|---|---|---|")
@@ -281,7 +287,7 @@ add("Question: every file that depends on file X directly or through one other f
     "and the files they name are compared with the reference list.")
 add("")
 add("Reference lists (`gold/`), none taken from either tool: Q1 from an own TypeScript resolver (`tools/ts_resolve.py`); Q2 and Q3 from an own Rust resolver "
-    "(`tools/rust_resolve.py`), every file of the two lists read against the source; Q4 and Q5 from `tools/py_edges.py`, equal to grimp. "
+    "(`tools/rust_resolve.py`), every file of the two lists read against the source; Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. "
     "`run.sh` computes the five lists again and stops when one differs from the committed list.")
 add("")
 add("| Question | Reference files | Wingbox: right / wrong / missing | Wingbox output, tokens | Graphify: right / wrong / missing | Graphify output, tokens "

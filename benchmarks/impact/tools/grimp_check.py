@@ -3,6 +3,8 @@
 
 Usage: <venv with grimp>/bin/python grimp_check.py <repo root> <reference.json> <out.json> <package> [<package> ...]
 grimp reads the source statically; the packages are located through sys.path and are not executed.
+grimp reads import statements; the pairs the reference adds for a module loaded by a literal name
+(`importlib.import_module("a.b")`) are compared apart and listed as reference_only_loaded_by_name.
 """
 import json
 import os
@@ -41,12 +43,16 @@ for module in graph.modules:
 ref = json.load(open(ref_path))
 covered_files = {file_of(m) for m in graph.modules} - {None}
 inside = lambda p: p[0] in covered_files and p[1] in covered_files
-strict = {tuple(p) for p in ref["pairs"] if inside(p)}
+loaded = {(r["frm"], r["to"]) for r in ref["refs"] if r.get("kind") == "import-call"}
+statements = {(r["frm"], r["to"]) for r in ref["refs"] if r.get("kind") != "import-call"}
+strict = {tuple(p) for p in ref["pairs"] if inside(p) and tuple(p) in statements}
+loaded_only = sorted(p for p in (tuple(p) for p in ref["pairs"]) if inside(p) and p not in statements and p in loaded)
 implied = {tuple(p) for p in ref["implied_pairs"]}
 result = {"packages": packages, "grimp_modules_with_file": len(covered_files), "reference_py_files": len(ref["py_files"]),
           "grimp_pairs": len(pairs), "reference_pairs_between_covered_files": len(strict), "in_both": len(pairs & strict),
           "grimp_only_explained_as_implied_package_init": sorted((pairs - strict) & implied),
           "grimp_only_unexplained": sorted(pairs - strict - implied), "reference_only": sorted(strict - pairs),
+          "reference_only_loaded_by_name": loaded_only,
           "modules_without_file": sorted(no_file)[:50]}
 json.dump(result, open(out_path, "w"), indent=1)
 print({k: (v if isinstance(v, (int, list)) and not isinstance(v, list) else len(v)) for k, v in result.items()})

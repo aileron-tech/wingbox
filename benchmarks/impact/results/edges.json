@@ -51,8 +51,8 @@
  {
   "corpus": "FastAPI, whole tree",
   "language": "Python",
-  "pairs": 1801,
-  "edges": 1818,
+  "pairs": 1802,
+  "edges": 1819,
   "wrong": 0,
   "missing": 0,
   "accepted_extra": 17,
