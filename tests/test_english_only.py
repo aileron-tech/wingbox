@@ -34,6 +34,16 @@ class EnglishOnlyTest(unittest.TestCase):
                     offenders.append(f"{relative}:{number}")
         self.assertEqual([], offenders)
 
+    def test_readme_links_are_absolute(self) -> None:
+        """/* REQ-DOC-002: the README is also the package page on PyPI, where a repository-relative link leads nowhere; every Markdown link and image in it is absolute or an anchor of the page. */"""
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        relative = [
+            target
+            for target in re.findall(r"\]\(([^)\s]+)", readme)
+            if not target.startswith(("https://", "http://", "#", "mailto:"))
+        ]
+        self.assertEqual([], relative)
+
 
 if __name__ == "__main__":
     unittest.main()

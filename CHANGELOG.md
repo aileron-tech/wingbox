@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.2 - 2026-11-17
+
+A release of the package page and the documents; the tool behaves as in 0.6.1.
+
+### Changes
+
+- The PyPI page is brought up to date: summary, keywords, classifiers (Python
+  3.11 and 3.12) and project links (documentation, benchmarks, release notes).
+- The links of the README are absolute, so they work on the PyPI page too.
+- `docs/edge-model.md`: a proposal, not built, for kinds of edges, external
+  packages as a layer of their own and outbound access (databases, HTTP,
+  messaging) found through the dependency graph. The roadmap links it.
+
 ## 0.6.1 - 2026-11-17
 
 ### Changes
