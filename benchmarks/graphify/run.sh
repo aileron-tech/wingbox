@@ -2,7 +2,7 @@
 # Reproduce tests A, B and C of benchmarks/graphify/README.md from nothing.
 #
 # Usage: benchmarks/graphify/run.sh <work dir>
-# Needs: git, curl, uv (https://docs.astral.sh/uv/). Network: GitHub and PyPI. No model, no key.
+# Needs: git, curl, uv (https://docs.astral.sh/uv/), npm. Network: GitHub, PyPI and npm. No model, no key.
 # Takes about 15 minutes and 1.5 GB. Everything is written under <work dir>.
 # WINGBOX_SPEC overrides the Wingbox under test (default: the release named below),
 # for example WINGBOX_SPEC=/path/to/a/checkout.
@@ -17,10 +17,11 @@ W=$(cd "$W" && pwd)
 WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.2.0}
 GRAPHIFY_SPEC=graphifyy==0.9.110
 GRIMP_SPEC=grimp==3.20
+CODEGRAPH_SPEC=@colbymchenry/codegraph@1.6.2
 GRAPHIFY_COMMIT=18cd78f4b8c9698db861aa8d7ad1adbf3c836642
 export GRAPHIFY_BACKEND=none
 cd "$W"
-mkdir -p out corpus/karpathy work/gf work/wb bench/plain bench/wb bench/gf bench/log
+mkdir -p out corpus/karpathy work/gf work/wb work/cg bench/plain bench/wb bench/gf bench/cg bench/log cg cg_home
 
 step() { printf '\n== %s\n' "$1"; }
 
@@ -31,11 +32,23 @@ done
 uv pip install --quiet --python venv_wb/bin/python "$WINGBOX_SPEC"
 uv pip install --quiet --python venv_gf/bin/python "$GRAPHIFY_SPEC"
 uv pip install --quiet --python venv_ref/bin/python "$GRIMP_SPEC"
+# CodeGraph from npm into its own folder; it runs on the Node runtime its package bundles.
+[ -x cg/node_modules/.bin/codegraph ] || npm install --silent --prefix "$W/cg" --no-audit --no-fund --no-save "$CODEGRAPH_SPEC"
 PY="$W/venv_ref/bin/python -I"
 WINGBOX=$W/venv_wb/bin/wingbox
 GRAPHIFY=$W/venv_gf/bin/graphify
+CG_BUNDLE=$(ls -d "$W"/cg/node_modules/@colbymchenry/codegraph-*-* | head -1)
+# Every CodeGraph run: a private HOME, no daemon, no file watcher, no background network calls.
+codegraph() {
+  env HOME="$W/cg_home" DO_NOT_TRACK=1 CODEGRAPH_NO_DAEMON=1 CODEGRAPH_NO_WATCH=1 CODEGRAPH_NO_DOWNLOAD=1 NO_COLOR=1 \
+    "$W/cg/node_modules/.bin/codegraph" "$@"
+}
+cg_graph() {
+  env HOME="$W/cg_home" DO_NOT_TRACK=1 "$CG_BUNDLE/node" --disable-warning=ExperimentalWarning "$T/cg_graph.js" "$CG_BUNDLE/lib/dist/index.js" "$@"
+}
 "$WINGBOX" --version
 "$GRAPHIFY" --version
+echo "codegraph $(codegraph --version)"
 
 step "corpus at pinned commits"
 fetch() { # <dir> <url> <commit>
@@ -69,14 +82,14 @@ export_tree() { # <git dir> <destination> [<prefix>/]
   mkdir -p "$2"
   git -C "$1" archive --format=tar ${3:+--prefix="$3"} HEAD | tar -x -C "$2"
 }
-for tool in gf wb; do
+for tool in gf wb cg; do
   if [ ! -d "work/$tool/karpathy" ]; then
     for repo in nanoGPT minGPT micrograd; do export_tree "corpus/karpathy/$repo" "work/$tool/karpathy" "$repo/"; done
   fi
   [ -d "work/$tool/fastapi" ] || export_tree corpus/fastapi "work/$tool/fastapi"
 done
 for repo in chrome-devtools-mcp agent-browser claudes-c-compiler fastapi; do
-  for setup in plain wb gf; do
+  for setup in plain wb gf cg; do
     [ -d "bench/$setup/$repo" ] || export_tree "corpus/$repo" "bench/$setup/$repo"
   done
 done
@@ -85,12 +98,14 @@ step "graphs"
 for corpus in karpathy fastapi; do
   ( cd "work/wb/$corpus" && "$WINGBOX" build ) > "bench/log/work.$corpus.wingbox_build.log" 2>&1
   ( cd "work/gf/$corpus" && "$GRAPHIFY" extract . --code-only ) > "bench/log/work.$corpus.graphify_extract.log" 2>&1
+  [ -d "work/cg/$corpus/.codegraph" ] || ( cd "work/cg/$corpus" && codegraph init --yes ) > "bench/log/work.$corpus.codegraph_init.log" 2>&1
   echo "work/$corpus built"
 done
 for repo in chrome-devtools-mcp agent-browser claudes-c-compiler fastapi; do
   ( cd "bench/wb/$repo" && "$WINGBOX" build ) > "bench/log/$repo.wingbox_build.log" 2>&1
   ( cd "bench/gf/$repo" && "$GRAPHIFY" extract . --code-only ) > "bench/log/$repo.graphify_extract.log" 2>&1
   ( cd "bench/gf/$repo" && "$GRAPHIFY" cluster-only . --no-label --no-viz ) > "bench/log/$repo.graphify_cluster.log" 2>&1
+  [ -d "bench/cg/$repo/.codegraph" ] || ( cd "bench/cg/$repo" && codegraph init --yes ) > "bench/log/$repo.codegraph_init.log" 2>&1
   echo "bench/$repo built"
 done
 
@@ -126,9 +141,18 @@ for corpus in karpathy fastapi; do
 done
 $PY "$T/score_edges.py" "fastapi/: wingbox" out/fastapi.ref.json out/fastapi.wb.dependency.pairs.json out/fastapi.wb.dependency.score.fastapi.json --scope fastapi/
 $PY "$T/score_edges.py" "fastapi/: graphify modules" out/fastapi.ref.json out/fastapi.gf.modules.pairs.json out/fastapi.gf.modules.score.fastapi.json --scope fastapi/
+for corpus in karpathy fastapi; do
+  cg_graph pairs "work/cg/$corpus" "out/$corpus.cg.graph.json" > /dev/null
+  $PY "$T/pairs.py" codegraph "out/$corpus.cg.graph.json" "out/$corpus.cg.all.pairs.json" > /dev/null
+  $PY "$T/pairs.py" codegraph "out/$corpus.cg.graph.json" "out/$corpus.cg.imports.pairs.json" --kind imports > /dev/null
+  $PY "$T/score_edges.py" "$corpus: codegraph all" "out/$corpus.ref.json" "out/$corpus.cg.all.pairs.json" "out/$corpus.cg.all.score.all.json"
+  $PY "$T/score_edges.py" "$corpus: codegraph imports" "out/$corpus.ref.json" "out/$corpus.cg.imports.pairs.json" "out/$corpus.cg.imports.score.all.json"
+done
+$PY "$T/score_edges.py" "fastapi/: codegraph all" out/fastapi.ref.json out/fastapi.cg.all.pairs.json out/fastapi.cg.all.score.fastapi.json --scope fastapi/
 
 step "test C: the impact command without an agent"
 $PY "$T/command_check.py" "$W" out/command_check.json
+$PY "$T/cg_command_check.py" "$W" out/command_check.codegraph.json
 
 step "report"
 {
@@ -136,7 +160,10 @@ step "report"
   echo "wingbox $("$WINGBOX" --version | awk '{print $NF}')"
   echo "graphify $(uv pip freeze --python venv_gf/bin/python 2>/dev/null | sed -n 's/^graphifyy==//p')"
   echo "grimp $(uv pip freeze --python venv_ref/bin/python 2>/dev/null | sed -n 's/^grimp==//p')"
+  echo "codegraph $(codegraph --version)"
+  echo "codegraph_date $(date -u +%Y-%m-%d)"
 } > out/versions.txt
 $PY "$T/make_report.py" out out/REPORT.md
 echo "Tests A, B and C of $W/out/REPORT.md are to be equal to benchmarks/graphify/README.md."
 echo "Test D (paid model sessions): python3 -I $T/agent_test.py $W run && python3 -I $T/agent_test.py $W report"
+echo "Test F (build time of the three tools on this machine): python3 -I $T/time_builds_same_machine.py $W"

@@ -1,0 +1,48 @@
+{
+ "label": "karpathy: codegraph imports",
+ "scope": "(whole tree)",
+ "reference_pairs": 15,
+ "tool_edges": 18,
+ "strict": {
+  "right": 15,
+  "of_them_implied_package_init": 0,
+  "precision": 0.8333,
+  "recall": 1.0
+ },
+ "either": {
+  "right": 15,
+  "precision": 0.8333,
+  "found": 15,
+  "recall": 1.0
+ },
+ "tool_edges_not_in_code": [
+  [
+   "nanoGPT/bench.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/sample.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/train.py",
+   "minGPT/mingpt/model.py"
+  ]
+ ],
+ "tool_edges_wrong_strict": [
+  [
+   "nanoGPT/bench.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/sample.py",
+   "minGPT/mingpt/model.py"
+  ],
+  [
+   "nanoGPT/train.py",
+   "minGPT/mingpt/model.py"
+  ]
+ ],
+ "code_pairs_missing_strict": [],
+ "code_pairs_missing_either": []
+}
