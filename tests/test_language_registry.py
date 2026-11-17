@@ -12,6 +12,7 @@ from scripts.lang import (
     language_for_name,
 )
 from scripts.lang.csharp import CSHARP_LANGUAGE
+from scripts.lang.dart import DART_LANGUAGE
 from scripts.lang.go import GO_LANGUAGE
 from scripts.lang.java import JAVA_LANGUAGE
 from scripts.lang.pascal import PASCAL_LANGUAGE
@@ -40,6 +41,7 @@ class LanguageRegistryTests(unittest.TestCase):
         self.assertIs(PASCAL_LANGUAGE, language_for_file("worker.pp"))
         self.assertIs(PASCAL_LANGUAGE, language_for_file("app.lpr"))
         self.assertIs(PASCAL_LANGUAGE, language_for_file("shared.inc"))
+        self.assertIs(DART_LANGUAGE, language_for_file("main.dart"))
         self.assertIsNone(language_for_file("generated.d.ts"))
 
     def test_language_implementations_parse_their_source_contracts(self) -> None:
@@ -118,6 +120,10 @@ class LanguageRegistryTests(unittest.TestCase):
                 "unit pascal_worker; interface procedure Execute; implementation procedure Execute; begin end; end.\n",
                 encoding="utf-8",
             )
+            (target / "dart_worker.dart").write_text(
+                "class DartWorker {\n  void run() {}\n}\n",
+                encoding="utf-8",
+            )
 
             completed = subprocess.run(
                 [
@@ -135,7 +141,7 @@ class LanguageRegistryTests(unittest.TestCase):
 
             self.assertEqual(0, completed.returncode, completed.stderr)
             self.assertIn(
-                "Found 8 source files (1 py, 1 ts, 1 rs, 1 cs, 1 java, 1 go, 0 rb, 1 php, 1 pas)",
+                "Found 9 source files (1 py, 1 ts, 1 rs, 1 cs, 1 java, 1 go, 0 rb, 1 php, 1 pas, 1 dart)",
                 completed.stdout,
             )
             self.assertTrue((target / ".wingbox/index.sexp").is_file())

@@ -1,5 +1,30 @@
 # Completion Log
 
+## 2026-11-17 - Dart and Flutter language support
+
+### Changes
+- `scripts/lang/dart/` (new): a `dart` adapter with one result language. `parser.py` reads `.dart` files with tree-sitter (classes, mixins, `class A = B with M`, enums, extension types, extensions, type aliases, top-level functions and getters, the members of each type, and the `extends`/`with`/`implements`/`on` bases) and collects the `import`, `export`, `part` and `part of` URIs, conditional imports counted once; `imports.py` binds a library URI to a file.
+- `imports.py` reads the top-level `name:` of every `pubspec.yaml` (no YAML parser: the first column-0 `name:` pair) and orders the packages deepest first. `package:<name>/path.dart` resolves to `lib/path.dart` of the nearest pubspec that declares `name`, then to any package of that name in the repository; a relative URI resolves next to the importing file; `dart:` and a `package:` name no local pubspec declares create no edge. `part` and `part of` follow the same three rules, and a URI whose file does not exist resolves to nothing without an error.
+- `scripts/lang/discovery.py` (`DART_OUTPUT_DIRECTORIES`): `.dart_tool`, which `dart pub get` fills with the package config, kernel snapshots and generated sources, is excluded by its name everywhere. Flutter's compiled output goes to `build`, already a default skip folder like `vendor` or `dist`.
+- Wiring: `DART_LANGUAGE` in the registry, `pubspec.yaml` as a project config, module IDs without the `.dart` extension, `dart language-server` as the LSP command.
+- `requirements/dart.txt` (`tree-sitter==0.25.2`, `tree-sitter-dart==0.1.0`) and the package dependency; README and SKILL.md document the install line, the language, the resolution rules and the limitations; `benchmarks/dart/` holds the accuracy check.
+
+### Decisions
+- The grammar is `tree-sitter-dart==0.1.0`, the only Dart grammar on PyPI: no Dart SDK, analyzer or `dart pub get` is needed, and a build stays local and deterministic.
+- Resolution follows the language's own rules rather than an import graph: Dart names libraries, not files, so `package:` URIs resolve through pubspec names and relative URIs through paths. The nearest pubspec wins, which is what makes a monorepo of packages link to itself and not to a lookalike name.
+- A `pubspec.yaml` name is read with a regex instead of a YAML parser: the adapter needs one key, and PyYAML stays reserved for the infrastructure topology.
+- A missing file behind a directive is silent, because `build_runner` generates parts (`*.g.dart`, `*.freezed.dart`) after a clone and a graph that needed the codegen step would fail on every fresh checkout. A generated part that exists on disk is indexed like any other file.
+- An `import` or `export` with `if (...)` alternatives contributes its first URI only: the alternatives are platform variants of one library, not extra modules. A `part` into a `.../codegen/` folder of the macros proposal is left out, because on disk that folder holds a copy of the library rather than another module.
+- Flutter: widgets are ordinary classes, so nothing in the adapter is Flutter-specific. The only Flutter knowledge is the `build/` folder it writes, which the default skip list already covers.
+- Runtime wiring (a `get_it` registration, a `go_router` route table, a `retrofit` client) is not visible to static analysis and is documented as a limitation, not a defect: these bindings exist only after the application runs.
+
+### Motivation
+- The maintainer asked for Dart and Flutter support. A Flutter application is layered by feature folder rather than by package, so the question Wingbox answers there is what a change to a model, a widget or a repository breaks, and an import-only view of that is useful only if `package:` and relative imports both resolve.
+
+### Verification
+- Fixtures built in-process: package and relative imports, the nearest pubspec among several, part and part of in both directions, a `part of` with a package URI, generated parts on disk and missing, and discovery of `.dart_tool` and Flutter `build` output. `benchmarks/dart/` checks the accuracy of the graph.
+- `python3 tools/sync_plugin.py` then `--check` exit 0; `tests.test_plugins` and `tests.test_local_only` pass.
+
 ## 2026-11-17 - .wingbox/ holds everything and marks the project; a graph is never refreshed into another folder
 
 ### Changes

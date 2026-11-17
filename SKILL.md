@@ -9,7 +9,7 @@ description: >
   edit; and when exploring an unfamiliar codebase. Builds and queries architecture-aware code search,
   dependency graphs, call flows, module boundaries and architecture violations
   for Python, TypeScript, TSX, Rust, C#, Java, Go, Ruby, Ruby on Rails, PHP,
-  Laravel, Blade, Livewire and Eloquent.
+  Laravel, Blade, Livewire, Eloquent, Dart and Flutter.
 ---
 
 # Wingbox -- Code Graph Architecture Discovery
@@ -92,6 +92,7 @@ python3 -m pip install -r "$SKILL_ROOT/requirements/typescript.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/csharp.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/ruby.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/php.txt"
+python3 -m pip install -r "$SKILL_ROOT/requirements/dart.txt"
 ```
 
 Install only the requirement files named by the builder, then rerun it.
@@ -209,7 +210,7 @@ Key patterns:
 **`:lang` values**: `py` = Python (snake_case), `ts` = TypeScript
 (camelCase), `tsx` = TSX (PascalCase), `rs` = Rust (snake_case), `cs` = C#,
 `java` = Java, `go` = Go, `rb` = Ruby/Rails, `php` = PHP/Laravel (PascalCase),
-and `blade` = Blade templates.
+`blade` = Blade templates, and `dart` = Dart/Flutter.
 
 ## Scheme Query Language
 
@@ -369,6 +370,25 @@ associations, events and jobs. `view()` references resolve through
 or `View::addNamespace`. It never boots Laravel. Unresolved or ambiguous class,
 view and component names remain unlinked, and a duplicate class declaration
 such as an IDE-helper stub does not shadow the PSR-4 file.
+
+Dart indexing discovers `.dart` files and reads each one with a tree-sitter
+Dart grammar: classes, mixins, enums, extension types, extensions, type
+aliases, top-level functions, the members of each type, and `extends`, `with`,
+`implements` and `on`. It resolves `import` and `export` directives and
+`part`/`part of` pairs. A `package:<name>/path.dart` URI whose name is the
+top-level `name:` of a `pubspec.yaml` in the repository resolves to
+`lib/path.dart` of that package, the nearest owning pubspec first, so a Dart
+monorepo links across its packages. A relative URI resolves to the neighbouring
+file. `dart:` core libraries and `package:` names that no local pubspec
+declares are external and create no edge. A directive whose file is missing,
+such as a `*.g.dart` or `*.freezed.dart` part that `build_runner` has not
+written yet, adds nothing and fails nothing. Flutter needs no separate handling:
+widgets are ordinary classes. Runtime wiring is not visible to static analysis:
+what a `get_it` locator registers, the pages a `go_router` configuration builds
+and the clients `retrofit` generates are bound at runtime, so expect no edge for
+them and start an impact query from the concrete file instead. `.dart_tool/` is
+excluded by its name, and so is `build/`, the default skip folder in every
+language that holds Flutter output.
 
 Pascal indexing discovers `.pas`, `.pp`, `.lpr`, and `.inc` files. It extracts
 units, programs, `uses`/`contains`/`requires` clauses, include directives,

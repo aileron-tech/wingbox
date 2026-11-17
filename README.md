@@ -10,7 +10,7 @@
 > It works as an agent skill in Claude Code, Codex, Gemini CLI, Cursor and
 > GitHub Copilot, as an MCP server for any MCP client, and from the command
 > line. It supports Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, PHP,
-> Laravel (Blade, Livewire), Free Pascal, and Lazarus.
+> Laravel (Blade, Livewire), Dart, Flutter, Free Pascal, and Lazarus.
 >
 > **Runs fully locally:** no network access, no model, no telemetry. It can be
 > used inside a security perimeter and on a machine with no internet.
@@ -38,9 +38,9 @@
 Understand a large codebase before you change it. Wingbox is an
 architecture-aware code search and impact analysis tool for Python, TypeScript,
 TSX, Rust, C#, Java, Go, Ruby, Ruby on Rails, PHP, Laravel, Blade, Livewire,
-Free Pascal, and Lazarus repositories. It helps developers and AI coding agents
-find the right module, trace dependencies, measure change impact, and read only
-the source files that matter.
+Dart, Flutter, Free Pascal, and Lazarus repositories. It helps developers and
+AI coding agents find the right module, trace dependencies, measure change
+impact, and read only the source files that matter.
 
 Use it for codebase architecture discovery, dependency graph search, blast-radius
 analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
@@ -575,13 +575,17 @@ python3 -m pip install -r requirements/typescript.txt
 python3 -m pip install -r requirements/csharp.txt
 python3 -m pip install -r requirements/ruby.txt
 python3 -m pip install -r requirements/php.txt
+python3 -m pip install -r requirements/dart.txt
 ```
 
 Install only the files for languages you use, then run the same build command
 again. `requirements/php.txt` pins `tree-sitter==0.25.2` and
-`tree-sitter-php==0.24.1`; the package dependencies list the PHP grammar, so an
-installed `wingbox` needs no separate step. `requirements.txt` contains the
-separate infrastructure-topology dependency.
+`tree-sitter-php==0.24.1` and `requirements/dart.txt` pins
+`tree-sitter-dart==0.1.0`. The package dependencies list the PHP grammar, so an
+installed `wingbox` needs no separate step for PHP. The Dart grammar is an
+opt-in extra: `pipx install "wingbox[dart]"` (or `pip install "wingbox[dart]"`);
+without it a build skips `.dart` files with a warning and maps the rest.
+`requirements.txt` contains the separate infrastructure-topology dependency.
 
 Run a relevant search and get the first matching module with its full context:
 
@@ -723,14 +727,16 @@ when the graph is outside the current directory and its parents.
 | Go | Modules, packages, imports, structs, interfaces, functions, constants, variables, receiver methods, and local package dependencies |
 | Ruby and Rails | Ruby classes, modules, instance and singleton methods, inheritance, requires, Zeitwerk constants, concerns, associations, callbacks, jobs, mailers, and impacted specs |
 | PHP and Laravel | PHP 8 classes, interfaces, traits, enums, methods, attributes, `use` aliases, inheritance, Composer PSR-4 classes, Blade views and components, Livewire components, Eloquent associations, events, and jobs |
+| Dart and Flutter | Dart classes, mixins, enums, extension types, extensions, type aliases, functions, inheritance, `import`/`export`/`part`/`part of` directives, the project's own `package:` libraries and relative files |
 | Free Pascal and Lazarus | Units, programs, uses/includes, classes, records, interfaces, inheritance, methods, and routines |
 
 Wingbox is designed for single repositories and monorepos. It understands
 Python project roots, TypeScript configuration and package aliases, Cargo package
 names and local Rust crate dependencies, .NET solutions and projects, Maven and
 Gradle projects, Go modules and workspaces, Rails application/autoload
-roots with project acronyms, and Composer PSR-4 roots, including nested module
-manifests and `autoload-dev`.
+roots with project acronyms, Composer PSR-4 roots, including nested module
+manifests and `autoload-dev`, and Dart `pubspec.yaml` package names, including
+the packages of a monorepo.
 
 Pascal dependencies resolve by case-insensitive unit identity and explicit
 `UnitName in 'path.pas'` paths, then by a unique same-directory unit. Other
@@ -792,6 +798,44 @@ dynamically, in a loop over a directory for example, is left unlinked unless it
 also follows one of the conventions above. Nothing boots Laravel, runs Composer
 or opens a network connection; the graph comes from source text and
 `composer.json`.
+
+## Dart and Flutter dependency search
+
+Install the Dart grammar with the extra: `pipx install "wingbox[dart]"`.
+
+Dart names its dependencies by library URI, not by file path. Wingbox reads
+every `pubspec.yaml` and its top-level `name:`, then resolves `import` and
+`export` directives of three shapes. A `package:<name>/path.dart` URI whose
+package is declared in the repository resolves to `lib/path.dart` of that
+package, the nearest owning pubspec first, so the files of a Dart monorepo
+depend on each other across package boundaries. A relative URI resolves to the
+file next to the importing one. A `dart:` URI is the SDK and a `package:` name
+that no local pubspec declares is a third-party pub package: neither is a
+project module, so neither creates an edge.
+
+A file is indexed from its own text: classes, mixins, enums, extension types,
+extensions, type aliases and functions, with the members of each class, its
+`extends`, `with`, `implements` and `on` types, and `class A = B with M`. A
+`part`/`part of` pair links the library and its parts in both directions. The
+generated parts that `build_runner` writes (`*.g.dart`, `*.freezed.dart`) are
+never required to exist: an import or a part directive whose file is missing
+adds nothing, so a fresh clone builds before code generation has run, and a
+part file that is on disk is indexed like any other.
+
+Flutter needs nothing special in the graph: widgets are ordinary Dart classes,
+so a `StatefulWidget` and its `State`, a repository, a model and a service
+have the same classes, members and imports as anywhere else in Dart. Dart
+files under `.dart_tool/`, where `dart pub get` keeps the package config and
+generated sources, and under a `build/` folder, where Flutter writes its
+compiled output (Wingbox skips `build` in every language), are not indexed.
+
+What a running Flutter application composes escapes static analysis: the
+routes and pages a `go_router` configuration builds, the objects a `get_it`
+locator registers under a type, and the client implementations that
+`retrofit` generates into a `.g.dart` file are bound at runtime or in code
+that does not exist as source, so the graph cannot see them. The interface
+file itself is indexed: select it, or the screen or repository that names a
+service, and a blast radius starts from there.
 
 ## A simple workflow
 
@@ -920,8 +964,8 @@ must be verified against the running application.
 ### Which languages are supported?
 
 Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on
-Rails, PHP and Laravel (Blade and Livewire), Free Pascal and Lazarus, plus
-infrastructure relationships from Kustomize, Helm and Terraform.
+Rails, PHP and Laravel (Blade and Livewire), Dart and Flutter, Free Pascal and
+Lazarus, plus infrastructure relationships from Kustomize, Helm and Terraform.
 
 ## Where Wingbox comes from
 

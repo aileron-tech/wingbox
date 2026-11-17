@@ -22,7 +22,7 @@ directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
 | Publisher | Aileron Technologies |
 | One line (at most 30 characters) | Code graph for big monorepos |
 | Category | Developer Tools (OpenAI); `development` in our Claude marketplace entry |
-| Short description | Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby. Runs on your machine; no code leaves it. |
+| Short description | Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby, PHP, Dart. Runs on your machine; no code leaves it. |
 | Keywords | code-graph, blast-radius, impact-analysis, dependency-graph, code-search, architecture, local-first, mcp, monorepo, large-codebase, codebase-map, call-graph, refactoring, code-navigation |
 | Homepage | https://wingbox.dev |
 | Repository | https://github.com/aileron-tech/wingbox |
@@ -43,8 +43,9 @@ Long description:
 > which modules and packages depend on each other and which dependencies cross
 > an architecture layer; and which three or four files to read first. Use it
 > before a refactor or a cross-package change. It parses Python, TypeScript
-> and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails with tree-sitter, and
-> writes an offline HTML map of the repository. Everything runs on your
+> and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails, PHP and Laravel, Dart
+> and Flutter with tree-sitter, and writes an offline HTML map of the
+> repository. Everything runs on your
 > computer with the open-source wingbox command (MIT, on PyPI): no code, graph
 > or question is sent anywhere. The plugin needs a local shell and the
 > command, installed once with pipx install wingbox.

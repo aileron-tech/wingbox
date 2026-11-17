@@ -35,7 +35,9 @@ def _fuzzy_suffix_match(name: str, suffix: str, max_dist: int = 1) -> bool:
     return _levenshtein(tail.lower(), suffix.lower()) <= max_dist
 
 
-_TEST_FOLDER_NAMES = frozenset({"test", "tests", "__tests__", "e2e", "testdata"})
+_TEST_FOLDER_NAMES = frozenset(
+    {"test", "tests", "__tests__", "e2e", "testdata", "integration_test"}
+)
 _TEST_FOLDER_PREFIXES = ("test-", "test_", "tests-", "tests_")
 _TEST_STEM_ENDINGS = (".test", ".spec", "_test", "_spec", ".test-d")
 _PHP_TEST_SUFFIXES = ("Test.php", "Spec.php", "TestCase.php")
@@ -94,8 +96,72 @@ def infer_purpose(
     parts = []
     rel = _path_in_repository(path).lower()
 
+    dart_name = rel.rsplit("/", 1)[-1]
+    dart_stem = dart_name.rsplit(".", 1)[0]
+
     # Path-based heuristics
-    if language in ("php", "blade") and _is_test_file(
+    if language == "dart" and _is_test_file(
+        rel, language, os.path.basename(path)
+    ):
+        parts.append("test")
+    elif language == "dart" and (
+        dart_stem.endswith("_page") or "/pages/" in rel
+    ):
+        parts.append("page/route")
+    elif language == "dart" and (
+        dart_stem.endswith(("_screen", "_view", "_widget"))
+        or "/widgets/" in rel
+        or "/screens/" in rel
+    ):
+        parts.append("UI component")
+    elif language == "dart" and (
+        dart_stem.endswith(("_bloc", "_cubit", "_state", "_event"))
+        or "/bloc/" in rel
+        or "/cubit/" in rel
+        or "/state/" in rel
+    ):
+        parts.append("state store")
+    elif language == "dart" and (
+        dart_stem.endswith(("_repository", "_repo"))
+        or "/repositories/" in rel
+    ):
+        parts.append("repository")
+    elif language == "dart" and (
+        dart_stem.endswith("_service") or "/services/" in rel
+    ):
+        parts.append("service")
+    elif language == "dart" and "/data/" in rel:
+        parts.append("repository")
+    elif language == "dart" and (
+        dart_stem.endswith("_entity") or "/entities/" in rel
+    ):
+        parts.append("domain entity")
+    elif language == "dart" and (
+        dart_stem.endswith("_model")
+        or dart_name.endswith((".freezed.dart", ".g.dart"))
+        or "/models/" in rel
+    ):
+        parts.append("data model")
+    elif language == "dart" and "/domain/" in rel:
+        parts.append("domain logic")
+    elif language == "dart" and (
+        dart_stem.endswith(("_route", "_router", "_routes"))
+        or dart_stem in ("route", "router", "routes")
+        or "/routes/" in rel
+        or "/router/" in rel
+    ):
+        parts.append("page/route")
+    elif language == "dart" and dart_stem == "main":
+        parts.append("application entry point")
+    elif language == "dart" and (
+        dart_stem.endswith(("_config", "_configs"))
+        or dart_stem == "config"
+        or "/config/" in rel
+    ):
+        parts.append("configuration")
+    elif language == "dart" and "/core/" in rel:
+        parts.append("shared utilities")
+    elif language in ("php", "blade") and _is_test_file(
         rel, language, os.path.basename(path)
     ):
         parts.append("test")
@@ -335,7 +401,10 @@ def infer_purpose(
     if "unitofwork" not in joined_check.replace(" ", ""):
         if re.search(r"class \w+UnitOfWork\b", head):
             parts.append("Unit of Work")
-    if "domainevent" not in joined_check.replace(" ", ""):
+    if (
+        "domainevent" not in joined_check.replace(" ", "")
+        and not (language == "dart" and "state store" in joined_check)
+    ):
         if re.search(r"class \w+DomainEvent\b|class \w+Event\b(?!Emitter|Handler|Listener)", head):
             parts.append("domain event")
     if "identitymap" not in joined_check.replace(" ", ""):
@@ -367,7 +436,10 @@ def infer_purpose(
             parts.append("NestJS injectable")
 
     if re.search(r"Router|router\s*\(|createRouter", head):
-        if "router" not in " ".join(parts).lower():
+        joined_route = " ".join(parts).lower()
+        # A Dart route file already carries its navigation purpose.
+        dart_route = language == "dart" and "route" in joined_route
+        if "router" not in joined_route and not dart_route:
             parts.append("router")
     if re.search(r"middleware|Middleware", head):
         if "middleware" not in " ".join(parts).lower():

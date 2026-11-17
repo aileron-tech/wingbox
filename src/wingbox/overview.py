@@ -75,6 +75,15 @@ def _count(values: list[str]) -> dict[str, int]:
     return counts
 
 
+def _is_generated(module: ModuleInfo) -> bool:
+    """True for a Dart codegen part (foo.g.dart, foo.freezed.dart).
+
+    Such a file is read output: it may be depended on, but it never starts a
+    reading list or a blast radius of its own.
+    """
+    return module.lang == "dart" and module.id.rsplit("/", 1)[-1].endswith((".g", ".freezed"))
+
+
 def build_overview(graph: Any, search: Any, project: str) -> Overview:
     """Summarise a loaded CodeGraph.
 
@@ -177,15 +186,23 @@ def build_overview(graph: Any, search: Any, project: str) -> Overview:
 def most_depended_on(view: Overview, limit: int) -> tuple[ModuleInfo, ...]:
     """Modules with the most direct dependents; a change there reaches the most code."""
     ranked = sorted(
-        (module for module in view.modules if module.fan_in > 0 and module.layer != "test"),
+        (
+            module
+            for module in view.modules
+            if module.fan_in > 0 and module.layer != "test" and not _is_generated(module)
+        ),
         key=lambda module: (-module.fan_in, -module.within_two_hops, module.id),
     )
     return tuple(ranked[:limit])
 
 
 def widest_blast_radius(view: Overview) -> ModuleInfo | None:
-    """The module whose change reaches the most modules; test files are left out."""
-    candidates = [module for module in view.modules if module.within_two_hops > 0 and module.layer != "test"]
+    """The module whose change reaches the most modules; test and generated files are left out."""
+    candidates = [
+        module
+        for module in view.modules
+        if module.within_two_hops > 0 and module.layer != "test" and not _is_generated(module)
+    ]
     if not candidates:
         return None
     return min(candidates, key=lambda module: (-module.within_two_hops, -module.fan_in, module.id))
@@ -200,7 +217,10 @@ def entry_points(view: Overview, limit: int) -> tuple[ModuleInfo, ...]:
     ranked = sorted(
         (
             module for module in view.modules
-            if module.fan_in == 0 and module.fan_out > 0 and module.layer != "test"
+            if module.fan_in == 0
+            and module.fan_out > 0
+            and module.layer != "test"
+            and not _is_generated(module)
         ),
         key=lambda module: (-module.fan_out, module.id),
     )
