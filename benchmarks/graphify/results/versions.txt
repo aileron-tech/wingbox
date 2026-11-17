@@ -1,9 +1,11 @@
 date 2026-11-16
 wingbox 0.5.1
-graphify 0.9.110
+graphify 0.10.010
 grimp 3.20
 codegraph 1.6.2
 codegraph_date 2026-11-17
 wingbox_date 2026-11-17
 wingbox_test_b 0.9.1
 wingbox_test_b_date 2026-11-17
+wingbox_test_c 0.10.0
+wingbox_test_c_date 2026-11-17

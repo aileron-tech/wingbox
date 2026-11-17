@@ -232,7 +232,9 @@ One hundred "which files depend on this file" questions, drawn at random with
 a fixed seed in five public repositories (TypeScript, Rust, Python):
 
 - `wingbox impact <file> 2 --all` names the complete list of dependent files,
-  with nothing outside it, in 100 of 100 questions (95 % interval 96 to 100 %). The lists
+  with nothing outside it, in 89 of 100 questions (95 % interval 81 to 94 %); in the
+  other 11, all Rust, it also names files that use an item of the file through a module
+  facade, and their dependents, which the reference (edges to the facade only) does not list. The lists
   hold 1 to 503 files.
 - Claude Code answers 55 of the questions with its built-in search only, and
   again with the `wingbox` command added:
@@ -246,8 +248,10 @@ a fixed seed in five public repositories (TypeScript, Rust, Python):
   The saving is large on the Rust and Python repositories and absent on the
   two TypeScript ones.
 - Checked against every import statement of seven corpora (3,795 dependencies
-  in the largest), the graph has no wrong dependency and one missing: an
-  import of a vendored bundle, which Wingbox leaves out of the graph.
+  in the largest), the graph has one missing dependency (an import of a
+  vendored bundle, which Wingbox leaves out of the graph) and 633 Rust edges
+  the reference does not hold: the edges from a file to the file that defines
+  an item it names through a module facade.
 
 The reference lists come from resolvers that share no code with Wingbox. The
 scripts, the lists and every result file are in
@@ -272,7 +276,7 @@ no model inside any of the tools):
 
 | Test | Wingbox | Graphify | CodeGraph | OntoIndex |
 |---|---|---|---|---|
-| Exact list of dependent files, five questions | 5 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
+| Exact list of dependent files, five questions | 3 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
 | File dependencies of FastAPI against its 1,802 import pairs, wrong / missing | 0 / 0 | 19 / 17 | 106 / 25 | 22 / 118 |
 | Tokens a coding agent spends per answer (built-in search alone: 59,367) | 23,768 | 109,071 | 81,151 | 78,070 |
 | Cost per answer in that test, USD (built-in search alone: 0.075) | 0.021 | 0.095 | 0.070 | 0.075 |

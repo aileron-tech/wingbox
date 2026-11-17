@@ -284,7 +284,11 @@ add("## Test C. The impact command without an agent")
 add("")
 add("Question: every file that depends on file X directly or through one other file. Five files in four public repositories. "
     "`wingbox impact <file> 2`, `graphify affected \"<file>\" --depth 2` and `codegraph impact <file name> --file <file> --depth 2` are run as they are "
-    "and the files they name are compared with the reference list.")
+    "and the files they name are compared with the reference list."
+    + (f" The Wingbox column was run again with Wingbox {versions['wingbox_test_c']} on {versions['wingbox_test_c_date']}: since 0.9.1 a Rust file "
+       "that names an item through a module facade also depends on the file that defines it, so `wingbox impact` reaches the users of the item "
+       "at depth 1 and their dependents at depth 2, which the reference (edges to the facade only) does not list."
+       if "wingbox_test_c" in versions else ""))
 add("")
 add("Reference lists (`gold/`), none taken from either tool: Q1 from an own TypeScript resolver (`tools/ts_resolve.py`); Q2 and Q3 from an own Rust resolver "
     "(`tools/rust_resolve.py`), every file of the two lists read against the source; Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. "

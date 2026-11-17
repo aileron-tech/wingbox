@@ -806,17 +806,17 @@
   "file": "cli/src/browser_security.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 148,
-   "named": 9,
+   "tokens": 171,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -866,7 +866,7 @@
   "file": "cli/src/native/actions.rs",
   "reference_files": 18,
   "wingbox": {
-   "tokens": 291,
+   "tokens": 307,
    "named": 18,
    "right": 18,
    "not_on_list": 0,
@@ -886,17 +886,17 @@
   "file": "cli/src/native/cdp/chrome.rs",
   "reference_files": 20,
   "wingbox": {
-   "tokens": 316,
-   "named": 20,
+   "tokens": 362,
+   "named": 24,
    "right": 20,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 4,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -926,17 +926,17 @@
   "file": "cli/src/native/downloads.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 150,
-   "named": 9,
+   "tokens": 172,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -946,17 +946,17 @@
   "file": "cli/src/native/flow/hint.rs",
   "reference_files": 13,
   "wingbox": {
-   "tokens": 190,
-   "named": 13,
+   "tokens": 251,
+   "named": 18,
    "right": 13,
-   "not_on_list": 0,
+   "not_on_list": 5,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.7222,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.8387,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -966,17 +966,17 @@
   "file": "cli/src/native/flow/recorder.rs",
   "reference_files": 13,
   "wingbox": {
-   "tokens": 192,
-   "named": 13,
+   "tokens": 253,
+   "named": 18,
    "right": 13,
-   "not_on_list": 0,
+   "not_on_list": 5,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.7222,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.8387,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -986,17 +986,17 @@
   "file": "cli/src/native/inspect_server.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 152,
-   "named": 9,
+   "tokens": 175,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -1006,17 +1006,17 @@
   "file": "cli/src/native/interaction.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 151,
-   "named": 9,
+   "tokens": 173,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -1046,17 +1046,17 @@
   "file": "cli/src/native/policy.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 148,
-   "named": 9,
+   "tokens": 171,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -1066,17 +1066,17 @@
   "file": "cli/src/native/react/scripts.rs",
   "reference_files": 10,
   "wingbox": {
-   "tokens": 166,
-   "named": 10,
+   "tokens": 188,
+   "named": 12,
    "right": 10,
-   "not_on_list": 0,
+   "not_on_list": 2,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.8333,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9091,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1086,17 +1086,17 @@
   "file": "cli/src/native/storage.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 149,
-   "named": 9,
+   "tokens": 171,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -1106,17 +1106,17 @@
   "file": "cli/src/native/tracing.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 149,
-   "named": 9,
+   "tokens": 171,
+   "named": 11,
    "right": 9,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 2,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -1126,17 +1126,17 @@
   "file": "cli/src/native/webdriver/appium.rs",
   "reference_files": 10,
   "wingbox": {
-   "tokens": 170,
-   "named": 10,
+   "tokens": 192,
+   "named": 12,
    "right": 10,
-   "not_on_list": 0,
+   "not_on_list": 2,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.8333,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9091,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1146,17 +1146,17 @@
   "file": "cli/src/native/webdriver/backend.rs",
   "reference_files": 10,
   "wingbox": {
-   "tokens": 171,
-   "named": 10,
+   "tokens": 193,
+   "named": 12,
    "right": 10,
-   "not_on_list": 0,
+   "not_on_list": 2,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.8333,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9091,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1206,17 +1206,17 @@
   "file": "src/backend/arm/codegen/asm_emitter.rs",
   "reference_files": 18,
   "wingbox": {
-   "tokens": 285,
-   "named": 18,
+   "tokens": 298,
+   "named": 19,
    "right": 18,
    "not_on_list": 0,
    "missing": 0,
-   "accepted_extra": 0,
+   "accepted_extra": 1,
    "precision": 1.0,
    "recall": 1.0,
    "f1": 1.0,
    "exact": true,
-   "exact_strict": true
+   "exact_strict": false
   }
  },
  {
@@ -1266,17 +1266,17 @@
   "file": "src/backend/arm/linker/link.rs",
   "reference_files": 3,
   "wingbox": {
-   "tokens": 78,
-   "named": 3,
+   "tokens": 377,
+   "named": 25,
    "right": 3,
-   "not_on_list": 0,
+   "not_on_list": 22,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.12,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.2143,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1306,17 +1306,17 @@
   "file": "src/backend/linker_common/dynamic.rs",
   "reference_files": 31,
   "wingbox": {
-   "tokens": 473,
-   "named": 31,
+   "tokens": 542,
+   "named": 34,
    "right": 31,
-   "not_on_list": 0,
+   "not_on_list": 3,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.9118,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9538,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1326,17 +1326,17 @@
   "file": "src/backend/linker_common/write.rs",
   "reference_files": 30,
   "wingbox": {
-   "tokens": 449,
-   "named": 30,
+   "tokens": 553,
+   "named": 34,
    "right": 30,
-   "not_on_list": 0,
+   "not_on_list": 4,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.8824,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9375,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1466,17 +1466,17 @@
   "file": "src/backend/x86/codegen/peephole/passes/copy_propagation.rs",
   "reference_files": 2,
   "wingbox": {
-   "tokens": 97,
-   "named": 2,
+   "tokens": 133,
+   "named": 4,
    "right": 2,
-   "not_on_list": 0,
+   "not_on_list": 2,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.5,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.6667,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1486,17 +1486,17 @@
   "file": "src/backend/x86/codegen/peephole/passes/helpers.rs",
   "reference_files": 9,
   "wingbox": {
-   "tokens": 326,
-   "named": 9,
+   "tokens": 362,
+   "named": 11,
    "right": 9,
-   "not_on_list": 0,
+   "not_on_list": 2,
    "missing": 0,
    "accepted_extra": 0,
-   "precision": 1.0,
+   "precision": 0.8182,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {
@@ -1566,17 +1566,17 @@
   "file": "src/ir/module.rs",
   "reference_files": 146,
   "wingbox": {
-   "tokens": 2187,
-   "named": 146,
+   "tokens": 2844,
+   "named": 168,
    "right": 146,
-   "not_on_list": 0,
+   "not_on_list": 12,
    "missing": 0,
-   "accepted_extra": 0,
-   "precision": 1.0,
+   "accepted_extra": 10,
+   "precision": 0.9241,
    "recall": 1.0,
-   "f1": 1.0,
-   "exact": true,
-   "exact_strict": true
+   "f1": 0.9605,
+   "exact": false,
+   "exact_strict": false
   }
  },
  {

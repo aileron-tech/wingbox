@@ -1,12 +1,12 @@
 # Wingbox benchmark: impact questions on public code
 
-Wingbox 0.2.3 from PyPI, run of 2026-11-16. This file is written by `make_report.py` from the files in `results/`. `Dockerfile.benchmark` at the root of the repository runs the tests that need no model in a clean container and compares every result file with the committed one.
+Wingbox 0.10.0 from PyPI, run of 2026-11-17. This file is written by `make_report.py` from the files in `results/`. `Dockerfile.benchmark` at the root of the repository runs the tests that need no model in a clean container and compares every result file with the committed one.
 
 ## Summary
 
-- 100 questions drawn at random with a fixed seed in 5 public repositories (TypeScript, Rust, Python): `wingbox impact` names the complete list of dependent files, with nothing outside it, in 100 of 100 (95 % interval 96 to 100 %). A required file is missing in 0 of 100.
+- 100 questions drawn at random with a fixed seed in 5 public repositories (TypeScript, Rust, Python): `wingbox impact` names the complete list of dependent files, with nothing outside it, in 89 of 100 (95 % interval 81 to 94 %). A required file is missing in 0 of 100.
 - A coding agent on 55 of these questions, with Wingbox against its built-in search alone: tokens -35 % (-47 % to -20 %), cost -51 % (-58 % to -43 %); complete answers 55 of 55 against 48 of 55.
-- Every module dependency of the graph against the import statements of the code, in 7 corpora (3,795 dependencies in the largest): 0 wrong, 1 missing.
+- Every module dependency of the graph against the import statements of the code, in 7 corpora (3,795 dependencies in the largest): 633 wrong, 1 missing.
 - Building the graph, the report and the map of fastapi (1,227 source files) from a fresh checkout takes 2.0 s on a hosted runner.
 
 ## The question
@@ -27,12 +27,12 @@ Sampling: per repository, 20 files drawn without replacement (seed 20261116) fro
 |---|---|---|---|---|---|
 | chrome-devtools-mcp | typescript | 20 | 20 | 0 | 306 |
 | immich-server | typescript | 20 | 20 | 0 | 232 |
-| agent-browser | rust | 20 | 20 | 0 | 159 |
-| claudes-c-compiler | rust | 20 | 20 | 0 | 100 |
+| agent-browser | rust | 20 | 15 | 0 | 172 |
+| claudes-c-compiler | rust | 20 | 14 | 0 | 123 |
 | fastapi | python | 20 | 20 | 0 | 86 |
-| All | | 100 | 100 (96 to 100 %) | 0 | 166 |
+| All | | 100 | 89 (81 to 94 %) | 0 | 172 |
 
-The interval is a 95 % Wilson interval. Mean recall 1.000, mean precision 1.000. In 90 of the 100 answers the list equals the required list file for file; in the other 10 Wingbox also names accepted files (19 in all). Tokens are characters of the output divided by four; the largest answer is 19,462 tokens for a list of 503 files.
+The interval is a 95 % Wilson interval. Mean recall 1.000, mean precision 0.971. In 70 of the 100 answers the list equals the required list file for file; in the other 30 Wingbox also names accepted files (48 in all). Tokens are characters of the output divided by four; the largest answer is 19,462 tokens for a list of 503 files.
 
 ## Test 2. A coding agent with and without Wingbox, 55 questions
 
@@ -54,7 +54,7 @@ Claude Code, headless, model alias `sonnet`, no user settings, skills or connect
 | claudes-c-compiler | 12 | 24,270 | 50,428 | -52 % |
 | fastapi | 7 | 22,396 | 38,753 | -42 % |
 
-Ratios are totals over the questions; their intervals are 95 % paired bootstrap intervals over the questions (10,000 resamples). The 110 trials cost 5.15 USD in total and ran with Wingbox 0.2.1 (the 100 answers of `wingbox impact` are identical in 0.2.1, 0.2.2 and 0.2.3); every trial with its scores is in `results/agent.json`.
+Ratios are totals over the questions; their intervals are 95 % paired bootstrap intervals over the questions (10,000 resamples). The 110 trials cost 5.15 USD in total and ran with Wingbox 0.2.1 (the agent test ran with 0.2.1; the impact answers of 0.10.0 differ from 0.2.1 in 21 of the 40 Rust questions (item edges through module facades) and are identical in the 60 others); every trial with its scores is in `results/agent.json`.
 
 ## Test 3. Are the edges in the code?
 
@@ -64,17 +64,17 @@ Every module dependency of the Wingbox graph against every import statement of t
 |---|---|---|---|---|---|
 | immich, server | TypeScript | 3,795 | 3,795 | 0 | 0 |
 | chrome-devtools-mcp | TypeScript | 901 | 919 | 0 | 1 |
-| agent-browser, Rust sources | Rust | 391 | 391 | 0 | 0 |
-| claudes-c-compiler | Rust | 1,462 | 1,462 | 0 | 0 |
+| agent-browser, Rust sources | Rust | 391 | 449 | 58 | 0 |
+| claudes-c-compiler | Rust | 1,462 | 2,037 | 575 | 0 |
 | FastAPI, whole tree | Python | 1,802 | 1,819 | 0 | 0 |
 | FastAPI, the fastapi/ package | Python | 124 | 130 | 0 | 0 |
 | nanoGPT, minGPT, micrograd | Python | 15 | 15 | 0 | 0 |
 
 - chrome-devtools-mcp, missing: `src/third_party/index.ts` -> `src/third_party/lighthouse-devtools-mcp-bundle.d.ts`
+- agent-browser, Rust sources, wrong: `cli/src/flags.rs` -> `cli/src/session_settings/patch.rs`; `cli/src/main.rs` -> `cli/src/native/stream/dashboard.rs`; `cli/src/main.rs` -> `cli/src/session_settings/patch.rs`; `cli/src/main.rs` -> `cli/src/session_settings/proxy.rs`; `cli/src/main.rs` -> `cli/src/session_settings/store.rs`; `cli/src/mcp.rs` -> `cli/src/session_settings/patch.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/hint.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/hosts.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/model.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/net.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/outcome.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/recorder.rs`; `cli/src/native/actions.rs` -> `cli/src/native/flow/send.rs`; `cli/src/native/actions.rs` -> `cli/src/native/react/renders.rs`; `cli/src/native/actions.rs` -> `cli/src/native/react/suspense.rs`; `cli/src/native/actions.rs` -> `cli/src/native/react/tree.rs`; `cli/src/native/actions.rs` -> `cli/src/native/stream/cdp_loop.rs`; `cli/src/native/actions.rs` -> `cli/src/session_settings/patch.rs`; `cli/src/native/actions.rs` -> `cli/src/session_settings/proxy.rs`; `cli/src/native/actions.rs` -> `cli/src/session_settings/running.rs`
+- claudes-c-compiler, wrong: `src/backend/arm/assembler/elf_writer.rs` -> `src/backend/elf/constants.rs`; `src/backend/arm/assembler/elf_writer.rs` -> `src/backend/elf/object_writer.rs`; `src/backend/arm/assembler/elf_writer.rs` -> `src/backend/elf/writer_base.rs`; `src/backend/arm/assembler/encoder/bitfield.rs` -> `src/backend/arm/assembler/encoder/neon.rs`; `src/backend/arm/assembler/encoder/compare_branch.rs` -> `src/backend/arm/assembler/encoder/data_processing.rs`; `src/backend/arm/assembler/encoder/data_processing.rs` -> `src/backend/arm/assembler/encoder/neon.rs`; `src/backend/arm/assembler/parser.rs` -> `src/backend/elf/parse_string.rs`; `src/backend/arm/codegen/alu.rs` -> `src/ir/instruction.rs`; `src/backend/arm/codegen/alu.rs` -> `src/ir/ops.rs`; `src/backend/arm/codegen/asm_emitter.rs` -> `src/ir/constants.rs`; `src/backend/arm/codegen/asm_emitter.rs` -> `src/ir/instruction.rs`; `src/backend/arm/codegen/atomics.rs` -> `src/ir/instruction.rs`; `src/backend/arm/codegen/atomics.rs` -> `src/ir/ops.rs`; `src/backend/arm/codegen/calls.rs` -> `src/ir/constants.rs`; `src/backend/arm/codegen/calls.rs` -> `src/ir/instruction.rs`; `src/backend/arm/codegen/cast_ops.rs` -> `src/ir/instruction.rs`; `src/backend/arm/codegen/comparison.rs` -> `src/ir/instruction.rs`; `src/backend/arm/codegen/comparison.rs` -> `src/ir/ops.rs`; `src/backend/arm/codegen/emit.rs` -> `src/backend/stack_layout/regalloc_helpers.rs`; `src/backend/arm/codegen/emit.rs` -> `src/ir/constants.rs`
 
 The graph holds more edges than the code requires where it also records accepted ones (see "The question").
-
-The Python rows were run again with Wingbox 0.9.1 on 2026-11-17, when `tools/py_edges.py` started to count modules loaded by a literal name (`importlib.import_module`, `__import__`).
 
 ## Test 4. Building the graph
 
@@ -101,7 +101,7 @@ The size of the graph is read from the file each build wrote; the summary stops 
 
 | Item | Version or commit |
 |---|---|
-| Wingbox | 0.2.3 (PyPI `wingbox`) |
+| Wingbox | 0.10.0 (PyPI `wingbox`) |
 | grimp | 3.20 |
 | nanoGPT | 3adf61e |
 | minGPT | 37baab7 |
