@@ -519,8 +519,37 @@ def run_pre_search(stdin_text: str, cwd: str) -> str:
     return hook_output(context_for(payload, cwd))
 
 
+_GIT_COMMAND = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(?:switch|checkout|pull|merge|rebase|reset|stash\s+pop)\b")
+
+
+def background_refresh(stdin_text: str, cwd: str, kind: str) -> None:
+    """The SessionStart hook (kind "session-start") and the hook after a Bash call (kind "git"): when the project
+    of the session has a graph that misses changes, start its refresh in the background. Silent."""
+    try:
+        payload = json.loads(stdin_text) if stdin_text.strip() else {}
+    except json.JSONDecodeError:
+        return
+    if not isinstance(payload, dict):
+        return
+    if kind == "git":
+        tool_input = payload.get("tool_input")
+        command = tool_input.get("command") if isinstance(tool_input, dict) else None
+        if payload.get("tool_name") != "Bash" or not isinstance(command, str) or not _GIT_COMMAND.search(command):
+            return
+    start = payload.get("cwd") if isinstance(payload.get("cwd"), str) and payload["cwd"] else cwd
+    project = freshness.find_project(freshness.portable().local_path(start))
+    if project is not None:
+        freshness.refresh_in_background(project)
+
+
 def main(args: list[str]) -> int:
-    """Entry point of `wingbox hook pre-search` and `wingbox hook dirty`: always exit 0 so the tool call is never blocked."""
+    """Entry point of `wingbox hook pre-search|dirty|session-start|git`: always exit 0 so nothing is ever blocked."""
+    if args[:1] in (["session-start"], ["git"]):
+        try:
+            background_refresh(sys.stdin.read(), os.getcwd(), args[0])
+        except Exception as error:  # a hook must never block or break the session or the tool call
+            print(f"[wingbox] hook {args[0]}: {type(error).__name__}: {error}", file=sys.stderr)
+        return 0
     if args[:1] == ["dirty"]:
         try:
             freshness.run_post_edit(sys.stdin.read())
@@ -528,7 +557,8 @@ def main(args: list[str]) -> int:
             print(f"[wingbox] hook dirty: {type(error).__name__}: {error}", file=sys.stderr)
         return 0
     if args[:1] != ["pre-search"]:
-        print("usage: wingbox hook pre-search|dirty  (reads the Claude Code hook input on stdin)", file=sys.stderr)
+        print("usage: wingbox hook pre-search|dirty|session-start|git  (reads the Claude Code hook input on stdin)",
+              file=sys.stderr)
         return 0
     try:
         output = run_pre_search(sys.stdin.read(), os.getcwd())

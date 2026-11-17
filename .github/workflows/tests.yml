@@ -46,7 +46,7 @@ jobs:
           uv run --no-project --python "${{ matrix.python }}" --with-requirements "$RUNNER_TEMP/wingbox-requirements.txt" \
             python -m unittest discover -s tests
       - name: Hooks as Claude Code runs them
-        # Every hook entry Wingbox writes (global and project install, the plugin manifest) run in exec
+        # Every hook entry Wingbox offers (global install, init's assistant-setup.md, the plugin manifest) run in exec
         # form with no shell; on Windows with Git for Windows taken off PATH (tools/check_hooks.py).
         shell: pwsh
         run: |

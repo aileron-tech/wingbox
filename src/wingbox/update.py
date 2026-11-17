@@ -21,7 +21,7 @@ It also names the files an earlier version left in a project (.code_graph.sexp,
 .code_graph.uses.sexp, .code_graph.uses-cache.json, .code_graph_cache.json,
 wingbox-out/): Wingbox now writes only into .wingbox/ and deletes nothing, so
 they stay until you remove them. It looks in the current folder and its parents
-up to the project root, and in every project of a `--project` install.
+up to the project root, and in every project of a `--project` install of an earlier version.
 """
 from __future__ import annotations
 
@@ -211,9 +211,19 @@ def _refresh_target(entry: Installed) -> Fact:
     return make_fact("update-would-refresh", entry.root, scope=entry.scope, assistant=entry.assistants)
 
 
+def project_notes(installed: list[Installed]) -> list[Fact]:
+    """One note per repository where a version before 0.9.0 installed into the project: its files are still there,
+    and update no longer refreshes them (Wingbox writes only to .wingbox/ and to your own settings)."""
+    return [
+        make_fact("update-project-files-left", entry.root, assistant=entry.assistants,
+                  instead=f"cd {entry.root} && wingbox uninstall --project")
+        for entry in installed if entry.scope == "project"
+    ]
+
+
 def update(options: Options, env: Environment) -> list[Fact]:
     method = choose_method(env.origin, env.python, env.prefix, env.run, env.has_pip)
-    facts = [make_fact("update-from", env.installed_version)]
+    facts = [make_fact("update-from", env.installed_version)] + project_notes(env.installed)
     if isinstance(method, CannotUpdate):
         return facts + [make_fact("update-failed", reason=method.reason, instead=method.instead)]
     facts.append(make_fact("update-method", method.name))
@@ -224,14 +234,15 @@ def update(options: Options, env: Environment) -> list[Fact]:
         return facts + [make_fact("update-latest", latest)]
     if options.dry_run:
         return facts + [make_fact("update-would-run", " ".join(method.upgrade))] + [
-            _refresh_target(entry) for entry in env.installed
+            _refresh_target(entry) for entry in env.installed if entry.scope == "global"
         ]
     ran = env.run(method.upgrade)
     if ran.status != 0:
         return facts + [_failed(method.upgrade, ran)]
     facts.append(make_fact("update-to", env.new_version()))
     for entry in env.installed:
-        facts.extend(env.refresh(entry))
+        if entry.scope == "global":
+            facts.extend(env.refresh(entry))
     return facts
 
 
@@ -317,9 +328,11 @@ def read_new_version(python: str) -> str:
 
 def refresh_installed(python: str, package_parent: str, entry: Installed) -> list[Fact]:
     """Run `wingbox install` of the upgraded package for one record entry; report what it rewrote."""
-    command = [python, "-m", "wingbox.cli", "install", f"--{entry.scope}", "--sexp"]
+    command = [python, "-m", "wingbox.cli", "install", "--yes", "--sexp"]
     for name in entry.assistants:
         command += ["--assistant", name]
+    # The items the person left out stay out (an empty --without would put them back).
+    command += ["--without", ",".join(entry.without) if entry.without else "none"]
     environment = dict(os.environ)
     environment["PYTHONPATH"] = os.pathsep.join(
         part for part in (package_parent, environment.get("PYTHONPATH", "")) if part

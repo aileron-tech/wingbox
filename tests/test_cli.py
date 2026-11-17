@@ -141,7 +141,7 @@ class WingboxInitTest(unittest.TestCase):
         _layered_project(self.root)
 
     def test_init_prints_the_styles_and_writes_the_config(self) -> None:
-        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build), creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
+        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build, and .wingbox/assistant-setup.md: the lines a team may add by hand), creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
         before = {path for path in self.root.rglob("*")}
         status, text = _run(["init", str(self.root)])
         self.assertEqual(0, status, text)
@@ -159,7 +159,9 @@ class WingboxInitTest(unittest.TestCase):
         self.assertIn("- {layer: api, folder: src/routes, present: [src/routes]}", config)
         self.assertIn("missing:", text)
         created = {path for path in self.root.rglob("*")} - before
-        self.assertEqual({self.root / ".wingbox", self.root / ".wingbox" / "config.yaml", self.root / ".wingbox" / ".gitignore"}, created)
+        self.assertEqual({self.root / ".wingbox", self.root / ".wingbox" / "config.yaml", self.root / ".wingbox" / ".gitignore",
+                          self.root / ".wingbox" / "assistant-setup.md"}, created)
+        self.assertIn("To have every member's assistant use Wingbox here", text)
 
     def test_init_keeps_an_existing_config_unless_forced(self) -> None:
         """/* REQ-CLI-009: when .wingbox/config.yaml exists, `wingbox init` keeps it and still prints the candidates; --force rewrites it. */"""
@@ -186,13 +188,14 @@ class WingboxInitTest(unittest.TestCase):
         self.assertIn("webhooks: synonym of hooks", config.read_text(encoding="utf-8"))
 
     def test_init_sexp_prints_the_facts_the_text_is_made_from(self) -> None:
-        """/* REQ-CLI-010: `wingbox init --sexp` prints the S-expression facts (arch-part, arch-evidence, arch-config-written) for agents. */"""
+        """/* REQ-CLI-010: `wingbox init --sexp` prints the S-expression facts (arch-part, arch-evidence, arch-config-written, and last init-assistant-setup naming .wingbox/assistant-setup.md) for agents. */"""
         status, text = _run(["init", str(self.root), "--sexp"])
         self.assertEqual(0, status)
         lines = text.splitlines()
         self.assertTrue(lines[0].startswith('(arch-part "." :level container'), lines[0])
         self.assertIn('(arch-evidence "." layered "routes/" :files 4 :group presentation :match exact)', lines)
-        self.assertEqual('(arch-config-written ".wingbox/config.yaml")', lines[-1])
+        self.assertEqual('(arch-config-written ".wingbox/config.yaml")', lines[-2])
+        self.assertTrue(lines[-1].startswith('(init-assistant-setup ".wingbox/assistant-setup.md"'), lines[-1])
 
 
 class WingboxBuildArchitectureTest(unittest.TestCase):

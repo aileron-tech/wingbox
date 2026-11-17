@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run every hook entry Wingbox writes the way Claude Code runs it, and check the answers.
 
-The entries come from the real files: `wingbox install` into a temporary home folder,
-`wingbox install --project` into a temporary project, and the Claude Code plugin manifest.
+The entries come from the real files: `wingbox install` into a temporary home folder, the
+settings lines `wingbox init` saves in .wingbox/assistant-setup.md for a team to commit, and the
+Claude Code plugin manifest.
 Each entry is in exec form (`command` + `args`): Claude Code resolves `command` on PATH and
 spawns it with no shell (code.claude.com/docs/en/hooks, "Exec form and shell form"), so this
 script does the same: shutil.which, then subprocess with shell=False. On Windows the program
@@ -13,7 +14,8 @@ Windows without Git Bash in PowerShell (powershell.exe, and pwsh when present).
 
 The project folder name holds a space and non-ASCII letters. Each search hook gets a Grep
 input for a function of the project and must exit 0 and name the module that defines it;
-each edit hook gets an Edit input and must exit 0.
+each edit hook gets an Edit input, each git hook a Bash input running `git switch`, each
+session-start hook a SessionStart input; these must exit 0 and print nothing.
 
     python tools/check_hooks.py --source PATH   PATH replaces the pinned git source of the
                                                 plugin's uvx commands (the checkout under test)
@@ -85,27 +87,52 @@ def hook_entries(settings: dict) -> list[tuple[str, dict]]:
     ]
 
 
+# What Claude Code sends to each kind of hook: the tool and its input (none for SessionStart).
+INPUTS = {
+    "pre-search": lambda project: ("Grep", {"pattern": "compute_invoice_total", "path": str(project)}),
+    "dirty": lambda project: ("Edit", {"file_path": str(project / "api" / "routes.py")}),
+    "git": lambda project: ("Bash", {"command": "git switch -c feature"}),
+    "session-start": lambda project: (None, None),
+}
+
+
+def _kind(entry: dict) -> str:
+    """The hook subcommand an entry runs: the last word of its args (exec form) or of its command."""
+    words = entry.get("args") or entry.get("command", "").split()
+    return str(words[-1]) if words else ""
+
+
+def team_settings(project: Path) -> dict:
+    """The settings JSON of .wingbox/assistant-setup.md (what a team commits by hand)."""
+    text = (project / ".wingbox" / "assistant-setup.md").read_text(encoding="utf-8")
+    return json.loads(text.split("```json\n", 1)[1].split("\n```", 1)[0])
+
+
 def check(label: str, settings: dict, project: Path, env: dict[str, str]) -> list[str]:
     """Run every Wingbox entry of settings in project; return the failures."""
     failures = []
     entries = hook_entries(settings)
-    if {event for event, _ in entries} != {"PreToolUse", "PostToolUse"}:
-        failures.append(f"{label}: expected a PreToolUse and a PostToolUse entry, found {entries}")
+    kinds = sorted(_kind(entry) for _, entry in entries)
+    if kinds != sorted(INPUTS):
+        failures.append(f"{label}: expected one entry each for {sorted(INPUTS)}, found {kinds}")
     for event, entry in entries:
         if entry.get("onFailure") != "continue":
             failures.append(f"{label} {event}: no \"onFailure\": \"continue\"")
-        if event == "PreToolUse":
-            stdin = {"session_id": "check", "hook_event_name": event, "cwd": str(project), "tool_name": "Grep",
-                     "tool_input": {"pattern": "compute_invoice_total", "path": str(project)}}
-        else:
-            stdin = {"session_id": "check", "hook_event_name": event, "cwd": str(project), "tool_name": "Edit",
-                     "tool_input": {"file_path": str(project / "api" / "routes.py")}}
+        if _kind(entry) not in INPUTS:
+            failures.append(f"{label} {event}: unknown hook {entry}")
+            continue
+        tool, tool_input = INPUTS[_kind(entry)](project)
+        stdin = {"session_id": "check", "hook_event_name": event, "cwd": str(project)}
+        if tool:
+            stdin.update(tool_name=tool, tool_input=tool_input)
         result = run_entry(entry, stdin, project, env)
         out, err = result.stdout.decode("utf-8", "replace"), result.stderr.decode("utf-8", "replace")
         shown = json.dumps({key: entry[key] for key in ("command", "args") if key in entry}, ensure_ascii=False)
         print(f"{label} {event} {shown} -> exit {result.returncode}, {len(out)} bytes")
         if result.returncode != 0:
             failures.append(f"{label} {event}: exit {result.returncode}: {err.strip()[:400]}")
+        elif _kind(entry) != "pre-search" and out.strip():
+            failures.append(f"{label} {event}: printed {out[:400]!r}, expected nothing")
         elif event == "PreToolUse":
             context = json.loads(out)["hookSpecificOutput"]["additionalContext"] if out.strip() else ""
             if "billing/invoice" not in context:
@@ -133,8 +160,8 @@ def main(args: list[str]) -> int:
             (project / ".git").mkdir()
         env = environment(home)
         wingbox = resolve("wingbox", env)
-        for argv, cwd in (([wingbox, "build", str(project)], project), ([wingbox, "install"], project),
-                          ([wingbox, "install", "--project"], project)):
+        for argv, cwd in (([wingbox, "build", str(project)], project), ([wingbox, "install", "--yes"], project),
+                          ([wingbox, "init", str(project), "--yes"], project)):
             subprocess.run(argv, cwd=cwd, env=env, check=True, capture_output=True)
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         pinned = [arg for _, entry in hook_entries(manifest) for arg in entry.get("args", []) if arg.startswith("git+")]
@@ -148,7 +175,7 @@ def main(args: list[str]) -> int:
             failures.append(f"plugin MCP server command: exit {warm.returncode}: {warm.stderr.decode('utf-8', 'replace')[:400]}")
         settings = {
             "global install": json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8")),
-            "project install": json.loads((project / ".claude" / "settings.json").read_text(encoding="utf-8")),
+            "assistant-setup.md": team_settings(project),
             "plugin": plugin,
         }
         for label, written in settings.items():

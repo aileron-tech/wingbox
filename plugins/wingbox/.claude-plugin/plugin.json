@@ -74,6 +74,47 @@
             "onFailure": "continue"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx",
+            "args": [
+              "--offline",
+              "--quiet",
+              "--from",
+              "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+              "wingbox",
+              "hook",
+              "git"
+            ],
+            "timeout": 5,
+            "onFailure": "continue"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uvx",
+            "args": [
+              "--offline",
+              "--quiet",
+              "--from",
+              "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+              "wingbox",
+              "hook",
+              "session-start"
+            ],
+            "timeout": 5,
+            "onFailure": "continue"
+          }
+        ]
       }
     ]
   },

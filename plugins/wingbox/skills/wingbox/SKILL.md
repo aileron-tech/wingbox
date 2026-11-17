@@ -50,10 +50,10 @@ they take the same arguments as the scripts. A skill installed by
 
 | Command | Purpose |
 |---|---|
-| `wingbox install [--global\|--project] [--assistant NAME ...] [--dry-run]` | Copy this skill to each assistant, add the always-on block to CLAUDE.md / AGENTS.md, add the Claude Code search and edit hooks |
-| `wingbox uninstall [--global\|--project] [--assistant NAME ...]` | Remove exactly what install added |
+| `wingbox install [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run]` | Set up the assistants in the user's own settings (home folder only): this skill, the always-on block in CLAUDE.md / AGENTS.md, the Claude Code hooks. Items: `skill`, `block`, `search-hook`, `edit-hook`, `session-hook` (refresh a stale graph at session start), `git-hook` (refresh after git switch/pull/merge...); `--without` leaves items out (`ITEM` or `ASSISTANT:ITEM`, comma separated), and the choice is remembered. An agent runs it with `--yes`; it asks only a person at a terminal |
+| `wingbox uninstall [--assistant NAME ...] [--without ITEM,...]` | Remove exactly what install added (keeps the `--without` items); `--project` removes what versions before 0.9.0 wrote into a repository |
 | `wingbox open [PATH]` | Open `.wingbox/map.html` of the project in the browser (prints its path when there is no browser) |
-| `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed skills, blocks and hook; warns about files an earlier version left (`.code_graph*`, `wingbox-out/`) |
+| `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed items only (never adds an item the user left out); warns about files an earlier version left (`.code_graph*`, `wingbox-out/`, `install --project` files) |
 | `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin; refreshes the graph before it reads it |
 | `wingbox hook dirty` | The Claude Code PostToolUse hook on Edit and Write: marks the changed file so the graph is refreshed before its next use |
 
@@ -147,7 +147,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth + files to read first; lists at most 200 unless `--all`, counts are always complete; ends with the advice that concerns the file | `impact src/billing/invoice.service.ts --sexp` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id>` | Single module with edges | `module operatives.controller` |
-| `wingbox init [PATH] [--force] [--sexp] [--synonyms]` | Split the repository into parts, judge the architecture style of each (with score, evidence and sources) and write `.wingbox/config.yaml` (kept unless `--force`); `--synonyms` also maps folder names through the built-in word vectors; in an empty folder `--language L --style S --yes [--scaffold]` starts a new project (without them it prints the choices and exits 2) | `wingbox init --sexp` |
+| `wingbox init [PATH] [--force] [--sexp] [--synonyms]` | Split the repository into parts, judge the architecture style of each (with score, evidence and sources) and write `.wingbox/config.yaml` (kept unless `--force`) and `.wingbox/assistant-setup.md` (the lines a team may add by hand to AGENTS.md, CLAUDE.md and .claude/settings.json; Wingbox writes nothing outside `.wingbox/`); `--synonyms` also maps folder names through the built-in word vectors; in an empty folder `--language L --style S --yes [--scaffold]` starts a new project (without them it prints the choices and exits 2) | `wingbox init --sexp` |
 | `wingbox advice [--sexp] [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; record a decision in `.wingbox/decisions.sexp` | `wingbox advice --sexp` |
 | `wingbox align [PART] [--to STYLE] [--learn] [--sexp]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported | `wingbox align --sexp` |
 | `wingbox place "<what>" [--part PART] [--sexp]` | Layer and folder for new code by the placement rules of the part's style (`:new` when the folder does not exist yet) and what it may import | `wingbox place "repository for invoices" --sexp` |

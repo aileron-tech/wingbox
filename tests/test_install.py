@@ -94,7 +94,7 @@ class GlobalInstallTest(InstallTestCase):
         self.assertIn(str(self.home / ".agents"), entry.folders)
 
     def test_install_adds_the_edit_hook_and_reinstall_upgrades_an_old_install_without_duplicates(self) -> None:
-        """/* REQ-FRESH-011: install must add one PostToolUse group on Edit|Write|MultiEdit running `<same program> hook dirty`; installing over a settings file from an older install (search hook only, timeout 5) must leave exactly one Wingbox group per event, and uninstall must remove both. */"""
+        """/* REQ-FRESH-011: install must add one PostToolUse group on Edit|Write|MultiEdit running `<same program> hook dirty`, one PostToolUse group on Bash running `hook git` and one SessionStart group running `hook session-start`; installing over a settings file from an older install (search hook only, timeout 5) must leave exactly one Wingbox group per hook, and uninstall must remove all of them and keep the other hooks. */"""
         settings_path = self.home / ".claude" / "settings.json"
         settings_path.write_text(json.dumps({"hooks": {
             "PreToolUse": [{"matcher": "Grep|Glob|Read", "hooks": [{"type": "command", "command": OLD_HOOK_COMMAND, "timeout": 5}]}],
@@ -108,12 +108,15 @@ class GlobalInstallTest(InstallTestCase):
             [
                 {"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]},
                 install.dirty_group(HOOK_PROGRAM),
+                install.item_group(HOOK_PROGRAM, "git-hook"),
             ],
             hooks["PostToolUse"],
         )
+        self.assertEqual([install.item_group(HOOK_PROGRAM, "session-hook")], hooks["SessionStart"])
         self.run_command("uninstall")
         remaining = json.loads(settings_path.read_text()).get("hooks", {})
         self.assertNotIn("PreToolUse", remaining)
+        self.assertNotIn("SessionStart", remaining)
         self.assertEqual([{"matcher": "Write", "hooks": [{"type": "command", "command": "fmt.sh"}]}], remaining["PostToolUse"])
 
     def test_second_install_changes_nothing(self) -> None:
@@ -237,34 +240,52 @@ class GlobalInstallTest(InstallTestCase):
 
 
 class ProjectInstallTest(InstallTestCase):
-    def test_project_install_writes_into_the_repository(self) -> None:
-        """/* REQ-INSTALL-010: `wingbox install --project` must write .claude/skills/wingbox, .claude/settings.json with the hooks in exec form on the bare program (`"command": "wingbox"`, `"args": ["hook", "pre-search"]`, resolved on PATH on every system), and the block in CLAUDE.md and AGENTS.md of the repository root, also from a subfolder. */"""
-        (self.home / ".claude").mkdir()
-        (self.home / ".codex").mkdir()
-        sub = self.project / "src" / "app"
-        sub.mkdir(parents=True)
-        self.run_command("install", "--project", cwd=sub)
-        self.assertTrue((self.project / ".claude" / "skills" / "wingbox" / "SKILL.md").is_file())
-        self.assertTrue((self.project / ".agents" / "skills" / "wingbox" / "SKILL.md").is_file())
-        settings = json.loads((self.project / ".claude" / "settings.json").read_text())
-        entry = settings["hooks"]["PreToolUse"][0]["hooks"][0]
-        self.assertEqual(("wingbox", ["hook", "pre-search"], "continue"), (entry["command"], entry["args"], entry["onFailure"]))
-        for name in ("CLAUDE.md", "AGENTS.md"):
-            self.assertIn(install.BEGIN_MARKER, (self.project / name).read_text())
-        self.assertFalse((self.home / ".claude" / "skills").exists())
+    def legacy_project_install(self) -> None:
+        """What `wingbox install --project` of versions 0.2.6 to 0.8.x wrote, with its record entry."""
+        scope = install.Scope("project", str(self.project))
+        assistants = ("claude-code", "codex")
+        targets = install.plan_targets(scope, assistants)
+        missing = install.missing_folders(scope, targets)
+        payload = install.skill_payload(SKILL_FILES, "0.8.2")
+        for target in targets:
+            if target.what == "skill":
+                install._install_skill(target, payload, "0.8.2", False)
+            elif target.what == "block":
+                install._install_block(target, False)
+            else:
+                settings_path = Path(target.path)
+                settings_path.parent.mkdir(parents=True, exist_ok=True)
+                old = {"PreToolUse": [install.hook_group(install.PROJECT_HOOK_PROGRAM)],
+                       "PostToolUse": [install.dirty_group(install.PROJECT_HOOK_PROGRAM)]}
+                settings_path.write_text(json.dumps({"hooks": old}) + "\n")
+        entries = install.with_installed([], scope, assistants, tuple(folder for folder in missing if os.path.isdir(folder)))
+        install._write_record(install.record_path(str(self.home)), entries, False, "install")
 
-    def test_a_claude_md_that_links_to_agents_md_gets_one_block(self) -> None:
-        """/* REQ-INSTALL-011: when CLAUDE.md is a link to AGENTS.md, the project install must write one block, keep the link, and uninstall must restore AGENTS.md. */"""
+    def test_project_install_is_refused_and_writes_nothing(self) -> None:
+        """/* REQ-INSTALL-010: `wingbox install --project` (removed in 0.9.0) must exit non-zero, write nothing, and say that `wingbox init` sets up the repository (writes only .wingbox/), `wingbox install` sets up the assistants (writes only your own settings), and `wingbox uninstall --project` removes what earlier versions wrote. */"""
         (self.home / ".claude").mkdir()
-        (self.home / ".codex").mkdir()
+        before = snapshot(self.base)
+        stderr = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(stderr), mock.patch.dict(os.environ, {"HOME": str(self.home)}):
+            status = cli.main(["install", "--project"])
+        self.assertNotEqual(0, status)
+        for words in ("wingbox init", "writes only .wingbox/", "wingbox install", "your own settings", "uninstall --project", "0.9.0"):
+            self.assertIn(words, stderr.getvalue())
+        self.assertEqual(before, snapshot(self.base))
+
+    def test_uninstall_project_removes_what_an_earlier_version_wrote(self) -> None:
+        """/* REQ-INSTALL-011: `wingbox uninstall --project` must remove what `install --project` of an earlier version wrote (the stamped skill folders, the block, the hook entries, the folders it created, the record entry), keep a CLAUDE.md that links to AGENTS.md as a link, and restore AGENTS.md. */"""
         (self.project / "AGENTS.md").write_text("# Project rules\n")
         (self.project / "CLAUDE.md").symlink_to("AGENTS.md")
         before = snapshot(self.base)
-        self.run_command("install", "--project")
-        self.assertTrue((self.project / "CLAUDE.md").is_symlink())
+        self.legacy_project_install()
         self.assertEqual(1, (self.project / "AGENTS.md").read_text().count(install.BEGIN_MARKER))
         self.run_command("uninstall", "--project")
-        self.assertEqual(before, snapshot(self.base))
+        self.assertTrue((self.project / "CLAUDE.md").is_symlink())
+        after = snapshot(self.base)
+        after.pop("home/.wingbox/installed.sexp", None)
+        after.pop("home/.wingbox", None)
+        self.assertEqual(before, after)
 
 
 class BlockEditTest(unittest.TestCase):

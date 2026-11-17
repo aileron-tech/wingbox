@@ -216,7 +216,7 @@ class CleanStatusTest(unittest.TestCase):
         self.assertEqual(0, done.returncode, done.stderr)
 
     def test_a_plain_build_leaves_git_status_clean(self) -> None:
-        """/* REQ-FRESH-043: `wingbox build` in a clean git repository leaves `git status` clean: everything it generates in .wingbox/ is ignored, the .gitignore it writes there included, and it writes no decisions.sexp in a project nobody has set up with init, learn, align --learn or advice; after `wingbox init` the files meant to be committed (config.yaml, and decisions.sexp once a build has logged advice for it) appear and nothing generated does. */"""
+        """/* REQ-FRESH-043: `wingbox build` in a clean git repository leaves `git status` clean: everything it generates in .wingbox/ is ignored, the .gitignore it writes there included, and it writes no decisions.sexp in a project nobody has set up with init, learn, align --learn or advice; after `wingbox init` the files meant to be committed (config.yaml, assistant-setup.md, and decisions.sexp once a build has logged advice for it) appear and nothing generated does. */"""
         self.wingbox("build", str(self.root))
         self.assertEqual([], self.status())
         self.assertFalse((self.root / ".wingbox" / "decisions.sexp").exists())
@@ -224,4 +224,6 @@ class CleanStatusTest(unittest.TestCase):
         self.wingbox("build", str(self.root))
         shown = self.status()
         self.assertIn(".wingbox/config.yaml", shown)
-        self.assertEqual([], [name for name in shown if name not in (".wingbox/config.yaml", ".wingbox/decisions.sexp")])
+        self.assertIn(".wingbox/assistant-setup.md", shown)
+        self.assertEqual([], [name for name in shown if name not in (
+            ".wingbox/config.yaml", ".wingbox/decisions.sexp", ".wingbox/assistant-setup.md")])

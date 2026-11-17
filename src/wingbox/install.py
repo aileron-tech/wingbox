@@ -1,24 +1,27 @@
-"""`wingbox install` and `wingbox uninstall`: put Wingbox in front of coding assistants.
+"""`wingbox install` and `wingbox uninstall`: put Wingbox in front of your coding assistants.
 
-    wingbox install   [--global|--project] [--assistant NAME ...] [--dry-run] [--sexp]
-    wingbox uninstall [--global|--project] [--assistant NAME ...] [--sexp]
+    wingbox install   [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run] [--sexp]
+    wingbox uninstall [--global|--project] [--assistant NAME ...] [--without ITEM,...] [--sexp]
 
-Install puts three things in place for each assistant:
+Install writes only your own settings in your home folder; to set up a repository run `wingbox init`
+(it writes only the repository's .wingbox/). It shows what it is about to put in place, as a list of
+items with a checkbox each, grouped by assistant:
 
-- the skill (SKILL.md and references/, stamped with the version) in the
-  assistant's skill folder, so `/wingbox` exists there;
-- an always-on block between `<!-- wingbox:begin -->` and `<!-- wingbox:end -->`
-  in the instructions file the assistant reads in every session;
-- for Claude Code, a PreToolUse hook on Grep, Glob and Read that runs
-  `wingbox hook pre-search`, and a PostToolUse hook on Edit and Write that
-  runs `wingbox hook dirty` (it marks the edited file, so the graph is
-  refreshed before its next use).
+- skill: the skill (SKILL.md and references/, stamped with the version) in the assistant's skill folder,
+  so `/wingbox` exists there;
+- block: an always-on block between `<!-- wingbox:begin -->` and `<!-- wingbox:end -->` in the
+  instructions file the assistant reads in every session;
+- Claude Code hooks in ~/.claude/settings.json: search-hook (PreToolUse on Grep, Glob and Read: context
+  from the graph), edit-hook (PostToolUse on Edit and Write: marks the edited file), session-hook
+  (SessionStart: refreshes a stale graph in the background), git-hook (PostToolUse on Bash: refreshes the
+  graph after the agent ran git switch, checkout, pull, merge, rebase, reset or stash pop).
 
-`--global` (default) writes into the home folder for the assistants whose
-configuration folder exists; `--project` writes into the current repository.
-A record in ~/.wingbox/installed.sexp says what was installed, for
-`wingbox update` and `wingbox uninstall`. Uninstall removes exactly what
-install added: stamped skill folders, the marked blocks, the hook entries.
+In a terminal the person unticks items and confirms; an agent, a pipe or `--yes` installs everything
+except the items named by `--without` (an item, or ASSISTANT:ITEM for one assistant; `--without none`
+installs everything again). The choice is recorded in ~/.wingbox/installed.sexp, so `wingbox update`
+refreshes only what was installed and a later install keeps it. `wingbox uninstall` removes exactly what
+install added (stamped skill folders, the marked blocks, the hook entries), except the items named by
+`--without`; `--project` removes what versions 0.2.6 to 0.8.x wrote into a repository.
 """
 from __future__ import annotations
 
@@ -35,6 +38,11 @@ SKILL_NAME = "wingbox"
 STAMP_FILE = ".wingbox-version"
 BEGIN_MARKER = "<!-- wingbox:begin -->"
 END_MARKER = "<!-- wingbox:end -->"
+SESSION_SUBCOMMAND = "hook session-start"
+SESSION_TIMEOUT_SECONDS = 5
+GIT_SUBCOMMAND = "hook git"
+GIT_MATCHER = "Bash"
+GIT_TIMEOUT_SECONDS = 5
 HOOK_SUBCOMMAND = "hook pre-search"
 HOOK_MATCHER = "Grep|Glob|Read"
 # The search hook may wait for a refresh of the graph (WINGBOX_HOOK_WAIT, 3 s) before it reads it.
@@ -42,7 +50,15 @@ HOOK_TIMEOUT_SECONDS = 10
 DIRTY_SUBCOMMAND = "hook dirty"
 DIRTY_MATCHER = "Edit|Write|MultiEdit"
 DIRTY_TIMEOUT_SECONDS = 5
-_HOOK_EVENTS = ("PreToolUse", "PostToolUse")
+_HOOK_EVENTS = ("PreToolUse", "PostToolUse", "SessionStart")
+ITEMS = ("skill", "block", "search-hook", "edit-hook", "session-hook", "git-hook")
+HOOK_ITEMS = ("search-hook", "edit-hook", "session-hook", "git-hook")
+PROJECT_INSTALL_REMOVED = (
+    "`wingbox install --project` was removed in 0.9.0: Wingbox writes only to a repository's .wingbox/ and to "
+    "your own settings. To set up this repository run `wingbox init` (writes only .wingbox/); to set up your "
+    "assistants run `wingbox install` (writes only your own settings). `wingbox uninstall --project` removes "
+    "what earlier versions wrote into a repository."
+)
 BACKUP_SUFFIX = ".wingbox-bak"
 RECORD_RELATIVE = os.path.join(".wingbox", "installed.sexp")
 
@@ -136,6 +152,8 @@ class Options:
     assistants: tuple[str, ...]  # empty: detected (install) or all (uninstall)
     dry_run: bool
     sexp: bool
+    without: Optional[tuple[str, ...]] = None  # items left out (ITEM or ASSISTANT:ITEM); None: the recorded choice
+    yes: bool = False  # ask nothing, even in a terminal
 
 
 @dataclass(frozen=True)
@@ -160,6 +178,7 @@ class Installed:
     root: str
     assistants: tuple[str, ...]
     folders: tuple[str, ...] = ()  # folders install created, removed by uninstall when empty
+    without: tuple[str, ...] = ()  # items the person left out (ITEM or ASSISTANT:ITEM)
 
 
 # ---------------------------------------------------------------------------
@@ -171,17 +190,34 @@ def parse_arguments(command: Literal["install", "uninstall"], args: list[str]) -
     assistants: list[str] = []
     dry_run = False
     sexp = False
+    yes = False
+    without: Optional[list[str]] = None
     index = 0
     while index < len(args):
         argument = args[index]
         if argument == "--global":
             scope = "global"
         elif argument == "--project":
+            if command == "install":
+                return UsageError(PROJECT_INSTALL_REMOVED)
             scope = "project"
         elif argument == "--dry-run" and command == "install":
             dry_run = True
+        elif argument == "--yes" and command == "install":
+            yes = True
         elif argument == "--sexp":
             sexp = True
+        elif argument == "--without" and index + 1 < len(args):
+            without = [] if without is None else without
+            for item in (part.strip() for part in args[index + 1].split(",")):
+                if item in ("", "none"):
+                    continue
+                problem = _item_problem(item)
+                if problem:
+                    return UsageError(problem)
+                if item not in without:
+                    without.append(item)
+            index += 1
         elif argument == "--assistant" and index + 1 < len(args):
             name = args[index + 1]
             if name not in ASSISTANTS:
@@ -192,7 +228,58 @@ def parse_arguments(command: Literal["install", "uninstall"], args: list[str]) -
         else:
             return UsageError(f"unknown argument {argument}")
         index += 1
-    return Options(command, scope, tuple(assistants), dry_run, sexp)
+    return Options(command, scope, tuple(assistants), dry_run, sexp, None if without is None else tuple(without), yes)
+
+
+def _item_problem(item: str) -> Optional[str]:
+    """Why an item of --without is not one, or None."""
+    assistant, _, key = item.rpartition(":")
+    if assistant and assistant not in ASSISTANTS:
+        return f"unknown assistant {assistant} in --without {item}; known: {', '.join(ASSISTANTS)}"
+    if key not in ITEMS:
+        return f"unknown item {key} in --without; items: {', '.join(ITEMS)}"
+    return None
+
+
+def is_selected(assistant: str, key: str, without: tuple[str, ...]) -> bool:
+    """Whether the item key of assistant is installed: neither KEY nor ASSISTANT:KEY is left out."""
+    return key not in without and f"{assistant}:{key}" not in without
+
+
+@dataclass(frozen=True)
+class Item:
+    """One line of the install list: an item of an assistant, the file it goes to, ticked or not."""
+
+    assistant: str
+    key: str
+    path: str
+    ticked: bool
+
+
+def install_items(home: str, assistants: tuple[str, ...], without: tuple[str, ...]) -> list[Item]:
+    """What install puts in place, per assistant, in the order of the list."""
+    items: list[Item] = []
+    for name in assistants:
+        items.append(Item(name, "skill", _join(home, _GLOBAL_SKILLS[name], SKILL_NAME), is_selected(name, "skill", without)))
+        block = _GLOBAL_BLOCKS[name]
+        if block is not None:
+            items.append(Item(name, "block", _join(home, block), is_selected(name, "block", without)))
+        if name == "claude-code":
+            settings = os.path.join(home, ".claude", "settings.json")
+            items.extend(Item(name, key, settings, is_selected(name, key, without)) for key in HOOK_ITEMS)
+    return items
+
+
+def without_from_items(items: list[Item]) -> tuple[str, ...]:
+    """The --without value that leaves out the unticked items: KEY when every assistant leaves it out."""
+    unticked = [item for item in items if not item.ticked]
+    keys = []
+    for key in ITEMS:
+        offering = [item for item in items if item.key == key]
+        if offering and all(not item.ticked for item in offering):
+            keys.append(key)
+    left = [f"{item.assistant}:{item.key}" for item in unticked if item.key not in keys]
+    return tuple(keys + [item for item in dict.fromkeys(left)])
 
 
 # ---------------------------------------------------------------------------
@@ -326,17 +413,36 @@ def remove_block(text: str) -> EditResult:
     return Edited(before + after)
 
 
-def is_wingbox_hook(entry: object) -> bool:
-    """A hook entry Wingbox wrote: exec form (`args` ending in `hook pre-search` or `hook dirty`), or the
-    shell form of versions before 0.7.1 (`... hook pre-search` in `command`)."""
+_HOOK_SUBCOMMANDS = {
+    "search-hook": HOOK_SUBCOMMAND, "edit-hook": DIRTY_SUBCOMMAND, "session-hook": SESSION_SUBCOMMAND, "git-hook": GIT_SUBCOMMAND,
+}
+# event, matcher (None: every source of the event), timeout of each hook item
+_HOOK_PLACES = {
+    "search-hook": ("PreToolUse", HOOK_MATCHER, HOOK_TIMEOUT_SECONDS),
+    "edit-hook": ("PostToolUse", DIRTY_MATCHER, DIRTY_TIMEOUT_SECONDS),
+    "session-hook": ("SessionStart", None, SESSION_TIMEOUT_SECONDS),
+    "git-hook": ("PostToolUse", GIT_MATCHER, GIT_TIMEOUT_SECONDS),
+}
+
+
+def hook_kind(entry: object) -> Optional[str]:
+    """The item of a hook entry Wingbox wrote (search-hook, edit-hook, session-hook, git-hook), else None.
+    Exec form (`args` ending in `hook pre-search`, ...) and the shell form of versions before 0.7.1."""
     if not isinstance(entry, dict) or entry.get("type") != "command":
-        return False
+        return None
     command = entry.get("command")
     args = entry.get("args", [])
     if not isinstance(command, str) or not isinstance(args, list):
-        return False
-    line = " ".join([command, *(str(arg) for arg in args)])
-    return "wingbox" in line and line.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
+        return None
+    line = " ".join([command, *(str(arg) for arg in args)]).rstrip()
+    if "wingbox" not in line:
+        return None
+    return next((key for key, subcommand in _HOOK_SUBCOMMANDS.items() if line.endswith(subcommand)), None)
+
+
+def is_wingbox_hook(entry: object) -> bool:
+    """A hook entry Wingbox wrote."""
+    return hook_kind(entry) is not None
 
 
 def _hook_entry(program: HookProgram, subcommand: str, timeout: int) -> dict:
@@ -354,36 +460,44 @@ def _hook_entry(program: HookProgram, subcommand: str, timeout: int) -> dict:
     }
 
 
+def item_group(program: HookProgram, key: str) -> dict:
+    """The settings group of one hook item: its matcher (none for SessionStart) and its entry."""
+    _event, matcher, timeout = _HOOK_PLACES[key]
+    group: dict = {"matcher": matcher} if matcher is not None else {}
+    group["hooks"] = [_hook_entry(program, _HOOK_SUBCOMMANDS[key], timeout)]
+    return group
+
+
 def hook_group(program: HookProgram) -> dict:
-    return {"matcher": HOOK_MATCHER, "hooks": [_hook_entry(program, HOOK_SUBCOMMAND, HOOK_TIMEOUT_SECONDS)]}
+    return item_group(program, "search-hook")
 
 
 def dirty_group(program: HookProgram) -> dict:
-    return {"matcher": DIRTY_MATCHER, "hooks": [_hook_entry(program, DIRTY_SUBCOMMAND, DIRTY_TIMEOUT_SECONDS)]}
+    return item_group(program, "edit-hook")
 
 
-def _stripped_groups(groups: list) -> list:
+def _stripped_groups(groups: list, keys: frozenset[str]) -> list:
     kept: list = []
     for group in groups:
         entries = group.get("hooks") if isinstance(group, dict) else None
-        if not isinstance(entries, list) or not any(is_wingbox_hook(entry) for entry in entries):
+        if not isinstance(entries, list) or not any(hook_kind(entry) in keys for entry in entries):
             kept.append(group)
             continue
-        remaining = [entry for entry in entries if not is_wingbox_hook(entry)]
+        remaining = [entry for entry in entries if hook_kind(entry) not in keys]
         if remaining:
             kept.append({**group, "hooks": remaining})
     return kept
 
 
-def strip_hook(settings: dict) -> dict:
-    """Settings without Wingbox's hook entries; other entries and groups stay as they are."""
+def strip_hook(settings: dict, keys: frozenset[str] = frozenset(HOOK_ITEMS)) -> dict:
+    """Settings without Wingbox's hook entries of these items; other entries and groups stay as they are."""
     hooks = settings.get("hooks")
     if not isinstance(hooks, dict) or not any(isinstance(hooks.get(event), list) for event in _HOOK_EVENTS):
         return settings
     new_hooks = {key: value for key, value in hooks.items() if key not in _HOOK_EVENTS}
     for event in _HOOK_EVENTS:
         if isinstance(hooks.get(event), list):
-            groups = _stripped_groups(hooks[event])
+            groups = _stripped_groups(hooks[event], keys)
             if groups:
                 new_hooks[event] = groups
         elif event in hooks:
@@ -404,20 +518,21 @@ def _wingbox_entry_count(groups: list) -> int:
     )
 
 
-def merge_hook(settings: dict, program: HookProgram) -> dict:
-    """Settings with exactly one Wingbox group per hook event (search and edit); other hooks and settings are kept."""
-    wanted = {"PreToolUse": hook_group(program), "PostToolUse": dirty_group(program)}
+def merge_hook(settings: dict, program: HookProgram, keys: tuple[str, ...] = HOOK_ITEMS) -> dict:
+    """Settings with exactly one Wingbox group per hook item of keys, and none of the other items; other hooks and
+    settings are kept."""
+    wanted = [(_HOOK_PLACES[key][0], item_group(program, key)) for key in HOOK_ITEMS if key in keys]
     hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
-    if all(
-        isinstance(hooks.get(event), list) and group in hooks[event] and _wingbox_entry_count(hooks[event]) == 1
-        for event, group in wanted.items()
-    ):
+    present = sum(_wingbox_entry_count(hooks[event]) for event in _HOOK_EVENTS if isinstance(hooks.get(event), list))
+    if present == len(wanted) and all(isinstance(hooks.get(event), list) and group in hooks[event] for event, group in wanted):
         return settings
     stripped = strip_hook(settings)
     stripped_hooks = stripped.get("hooks") if isinstance(stripped.get("hooks"), dict) else {}
     merged = dict(stripped_hooks)
-    for event, group in wanted.items():
-        merged[event] = list(stripped_hooks.get(event, [])) + [group]
+    for event, group in wanted:
+        merged[event] = list(merged.get(event, [])) + [group]
+    if not merged:
+        return {key: value for key, value in stripped.items() if key != "hooks"}
     return {**stripped, "hooks": merged}
 
 
@@ -443,8 +558,11 @@ def read_record(text: str) -> list[Installed]:
         names = assistants if isinstance(assistants, tuple) else (assistants,)
         folders = fact.get("folders")
         folders = folders if isinstance(folders, tuple) else (folders,) if folders else ()
+        without = fact.get("without")
+        without = without if isinstance(without, tuple) else (without,) if without else ()
         if scope is not None and isinstance(root, str) and root:
-            entries.append(Installed(scope, root, tuple(name for name in ASSISTANTS if name in names), folders))
+            entries.append(Installed(scope, root, tuple(name for name in ASSISTANTS if name in names), folders,
+                                     tuple(item for item in without if _item_problem(item) is None)))
     return entries
 
 
@@ -452,13 +570,15 @@ def render_record(entries: list[Installed]) -> str:
     lines = ["; Written by `wingbox install`; read by `wingbox update` and `wingbox uninstall`."]
     for entry in entries:
         lines.append(fact_sexp(make_fact(
-            "installed", scope=entry.scope, root=entry.root, assistants=entry.assistants, folders=entry.folders
+            "installed", scope=entry.scope, root=entry.root, assistants=entry.assistants, folders=entry.folders,
+            without=entry.without,
         )))
     return "\n".join(lines) + "\n"
 
 
 def with_installed(
-    entries: list[Installed], scope: Scope, assistants: tuple[str, ...], folders: tuple[str, ...]
+    entries: list[Installed], scope: Scope, assistants: tuple[str, ...], folders: tuple[str, ...],
+    without: tuple[str, ...] = (),
 ) -> list[Installed]:
     result: list[Installed] = []
     found = False
@@ -467,13 +587,15 @@ def with_installed(
             merged = entry.assistants + assistants
             merged_folders = entry.folders + tuple(folder for folder in folders if folder not in entry.folders)
             result.append(Installed(
-                entry.scope, entry.root, tuple(name for name in ASSISTANTS if name in merged), merged_folders
+                entry.scope, entry.root, tuple(name for name in ASSISTANTS if name in merged), merged_folders, without
             ))
             found = True
         else:
             result.append(entry)
     if not found:
-        result.append(Installed(scope.kind, scope.root, tuple(name for name in ASSISTANTS if name in assistants), folders))
+        result.append(Installed(
+            scope.kind, scope.root, tuple(name for name in ASSISTANTS if name in assistants), folders, without
+        ))
     return result
 
 
@@ -485,7 +607,7 @@ def without_installed(
         if entry.scope == scope.kind and entry.root == scope.root:
             remaining = tuple(name for name in entry.assistants if name not in assistants)
             if remaining:
-                result.append(Installed(entry.scope, entry.root, remaining, folders_left))
+                result.append(Installed(entry.scope, entry.root, remaining, folders_left, entry.without))
         else:
             result.append(entry)
     return result
@@ -573,12 +695,14 @@ def _install_block(target: Target, dry_run: bool) -> Fact:
     return make_fact(_verb(dry_run), target.path, what="block", assistant=target.assistants)
 
 
-def _install_hook(target: Target, command: str, dry_run: bool) -> Fact:
+def _install_hook(target: Target, command: HookProgram, dry_run: bool, keys: tuple[str, ...] = HOOK_ITEMS) -> Fact:
     settings = _read_settings(target.path)
     if isinstance(settings, UsageError):
         return make_fact("install-failed", target.path, what="hook", assistant=target.assistants,
                          reason=settings.message)
-    merged = merge_hook(settings or {}, command)
+    if settings is None and not keys:
+        return make_fact("install-kept", target.path, what="hook", assistant=target.assistants, reason="left-out")
+    merged = merge_hook(settings or {}, command, keys)
     if settings is not None and merged == settings:
         return make_fact("install-kept", target.path, what="hook", assistant=target.assistants, reason="unchanged")
     if not dry_run:
@@ -620,16 +744,51 @@ def scope_of(options_scope: ScopeKind, machine: Machine) -> Scope:
     return Scope("project", find_project_root(machine.cwd))
 
 
+ASSISTANT_SETUP_FILE = ".wingbox/assistant-setup.md"
+
+
+def assistant_setup_text() -> str:
+    """What `wingbox init` prints and saves as .wingbox/assistant-setup.md: the lines a team may add by hand to the
+    repository's own files so that every member's assistant uses Wingbox here. Wingbox itself writes none of them."""
+    settings = {"hooks": {}}
+    for key in HOOK_ITEMS:
+        event = _HOOK_PLACES[key][0]
+        settings["hooks"].setdefault(event, []).append(item_group(PROJECT_HOOK_PROGRAM, key))
+    return (
+        "# Wingbox for every assistant in this repository\n\n"
+        "Wingbox writes only to this repository's `.wingbox/` folder and to each person's own settings. Each\n"
+        "person can run `wingbox install` once (it writes only their own settings). A team that wants every\n"
+        "member's coding assistant to use Wingbox in this repository can instead add these lines by hand to the\n"
+        "repository's own files and commit them; they need the `wingbox` command on each member's PATH\n"
+        "(`pipx install wingbox` or `uv tool install wingbox`).\n\n"
+        "## AGENTS.md and CLAUDE.md\n\n"
+        + ALWAYS_ON_BLOCK + "\n"
+        "## .claude/settings.json (Claude Code)\n\n"
+        "```json\n" + json.dumps(settings, indent=2) + "\n```\n"
+    )
+
+
+def recorded_without(home: str) -> tuple[str, ...]:
+    """The items the person left out at the last global install (none when there was none)."""
+    root = os.path.abspath(home)
+    return next((entry.without for entry in _read_record_file(home) if entry.scope == "global" and entry.root == root), ())
+
+
+def chosen_assistants(options: Options, machine: Machine) -> tuple[str, ...]:
+    return options.assistants or detect_assistants(machine.home, created_folders(_read_record_file(machine.home)))
+
+
 def install(options: Options, machine: Machine) -> list[Fact]:
-    scope = scope_of(options.scope, machine)
+    """Put the ticked items in place in the user's own settings (global only), record the choice."""
+    scope = Scope("global", os.path.abspath(machine.home))
     recorded = _read_record_file(machine.home)
-    assistants = options.assistants or detect_assistants(machine.home, created_folders(recorded))
+    assistants = chosen_assistants(options, machine)
     if not assistants:
         return [make_fact("install-failed", reason="no assistant configuration folder found; name one with --assistant")]
+    without = options.without if options.without is not None else recorded_without(machine.home)
     payload = skill_payload(machine.skill_files, machine.version)
-    command = machine.hook_program if scope.kind == "global" else PROJECT_HOOK_PROGRAM
     facts: list[Fact] = []
-    targets = plan_targets(scope, assistants)
+    targets = [target for target in plan_targets(scope, assistants) if _target_selected(target, without)]
     missing = missing_folders(scope, targets)
     for target in targets:
         if target.what == "skill":
@@ -637,11 +796,22 @@ def install(options: Options, machine: Machine) -> list[Fact]:
         elif target.what == "block":
             facts.append(_install_block(target, options.dry_run))
         else:
-            facts.append(_install_hook(target, command, options.dry_run))
+            keys = tuple(key for key in HOOK_ITEMS if is_selected("claude-code", key, without))
+            facts.append(_install_hook(target, machine.hook_program, options.dry_run, keys))
+    facts.extend(make_fact("install-left-out", item.path, what=item.key, assistant=(item.assistant,))
+                 for item in install_items(scope.root, assistants, without) if not item.ticked)
     created = tuple(folder for folder in missing if options.dry_run or os.path.isdir(folder))
-    entries = with_installed(recorded, scope, assistants, created)
+    entries = with_installed(recorded, scope, assistants, created, without)
     facts.extend(_write_record(record_path(machine.home), entries, options.dry_run, "install"))
     return facts
+
+
+def _target_selected(target: Target, without: tuple[str, ...]) -> bool:
+    """A skill or block target is written when one of its assistants keeps it; the hook target always (its
+    groups follow the hook items, and a left-out hook is removed from the settings)."""
+    if target.what == "hook":
+        return True
+    return any(is_selected(name, target.what, without) for name in target.assistants)
 
 
 def _remove_skill(target: Target, payload: Mapping[str, bytes]) -> list[Fact]:
@@ -682,14 +852,14 @@ def _remove_block(target: Target) -> list[Fact]:
     return [make_fact("uninstall-removed", target.path, what="block", assistant=target.assistants)]
 
 
-def _remove_hook(target: Target) -> list[Fact]:
+def _remove_hook(target: Target, keys: frozenset[str] = frozenset(HOOK_ITEMS)) -> list[Fact]:
     settings = _read_settings(target.path)
     if settings is None:
         return []
     if isinstance(settings, UsageError):
         return [make_fact("uninstall-kept", target.path, what="hook", assistant=target.assistants,
                           reason=settings.message)]
-    stripped = strip_hook(settings)
+    stripped = strip_hook(settings, keys)
     if stripped == settings:
         return []
     backup = target.path + BACKUP_SUFFIX
@@ -705,6 +875,7 @@ def _remove_hook(target: Target) -> list[Fact]:
 def uninstall(options: Options, machine: Machine) -> list[Fact]:
     scope = scope_of(options.scope, machine)
     removing = options.assistants or ASSISTANTS
+    keeping = options.without or ()
     entries = _read_record_file(machine.home)
     remaining_entries = without_installed(entries, scope, removing, ())
     staying = next(
@@ -719,12 +890,14 @@ def uninstall(options: Options, machine: Machine) -> list[Fact]:
                 facts.append(make_fact("uninstall-kept", target.path, what=target.what, assistant=staying,
                                        reason="shared"))
             continue
+        if target.what != "hook" and not any(is_selected(name, target.what, keeping) for name in target.assistants):
+            continue   # named by --without: it stays
         if target.what == "skill":
             facts.extend(_remove_skill(target, payload))
         elif target.what == "block":
             facts.extend(_remove_block(target))
         else:
-            facts.extend(_remove_hook(target))
+            facts.extend(_remove_hook(target, frozenset(key for key in HOOK_ITEMS if is_selected("claude-code", key, keeping))))
     recorded = next((entry.folders for entry in entries if entry.scope == scope.kind and entry.root == scope.root), ())
     removed, left = _remove_empty_folders(recorded)
     facts.extend(make_fact("uninstall-removed", folder, what="folder") for folder in removed)
