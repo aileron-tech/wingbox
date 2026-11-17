@@ -52,7 +52,7 @@ the project: a command finds the nearest folder at or above the current one
 is the file agents query. REPORT.md and map.html say the same thing to a
 person: the report in text, the map as an interactive page that opens in a
 browser without a network connection. .wingbox/.gitignore keeps the generated
-files out of git; the whole folder can be ignored as well.
+files out of git, itself included; the whole folder can be ignored as well.
 
 .wingbox/config.yaml states the architecture style of each part of the
 repository; `wingbox build` reads it when present. It, decisions.sexp,
@@ -270,9 +270,12 @@ def record_decisions(root: str, graph_path: str, advice: tuple) -> list | str:
     store = read_store(text)
     lines = reconcile(store, advice, paths, date.today().isoformat(), graph_hash)
     lines += _learned_removed_by_config(root, store, date.today().isoformat())
-    error = _append(path, lines)
-    if error:
-        return error
+    # The log is a file to commit: a build starts it only in a project set up with init, learn, align --learn
+    # or advice (it holds config.yaml or the log already), so a plain build leaves `git status` clean.
+    if os.path.exists(path) or os.path.exists(os.path.join(root, ".wingbox", "config.yaml")):
+        error = _append(path, lines)
+        if error:
+            return error
     return visible(read_store(text + "\n".join(lines)), advice)
 
 

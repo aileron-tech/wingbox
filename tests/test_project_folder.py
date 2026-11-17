@@ -83,9 +83,9 @@ class ProjectFolderTest(unittest.TestCase):
         self.assertNotIn("code_graph", completed.stdout + completed.stderr)
 
     def test_the_generated_files_are_ignored_by_git_and_files_a_person_writes_are_not(self) -> None:
-        """/* REQ-FRESH-030: the build must write .wingbox/.gitignore so that git ignores every generated file of the folder and keeps the files people and agents decide on (config.yaml, learned.sexp, baseline.sexp, and decisions.sexp, the advice log the build appends to). */"""
+        """/* REQ-FRESH-030: the build must write .wingbox/.gitignore so that git ignores every generated file of the folder, that .gitignore included, and keeps the files people and agents decide on (config.yaml, learned.sexp, baseline.sexp; decisions.sexp once the project is set up, see REQ-FRESH-043). */"""
         self.build()
-        kept = (".wingbox/config.yaml", ".wingbox/learned.sexp", ".wingbox/baseline.sexp", ".wingbox/decisions.sexp", ".wingbox/.gitignore")
+        kept = (".wingbox/config.yaml", ".wingbox/learned.sexp", ".wingbox/baseline.sexp")
         for name in ("config.yaml", "learned.sexp", "baseline.sexp"):
             (self.root / ".wingbox" / name).write_text("; written by hand\n", encoding="utf-8")
         listed = subprocess.run(
@@ -188,3 +188,40 @@ class ProjectFolderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleanStatusTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(os.path.realpath(tmp.name)) / "project"
+        self.root.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        for name, text in FILES.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        git = ["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "start"], check=True)
+
+    def status(self) -> list[str]:
+        done = subprocess.run(["git", "-C", str(self.root), "status", "--porcelain", "--untracked-files=all"],
+                              capture_output=True, text=True, check=True)
+        return sorted(line[3:] for line in done.stdout.splitlines())
+
+    def wingbox(self, *args: str) -> None:
+        done = subprocess.run([sys.executable, "-m", "wingbox.cli", *args], capture_output=True, text=True,
+                              cwd=self.root, env=_environment(), timeout=600)
+        self.assertEqual(0, done.returncode, done.stderr)
+
+    def test_a_plain_build_leaves_git_status_clean(self) -> None:
+        """/* REQ-FRESH-043: `wingbox build` in a clean git repository leaves `git status` clean: everything it generates in .wingbox/ is ignored, the .gitignore it writes there included, and it writes no decisions.sexp in a project nobody has set up with init, learn, align --learn or advice; after `wingbox init` the files meant to be committed (config.yaml, and decisions.sexp once a build has logged advice for it) appear and nothing generated does. */"""
+        self.wingbox("build", str(self.root))
+        self.assertEqual([], self.status())
+        self.assertFalse((self.root / ".wingbox" / "decisions.sexp").exists())
+        self.wingbox("init", "--yes")
+        self.wingbox("build", str(self.root))
+        shown = self.status()
+        self.assertIn(".wingbox/config.yaml", shown)
+        self.assertEqual([], [name for name in shown if name not in (".wingbox/config.yaml", ".wingbox/decisions.sexp")])

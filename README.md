@@ -797,9 +797,9 @@ project root.
 | `REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
 | `map.html` | People | An interactive map of the code graph: one file, opens in a browser (`wingbox open`), works without a network connection |
 | `graph-*`, `refresh.*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the folder it was built from, the files changed since (see "Keeping the graph fresh") |
-| `.gitignore` | git | Ignores every file above, so that a file you write into `.wingbox/` later stays in the repository |
+| `.gitignore` | git | Ignores every file above and itself, so that a plain `wingbox build` leaves `git status` clean and a file you write into `.wingbox/` later stays in the repository |
 | `config.yaml`, `learned.sexp`, `baseline.sexp` | People and agents | The architecture of each part, what `wingbox learn` learned, the known rule breaks (`wingbox init`, `learn`, `align --learn`); not ignored, commit them |
-| `decisions.sexp` | People and Wingbox | The advice each build gave and what became of it; not ignored, commit it |
+| `decisions.sexp` | People and Wingbox | The advice each build gave and what became of it; started once the project is set up (`wingbox init`, `learn`, `align --learn` or `advice`), not ignored, commit it |
 
 On the map, click a file to see its blast radius: the files that depend on it
 move onto rings, one ring per hop. The layers view stacks the architecture
@@ -807,7 +807,10 @@ layers as planes in 3D and can be turned with the mouse. A link such as
 `map.html#select=src/app.ts` opens the map on that file.
 
 The generated files are rewritten on every build and never committed thanks to
-`.wingbox/.gitignore`; you can also ignore the whole folder. A `.wingbox/`
+`.wingbox/.gitignore`; you can also ignore the whole folder. In a repository nobody has set up with
+`wingbox init`, a build leaves nothing for git to show; `config.yaml`, `learned.sexp`, `baseline.sexp` and
+`decisions.sexp` appear once they are written, on purpose, since they record what people and agents
+decided. A `.wingbox/`
 folder copied or moved to another place is read as it is but never refreshed
 there: queries say `rebuild`. Wingbox deletes nothing outside `.wingbox/`;
 `wingbox update` names files that versions before 0.4.1 left in a project
