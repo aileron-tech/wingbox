@@ -14,6 +14,8 @@
   the build. `.dart_tool/` and Flutter's `build/` output are not indexed.
   Flutter needs nothing special: widgets are ordinary classes. Runtime wiring
   (`get_it`, `go_router`, `retrofit`) is not visible to static analysis.
+  The Dart grammar is an opt-in extra, `pipx install "wingbox[dart]"`;
+  without it `.dart` files are skipped with a warning and the build goes on.
 
 ## 0.5.0 - 2026-11-17
 

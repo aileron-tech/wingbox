@@ -581,8 +581,10 @@ python3 -m pip install -r requirements/dart.txt
 Install only the files for languages you use, then run the same build command
 again. `requirements/php.txt` pins `tree-sitter==0.25.2` and
 `tree-sitter-php==0.24.1` and `requirements/dart.txt` pins
-`tree-sitter-dart==0.1.0`; the package dependencies list the PHP and Dart
-grammars, so an installed `wingbox` needs no separate step.
+`tree-sitter-dart==0.1.0`. The package dependencies list the PHP grammar, so an
+installed `wingbox` needs no separate step for PHP. The Dart grammar is an
+opt-in extra: `pipx install "wingbox[dart]"` (or `pip install "wingbox[dart]"`);
+without it a build skips `.dart` files with a warning and maps the rest.
 `requirements.txt` contains the separate infrastructure-topology dependency.
 
 Run a relevant search and get the first matching module with its full context:
@@ -798,6 +800,8 @@ or opens a network connection; the graph comes from source text and
 `composer.json`.
 
 ## Dart and Flutter dependency search
+
+Install the Dart grammar with the extra: `pipx install "wingbox[dart]"`.
 
 Dart names its dependencies by library URI, not by file path. Wingbox reads
 every `pubspec.yaml` and its top-level `name:`, then resolves `import` and

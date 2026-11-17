@@ -47,9 +47,13 @@ dependencies = [
     "tree-sitter-java==0.23.5",
     "tree-sitter-go==0.25.0",
     "tree-sitter-ruby==0.23.1",
-    "tree-sitter-dart==0.1.0",
     "PyYAML==6.0.3",
 ]
+
+[project.optional-dependencies]
+# Dart and Flutter: the grammar is a separate, opt-in package
+# (pipx install "wingbox[dart]"); without it .dart files are skipped.
+dart = ["tree-sitter-dart==0.1.0"]
 
 [project.urls]
 Homepage = "https://wingbox.dev"

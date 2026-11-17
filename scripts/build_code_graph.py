@@ -531,6 +531,24 @@ def _dependency_issues(
     return tuple(issues)
 
 
+# Languages whose grammar is an opt-in extra of the wingbox package. Without
+# it their files are left out of the graph with a warning; the build goes on.
+OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {"dart": "dart"}
+
+
+def _report_skipped_optional_languages(
+    issues: tuple[LanguageDependencyIssue, ...],
+) -> None:
+    for issue in issues:
+        extra = OPTIONAL_LANGUAGE_EXTRAS[issue.language.name]
+        print(
+            f"[code-graph] WARNING: {issue.language.display_name} files are skipped: "
+            f"{', '.join(issue.unavailable)}. To include them: "
+            f"pipx install --force \"wingbox[{extra}]\" (or pip install \"wingbox[{extra}]\")",
+            file=sys.stderr,
+        )
+
+
 def _report_dependency_issues(
     issues: tuple[LanguageDependencyIssue, ...],
 ) -> None:
@@ -554,6 +572,12 @@ def _report_dependency_issues(
             f'[code-graph]   python3 -m pip install -r "{requirements_path}"',
             file=sys.stderr,
         )
+        extra = OPTIONAL_LANGUAGE_EXTRAS.get(issue.language.name)
+        if extra is not None:
+            print(
+                f'[code-graph]   or, for an installed wingbox: pipx install --force "wingbox[{extra}]"',
+                file=sys.stderr,
+            )
     print(
         "[code-graph] ERROR: no cache or map was published",
         file=sys.stderr,
@@ -3919,6 +3943,15 @@ def _run_build(options: BuilderOptions) -> int:
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
     dependency_issues = _dependency_issues(active_language_names)
+    skipped = tuple(issue for issue in dependency_issues if issue.language.name in OPTIONAL_LANGUAGE_EXTRAS)
+    # Skip an opt-in language only when other source files remain to map; a
+    # project of that language alone stops with the install command below.
+    skipped_names = frozenset(issue.language.name for issue in skipped)
+    if skipped and any(item[1] not in skipped_names for item in files):
+        _report_skipped_optional_languages(skipped)
+        files = [item for item in files if item[1] not in skipped_names]
+        active_language_names = active_language_names - skipped_names
+        dependency_issues = tuple(issue for issue in dependency_issues if issue not in skipped)
     if dependency_issues:
         _report_dependency_issues(dependency_issues)
         return 2
