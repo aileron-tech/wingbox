@@ -105,3 +105,35 @@ class LineEndingTest(unittest.TestCase):
                 graphs.append(graph.replace(root.name.encode(), b"project"))
         self.assertEqual(graphs[0], graphs[1])
         self.assertIn(b"total 5 ", graphs[1])
+
+
+class EdgePathTest(unittest.TestCase):
+    def test_paths_from_users_and_hooks_take_the_systems_form(self) -> None:
+        """/* REQ-PORT-005: a path given by a person or a hook is normalised at the edge by one function: on Windows backslashes, forward slashes, a Git Bash drive (/c/Users/me), a lower-case drive letter and the \\\\?\\ long-path prefix all become the same C:\\Users\\me form; on macOS and Linux only the redundant parts (a//b, ./a) go. */"""
+        expected = r"C:\Users\me\shop\src\app.py"
+        for given in (
+            r"C:\Users\me\shop\src\app.py",
+            "C:/Users/me/shop/src/app.py",
+            r"c:\Users\me\shop\src\app.py",
+            "/c/Users/me/shop/src/app.py",
+            "\\\\?\\C:\\Users\\me\\shop\\src\\app.py",
+            r"C:\Users\me\shop\src\.\app.py",
+        ):
+            self.assertEqual(expected, portable.local_path(given, windows=True), given)
+        self.assertEqual("/home/me/shop/src/app.py", portable.local_path("/home/me//shop/./src/app.py", windows=False))
+        self.assertEqual("src/app.py", portable.local_path("./src/app.py", windows=False))
+
+    def test_a_path_is_relative_to_the_root_or_outside_it(self) -> None:
+        """/* REQ-PORT-006: relative_posix gives a path under the root with / on every system, "" for the root itself, and None for a path outside it (a parent, a sibling whose name starts like the root, another drive); no string prefix test decides it. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "shop"
+            (root / "src").mkdir(parents=True)
+            (root / "src" / "app.py").write_text("", encoding="utf-8")
+            (Path(directory) / "shop-old").mkdir()
+            self.assertEqual("src/app.py", portable.relative_posix(str(root / "src" / "app.py"), str(root)))
+            self.assertEqual("", portable.relative_posix(str(root), str(root)))
+            self.assertIsNone(portable.relative_posix(directory, str(root)))
+            self.assertIsNone(portable.relative_posix(str(Path(directory) / "shop-old"), str(root)))
+            if os.name == "nt":
+                other = "D:\\elsewhere" if str(root).upper().startswith("C") else "C:\\elsewhere"
+                self.assertIsNone(portable.relative_posix(other, str(root)))

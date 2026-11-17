@@ -299,7 +299,7 @@ def write_json_atomic(path: str, value: object) -> None:
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(value, handle, separators=(",", ":"))
-        _portable().replace(temporary, path)
+        portable().replace(temporary, path)
     except BaseException:
         try:
             os.unlink(temporary)
@@ -316,8 +316,8 @@ def read_state(root: str) -> State:
     return decode_state(raw)
 
 
-def _portable():
-    """scripts/portable.py: the platform differences (locks, detached processes, atomic replace)."""
+def portable():
+    """scripts/portable.py: the platform differences (locks, detached processes, atomic replace, paths)."""
     from wingbox.cli import load_script
 
     return load_script("portable")
@@ -332,12 +332,12 @@ def state_lock(root: str) -> Iterator[None]:
     """Serialise read-modify-write of the state between processes."""
     os.makedirs(state_directory(root), exist_ok=True)
     with open(_state_file(root, LOCK_NAME), "a+", encoding="utf-8") as handle:
-        portable = _portable()
-        portable.lock(handle)
+        helpers = portable()
+        helpers.lock(handle)
         try:
             yield
         finally:
-            portable.unlock(handle)
+            helpers.unlock(handle)
 
 
 def update_state(root: str, change) -> State:
@@ -551,10 +551,8 @@ def with_outside_changes(snapshot: Snapshot, changes: OutsideChanges) -> Snapsho
 
 def relative_path(root: str, path: str) -> Optional[str]:
     """path relative to root with /, or None outside root."""
-    relative = os.path.relpath(os.path.realpath(path), os.path.realpath(root))
-    if relative == "." or relative == ".." or relative.startswith(".." + os.sep) or os.path.isabs(relative):
-        return None
-    return relative.replace(os.sep, "/")
+    relative = portable().relative_posix(path, root)
+    return relative or None
 
 
 def _edited_path(payload: object) -> Optional[str]:
@@ -567,7 +565,8 @@ def _edited_path(payload: object) -> Optional[str]:
     if not isinstance(file_path, str) or not file_path:
         return None
     base = payload.get("cwd") if isinstance(payload.get("cwd"), str) else os.getcwd()
-    return os.path.join(base, file_path)
+    local_path = portable().local_path
+    return os.path.join(local_path(base), local_path(file_path))
 
 
 def _reported_failure(payload: dict) -> bool:
@@ -707,10 +706,10 @@ def refresh_running(root: str) -> bool:
     except OSError:
         return False
     with handle:
-        portable = _portable()
-        if not portable.lock(handle, blocking=False):
+        helpers = portable()
+        if not helpers.lock(handle, blocking=False):
             return True
-        portable.unlock(handle)
+        helpers.unlock(handle)
     return False
 
 
@@ -739,7 +738,7 @@ def start_refresh(root: str) -> "subprocess.Popen":
             stderr=log,
             cwd=root,
             env=environment,
-            **_portable().detached_process_options(),
+            **portable().detached_process_options(),
         )
 
 

@@ -46,7 +46,7 @@ def fake_command(folder: Path, name: str, body: str) -> None:
 
 class ClaudePluginTest(unittest.TestCase):
     def test_manifest(self) -> None:
-        """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs the launcher with `hook pre-search`, and an MCP server that runs the launcher with `mcp`, both through `sh`, every path under ${CLAUDE_PLUGIN_ROOT} existing in the plugin. */"""
+        """/* REQ-PLUGIN-001: the Claude Code manifest must name the plugin wingbox at the version of pyproject.toml, carry the listing metadata, an icon that is a square PNG of at least 512 pixels, a PreToolUse hook on Grep|Glob|Read that runs the launcher with `hook pre-search`, and an MCP server that runs the launcher with `mcp`, both through `sh` in exec form (`command` sh, the launcher path and the arguments in `args`: no shell parses the plugin path, and a missing `sh` on Windows without Git Bash cannot block a tool call), every path under ${CLAUDE_PLUGIN_ROOT} existing in the plugin. */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
         self.assertEqual(manifest["name"], "wingbox")
         self.assertEqual(manifest["version"], PLUGIN_VERSION)
@@ -64,7 +64,8 @@ class ClaudePluginTest(unittest.TestCase):
         self.assertEqual(group["matcher"], "Grep|Glob|Read")
         (hook,) = group["hooks"]
         # the directory asks that a script be started through its interpreter
-        self.assertEqual(hook["command"], 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run" hook pre-search')
+        self.assertEqual(hook["command"], "sh")
+        self.assertEqual(hook["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "hook", "pre-search"])
         server = manifest["mcpServers"]["wingbox"]
         self.assertEqual(server["command"], "sh")
         self.assertEqual(server["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "mcp"])
@@ -72,12 +73,13 @@ class ClaudePluginTest(unittest.TestCase):
             self.assertTrue((PLUGIN / path).is_file(), path)
 
     def test_edit_hook(self) -> None:
-        """/* REQ-FRESH-012: the Claude Code manifest must carry one PostToolUse hook on Edit|Write|MultiEdit that runs the launcher with `hook dirty` through `sh`, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
+        """/* REQ-FRESH-012: the Claude Code manifest must carry one PostToolUse hook on Edit|Write|MultiEdit that runs the launcher with `hook dirty` through `sh` in exec form, and the search hook a timeout of 10 seconds (it may wait for a refresh of the graph). */"""
         manifest = load(PLUGIN / ".claude-plugin" / "plugin.json")
         (group,) = manifest["hooks"]["PostToolUse"]
         self.assertEqual(group["matcher"], "Edit|Write|MultiEdit")
         (hook,) = group["hooks"]
-        self.assertEqual(hook["command"], 'sh "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run" hook dirty')
+        self.assertEqual(hook["command"], "sh")
+        self.assertEqual(hook["args"], ["${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run", "hook", "dirty"])
         (search,) = manifest["hooks"]["PreToolUse"]
         self.assertEqual(search["hooks"][0]["timeout"], 10)
 
@@ -333,7 +335,8 @@ class OpenAIPackageTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             skills_only = Path(tmp) / f"wingbox-openai-plugin-{PLUGIN_VERSION}.zip"
             local_mcp = Path(tmp) / f"wingbox-openai-plugin-{PLUGIN_VERSION}-local-mcp.zip"
-            self.assertIn(str(skills_only), result.stdout)
+            # The tool prints resolved paths; Windows may name the temporary folder in its 8.3 form (RUNNER~1).
+            self.assertIn(os.path.realpath(skills_only), result.stdout)
             with zipfile.ZipFile(skills_only) as archive:
                 names = set(archive.namelist())
                 manifest = json.loads(archive.read(".codex-plugin/plugin.json"))

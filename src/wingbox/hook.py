@@ -117,21 +117,23 @@ def read_query(payload: object, cwd: str) -> tuple[Optional[Query], str]:
         return None, cwd
     tool = payload.get("tool_name")
     tool_input = payload.get("tool_input")
-    base = payload.get("cwd") if isinstance(payload.get("cwd"), str) else cwd
+    local_path = freshness.portable().local_path   # paths from Claude Code in this system's form
+    base = local_path(payload["cwd"]) if isinstance(payload.get("cwd"), str) and payload["cwd"] else cwd
     if not isinstance(tool_input, dict):
         return None, base
     path = tool_input.get("path")
-    start = os.path.join(base, path) if isinstance(path, str) and path else base
+    path = local_path(path) if isinstance(path, str) and path else None
+    start = os.path.join(base, path) if path else base
     if tool == "Read":
         file_path = tool_input.get("file_path")
         if not isinstance(file_path, str) or not file_path:
             return None, base
-        full = os.path.join(base, file_path)
+        full = os.path.join(base, local_path(file_path))
         return FileQuery(full), os.path.dirname(full)
     pattern = tool_input.get("pattern")
     if not isinstance(pattern, str) or not pattern.strip():
         return None, base
-    under = start if isinstance(path, str) and path else ""
+    under = start if path else ""
     if tool == "Grep":
         return PatternQuery(_compile(pattern, bool(tool_input.get("-i"))), pattern, under), start
     if tool == "Glob":
@@ -264,10 +266,7 @@ def definitions(graph: LightGraph, regex: "re.Pattern[str]", under: str) -> tupl
 # ---------------------------------------------------------------------------
 
 def _relative(graph: LightGraph, path: str) -> Optional[str]:
-    relative = os.path.relpath(os.path.realpath(path), os.path.realpath(graph.root))
-    if relative == ".." or relative.startswith(".." + os.sep):
-        return None
-    return "" if relative == "." else relative.replace(os.sep, "/")
+    return freshness.portable().relative_posix(path, graph.root)
 
 
 def _file_module(graph: LightGraph, relative: str) -> Optional[str]:

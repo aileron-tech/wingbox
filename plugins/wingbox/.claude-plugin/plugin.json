@@ -38,7 +38,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run\" hook pre-search",
+            "command": "sh",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+              "hook",
+              "pre-search"
+            ],
             "timeout": 10
           }
         ]
@@ -50,7 +55,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run\" hook dirty",
+            "command": "sh",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/scripts/wingbox-run",
+              "hook",
+              "dirty"
+            ],
             "timeout": 5
           }
         ]

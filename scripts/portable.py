@@ -9,17 +9,23 @@
 - the start method of worker processes: `start_method` (as before: fork for the resolution workers where
   it exists, the system default for parsing; WINGBOX_START_METHOD overrides it, which the tests use to run
   the Windows path, spawn, anywhere);
-- text streams: `utf8_streams` makes stdout and stderr write UTF-8 and replace what they cannot encode.
+- text streams: `utf8_streams` makes stdout and stderr write UTF-8 and replace what they cannot encode;
+- paths at the edge: `local_path` turns a path from a person or a hook into this system's form (on Windows
+  backslashes, Git Bash drives /c/..., the \\?\ prefix), `relative_posix` gives it relative to a root with
+  / (None outside), the form every .wingbox file, printout and comparison uses.
 
 Standard library only: the build scripts import it before anything else.
 """
 from __future__ import annotations
 
 import multiprocessing
+import ntpath
 import os
+import posixpath
+import re
 import sys
 import time
-from typing import IO, Any
+from typing import IO, Any, Optional
 
 WINDOWS = os.name == "nt"
 _REPLACE_ATTEMPTS = 20
@@ -136,3 +142,33 @@ def utf8_streams() -> None:
                 reconfigure(encoding="utf-8", errors="replace")
             except (ValueError, OSError):
                 pass   # a stream that was already written to binary or closed keeps its settings
+
+
+_GIT_BASH_DRIVE = re.compile(r"^/([A-Za-z])(/|$)")
+
+
+def local_path(text: str, windows: bool = WINDOWS) -> str:
+    """A path from a person or a hook in this system's form. On Windows: the \\\\?\\ prefix goes, a Git Bash
+    drive (/c/Users/me) becomes C:\\Users\\me, the drive letter is upper case and every separator a
+    backslash. Elsewhere only the redundant parts go (a//b, ./a)."""
+    if not windows:
+        return posixpath.normpath(text) if text else text
+    if text.startswith(("\\\\?\\", "//?/")):
+        text = text[4:]
+    text = _GIT_BASH_DRIVE.sub(lambda match: match.group(1).upper() + ":/", text)
+    text = ntpath.normpath(text)
+    if len(text) >= 2 and text[1] == ":":
+        text = text[0].upper() + text[1:]
+    return text
+
+
+def relative_posix(path: str, root: str) -> Optional[str]:
+    """path relative to root written with /, "" for root itself, None outside root (a parent, a sibling, another
+    drive). Links are resolved first; on Windows the comparison ignores case, as the file system does."""
+    try:
+        relative = os.path.relpath(os.path.realpath(local_path(path)), os.path.realpath(local_path(root)))
+    except ValueError:   # another drive on Windows
+        return None
+    if relative == os.pardir or relative.startswith(os.pardir + os.sep) or os.path.isabs(relative):
+        return None
+    return "" if relative == os.curdir else relative.replace(os.sep, "/")

@@ -81,6 +81,7 @@ if __package__:
     from .architecture.plan import PartPlan, layer_folders
     from .architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from .architecture.words import levenshtein as _levenshtein
+    from . import portable
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from architecture import advice as _advice
@@ -90,6 +91,7 @@ else:
     from architecture.plan import PartPlan, layer_folders
     from architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from architecture.words import levenshtein as _levenshtein
+    import portable
 
 MAP_SCHEMA_VERSION = 1
 MAX_SEARCH_PATTERN_LENGTH = 256
@@ -1268,10 +1270,10 @@ _IMPACT_SOURCE_EXTENSIONS = tuple(
 
 def _target_to_module_pattern(target: str, root: str) -> str:
     """Turn a source file path (absolute, or relative to the graph root) into a module pattern."""
-    path = target
+    path = portable.local_path(target)
     if root and os.path.isabs(path):
-        relative = os.path.relpath(os.path.realpath(path), root)
-        if not relative.startswith(".."):
+        relative = portable.relative_posix(path, root)
+        if relative is not None:
             path = relative
     path = path.replace(os.sep, "/")
     if path.startswith("./"):
@@ -1310,9 +1312,9 @@ def _impact_file(g: CodeGraph, module_id: str) -> str:
     """File of a module relative to the graph root; the module ID when it is not on disk."""
     path = g.module_to_file(module_id)
     if g._root and os.path.isabs(path):
-        relative = os.path.relpath(path, g._root)
-        if not relative.startswith(".."):
-            return relative.replace(os.sep, "/")
+        relative = portable.relative_posix(path, g._root)
+        if relative is not None:
+            return relative
     return path
 
 
@@ -1504,11 +1506,12 @@ def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]
     path (src/tool.py next to src/tool.ts), so the path as given is tried first.
     An index file is the module of its folder (src/lib/index.ts -> src/lib).
     """
+    target = portable.local_path(target)
     as_given = target.replace(os.sep, "/")
     if g._root and os.path.isabs(target):
-        relative = os.path.relpath(os.path.realpath(target), g._root)
-        if not relative.startswith(".."):
-            as_given = relative.replace(os.sep, "/")
+        relative = portable.relative_posix(target, g._root)
+        if relative is not None:
+            as_given = relative
     if as_given.startswith("./"):
         as_given = as_given[2:]
     if as_given in g.nodes:
