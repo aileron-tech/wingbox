@@ -190,3 +190,45 @@ class PartialUpdateTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+RUST_FILES = {
+    "Cargo.toml": '[package]\nname = "shop"\nversion = "0.1.0"\n',
+    "src/main.rs": "mod app;\nmod domain;\nfn main() {}\n",
+    "src/domain/mod.rs": "mod types;\nmod gemini;\npub use types::*;\npub use gemini::*;\n",
+    "src/domain/types.rs": "pub struct ForkContext;\n",
+    "src/domain/gemini.rs": "pub fn gemini_fn() {}\n",
+    "src/app/mod.rs": "mod fork;\n",
+    "src/app/fork.rs": "use crate::domain::ForkContext;\npub fn f(_: ForkContext) {}\n",
+}
+
+
+class RustFacadeUpdateTest(unittest.TestCase):
+    """A Rust name that moves between the children of a facade: the partial update follows it like a full build."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(os.path.realpath(self._tmp.name)) / "project"
+        self.root.mkdir()
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        _write(self.root, RUST_FILES)
+        self.assertEqual(_build(self.root), 0)
+
+    def test_a_name_that_moves_to_another_child_of_the_facade(self) -> None:
+        """/* REQ-FRESH-040: a changed Rust file takes no partial update (it says why), and the incremental build that runs instead, after the item a file imports through a facade moved from one child to another, publishes the same graph, use file, cache and fragment store as a full build, with the importer's edge to the new definer. */"""
+        _write(self.root, {"src/domain/types.rs": "pub struct Other;\n",
+                           "src/domain/gemini.rs": "pub fn gemini_fn() {}\npub struct ForkContext;\n"})
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = graph_update.update_graph(str(self.root), ["src/domain/types.rs", "src/domain/gemini.rs"],
+                                               str(self.root / ".wingbox" / "graph-fragments.json"))
+        self.assertIsInstance(result, graph_update.NotApplicable)
+        self.assertIn("rust source changed", result.reason)
+        self.assertEqual(_build(self.root), 0)
+        incremental = _published(self.root)
+        self.assertEqual(_build(self.root, "--full"), 0)
+        rebuilt = _published(self.root)
+        for name in incremental:
+            self.assertEqual(incremental[name], rebuilt[name], name)
+        graph = rebuilt[".wingbox/index.sexp"].decode("utf-8")
+        self.assertRegex(graph, r"\(imports \S+ \S+ :item\)")

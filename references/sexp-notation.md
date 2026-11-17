@@ -16,13 +16,19 @@ or `rb`.
 (ifc <mod> <name> <line> :eid <uuid> (:methods m1 m2))
 (typ <mod> <name> <line> :eid <uuid>)
 (enm <mod> <name> <line> :eid <uuid>)
-(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:lsp])
+(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp])
 (calls-api <src> <tgt> :via-ifc [:lsp])
 (data-flow <src> <tgt> [:validated] [:pipeline])
 (registry-wires <src> <tgt> [:config <path>])
 (refs <src> <tgt>::<Entity> [:callback] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
+
+`:item` (Rust): the file names an item that a module facade re-exports
+(`pub use child::*`, `pub use child::Name`); the edge goes to the file that
+defines the item, next to the plain edge to the facade, and `impact` follows it.
+With `:candidate` the file imports the facade with a glob (`use m::*`) and its
+body names the item.
 
 Modules loaded at run time (Python):
 

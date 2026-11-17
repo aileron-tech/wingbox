@@ -1,0 +1,125 @@
+"""Rust names imported through a module facade (`pub use child::*`) depend on the file that defines them."""
+from __future__ import annotations
+
+import io
+import tempfile
+import unittest
+from contextlib import redirect_stderr
+from pathlib import Path
+
+from scripts.build_code_graph import Ok, build_graph
+from scripts.lang.rust import parse_rust_treesitter
+
+# The shape of ccbox's src/domain: a facade that re-exports every child with `pub use child::*`.
+FILES = {
+    "src/main.rs": "mod app;\nmod domain;\nmod store;\nmod net;\nmod shapes;\nmod platform;\nfn main() {}\n",
+    "src/domain/mod.rs": (
+        "mod types;\nmod timeline;\nmod gemini;\nmod skill_span;\n"
+        "pub use types::*;\npub use timeline::*;\npub use gemini::*;\npub use skill_span::*;\n"
+        "pub fn helper() {}\n"
+    ),
+    "src/domain/types.rs": (
+        "pub struct ForkContext;\npub enum ForkCut { Before }\npub const LIMIT: usize = 3;\n"
+        "pub type Alias = u8;\npub static NAME: &str = \"x\";\npub trait Render {}\n"
+    ),
+    "src/domain/timeline.rs": "mod detail;\npub use detail::TimelineItem;\n",
+    "src/domain/timeline/detail.rs": "pub struct TimelineItem;\n",
+    "src/domain/gemini.rs": "pub fn gemini_fn() {}\n",
+    "src/domain/skill_span.rs": "pub struct Span;\n",
+    "src/store/mod.rs": "mod cache;\nmod disk;\npub use cache::Cache;\n",
+    "src/store/cache.rs": "pub struct Cache;\n",
+    "src/store/disk.rs": "pub struct Disk;\n",
+    "src/net/mod.rs": "mod client;\npub(crate) use client::Http;\n",
+    "src/net/client.rs": "pub struct Http;\n",
+    "src/shapes/mod.rs": "pub mod inline {\n    pub struct Circle;\n}\n",
+    "src/platform/mod.rs": "#[path = \"impl_unix.rs\"]\nmod sys;\npub use sys::Fd;\n",
+    "src/platform/impl_unix.rs": "pub struct Fd;\n",
+    "src/app/mod.rs": (
+        "mod fork;\nmod view;\nmod save;\nmod glob_user;\nmod path_user;\nmod helper_user;\nmod unknown_user;\n"
+        "mod net_user;\nmod inner;\nmod tools;\nmod shape_user;\nmod platform_user;\npub use tools::Tool;\n"
+    ),
+    "src/app/tools.rs": "pub struct Tool;\n",
+    "src/app/fork.rs": "use crate::domain::{ForkContext, ForkCut, LIMIT, Alias, NAME, Render};\npub fn f(_: ForkContext) {}\n",
+    "src/app/view.rs": "use crate::domain::TimelineItem;\npub fn v(_: TimelineItem) {}\n",
+    "src/app/save.rs": "use crate::store::Cache;\npub fn s(_: Cache) {}\n",
+    "src/app/glob_user.rs": "use crate::domain::*;\npub fn g(_: ForkContext) { gemini_fn(); }\n",
+    "src/app/path_user.rs": "use crate::domain;\npub fn p(_: domain::ForkContext) {}\n",
+    "src/app/helper_user.rs": "use crate::domain::helper;\npub fn h() { helper(); }\n",
+    "src/app/unknown_user.rs": "use crate::domain::Generated;\npub fn u(_: Generated) {}\n",
+    "src/app/net_user.rs": "use crate::net::Http;\npub fn n(_: Http) {}\n",
+    "src/app/inner.rs": "use super::Tool;\npub fn i(_: Tool) {}\n",
+    "src/app/shape_user.rs": "use crate::shapes::inline::Circle;\npub fn c(_: Circle) {}\n",
+    "src/app/platform_user.rs": "use crate::platform::Fd;\npub fn d(_: Fd) {}\n",
+}
+
+
+class RustReexportTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Cargo.toml").write_text('[package]\nname = "app"\nversion = "0.1.0"\n', encoding="utf-8")
+            results = []
+            for relative, content in FILES.items():
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+                results.append(parse_rust_treesitter(str(path), content, root.name, path.stat().st_mtime))
+            errors = io.StringIO()
+            with redirect_stderr(errors):
+                graph = build_graph(results, str(root))
+        if not isinstance(graph, Ok):
+            raise AssertionError(graph.error)
+        cls.log = errors.getvalue()
+        cls.imports = {
+            (edge["source"], edge["target"]): tuple(sorted(edge.get("relations", [])))
+            for edge in graph.value.edges
+            if edge["type"] == "IMPORTS"
+        }
+
+    def targets(self, source: str) -> dict[str, tuple[str, ...]]:
+        return {target: relations for (src, target), relations in self.imports.items() if src == source}
+
+    def test_a_name_imported_through_a_glob_reexport_depends_on_its_definer(self) -> None:
+        """/* REQ-RUST-020: `use crate::m::{A, B}` where m re-exports its children with `pub use child::*` keeps its edge to the facade and adds an edge to the child that defines each name (struct, enum, const, type, static, trait), marked :item (impact follows it), and none to the other children; a name a child re-exports from a grandchild leads to the grandchild. */"""
+        fork = self.targets("src/app/fork")
+        self.assertEqual((), fork["src/domain"])
+        self.assertEqual(("item",), fork["src/domain/types"])
+        self.assertNotIn("src/domain/gemini", fork)
+        self.assertNotIn("src/domain/skill_span", fork)
+        view = self.targets("src/app/view")
+        self.assertEqual(("item",), view["src/domain/timeline/detail"])
+        self.assertIn("src/domain", view)
+        self.assertNotIn("src/domain/timeline", view)
+
+    def test_an_explicit_reexport_and_a_crate_visible_one_lead_to_the_definer(self) -> None:
+        """/* REQ-RUST-021: `pub use child::Name` and `pub(crate) use child::Name` lead to the child that defines Name, and `use super::Name` of a name the parent re-exports does too; no other child of the facade gets an edge. */"""
+        self.assertEqual(("item",), self.targets("src/app/save")["src/store/cache"])
+        self.assertNotIn("src/store/disk", self.targets("src/app/save"))
+        self.assertEqual(("item",), self.targets("src/app/net_user")["src/net/client"])
+        self.assertEqual(("item",), self.targets("src/app/inner")["src/app/tools"])
+        self.assertIn("src/app", self.targets("src/app/inner"))
+
+    def test_a_glob_import_names_only_the_children_whose_items_the_body_uses(self) -> None:
+        """/* REQ-RUST-022: `use crate::m::*` keeps its edge to the facade and adds the weaker :item :candidate edge to each child whose item the body names, and to no other child. */"""
+        glob = self.targets("src/app/glob_user")
+        self.assertEqual((), glob["src/domain"])
+        self.assertEqual(("candidate", "item"), glob["src/domain/types"])
+        self.assertEqual(("candidate", "item"), glob["src/domain/gemini"])
+        self.assertNotIn("src/domain/skill_span", glob)
+
+    def test_a_path_through_an_imported_module_leads_to_the_definer(self) -> None:
+        """/* REQ-RUST-023: `use crate::m;` then `m::Name` in the body leads to the child that defines Name. */"""
+        self.assertEqual(("item",), self.targets("src/app/path_user")["src/domain/types"])
+
+    def test_a_name_of_the_facade_itself_or_one_that_cannot_be_followed_keeps_the_facade_only(self) -> None:
+        """/* REQ-RUST-024: a name defined in the facade itself, a name in an inline module of the facade, a name no file defines (generated by a macro) and a name behind a #[path] module keep only the facade edge; the names that could not be followed are counted in the build log. */"""
+        self.assertEqual({"src/domain": ()}, self.targets("src/app/helper_user"))
+        self.assertEqual({"src/domain": ()}, self.targets("src/app/unknown_user"))
+        self.assertEqual({"src/shapes": ()}, self.targets("src/app/shape_user"))
+        self.assertEqual({"src/platform": ()}, self.targets("src/app/platform_user"))
+        self.assertIn("Rust: 2 imported name(s) not followed to a definition", self.log)
+
+
+if __name__ == "__main__":
+    unittest.main()
