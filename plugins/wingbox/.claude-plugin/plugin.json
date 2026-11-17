@@ -1,7 +1,7 @@
 {
   "name": "wingbox",
   "displayName": "Wingbox",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby. Runs on your machine; no code leaves it.",
   "author": {
     "name": "Aileron Technologies",
@@ -43,7 +43,7 @@
               "--offline",
               "--quiet",
               "--from",
-              "git+https://github.com/aileron-tech/wingbox@b7e7301536bd90f1fc29b62d117fa65e81fd4732",
+              "git+https://github.com/aileron-tech/wingbox@a1acef73acf26ebcdda435eb55685f6b1f00e6ce",
               "wingbox",
               "hook",
               "pre-search"
@@ -65,7 +65,7 @@
               "--offline",
               "--quiet",
               "--from",
-              "git+https://github.com/aileron-tech/wingbox@b7e7301536bd90f1fc29b62d117fa65e81fd4732",
+              "git+https://github.com/aileron-tech/wingbox@a1acef73acf26ebcdda435eb55685f6b1f00e6ce",
               "wingbox",
               "hook",
               "dirty"
@@ -83,7 +83,7 @@
       "args": [
         "--quiet",
         "--from",
-        "git+https://github.com/aileron-tech/wingbox@b7e7301536bd90f1fc29b62d117fa65e81fd4732",
+        "git+https://github.com/aileron-tech/wingbox@a1acef73acf26ebcdda435eb55685f6b1f00e6ce",
         "wingbox",
         "mcp"
       ]
