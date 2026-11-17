@@ -5,7 +5,7 @@
       "args": [
         "--quiet",
         "--from",
-        "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+        "git+https://github.com/aileron-tech/wingbox@4456eb9f2704152c7bd16f9921b07223b2125514",
         "wingbox",
         "mcp",
         "--build-missing"

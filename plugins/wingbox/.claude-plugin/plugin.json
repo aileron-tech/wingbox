@@ -1,7 +1,7 @@
 {
   "name": "wingbox",
   "displayName": "Wingbox",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "A map of your codebase for coding agents: what a change touches, where a symbol is used.",
   "author": {
     "name": "Aileron Technologies",
@@ -43,7 +43,7 @@
               "--offline",
               "--quiet",
               "--from",
-              "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+              "git+https://github.com/aileron-tech/wingbox@4456eb9f2704152c7bd16f9921b07223b2125514",
               "wingbox",
               "hook",
               "pre-search"
@@ -65,7 +65,7 @@
               "--offline",
               "--quiet",
               "--from",
-              "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+              "git+https://github.com/aileron-tech/wingbox@4456eb9f2704152c7bd16f9921b07223b2125514",
               "wingbox",
               "hook",
               "dirty"
@@ -85,7 +85,7 @@
               "--offline",
               "--quiet",
               "--from",
-              "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+              "git+https://github.com/aileron-tech/wingbox@4456eb9f2704152c7bd16f9921b07223b2125514",
               "wingbox",
               "hook",
               "git"
@@ -106,7 +106,7 @@
               "--offline",
               "--quiet",
               "--from",
-              "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+              "git+https://github.com/aileron-tech/wingbox@4456eb9f2704152c7bd16f9921b07223b2125514",
               "wingbox",
               "hook",
               "session-start"
@@ -124,7 +124,7 @@
       "args": [
         "--quiet",
         "--from",
-        "git+https://github.com/aileron-tech/wingbox@4bc8543edfb4ec1dbf23a983c8ef238f90b1121f",
+        "git+https://github.com/aileron-tech/wingbox@4456eb9f2704152c7bd16f9921b07223b2125514",
         "wingbox",
         "mcp"
       ]
