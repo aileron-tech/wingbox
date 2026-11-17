@@ -374,6 +374,44 @@ guessed. At most 200 uses unless `--all`; `--sexp` prints the same answer as
 files, about as long as a build) and keeps them for the next calls. Python,
 TypeScript, JavaScript and Rust have use positions; in
 other languages `usages` names the files that reference the symbol.
+### Architecture commands, with examples from immich (server)
+
+Version 0.6.0 judges the architecture of each part of a repository by a
+style from a library of styles (or by the rules the project declares itself)
+and keeps it through the coding agent. One example of each command, run on the
+`server` folder of [immich](https://github.com/immich-app/immich):
+
+```text
+$ wingbox init                      # the style of each part, written to .wingbox/config.yaml
+.  nestjs (NestJS)   1.00   container
+  *.repository.ts 60  *.service.ts 57  *.dto.ts 53  *.controller.ts 48
+
+$ wingbox align                     # gaps against the style
+.  nestjs: 371 of 475 files placed, 1132 of 1132 dependencies follow the rules
+
+$ wingbox place "a client for the payment API"
+src/repositories/  infra layer of nestjs
+  because: placement: database access, client of another system
+
+$ wingbox learn --agent             # the task for the coding agent: folders the style cannot place
+Part .: closest style nestjs 1.00 (runner-up layered 1.00). Layers:
+
+$ wingbox advice                    # open recommendations; accept or reject them by id
+f7c97b6d2342  missing-folder  src/<feature>
+
+$ wingbox compare                   # the parts of a monorepo side by side
+.    typescript  nestjs  api domain infra service shared
+
+$ wingbox boundaries all            # layer rules, then what each layer may do
+(capability-violation src/services/shared-link.service.ts :capability db-client :layer service :allowed (infra module) :line 2 :evidence "import { PostgresError } from 'postgres';" ...)
+(pattern-violation src/services/api.service.ts :pattern service-builds-http-response :line 99 ...)
+(capability-summary :violations 15 :known 0 :candidates 0 :patterns 2 :checked 707)
+```
+
+On immich the capability rules find 15 files that do what their layer may
+not (database client types in DTOs and services, query-builder helpers in
+`utils/`) and 2 services that write the HTTP response themselves.
+
 ### The architecture of each part: `wingbox init`
 
 `wingbox init [PATH] [--force] [--sexp] [--details] [--synonyms]` splits the repository into parts and
@@ -894,7 +932,7 @@ Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 | Ask where new code goes | `wingbox place "a client for the payment API"` |
 | Let the coding agent decide the folders a style cannot place | `wingbox learn --agent`, then `wingbox learn --apply < answer.sexp` |
 | Compare the architectures of the parts of a monorepo | `wingbox compare` |
-| Check architecture boundaries (each line names part, style and rule) | `boundaries all` |
+| Check architecture boundaries and what each layer may do (SQL, HTTP, framework; each line names part, style and rule) | `boundaries all` |
 | Show the layer of every module with its style and rule | `layers` |
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |

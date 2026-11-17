@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-17 - version 0.6.0: architecture styles, layer config through the agent, capability rules
+
+### Changes
+- `pyproject.toml` and `WINGBOX_VERSION` of `.github/workflows/map-request.yml`: 0.6.0. The plugin manifests follow the release tag later through `tools/sync_plugin.py`.
+- `CHANGELOG.md`: `## Unreleased` becomes `## 0.6.0 - 2026-11-17`, with a release summary at the top of its Changes.
+- `README.md`: a section with one real example of each architecture command (init, align, place, learn, advice, compare, boundaries) from immich `server`: 15 capability violations and 2 pattern breaks; the boundaries row of the commands table names the capability rules.
+- `docs/layer-control.md`: stays a proposal; its Status line names what shipped in 0.6.0.
+- Why: the maintainer decided to release what exists as 0.6.0 and to move `wingbox export coderabbit` to the next version.
+
 ## 2026-11-17 - architecture commands read a fresh graph; loader configs keep it fresh
 
 ### Changes

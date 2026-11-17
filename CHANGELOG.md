@@ -1,9 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-11-17
 
 ### Changes
 
+- Release summary: Wingbox now judges the architecture of each part of a
+  repository and keeps it. `wingbox init` finds the style of each part
+  (layered, onion and clean, hexagonal, MVC, NestJS, microkernel, route-tree,
+  Feature-Sliced Design, CQRS as an overlay) or reads the rules the project
+  declares; `learn`, `align`, `place`, `advice` and `compare` work from it. The
+  layer configuration is settled through the coding agent, which asks the
+  operator when the code does not tell, and `.wingbox/config.yaml` starts with
+  instructions. Capability rules check what each layer may do: SQL and the
+  database client in the repositories, outbound HTTP in infrastructure, no web
+  framework in the domain, with three pattern checks (a controller that skips
+  the service, a service that builds an HTTP response, a domain that imports
+  the ORM). Python modules loaded at run time by names from configuration files
+  are followed.
 - README: the header opens with "Give your coding agent a map of your codebase.
   Half the cost, no missed files." and the benchmark numbers behind it.
 - `benchmarks/graphify` measures CodeGraph 1.6.2 (npm `@colbymchenry/codegraph`)
