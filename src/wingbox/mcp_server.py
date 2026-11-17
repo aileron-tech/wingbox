@@ -25,13 +25,11 @@ and then say that the first build is still running.
 """
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
@@ -235,9 +233,8 @@ class Server:
         """Start the first build unless another one runs; True when one was started here."""
         helpers = freshness.portable()
         builder = cli.load_script("build_code_graph")
-        lock_path = os.path.join(tempfile.gettempdir(), "wingbox-first-build-"
-                                 + hashlib.sha256(self._repository.encode("utf-8")).hexdigest()[:20] + ".lock")
-        handle = open(lock_path, "a+", encoding="utf-8")
+        builder.prepare_wingbox_directory(self._repository)
+        handle = open(os.path.join(builder.wingbox_directory(self._repository), "first-build.lock"), "a+", encoding="utf-8")
         if not helpers.lock(handle, blocking=False) or self._lock_busy(builder._lock_path(self._repository)):
             handle.close()
             if not self._waiting:
