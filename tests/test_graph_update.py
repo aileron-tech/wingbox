@@ -232,3 +232,18 @@ class RustFacadeUpdateTest(unittest.TestCase):
             self.assertEqual(incremental[name], rebuilt[name], name)
         graph = rebuilt[".wingbox/index.sexp"].decode("utf-8")
         self.assertRegex(graph, r"\(imports \S+ \S+ :item\)")
+
+    def test_one_changed_file_and_a_second_full_build_give_the_same_graph(self) -> None:
+        """/* REQ-FRESH-044: after one Rust file changes (an importer that starts to name a second item of the facade), `wingbox build` publishes the same graph, use file, cache and fragment store as a full build, with the new :item edge; a second full build of the same tree is byte-identical (the build is deterministic). */"""
+        _write(self.root, {"src/app/fork.rs": "use crate::domain::{ForkContext, gemini_fn};\npub fn f(_: ForkContext) { gemini_fn(); }\n"})
+        self.assertEqual(_build(self.root), 0)
+        incremental = _published(self.root)
+        self.assertEqual(_build(self.root, "--full"), 0)
+        rebuilt = _published(self.root)
+        self.assertEqual(_build(self.root, "--full"), 0)
+        again = _published(self.root)
+        for name in incremental:
+            self.assertEqual(incremental[name], rebuilt[name], name)
+            self.assertEqual(rebuilt[name], again[name], name)
+        graph = rebuilt[".wingbox/index.sexp"].decode("utf-8")
+        self.assertEqual(2, graph.count(":item)"), graph)
