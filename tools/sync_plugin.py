@@ -53,7 +53,7 @@ def latest_release(repo: Path) -> tuple[str, str]:
     if len(override) == 2:
         return override[0], override[1]
     listed = subprocess.run(["git", "-C", str(repo), "tag", "--list", "v[0-9]*", "--sort=-v:refname"],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
     tags = listed.stdout.split() if listed.returncode == 0 else []
     if not tags:
         # A source archive or a shallow clone without tags: keep the release the
@@ -64,7 +64,7 @@ def latest_release(repo: Path) -> tuple[str, str]:
         manifest = json.loads((repo / PLUGIN_PATH / MANIFESTS[0]).read_text(encoding="utf-8"))
         return manifest["version"], pinned.group(0).rsplit("@", 1)[1]
     commit = subprocess.run(["git", "-C", str(repo), "rev-parse", f"{tags[0]}^{{commit}}"],
-                            capture_output=True, text=True, check=True).stdout.strip()
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", check=True).stdout.strip()
     return tags[0][1:], commit
 
 

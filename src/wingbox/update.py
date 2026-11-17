@@ -294,7 +294,7 @@ def refresh_installed(python: str, package_parent: str, entry: Installed) -> lis
     cwd = entry.root if entry.scope == "project" else None
     try:
         completed = subprocess.run(
-            command, capture_output=True, text=True, cwd=cwd, env=environment,
+            command, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd, env=environment,
             timeout=_INSTALLER_TIMEOUT_SECONDS, check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:

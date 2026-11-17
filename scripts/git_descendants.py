@@ -32,7 +32,7 @@ def run_git(arguments: list[str], cwd: str | None = None) -> list[str]:
 def get_commit_sha(ref: str = "HEAD", cwd: str | None = None) -> str:
     """Resolve a ref to a full SHA."""
     result = subprocess.run(
-        ["git", "rev-parse", ref], capture_output=True, text=True, cwd=cwd,
+        ["git", "rev-parse", ref], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd,
     )
     if result.returncode != 0:
         print(f"Error: cannot resolve ref '{ref}'", file=sys.stderr)
@@ -96,7 +96,7 @@ def main() -> None:
     full_sha = get_commit_sha(ref)
     short_sha = subprocess.run(
         ["git", "rev-parse", "--short", full_sha],
-        capture_output=True, text=True,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
     ).stdout.strip()
 
     print(f"Finding descendants of {ref}: {short_sha}", file=sys.stderr)
@@ -113,8 +113,8 @@ def main() -> None:
     if descendants:
         for commit in sorted(descendants):
             commit_info = subprocess.run(
-                ["git", "log", "-1", "--format=%h %s", commit],
-                capture_output=True, text=True,
+                ["git", "-c", "i18n.logOutputEncoding=UTF-8", "log", "-1", "--format=%h %s", commit],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
             ).stdout.strip()
             print(commit_info)
     else:
