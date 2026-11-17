@@ -4,9 +4,8 @@
 
 > **Give your coding agent a map of your codebase. Half the cost, no missed files.**
 >
-> On 55 questions in five public repositories an agent with Wingbox gave the
-> complete list of dependent files in 55 of 55, at half the cost of its own
-> search (48 of 55): [benchmarks](benchmarks/impact/README.md).
+> Your agent sees every file a change touches before it edits, so it no longer
+> forgets a fix. Half the cost of its own search: [benchmarks](benchmarks/impact/README.md).
 >
 > Wingbox builds a local **code graph** of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture

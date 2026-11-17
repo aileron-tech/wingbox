@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-17 - version 0.6.1: boundaries never passes a part it did not check
+
+### Changes
+- `pyproject.toml` and `WINGBOX_VERSION` of `.github/workflows/map-request.yml`: 0.6.1; the plugin manifests follow the release tag later.
+- `CHANGELOG.md`: `## 0.6.1 - 2026-11-17` with two fixes: boundaries no longer prints ok for parts whose declared rules were not read; init names the next step instead of "edit it".
+- `README.md`: the lead of the top block says "Your agent sees every file a change touches before it edits, so it no longer forgets a fix. Half the cost of its own search", as the site does now.
+- Why: the maintainer asked to ship the false-pass fix at once, with the init wording fix.
+
 ## 2026-11-17 - boundaries says which parts it did not check
 
 ### Changes
