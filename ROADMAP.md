@@ -45,7 +45,7 @@ Distribution channels, each one a place where a developer or an agent already lo
 
 - **Editor marketplaces:** a VS Code extension and a JetBrains Marketplace plugin that register the `wingbox mcp` server and the skill, so the IntelliJ family and VS Code get the graph without a manual setup.
 - **Assistant directories:** the Claude plugin directory and a Claude Desktop extension for the local MCP server; the ChatGPT and Codex plugin marketplace when it takes local tools.
-- **GitHub Marketplace:** an Action that runs `wingbox impact` on a pull request and writes the affected files into the review.
+- **GitHub and GitLab, in the review itself:** a GitHub Action (its own repository, `aileron-tech/wingbox-action`, listed in GitHub Marketplace) and a GitLab CI/CD component that run Wingbox on a pull or merge request and write one comment: the files that depend on the change and were not touched by it, and the layer findings the change introduces. Both are run on our own repositories and their past requests before they are published.
 - **Rankings and the remaining MCP catalogues:** the catalogues that read the official MCP Registry, and the ones that take a submission (Best MCP, PulseMCP, mcp.so, Smithery).
 - **Documentation for agents:** every page of wingbox.dev also served as Markdown, next to `llms.txt`.
 - **Community:** GitHub Discussions first, a chat when there are users to fill it; issues marked for first-time contributors; a free architecture review of an open-source repository on request, published as an example page.
