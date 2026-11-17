@@ -4,7 +4,7 @@
   "repo": "agent-browser",
   "file": "cli/src/validation.rs"
  },
- "source": "list of the first run, every file checked against the source",
+ "source": "tools/rust_resolve.py (own Rust resolver)",
  "direct": [
   "cli/src/commands.rs",
   "cli/src/connection.rs",
@@ -28,6 +28,8 @@
   "cli/src/native/e2e_tests.rs",
   "cli/src/native/flow/mod.rs",
   "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
   "cli/src/native/mod.rs",
   "cli/src/native/parity_tests.rs",
   "cli/src/native/stream/chat.rs",
@@ -58,6 +60,8 @@
   "cli/src/native/e2e_tests.rs",
   "cli/src/native/flow/mod.rs",
   "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
   "cli/src/native/mod.rs",
   "cli/src/native/parity_tests.rs",
   "cli/src/native/state.rs",

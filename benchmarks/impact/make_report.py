@@ -74,7 +74,8 @@ add("Reference lists come from resolvers that share no code with Wingbox, all in
     "pairs of its import statements equal the import graph of grimp, `results/fastapi.grimp_check.json`"
     + (f"; it also counts a module loaded by a literal name, `importlib.import_module(\"a.b\")` or `__import__(\"a.b\")`, which grimp does not "
        f"read: {len(loaded)} pair on FastAPI" if loaded else "")
-    + "), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`).")
+    + "), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`). "
+    "Since 2026-11-17 (Wingbox 0.10.0) the Rust resolver also counts, for a path that names an item, the file that defines the item (followed through `pub use` re-exports), and the items a module names after a glob import (`use x::*`), found by scanning the module text. A file that uses an item depends on the file that defines it; the earlier reference stopped at the module facade that re-exports the item. The questions were drawn before this change and stay the same.")
 add("")
 add("Three kinds of file are accepted when an answer names them and are not required: in Python a package `__init__.py` executed on the way "
     "to the imported module; in TypeScript a file that imports the compiled output of X, which `tsconfig.json` maps back to X through `outDir` "

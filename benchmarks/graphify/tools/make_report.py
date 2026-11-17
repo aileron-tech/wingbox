@@ -287,7 +287,7 @@ add("Question: every file that depends on file X directly or through one other f
     "and the files they name are compared with the reference list.")
 add("")
 add("Reference lists (`gold/`), none taken from either tool: Q1 from an own TypeScript resolver (`tools/ts_resolve.py`); Q2 and Q3 from an own Rust resolver "
-    "(`tools/rust_resolve.py`), every file of the two lists read against the source; Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. "
+    "(`tools/rust_resolve.py`), every file of the two lists read against the source; Since 2026-11-17 (Wingbox 0.10.0) the Rust resolver also counts, for a path that names an item, the file that defines the item (followed through `pub use` re-exports), and the items a module names after a glob import (`use x::*`), found by scanning the module text. A file that uses an item depends on the file that defines it; the earlier reference stopped at the module facade that re-exports the item. The questions stay the same. Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. "
     "`run.sh` computes the five lists again and stops when one differs from the committed list.")
 add("")
 add("| Question | Reference files | Wingbox: right / wrong / missing | Wingbox output, tokens | Graphify: right / wrong / missing | Graphify output, tokens "

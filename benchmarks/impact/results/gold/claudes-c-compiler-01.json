@@ -24,7 +24,8 @@
   "src/backend/arm/codegen/prologue.rs",
   "src/backend/arm/codegen/returns.rs",
   "src/backend/arm/codegen/variadic.rs",
-  "src/backend/arm/mod.rs"
+  "src/backend/arm/mod.rs",
+  "src/backend/mod.rs"
  ],
  "gold": [
   "src/backend/arm/codegen/alu.rs",
@@ -44,9 +45,10 @@
   "src/backend/arm/codegen/prologue.rs",
   "src/backend/arm/codegen/returns.rs",
   "src/backend/arm/codegen/variadic.rs",
-  "src/backend/arm/mod.rs"
+  "src/backend/arm/mod.rs",
+  "src/backend/mod.rs"
  ],
  "also_accepted": [
-  "src/backend/mod.rs"
+  "src/backend/arm/codegen/peephole.rs"
  ]
 }

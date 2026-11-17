@@ -42,8 +42,8 @@
   },
   "Q2_cg": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.968,
+   "f1_min": 0.968,
    "tokens": 81990,
    "turns": 5.333,
    "cost_usd": 0.071,
@@ -52,8 +52,8 @@
   },
   "Q2_gf": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.968,
+   "f1_min": 0.968,
    "tokens": 158897,
    "turns": 8.667,
    "cost_usd": 0.115,
@@ -62,8 +62,8 @@
   },
   "Q2_plain": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.968,
+   "f1_min": 0.968,
    "tokens": 69193,
    "turns": 4.333,
    "cost_usd": 0.084,
@@ -72,8 +72,8 @@
   },
   "Q2_wb": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.968,
+   "f1_min": 0.968,
    "tokens": 24259,
    "turns": 2.0,
    "cost_usd": 0.018,
@@ -82,8 +82,8 @@
   },
   "Q3_cg": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.508,
+   "f1_min": 0.508,
    "tokens": 90432,
    "turns": 7.667,
    "cost_usd": 0.085,
@@ -92,8 +92,8 @@
   },
   "Q3_gf": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.508,
+   "f1_min": 0.508,
    "tokens": 81091,
    "turns": 8.333,
    "cost_usd": 0.091,
@@ -102,8 +102,8 @@
   },
   "Q3_plain": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.508,
+   "f1_min": 0.508,
    "tokens": 63529,
    "turns": 5.667,
    "cost_usd": 0.094,
@@ -112,8 +112,8 @@
   },
   "Q3_wb": {
    "trials": 3,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.508,
+   "f1_min": 0.508,
    "tokens": 19988,
    "turns": 2.333,
    "cost_usd": 0.018,
@@ -202,8 +202,8 @@
   },
   "all_cg": {
    "trials": 15,
-   "f1": 0.993,
-   "f1_min": 0.912,
+   "f1": 0.888,
+   "f1_min": 0.508,
    "tokens": 81151,
    "turns": 6.2,
    "cost_usd": 0.07,
@@ -212,8 +212,8 @@
   },
   "all_gf": {
    "trials": 15,
-   "f1": 0.997,
-   "f1_min": 0.975,
+   "f1": 0.892,
+   "f1_min": 0.508,
    "tokens": 109071,
    "turns": 7.8,
    "cost_usd": 0.095,
@@ -222,8 +222,8 @@
   },
   "all_plain": {
    "trials": 15,
-   "f1": 0.999,
-   "f1_min": 0.984,
+   "f1": 0.894,
+   "f1_min": 0.508,
    "tokens": 59367,
    "turns": 5.2,
    "cost_usd": 0.075,
@@ -232,8 +232,8 @@
   },
   "all_wb": {
    "trials": 15,
-   "f1": 1.0,
-   "f1_min": 1.0,
+   "f1": 0.895,
+   "f1_min": 0.508,
    "tokens": 23768,
    "turns": 2.333,
    "cost_usd": 0.021,
@@ -941,8 +941,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -995,8 +995,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1049,8 +1049,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1103,8 +1103,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1157,8 +1157,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1211,8 +1211,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1265,8 +1265,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1319,8 +1319,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1373,8 +1373,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1427,8 +1427,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1481,8 +1481,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1535,8 +1535,8 @@
     "cli/src/tls.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.938,
+   "f1": 0.968,
    "listed": 30
   },
   {
@@ -1590,8 +1590,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1645,8 +1645,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1700,8 +1700,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1755,8 +1755,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1810,8 +1810,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1865,8 +1865,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1920,8 +1920,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -1975,8 +1975,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -2030,8 +2030,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -2085,8 +2085,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -2140,8 +2140,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {
@@ -2195,8 +2195,8 @@
     "src/backend/x86/linker/elf.rs"
    ],
    "precision": 1.0,
-   "recall": 1.0,
-   "f1": 1.0,
+   "recall": 0.341,
+   "f1": 0.508,
    "listed": 31
   },
   {

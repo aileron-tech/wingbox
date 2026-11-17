@@ -15,6 +15,8 @@
   "cli/src/native/e2e_tests.rs",
   "cli/src/native/flow/mod.rs",
   "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
   "cli/src/native/mod.rs",
   "cli/src/native/parity_tests.rs"
  ],
@@ -26,6 +28,8 @@
   "cli/src/native/e2e_tests.rs",
   "cli/src/native/flow/mod.rs",
   "cli/src/native/flow/recorder.rs",
+  "cli/src/native/flow/replay.rs",
+  "cli/src/native/flow/send.rs",
   "cli/src/native/mod.rs",
   "cli/src/native/parity_tests.rs",
   "cli/src/native/react/mod.rs"

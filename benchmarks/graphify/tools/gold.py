@@ -35,7 +35,7 @@ def reference_edges(question: dict) -> set[tuple[str, str]]:
         return {(path, item["target"]) for path, items in files.items() for item in items if item["target"]}
     if question["language"] == "rust":
         refs = json.load(open(os.path.join(out, question["repo"] + ".rust_refs.json")))["refs"]
-        return {(ref["frm"], ref["to"]) for ref in refs}
+        return {(ref["frm"], target) for ref in refs for target in (ref["to"], ref["to_followed"]) if ref["frm"] != target}
     return {tuple(pair) for pair in json.load(open(os.path.join(out, question["repo"] + ".ref.json")))["pairs"]}
 
 

@@ -65,7 +65,7 @@ class PyEdgesTest(unittest.TestCase):
             required, _accepted = impact100.reference(tmp, "repo", "python")
             self.assertEqual({("a.py", "b.py"), ("t.py", "c.py")}, required)
             self.assertEqual({("a.py", "b.py")}, impact100.drawn_from(tmp, "repo", "python", required))
-            self.assertEqual(required, impact100.drawn_from(tmp, "repo", "rust", required))
+            self.assertEqual(required, impact100.drawn_from(tmp, "repo", "typescript", required))   # Rust: REQ-BENCH-015
 
 
 if __name__ == "__main__":

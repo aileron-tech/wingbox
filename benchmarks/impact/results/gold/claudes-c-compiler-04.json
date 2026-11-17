@@ -5,16 +5,60 @@
   "file": "src/backend/arm/linker/link.rs"
  },
  "direct": [
-  "src/backend/arm/linker/mod.rs"
+  "src/backend/arm/linker/mod.rs",
+  "src/backend/common.rs"
  ],
  "through_one": [
+  "src/backend/arm/codegen/emit.rs",
   "src/backend/arm/mod.rs",
-  "src/backend/common.rs"
+  "src/backend/generation.rs",
+  "src/backend/i686/codegen/alu.rs",
+  "src/backend/i686/codegen/asm_emitter.rs",
+  "src/backend/i686/codegen/atomics.rs",
+  "src/backend/i686/codegen/calls.rs",
+  "src/backend/i686/codegen/casts.rs",
+  "src/backend/i686/codegen/comparison.rs",
+  "src/backend/i686/codegen/emit.rs",
+  "src/backend/i686/codegen/float_ops.rs",
+  "src/backend/i686/codegen/globals.rs",
+  "src/backend/i686/codegen/i128_ops.rs",
+  "src/backend/i686/codegen/intrinsics.rs",
+  "src/backend/i686/codegen/memory.rs",
+  "src/backend/i686/codegen/prologue.rs",
+  "src/backend/i686/codegen/returns.rs",
+  "src/backend/i686/codegen/variadic.rs",
+  "src/backend/mod.rs",
+  "src/backend/riscv/codegen/emit.rs",
+  "src/backend/state.rs",
+  "src/backend/traits.rs",
+  "src/backend/x86/codegen/emit.rs"
  ],
  "gold": [
+  "src/backend/arm/codegen/emit.rs",
   "src/backend/arm/linker/mod.rs",
   "src/backend/arm/mod.rs",
-  "src/backend/common.rs"
+  "src/backend/common.rs",
+  "src/backend/generation.rs",
+  "src/backend/i686/codegen/alu.rs",
+  "src/backend/i686/codegen/asm_emitter.rs",
+  "src/backend/i686/codegen/atomics.rs",
+  "src/backend/i686/codegen/calls.rs",
+  "src/backend/i686/codegen/casts.rs",
+  "src/backend/i686/codegen/comparison.rs",
+  "src/backend/i686/codegen/emit.rs",
+  "src/backend/i686/codegen/float_ops.rs",
+  "src/backend/i686/codegen/globals.rs",
+  "src/backend/i686/codegen/i128_ops.rs",
+  "src/backend/i686/codegen/intrinsics.rs",
+  "src/backend/i686/codegen/memory.rs",
+  "src/backend/i686/codegen/prologue.rs",
+  "src/backend/i686/codegen/returns.rs",
+  "src/backend/i686/codegen/variadic.rs",
+  "src/backend/mod.rs",
+  "src/backend/riscv/codegen/emit.rs",
+  "src/backend/state.rs",
+  "src/backend/traits.rs",
+  "src/backend/x86/codegen/emit.rs"
  ],
  "also_accepted": [
   "src/backend/arm/linker/emit_dynamic.rs",

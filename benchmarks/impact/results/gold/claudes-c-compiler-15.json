@@ -15,9 +15,12 @@
   "src/backend/x86/codegen/peephole/passes/store_forwarding.rs"
  ],
  "through_one": [
-  "src/backend/x86/codegen/peephole/mod.rs"
+  "src/backend/mod.rs",
+  "src/backend/x86/codegen/peephole/mod.rs",
+  "src/backend/x86/codegen/peephole/passes/tail_call.rs"
  ],
  "gold": [
+  "src/backend/mod.rs",
   "src/backend/x86/codegen/peephole/mod.rs",
   "src/backend/x86/codegen/peephole/passes/callee_saves.rs",
   "src/backend/x86/codegen/peephole/passes/copy_propagation.rs",
@@ -26,7 +29,8 @@
   "src/backend/x86/codegen/peephole/passes/local_patterns.rs",
   "src/backend/x86/codegen/peephole/passes/loop_trampoline.rs",
   "src/backend/x86/codegen/peephole/passes/mod.rs",
-  "src/backend/x86/codegen/peephole/passes/store_forwarding.rs"
+  "src/backend/x86/codegen/peephole/passes/store_forwarding.rs",
+  "src/backend/x86/codegen/peephole/passes/tail_call.rs"
  ],
  "also_accepted": []
 }
