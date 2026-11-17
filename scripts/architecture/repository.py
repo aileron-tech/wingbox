@@ -8,6 +8,17 @@ from typing import Callable, Optional
 MAX_TEXT_BYTES = 2_000_000
 
 
+def _excluded(skip_directories: frozenset[str], parent: str, name: str) -> bool:
+    """The folder policy of discovery: a skipped name, except a first-party `vendor` folder and the like."""
+    try:
+        from ..lang.discovery import is_excluded_directory
+        from ..lang.interface import DiscoveryExclusions
+    except ImportError:  # loaded as a top-level script module
+        from lang.discovery import is_excluded_directory
+        from lang.interface import DiscoveryExclusions
+    return is_excluded_directory(DiscoveryExclusions(directory_names=skip_directories, paths=frozenset()), parent, name)
+
+
 def list_files(root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str]) -> tuple[str, ...]:
     """Every file below root as a POSIX path relative to it, sorted; skipped folders and
     ignored paths (absolute, as the git ignore loader returns them) are left out."""
@@ -16,7 +27,7 @@ def list_files(root: str, skip_directories: frozenset[str], ignored_paths: froze
     for directory, folders, files in os.walk(root):
         folders[:] = sorted(
             name for name in folders
-            if name not in skip_directories and os.path.join(directory, name) not in ignored_paths
+            if not _excluded(skip_directories, directory, name) and os.path.join(directory, name) not in ignored_paths
             and not os.path.islink(os.path.join(directory, name))
         )
         for name in files:

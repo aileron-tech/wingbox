@@ -6,8 +6,12 @@ from dataclasses import dataclass
 
 try:
     from . import portable
+    from .lang.discovery import is_excluded_directory
+    from .lang.interface import DiscoveryExclusions
 except ImportError:  # loaded as a top-level script module
     import portable
+    from lang.discovery import is_excluded_directory
+    from lang.interface import DiscoveryExclusions
 
 
 @dataclass(frozen=True)
@@ -87,8 +91,10 @@ def _discovery_candidates(
         root,
         onerror=_record_walk_error,
     ):
+        # The same folder policy as discovery (a first-party `vendor` folder is walked).
+        exclusions = DiscoveryExclusions(directory_names=skipped_directory_names, paths=frozenset())
         directory_names[:] = [
-            name for name in directory_names if name not in skipped_directory_names
+            name for name in directory_names if not is_excluded_directory(exclusions, directory_path, name)
         ]
         for directory_name in directory_names:
             candidates.add(os.path.join(directory_path, directory_name) + os.sep)
