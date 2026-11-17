@@ -2,7 +2,11 @@
 
 ![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
-> **AI agents should know what their changes will break before editing code.**
+> **Give your coding agent a map of your codebase. Half the cost, no missed files.**
+>
+> On 55 questions in five public repositories an agent with Wingbox gave the
+> complete list of dependent files in 55 of 55, at half the cost of its own
+> search (48 of 55): [benchmarks](benchmarks/impact/README.md).
 >
 > Wingbox builds a local **code graph** of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture

@@ -4,6 +4,8 @@
 
 ### Changes
 
+- README: the header opens with "Give your coding agent a map of your codebase.
+  Half the cost, no missed files." and the benchmark numbers behind it.
 - `benchmarks/graphify` measures CodeGraph 1.6.2 (npm `@colbymchenry/codegraph`)
   next to Wingbox and Graphify on the same repositories, questions, reference
   lists and scoring: the impact command, every file-to-file edge against the
