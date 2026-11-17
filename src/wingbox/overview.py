@@ -78,6 +78,17 @@ class AdviceInfo:
 
 
 @dataclass(frozen=True)
+class CapabilityInfo:
+    file: str
+    kind: str        # the capability (sql, http-client, ...) or the pattern id
+    layer: str
+    severity: str    # violation | known | candidate | pattern
+    line: int
+    evidence: str
+    rule: str        # allowed or forbidden layers, or the reason of the pattern
+
+
+@dataclass(frozen=True)
 class Overview:
     project: str
     modules: tuple[ModuleInfo, ...]
@@ -96,6 +107,8 @@ class Overview:
     advice: tuple[AdviceInfo, ...] = ()
     known_violations: tuple[ViolationInfo, ...] = ()   # rule breaks a baseline already lists
     quiet_parts: tuple[tuple[str, str], ...] = ()   # parts without advice and why
+    capability_breaks: tuple[CapabilityInfo, ...] = ()   # what a file does that its layer may not
+    pattern_breaks: tuple[CapabilityInfo, ...] = ()      # pattern checks of the style the code does not follow
 
 
 def _layer_rank(layer: str) -> int:
@@ -239,6 +252,22 @@ def build_overview(graph: Any, search: Any, project: str, advice: Any = None) ->
         ),
         known_violations=known_violations,
         type_only_crossings=type_only_crossings,
+        capability_breaks=tuple(
+            CapabilityInfo(
+                search.module_file(graph, item.module), item.capability, item.layer,
+                "known" if item.known and item.severity == "violation" else item.severity, item.line, item.evidence,
+                f"allowed in {', '.join(item.allowed)}" if item.allowed else f"not in {', '.join(item.forbidden)}",
+            )
+            for item in search.capability_violations(graph, set(graph.nodes))
+        ),
+        pattern_breaks=tuple(
+            CapabilityInfo(
+                search.module_file(graph, item.source), item.pattern, search.module_layer(graph, item.source), "pattern",
+                item.line, item.evidence or (f"imports {search.module_file(graph, item.target)}" if item.target else ""),
+                item.reason,
+            )
+            for item in search.pattern_violations(graph, set(graph.nodes))
+        ),
         placed_by_path=sum(1 for module in modules if module.layer_basis == "path"),
         placed_by_role=sum(1 for module in modules if module.layer_basis == "role"),
         unplaced=sum(1 for module in modules if module.layer_basis == "none"),
@@ -344,6 +373,30 @@ def _parts_section(view: Overview) -> list[str]:
 _TOP_ADVICE = 30
 
 
+def _capabilities(view: Overview) -> list[str]:
+    """Capability rules (SQL in repositories, HTTP in infrastructure, ...) and pattern checks, with the line."""
+    counts = _count([item.severity for item in view.capability_breaks])
+    lines = [
+        f"{_plural(counts.get('violation', 0), 'file')} {'does' if counts.get('violation', 0) == 1 else 'do'} what "
+        f"its layer may not (SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the "
+        f"domain, ...); {_number(counts.get('known', 0))} accepted in the baseline, "
+        f"{_number(counts.get('candidate', 0))} suspected (a query kept in a variable, or a layer guessed from the role), "
+        f"{_plural(len(view.pattern_breaks), 'pattern break')}. Found by syntax: SQL assembled at run time or behind a "
+        "helper of another package is not seen. `wingbox boundaries all` lists them all.",
+        "",
+        "| File | Capability or pattern | Layer | Line | Evidence | Rule |",
+        "|---|---|---|---|---|---|",
+    ]
+    shown = [item for item in view.capability_breaks if item.severity == "violation"] + list(view.pattern_breaks)
+    lines += [
+        f"| {_code(item.file)} | {item.kind} | {item.layer} | {item.line or '-'} | {_cell(item.evidence)} | {_cell(item.rule)} |"
+        for item in shown[:_TOP_ADVICE]
+    ]
+    if len(shown) > _TOP_ADVICE:
+        lines += ["", f"Showing {_TOP_ADVICE} of {_number(len(shown))}."]
+    return lines
+
+
 def _recommendations(view: Overview) -> list[str]:
     """What the style of each part says to create, move or fix."""
     lines: list[str] = []
@@ -353,6 +406,7 @@ def _recommendations(view: Overview) -> list[str]:
             "What the style of each part (or the rules it declares) says to do: "
             + ", ".join(f"{_number(counts.get(kind, 0))} {label}" for kind, label in
                         (("move", "files to move"), ("fix-violation", "imports to fix"),
+                         ("fix-capability", "files doing what their layer may not"), ("fix-pattern", "pattern breaks"),
                          ("missing-folder", "folders of the target layout to create when needed")))
             + ". `wingbox advice` lists them for agents.",
             "",
@@ -521,6 +575,9 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         if count > _TOP_VIOLATIONS:
             lines += ["", f"Showing {_TOP_VIOLATIONS} of {_number(count)}. Full list: `wingbox boundaries all`."]
 
+    if view.capability_breaks or view.pattern_breaks:
+        lines += ["", "## What layers do", ""]
+        lines += _capabilities(view)
     lines += ["", "## Recommendations", ""]
     lines += _recommendations(view)
     lines += ["", "## Where to start reading", ""]

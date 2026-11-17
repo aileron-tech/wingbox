@@ -440,6 +440,12 @@ def _align_command(args: list[str], cwd: str) -> int:
                 f":from {_atom(entry.origin) if entry.origin == 'align' else q(entry.origin)})"
             )
     if learn and target is None:
+        # What files do that their layer may not (SQL in a service, ...) is accepted the same way.
+        baseline_lines += [
+            f"(baseline-capability {q(item.part)} {_atom(item.module)} {item.capability} :line {item.line} :from align)"
+            for item in search.capability_violations(graph, set(graph.nodes))
+            if item.severity == "violation" and (not rest or item.part in rest)
+        ]
         error = _write_learned(root, learned_layers, bases, sorted(set(baseline_lines)), facts)
         if error:
             print(f"[wingbox] ERROR: {error}", file=sys.stderr)

@@ -144,7 +144,10 @@ try:
             load_git_ignored_paths,
         )
         from .architecture.config import ConfigErr, plan_from_config, read_config
-        from .architecture.facts import BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp
+        from .architecture.facts import (
+            BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
+        )
+        from .architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
         from .architecture.library import load_library
         from .architecture.plan import RepositoryPlan, detect_plan
         from .architecture.repository import list_files, text_reader
@@ -175,7 +178,10 @@ try:
             load_git_ignored_paths,
         )
         from architecture.config import ConfigErr, plan_from_config, read_config
-        from architecture.facts import BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp
+        from architecture.facts import (
+            BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
+        )
+        from architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
         from architecture.library import load_library
         from architecture.plan import RepositoryPlan, detect_plan
         from architecture.repository import list_files, text_reader
@@ -3545,6 +3551,15 @@ def render_sexp(
                 lines.append(
                     f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}")'
                 )
+        for node in sorted_nodes:
+            for finding in (architecture.capabilities or {}).get(node["id"], ()):
+                lines.append(
+                    f'(capability {path_to_sid[node["id"]]} {finding.capability} :line {finding.line} '
+                    f':evidence "{_sexp_escape(finding.evidence)}"{" :suspect" if finding.suspect else ""})'
+                )
+        for part, node_id, capability in architecture.capability_known:
+            if node_id in path_to_sid:
+                lines.append(f'(capability-known "{_sexp_escape(part)}" {path_to_sid[node_id]} {capability} "{BASELINE_FILE}")')
 
     # -- Violations (Gap 2 fix) --
     if violations:
@@ -4326,13 +4341,69 @@ def project_architecture(
         )
         for result in results
     }
+    baseline_text = text_reader(root)(BASELINE_FILE) or ""
     architecture = graph_architecture(
         plan.value, load_library(), {node["id"]: node["path"] for node in nodes if node.get("path")},
         {node["id"]: names_by_path.get(node["path"], frozenset()) for node in nodes if node.get("path")},
         plan_paths,
-        read_baseline_sexp(text_reader(root)(BASELINE_FILE) or ""),
+        read_baseline_sexp(baseline_text),
+        _node_capabilities(root, nodes, {os.path.relpath(r.path, root): r.content_hash for r in results}),
+        read_capability_baseline(baseline_text),
     )
     return Ok((architecture, plan.value))
+
+
+CAPABILITIES_CACHE_FILE = "cache.capabilities.json"   # in .wingbox/, ignored with the other caches
+
+
+def _node_capabilities(root: str, nodes: Sequence[dict], hashes: Mapping[str, str]) -> dict[str, tuple]:
+    """What the file of each node does (SQL, database client, outbound HTTP, ...), found by syntax.
+
+    Findings are cached by content hash in .wingbox/cache.capabilities.json, so a rebuild or a partial
+    update reads again only the files that changed; a change of the detector empties the cache.
+    """
+    detector = _file_digest(detect_capabilities.__code__.co_filename)
+    path = os.path.join(wingbox_directory(root), CAPABILITIES_CACHE_FILE)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            stored = json.load(handle)
+        cached = stored.get("files", {}) if isinstance(stored, dict) and stored.get("detector") == detector else {}
+    except (OSError, ValueError):
+        cached = {}
+    found: dict[str, tuple] = {}
+    entries: dict[str, list] = {}
+    changed = False
+    for node in nodes:
+        relative = node.get("path")
+        if not relative or not capability_language(relative):
+            continue
+        digest = hashes.get(relative, "")
+        entry = cached.get(relative)
+        if digest and isinstance(entry, list) and len(entry) == 2 and entry[0] == digest:
+            rows = entry[1]
+        else:
+            try:
+                with open(os.path.join(root, relative), "r", encoding="utf-8", errors="replace") as handle:
+                    text = handle.read()
+            except OSError:
+                continue
+            rows = [[f.capability, f.line, f.evidence, f.suspect] for f in detect_capabilities(relative, text)]
+            changed = True
+        entries[relative] = [digest, rows]
+        if rows:
+            found[node["id"]] = tuple(_finding(*row) for row in rows)
+    if changed or set(entries) != set(cached):
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            _atomic_write_text(path, json.dumps({"detector": detector, "files": entries}, separators=(",", ":")) + "\n")
+        except OSError as error:
+            print(f"[code-graph] WARNING: capability cache not written: {error}", file=sys.stderr)
+    return found
+
+
+def _file_digest(path: str) -> str:
+    with open(path, "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()[:16]
 
 
 def architecture_plan(

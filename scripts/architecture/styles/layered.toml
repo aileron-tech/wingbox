@@ -3,6 +3,7 @@ id = "layered"
 name = "Layered architecture (presentation, service, data, model)"
 kind = "style"
 languages = ["any"]                 # languages a new project may choose this style for
+patterns = ["controller-skips-service", "service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
 summary = "Code is split by technical role into horizontal layers; an upper layer calls the layer below it. This is the convention Wingbox 0.2 has built in."
 
 [[sources]]
@@ -166,3 +167,13 @@ refactoring = [
 layers = { ui = "components", api = "routes", service = "services", infra = "repositories", domain = "domain", shared = "shared", config = "config" }
 domain = "domain"
 note = "Repository interfaces in domain/repositories, their implementations in the infra layer."
+
+# What a layer may do (see scripts/architecture/capabilities.py): SQL and the database client live in the
+# repository (DAO) layer, outbound HTTP in infrastructure, the domain does not know the web framework, the
+# environment is read in configuration. A composition root (main.ts, Program.cs) may do all of it.
+[capabilities]
+sql = {allowed_in = ["infra"], fix = "move the query into a repository (DAO) in infrastructure and call it from the service"}
+db-client = {allowed_in = ["infra"], fix = "keep the database client in infrastructure; the other layers call a repository"}
+http-client = {allowed_in = ["infra"], fix = "wrap the outbound call in a client or gateway in infrastructure"}
+framework = {forbidden_in = ["domain"], fix = "keep the domain free of the web framework; map requests and responses in the API layer"}
+env = {allowed_in = ["config"], fix = "read the environment once in configuration and pass the values in"}

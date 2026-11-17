@@ -51,6 +51,10 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
 (arch-part <part> :style <style> :state <state> :origin detected|config|declared :level system|container|component :kind "<kind>" :files <n> [:source "<citation>"] [:declared "<file>"])
 (arch-deny <part> <from-layer> <to-layer> "<reason>")
 (arch-known <part> <src> <tgt> "<baseline file>")
+(arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix "<text>"])
+(arch-pattern <part> <pattern>)
+(capability <mod> <capability> :line <n> :evidence "<source line>" [:suspect])
+(capability-known <part> <mod> <capability> "<baseline file>")
 (layer <mod> <layer> :part <part> :style <style> :rule "<rule>" :match exact|spelling|synonym|config|file|declared|test|none)
 ```
 
@@ -178,8 +182,9 @@ builds are left out) and `(advice-none ...)`; `--learned` prints the
 ```
 
 `.wingbox/baseline.sexp` holds `(baseline <part> <src> <tgt> :rule "<from -> to>"
-:from align|"<project baseline file>")`; the build reads it and the pairs
-become `violation-known`.
+:from align|"<project baseline file>")` and `(baseline-capability <part> <module>
+<capability> :line <n> :from align)`; the build reads it and the pairs become
+`violation-known`, the capabilities `capability-violation-known`.
 
 ## compare Output
 
@@ -391,6 +396,36 @@ a TypeScript import of types or interfaces only (`import type`, or every importe
 name is a type or an interface of the target); the compiler erases it, so it is
 not counted as a violation, but a change of the type still reaches the importer.
 `violation-candidate`: a layer is only guessed from the role of a file.
+
+What a layer may do (capability rules) follows, when a file breaks one:
+
+```scheme
+(capability-violation <file> :capability sql :layer service :allowed (infra) :line 42 :evidence "<source line>" :part <part> :style layered [:pattern domain-imports-orm] [:fix "<the style's fix>"])
+(capability-violation <file> :capability framework :layer domain :forbidden (domain) :line 3 :evidence "..." ...)
+(capability-violation-known <file> ... :known .wingbox/baseline.sexp ...)
+(capability-candidate <file> :capability sql ... :evidence "QUERY = \"SELECT ...\"" ...)
+(pattern-violation <file> :pattern controller-skips-service :target <repository file> :part <part> :style <style> "<reason>")
+(pattern-violation <file> :pattern service-builds-http-response :line 12 :evidence "return JSONResponse(...)" ...)
+(capability-summary :violations 3 :known 0 :candidates 1 :patterns 2 :checked 707)
+```
+
+Capabilities (`scripts/architecture/capabilities.py`), found by syntax in
+Python, TypeScript and JavaScript, PHP, Ruby, Java and Kotlin, C# and Go:
+`sql` (a string literal that starts a SQL statement passed to a query call,
+query-builder and ORM queries such as `session.query`, `prisma.<model>.findMany`,
+`DB::select`, `find_by_sql`, `createQuery`, `FromSqlRaw`, `db.Query`),
+`db-client` (driver and ORM imports), `http-client`, `framework` (web
+framework imports), `http-response`, `env`, `filesystem`, `process`. Each
+style states `allowed_in` or `forbidden_in` layers per capability (its
+`[capabilities]` table); `capabilities:` of a part in `.wingbox/config.yaml`
+replaces a rule. One line per file and capability, at the first line that
+shows it. `capability-candidate`: a SQL literal no query call on the line (or
+the call opened just above) receives, or a layer guessed from the role of the
+file. A composition root, tests and files in no layer are not judged; a part
+with declared rules has no capability rules. Pattern checks of the style:
+`controller-skips-service` (a controller imports a repository and the style
+has a service layer), `service-builds-http-response`, `domain-imports-orm`
+(set on the db-client violation of a domain file).
 
 ## impact Output (`--sexp`)
 

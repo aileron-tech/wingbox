@@ -3,6 +3,7 @@ id = "mvc"
 name = "Model-view-controller (web framework convention)"
 kind = "style"
 languages = ["ruby", "python", "php", "csharp", "java"]                 # languages a new project may choose this style for
+patterns = []   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
 wins_over = ["layered"]
 summary = "The web framework's own split: models hold data and rules, views render, controllers receive requests and choose a view. Rails, Django (model-template-view), Laravel, ASP.NET MVC, Spring MVC."
 
@@ -89,3 +90,8 @@ refactoring = ["A model that builds a response or reads the request: move that c
 layers = { model = "models", view = "views", controller = "controllers" }
 domain = "models"
 note = "The framework keeps the domain in models/; value objects, services and specifications go next to the models."
+
+# MVC: queries belong to the models, not to controllers or views.
+[capabilities]
+sql = {allowed_in = ["model"], fix = "move the query into the model (a scope or a query method) and call it from the controller"}
+db-client = {allowed_in = ["model"], fix = "keep the database access in the models"}

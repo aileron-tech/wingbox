@@ -457,6 +457,26 @@ wrote .wingbox/config.yaml (edit it, then: wingbox build)
   3 builds is no longer shown. `wingbox advice` lists the open items,
   `wingbox advice --learned` what was learned.
 
+- **What a layer may do.** Besides who imports whom, each style says what
+  kind of work belongs where: SQL and the database client in the repository
+  (DAO) layer, outbound HTTP in infrastructure, no web framework in the
+  domain, the environment read in configuration (hexagonal: all I/O in the
+  driven adapters). The build finds these capabilities by syntax in Python,
+  TypeScript, PHP, Ruby, Java, C# and Go (a SQL string passed to `execute`,
+  `query` or `raw`, query builders, `session.query`, Prisma model calls,
+  `DB::select`, driver and ORM imports, `requests`/`axios`/`HttpClient`,
+  `os.environ`/`process.env`, ...), each with its line, and `wingbox
+  boundaries` reports a file outside the allowed layers:
+  `(capability-violation src/services/orders.py :capability sql :layer service
+  :allowed (infra) :line 42 :evidence "cursor.execute(\"SELECT ...\")")`. A
+  query only kept in a variable is a candidate. A few pattern checks ride on
+  the same data: a controller that imports a repository and skips the service,
+  a service that builds an HTTP response, a domain file that imports the ORM.
+  `capabilities:` of a part in `.wingbox/config.yaml` restates a rule; REPORT.md
+  ("What layers do") and `wingbox advice` (`fix-capability`, `fix-pattern`)
+  name the fix; `align --learn` accepts the current ones in the baseline. SQL
+  assembled at run time or behind a helper of another package is not seen.
+
 - **Align.** `wingbox align [PART] [--to STYLE] [--learn]` measures the gaps
   of each part against its style: files placed, dependencies that follow the
   rules, layers present and missing, folders without a layer, broken rules

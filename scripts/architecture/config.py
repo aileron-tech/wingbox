@@ -10,6 +10,8 @@ reads it. Format:
         layers:                           # layer -> whole folder names inside the part
           api: [routes, controllers]
         routing-root: [app]               # route-tree only: folders whose subfolders are URLs
+        capabilities:                     # over the style's rules: where SQL, HTTP, the framework... may be
+          sql: {allowed_in: [infra]}
         overlays: [cqrs]                  # overlays found next to the style
         declared: [platform/backend/layers.mjs]   # declared only: the rule files
         target:                           # written by init: the full layout of the style, present or proposed
@@ -25,6 +27,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Optional
 
 
+from .capabilities import CAPABILITIES, CapabilityRule, rules_from_toml
 from .detect import DeclaredFile, ReadText, judge, part_kind, split_parts, c4_level
 from .target import target_layout
 from .library import Library
@@ -54,6 +57,7 @@ class PartConfig:
     declared: tuple[str, ...]
     overlays: tuple[str, ...] = ()
     target: tuple["TargetEntry", ...] = ()
+    capabilities: tuple[CapabilityRule, ...] = ()   # `capabilities:` of the part, over the style's rules
 
 
 @dataclass(frozen=True)
@@ -138,6 +142,9 @@ def parse_config(text: str, library: Library) -> ConfigResult:
         unknown = [name for name in overlays if name not in {o.id for o in library.overlays}]
         if unknown:
             return ConfigErr(f"{where}: unknown overlay {unknown[0]!r}; use " + ", ".join(o.id for o in library.overlays))
+        capabilities = _capabilities(entry.get("capabilities"), resolved, where)
+        if isinstance(capabilities, str):
+            return ConfigErr(capabilities)
         routing = _names(entry.get("routing-root"), f"{where}: routing-root")
         declared = _names(entry.get("declared"), f"{where}: declared")
         if isinstance(routing, str):
@@ -146,7 +153,7 @@ def parse_config(text: str, library: Library) -> ConfigResult:
             return ConfigErr(declared)
         parts.append(PartConfig(
             path=path.strip("/") or ".", style=style_id, level=str(entry.get("level", "")),
-            layers=tuple(layers), routing_root=routing, declared=declared, overlays=overlays,
+            layers=tuple(layers), routing_root=routing, declared=declared, overlays=overlays, capabilities=capabilities,
             target=tuple(
                 TargetEntry(str(item.get("layer", "")), str(item.get("block", "")), str(item["folder"]),
                             bool(item.get("proposed", False)))
@@ -154,6 +161,27 @@ def parse_config(text: str, library: Library) -> ConfigResult:
             ),
         ))
     return ConfigOk(tuple(parts))
+
+
+def _capabilities(value: Any, style: Any, where: str) -> tuple[CapabilityRule, ...] | str:
+    """`capabilities:` of a part: capability -> {allowed_in: [layers], forbidden_in: [layers], fix: text}."""
+    if value is None:
+        return ()
+    if not isinstance(value, dict):
+        return f"{where}: `capabilities` must map a capability to {{allowed_in, forbidden_in}}"
+    for name, rule in value.items():
+        if name not in CAPABILITIES:
+            return f"{where}: unknown capability {name!r}; use one of {', '.join(CAPABILITIES)}"
+        if not isinstance(rule, dict) or not set(rule) <= {"allowed_in", "forbidden_in", "fix"}:
+            return f"{where}: capabilities.{name} takes allowed_in, forbidden_in and fix"
+        for key in ("allowed_in", "forbidden_in"):
+            layers = rule.get(key) or []
+            if not isinstance(layers, list) or not all(isinstance(layer, str) for layer in layers):
+                return f"{where}: capabilities.{name}.{key} must be a list of layers"
+            unknown = [layer for layer in layers if style is not None and style.layer(layer) is None]
+            if unknown:
+                return f"{where}: capabilities.{name}.{key}: style {style.id} has no layer {unknown[0]!r}"
+    return rules_from_toml(value)
 
 
 def plan_from_config(
@@ -175,7 +203,7 @@ def plan_from_config(
         base = PartPlan(
             path=entry.path, kind=part_kind(part), level=level, files=len(part.judged), style=entry.style,
             state="configured", origin="config", score=None, judgement=None, layers=(), routing_root=(),
-            declared=None, overlays=entry.overlays,
+            declared=None, overlays=entry.overlays, capabilities=entry.capabilities,
         )
         style = library.style(entry.style)
         if entry.style == DECLARED:
@@ -246,6 +274,9 @@ def config_header(library: Library, generated: str) -> list[str]:
         "# - To move a folder to another layer, move its name or path to that layer's list; to move a",
         "#   subfolder alone, list its path (lib/hooks) under the new layer. Write the reason in a",
         "#   comment on the line. A single file cannot be pinned: move it into a folder of its layer.",
+        "# - capabilities: where the part allows what a file does - sql, db-client, http-client,",
+        "#   framework, http-response, env, filesystem, process - as {allowed_in: [layers]} or",
+        "#   {forbidden_in: [layers]}; an entry replaces the style's rule for that capability.",
         "# - overlays, routing-root, target: found by init; target is the style's full layout,",
         "#   informative.",
         "# - Known rule breaks accepted on purpose are in .wingbox/baseline.sexp (align --learn).",
@@ -304,6 +335,13 @@ def render_config(
                 ]
                 note = f"   # {'; '.join(notes)}" if notes else ""
                 lines.append(f"      {layer}: {_flow(tuple(f.folder for f in folders))}{note}")
+        if part.capabilities:
+            lines.append("    capabilities:   # where the part allows SQL, HTTP, the framework...; replaces the style's rule")
+            for rule in part.capabilities:
+                keys = [f"allowed_in: {_flow(rule.allowed_in)}"] if rule.allowed_in else []
+                keys += [f"forbidden_in: {_flow(rule.forbidden_in)}"] if rule.forbidden_in else []
+                keys += [f"fix: {_quote(rule.fix)}"] if rule.fix else []
+                lines.append(f"      {rule.capability}: {{{', '.join(keys)}}}")
         targets = target_layout(part, paths, library) if paths or with_target else ()
         if targets:
             lines.append("    target:   # the full layout of the style: present with the real folders, or proposed")

@@ -13,6 +13,8 @@ import tomllib
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .capabilities import CapabilityRule, rules_from_toml
+
 STYLES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "styles")
 
 
@@ -102,6 +104,8 @@ class Style:
                 return dict(pairs)
         return None
     compatible_with: tuple[str, ...] = ()    # styles that may hold for the same part
+    capabilities: tuple["CapabilityRule", ...] = ()   # [capabilities]: where SQL, HTTP, the framework... may be
+    patterns: tuple[str, ...] = ()           # pattern checks of the style (controller-skips-service, ...)
 
     def cite(self) -> str:
         return "; ".join(source.cite() for source in self.sources)
@@ -285,6 +289,8 @@ def _style(data: dict[str, Any]) -> Style:
             for pattern in _strings(role.get("files"))
         ),
         compatible_with=_strings(data.get("compatible_with")),
+        capabilities=rules_from_toml(data.get("capabilities")),
+        patterns=_strings(data.get("patterns")),
     )
 
 

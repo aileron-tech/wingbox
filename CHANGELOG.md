@@ -100,6 +100,27 @@
 - The files a person or an agent decides on stay in `.wingbox/` next to the
   index and are not in `.wingbox/.gitignore`: `config.yaml`, `decisions.sexp`,
   `learned.sexp` and `baseline.sexp` can be committed.
+- Capability rules: what a layer may do. The build finds, by syntax and with
+  the line as evidence, what each file does - `sql` (a SQL string passed to
+  `execute`, `query` or `raw`, query builders, `session.query`, Prisma model
+  calls, `DB::select`, `find_by_sql`, `createQuery`, `FromSqlRaw`,
+  `db.Query`), `db-client`, `http-client`, `framework`, `http-response`,
+  `env`, `filesystem`, `process` - in Python, TypeScript and JavaScript, PHP,
+  Ruby, Java, C# and Go. Each style states where they are allowed (layered:
+  SQL and the database client in infrastructure, outbound HTTP in
+  infrastructure, no web framework in the domain, the environment in
+  configuration; hexagonal: all I/O in the driven adapters; MVC: queries in
+  the models), and `capabilities:` of a part in `.wingbox/config.yaml`
+  restates a rule. `wingbox boundaries` prints `(capability-violation <file>
+  :capability sql :layer service :allowed (infra) :line 42 :evidence "...")`;
+  a query only kept in a variable, or an `import type` of a client, is a
+  `capability-candidate`. Pattern checks of the style: a controller that
+  imports a repository with database access (skipping the service), a service
+  that builds an HTTP response, a domain file that imports the ORM.
+  REPORT.md gets a "What layers do" section, `wingbox advice` fix-capability
+  and fix-pattern items, and `align --learn` accepts the current ones as
+  `baseline-capability` lines of `.wingbox/baseline.sexp`. Findings are cached
+  by content hash in `.wingbox/cache.capabilities.json`.
 - Nobody edits the layer config by hand: the `learn` task tells the agent to
   ask the operator in its chat when the code does not decide a folder, and to
   pass the answer on (`:because "operator: ..."`). A person at a terminal

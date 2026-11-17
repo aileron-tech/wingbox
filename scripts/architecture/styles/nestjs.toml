@@ -3,6 +3,7 @@ id = "nestjs"
 name = "NestJS application (modules, controllers, providers)"
 kind = "style"
 languages = ["typescript", "javascript"]                 # languages a new project may choose this style for
+patterns = ["controller-skips-service", "service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
 wins_over = ["layered"]                          # the same layering, read from file names instead of folder names
 compatible_with = ["onion-clean", "hexagonal"]   # a Nest application may be built in rings; then both are reported
 layer_by = ["file", "folder"]                    # the file name states the role; the folder decides only when the name does not
@@ -190,3 +191,10 @@ refactoring = [
 layers = { module = "<feature>", api = "<feature>", service = "<feature>", infra = "<feature>", domain = "<feature>/entities", shared = "common" }
 domain = "<feature>/domain"
 note = "A Nest application is a tree of feature modules: each feature folder holds its module, controller, service, repository and, in <feature>/domain, its building blocks."
+
+# NestJS: queries in repositories (infra), outbound HTTP in infra, the domain free of Nest and the ORM.
+[capabilities]
+sql = {allowed_in = ["infra"], fix = "move the query into a repository provider and inject it into the service"}
+db-client = {allowed_in = ["infra", "module"], fix = "keep the ORM client in repositories and the module that wires them"}
+http-client = {allowed_in = ["infra"], fix = "wrap the outbound call in a client provider in infra"}
+framework = {forbidden_in = ["domain"], fix = "keep entities and value objects free of Nest decorators and the web framework"}

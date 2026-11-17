@@ -63,6 +63,7 @@ class PartPlan:
     routing_root: tuple[str, ...]
     declared: Optional[DeclaredRules]
     overlays: tuple[str, ...] = ()   # overlays found next to the style (cqrs)
+    capabilities: tuple = ()         # CapabilityRule restated by .wingbox/config.yaml for this part
 
     @property
     def has_rules(self) -> bool:

@@ -163,6 +163,28 @@ class EntityFact:
 _EDGE_KINDS = ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls", "registry-wires")
 
 
+@dataclass(frozen=True)
+class CapabilityRuleFact:
+    """Where a part allows a capability: `(arch-capability <part> <capability> :allowed (...) :forbidden (...))`."""
+
+    allowed: tuple[str, ...]
+    forbidden: tuple[str, ...]
+    fix: str
+
+    def breaks(self, layer: str) -> bool:
+        return bool(self.allowed and layer not in self.allowed) or layer in self.forbidden
+
+
+@dataclass(frozen=True)
+class CapabilityFact:
+    """What a file does, found by syntax: `(capability <module> sql :line 42 :evidence "..." [:suspect])`."""
+
+    capability: str
+    line: int
+    evidence: str
+    suspect: bool
+
+
 @dataclass
 class Edge:
     etype: str   # imports, calls-api, data-flow, refs, calls, registry-wires
@@ -472,6 +494,10 @@ class CodeGraph:
         self.advice_cache: Optional[tuple] = None
         self.labels: dict[str, "ModuleLabel"] = {}   # module -> layer label written by the build
         self.known: dict[tuple[str, str], str] = {}   # (source, target) -> baseline file of the project
+        self.arch_capabilities: dict[str, dict[str, CapabilityRuleFact]] = {}   # part -> capability -> rule
+        self.arch_patterns: dict[str, set[str]] = {}          # part -> pattern checks of its style
+        self.capabilities: dict[str, list[CapabilityFact]] = {}   # module -> what its file does
+        self.capability_known: dict[tuple[str, str], str] = {}    # (module, capability) -> baseline file
         self._root: str = ""
 
     def load(self, path: str, root: Optional[str] = None, focus: Optional[str] = None) -> MapLoadResult:
@@ -506,6 +532,10 @@ class CodeGraph:
         self.advice_cache = None
         self.labels = {}
         self.known = {}
+        self.arch_capabilities = {}
+        self.arch_patterns = {}
+        self.capabilities = {}
+        self.capability_known = {}
         self._root = os.path.abspath(root if root is not None else project_root_of(path))
         try:
             with open(path, "r", encoding="utf-8") as code_graph:
@@ -685,6 +715,21 @@ class CodeGraph:
                 ))
             elif kind == "arch-known" and len(tokens) >= 5:
                 self.known[(_resolve(tokens[2]), _resolve(tokens[3]))] = tokens[4]
+            elif kind == "arch-capability" and len(tokens) >= 3:
+                values = _keywords(tokens[3:])
+                self.arch_capabilities.setdefault(tokens[1], {})[tokens[2]] = CapabilityRuleFact(
+                    tuple(values.get("allowed", "").strip("()").split()), tuple(values.get("forbidden", "").strip("()").split()),
+                    values.get("fix", ""),
+                )
+            elif kind == "arch-pattern" and len(tokens) >= 3:
+                self.arch_patterns.setdefault(tokens[1], set()).add(tokens[2])
+            elif kind == "capability" and len(tokens) >= 3:
+                values = _keywords(tokens[3:])
+                self.capabilities.setdefault(_resolve(tokens[1]), []).append(CapabilityFact(
+                    tokens[2], int(values.get("line", "0") or 0), values.get("evidence", ""), ":suspect" in tokens,
+                ))
+            elif kind == "capability-known" and len(tokens) >= 5:
+                self.capability_known[(_resolve(tokens[2]), tokens[3])] = tokens[4]
             elif kind == "layer" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])  # :learned-from <id> is part of the rule text as well
                 self.labels[_resolve(tokens[1])] = ModuleLabel(
@@ -1307,6 +1352,10 @@ def _default_labels(g: CodeGraph) -> None:
     g.candidate_rules |= {(".", deny.source, deny.target) for deny in style.denies if deny.severity == "candidate"}
     g.arch_fixes.update({(".", deny.source, deny.target): deny.fix for deny in style.denies if deny.fix})
     g.arch_ranks["."] = {layer.id: layer.rank for layer in style.layers}
+    g.arch_capabilities["."] = {
+        rule.capability: CapabilityRuleFact(rule.allowed_in, rule.forbidden_in, rule.fix) for rule in style.capabilities
+    }
+    g.arch_patterns["."] = set(style.patterns)
     for module, path in from_files.items():
         label = label_in_part(path, part, library)
         g.labels[module] = ModuleLabel(label.layer, ".", label.style, label.rule, label.match, label.root)
@@ -2120,6 +2169,156 @@ def boundary_violations(g: CodeGraph, scope_mods: set[str]) -> list[BoundaryBrea
     return found
 
 
+@dataclass(frozen=True)
+class CapabilityBreak:
+    """A file that does something its layer may not do (SQL in a service, the framework in the domain)."""
+
+    module: str
+    capability: str
+    layer: str
+    allowed: tuple[str, ...]
+    forbidden: tuple[str, ...]
+    line: int
+    evidence: str
+    part: str
+    style: str
+    severity: str     # violation | candidate (a suspected finding, or a layer guessed from the role)
+    known: str        # the baseline file that accepts it, or ""
+    fix: str
+    pattern: str = ""   # domain-imports-orm when the style checks that pattern
+
+
+@dataclass(frozen=True)
+class PatternBreak:
+    """A pattern of the style that the code does not follow."""
+
+    pattern: str
+    source: str
+    target: str       # the module the source reaches, or "" for a pattern within one file
+    line: int
+    evidence: str
+    part: str
+    style: str
+    reason: str
+
+
+_CONTROLLER_LAYERS = frozenset({"api", "controller", "interface", "driving-adapter"})
+_SERVICE_LAYERS = frozenset({"service", "application"})
+_REPOSITORY_LAYERS = frozenset({"infra", "infrastructure", "driven-adapter", "adapter", "model"})
+_REPOSITORY_NAME = re.compile(r"repositor|(?:^|[/_.-])daos?(?:$|[/_.-])", re.IGNORECASE)
+PATTERN_REASONS = {
+    "controller-skips-service": "the controller calls a repository directly and skips the service layer",
+    "service-builds-http-response": "the service builds an HTTP response; responses belong to the controller",
+    "domain-imports-orm": "the domain imports the database client or ORM",
+}
+
+
+def _capability_rules(g: CodeGraph, part: str) -> dict[str, CapabilityRuleFact]:
+    if not g.arch_parts:
+        _default_labels(g)
+    return g.arch_capabilities.get(part, {})
+
+
+def capability_violations(g: CodeGraph, scope_mods: set[str]) -> list[CapabilityBreak]:
+    """Files whose capabilities (SQL, database client, HTTP, framework, env, ...) their layer may not have.
+
+    One item per file and capability, at its first line. A composition root may
+    do everything; tests and files in no layer are not judged. A finding that is
+    only suspected (a SQL literal not passed to a query call), or a layer only
+    guessed from the role of the file, makes a candidate.
+    """
+    found: list[CapabilityBreak] = []
+    for module in sorted(scope_mods):
+        facts = g.capabilities.get(module)
+        if not facts:
+            continue
+        label = module_label(g, module)
+        rules = _capability_rules(g, label.part)
+        if not rules or label.layer in ("other", "test") or _is_entry_root(g, module):
+            continue
+        certain = _layer_is_certain(g, module)
+        style = g.arch_parts.get(label.part, {}).get("style", label.style)
+        orm_pattern = "domain-imports-orm" in g.arch_patterns.get(label.part, set())
+        by_capability: dict[str, list[CapabilityFact]] = {}
+        for fact in facts:
+            by_capability.setdefault(fact.capability, []).append(fact)
+        for capability, items in sorted(by_capability.items()):
+            rule = rules.get(capability)
+            if rule is None or not rule.breaks(label.layer):
+                continue
+            proven = [item for item in items if not item.suspect]
+            first = (proven or items)[0]
+            severity = "violation" if proven and certain else "candidate"
+            found.append(CapabilityBreak(
+                module, capability, label.layer, rule.allowed, rule.forbidden, first.line, first.evidence,
+                label.part, style, severity, g.capability_known.get((module, capability), ""), rule.fix,
+                "domain-imports-orm" if orm_pattern and capability == "db-client" and label.layer == "domain" else "",
+            ))
+    return found
+
+
+def pattern_violations(g: CodeGraph, scope_mods: set[str]) -> list[PatternBreak]:
+    """The pattern checks of each part's style: a controller that calls a repository and skips the
+    service, a service that builds an HTTP response. Both layers must come from rules."""
+    if not g.arch_parts:
+        _default_labels(g)
+    found: list[PatternBreak] = []
+    for module in sorted(scope_mods):
+        label = module_label(g, module)
+        patterns = g.arch_patterns.get(label.part, set())
+        if not patterns or not _layer_is_certain(g, module) or _is_entry_root(g, module):
+            continue
+        style = g.arch_parts.get(label.part, {}).get("style", label.style)
+        has_service = any(layer in _SERVICE_LAYERS for layer in g.arch_ranks.get(label.part, {}))
+        if "controller-skips-service" in patterns and has_service and label.layer in _CONTROLLER_LAYERS:
+            for target in sorted(_collect_dep_mods(g, module)):
+                target_label = module_label(g, target)
+                # A repository that reaches the database: a "logging repository" or a storage adapter is not one.
+                data_access = any(fact.capability in ("sql", "db-client") for fact in g.capabilities.get(target, []))
+                if (target_label.part == label.part and target_label.layer in _REPOSITORY_LAYERS
+                        and _layer_is_certain(g, target) and _REPOSITORY_NAME.search(target) and data_access
+                        and not is_type_only_import(g, module, target)):
+                    found.append(PatternBreak("controller-skips-service", module, target, 0, "", label.part, style,
+                                              PATTERN_REASONS["controller-skips-service"]))
+        if "service-builds-http-response" in patterns and label.layer in _SERVICE_LAYERS:
+            response = next((fact for fact in g.capabilities.get(module, []) if fact.capability == "http-response"), None)
+            if response is not None:
+                found.append(PatternBreak("service-builds-http-response", module, "", response.line, response.evidence,
+                                          label.part, style, PATTERN_REASONS["service-builds-http-response"]))
+    return found
+
+
+def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> None:
+    """The capability and pattern facts of `boundaries`, and their summary; nothing when there is none."""
+    breaks = capability_violations(g, scope_mods)
+    patterns = pattern_violations(g, scope_mods)
+    if not breaks and not patterns:
+        return
+    counts = {"capability-violation": 0, "capability-violation-known": 0, "capability-candidate": 0}
+    for item in breaks:
+        fact = "capability-candidate" if item.severity == "candidate" else (
+            "capability-violation-known" if item.known else "capability-violation")
+        counts[fact] += 1
+        allowed = f" :allowed ({' '.join(item.allowed)})" if item.allowed else ""
+        forbidden = f" :forbidden ({' '.join(item.forbidden)})" if item.forbidden else ""
+        known = f" :known {_q(item.known)}" if item.known else ""
+        pattern = f" :pattern {item.pattern}" if item.pattern else ""
+        print(
+            f"({fact} {_q(module_file(g, item.module))} :capability {item.capability} :layer {item.layer}{allowed}{forbidden} "
+            f":line {item.line} :evidence {_q(item.evidence)} :part {_q(item.part)} :style {item.style}{known}{pattern}"
+            f"{' :fix ' + _q(item.fix) if item.fix else ''})"
+        )
+    for item in patterns:
+        target = f" :target {_q(module_file(g, item.target))}" if item.target else ""
+        line = f" :line {item.line} :evidence {_q(item.evidence)}" if item.line else ""
+        print(f"(pattern-violation {_q(module_file(g, item.source))} :pattern {item.pattern}{target}{line} "
+              f":part {_q(item.part)} :style {item.style} {_q(item.reason)})")
+    print(
+        f"(capability-summary :violations {counts['capability-violation']} :known {counts['capability-violation-known']} "
+        f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {len(scope_mods)})"
+    )
+
+
 def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
     """True when src_mod imports tgt_mod for types only (the builder marks the edge :type-only)."""
     return any(
@@ -2150,6 +2349,7 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
 
     if not violations:
         print(f"(boundaries-ok :checked {len(scope_mods)})")
+        print_capability_findings(g, scope_mods)
         return
     pairs: dict[str, set[tuple[str, str]]] = {
         "violation": set(), "violation-known": set(), "violation-type-only": set(), "violation-candidate": set(),
@@ -2175,6 +2375,7 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
         f":type-only {len(pairs['violation-type-only'])} "
         f":candidates {len(pairs['violation-candidate'])} :checked {len(scope_mods)})"
     )
+    print_capability_findings(g, scope_mods)
 
 
 def cmd_layers(g: CodeGraph) -> None:
@@ -2264,8 +2465,34 @@ def advice_items(g: CodeGraph) -> tuple[tuple, tuple]:
     for part, layer, block, folder, _proposed, present, _source in g.arch_targets:
         if not block:
             layer_folders.setdefault(part, {}).setdefault(layer, in_repo(part, present or folder))
-    g.advice_cache = _advice.advise(parts, modules, dependents, dependencies, violations, targets, layer_folders)
+    advice, quiet = _advice.advise(parts, modules, dependents, dependencies, violations, targets, layer_folders)
+    g.advice_cache = (tuple(advice) + _capability_advice(g), quiet)
     return g.advice_cache
+
+
+def _capability_advice(g: CodeGraph) -> tuple:
+    """fix-capability and fix-pattern advice: what a file does that its layer may not, and how the style fixes it."""
+    items = []
+    scope = set(g.nodes)
+    for item in capability_violations(g, scope):
+        if item.severity != "violation" or item.known:
+            continue
+        target = module_file(g, item.module)
+        rule = f"{item.capability} in {item.layer}"
+        where = f"allowed in {', '.join(item.allowed)}" if item.allowed else f"not in {', '.join(item.forbidden)}"
+        items.append(_advice.Advice(
+            _advice.advice_id(item.part, "fix-capability", target, rule), item.part, "fix-capability", target,
+            f"{item.fix or 'move this out of the ' + item.layer + ' layer'} ({item.capability} is {where})",
+            item.style, rule, f"line {item.line}: {item.evidence}", (item.module,),
+        ))
+    for item in pattern_violations(g, scope):
+        target = module_file(g, item.source)
+        evidence = f"imports {module_file(g, item.target)}" if item.target else f"line {item.line}: {item.evidence}"
+        items.append(_advice.Advice(
+            _advice.advice_id(item.part, "fix-pattern", target, item.pattern), item.part, "fix-pattern", target,
+            item.reason, item.style, item.pattern, evidence, tuple(m for m in (item.source, item.target) if m),
+        ))
+    return tuple(items)
 
 
 def advice_sexp(item) -> str:

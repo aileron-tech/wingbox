@@ -4,6 +4,7 @@ name = "Hexagonal architecture (ports and adapters)"
 aliases = ["ports-and-adapters"]
 kind = "style"
 languages = ["any"]                 # languages a new project may choose this style for
+patterns = ["service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
 wins_over = ["onion-clean", "layered"]
 summary = "The application sits in the middle and talks to the outside only through ports it defines. Driving adapters (web, CLI, tests) call the ports; driven adapters (database, messaging) implement them."
 
@@ -123,3 +124,13 @@ domain = "domain"
 note = "Repository interfaces are out ports of the application: application/ports/out; ports offered to the outside in application/ports/in."
 extra = { application = ["application/ports/in", "application/ports/out"] }
 blocks_elsewhere = { repository-interfaces = "application/ports/out" }
+
+# Hexagonal: all I/O sits in the driven adapters; the web framework in the driving adapters.
+[capabilities]
+sql = {allowed_in = ["driven-adapter", "adapter"], fix = "move the query into a driven adapter that implements a port"}
+db-client = {allowed_in = ["driven-adapter", "adapter"], fix = "keep the database client in a driven adapter behind a port"}
+http-client = {allowed_in = ["driven-adapter", "adapter"], fix = "put the outbound call in a driven adapter behind a port"}
+filesystem = {allowed_in = ["driven-adapter", "adapter"], fix = "put file access in a driven adapter behind a port"}
+process = {allowed_in = ["driven-adapter", "adapter"], fix = "start processes from a driven adapter behind a port"}
+framework = {forbidden_in = ["domain", "application"], fix = "keep the framework in the driving adapters"}
+env = {allowed_in = ["driving-adapter", "driven-adapter", "adapter"], fix = "read the environment in an adapter and pass the values in"}

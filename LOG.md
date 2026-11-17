@@ -12,6 +12,28 @@
 - A TypeScript `new S(...)` is a site of class S: SCIP files it under the constructor symbol.
 - Every tool is asked for its whole list (`--all`, `--limit 1000000`); tokens are characters of the text answer / 4, as in the other benchmarks. No timing: accuracy and answer size only.
 - CodeGraph runs with the environment of `benchmarks/graphify/run.sh` (private HOME, no daemon, no watcher). Graphify has no find-usages command; `affected` is the nearest and is reported at both depths.
+## 2026-11-17 - capability rules: what a layer may do (SQL in repositories, HTTP in infrastructure, no framework in the domain)
+
+### Changes
+- `scripts/architecture/capabilities.py` (new): detection by syntax, per line with evidence, of sql, db-client, http-client, framework, http-response, env, filesystem, process for Python, TypeScript/JavaScript, PHP, Ruby, Java/Kotlin, C#, Go. A SQL literal counts when a query call on the line (or opened up to three lines above) receives it; an upper-case SQL literal without one is suspected; text inside multi-line strings is skipped (embedded scripts, docstrings); `import type` is suspected; IndexedDB `db.delete('store', ...)` is not a query builder. Each pattern runs only on the lines that hold one of its trigger words.
+- Style files: `[capabilities]` (`allowed_in` / `forbidden_in` per capability, with the fix) and `patterns` for layered, onion-clean, hexagonal, mvc, nestjs; `library.Style.capabilities` / `patterns`.
+- `.wingbox/config.yaml`: `capabilities:` per part (validated: known capability, layers of the style), written back by `render_config`, explained in the header.
+- Graph facts: `arch-capability`, `arch-pattern`, `capability` (per finding), `capability-known` (baseline); builder `_node_capabilities` with the cache `.wingbox/cache.capabilities.json` keyed by content hash and the detector's digest (ignored by main's `cache*` pattern); partial updates go through the same `project_architecture`.
+- `scripts/code_graph_search.py`: `capability_violations`, `pattern_violations` (controller-skips-service needs a target repository with sql or db-client; service-builds-http-response; domain-imports-orm on the db-client violation of a domain file), printed by `boundaries` after the layer rules with `(capability-summary ...)`; composition roots, tests and files in no layer are not judged; declared parts have no capability rules; `fix-capability` / `fix-pattern` advice.
+- `src/wingbox/overview.py`: REPORT.md section "What layers do"; `src/wingbox/cli.py`: `align --learn` writes `baseline-capability` lines.
+- Tests REQ-CAP-001..009 (`tests/test_capabilities.py`).
+- Why: the maintainer's request (SQL in the DAO/repository layer, no queries from controllers or services, clean-code patterns); design in docs/layer-control.md section 4.4 (main cd2d6d5).
+
+### Verification
+- Full suite: 487 tests OK on Python 3.12 and 3.11 (tests/test_capabilities.py 9).
+- Real repositories (default rules of the detected style): immich server (nestjs) 15 capability violations, 0 candidates, 2 pattern breaks; archestra: backend declared (no capability rules), frontend route-tree (no rules): 0; fastapi (style none): 0; mastodon (mvc): 0 (raw SQL sits in models, lib, workers and migrations, never in controllers); laravel-realworld-example-app: style none detected, and with `style: mvc` stated 0 (Eloquent model calls are not counted as SQL; the app has no raw SQL or DB:: call).
+- archestra backend, what layered defaults would flag (not counted as violations, the part is declared): SQL in 29 files and database clients in 47 files outside its data layers (models, models-agents, models-upper, schema), against 195 and 469 inside them.
+- Precision, findings read against the source: immich 17 of 17 correct (12 of the 15 are imports of kysely type names - Selectable, Insertable, Updateable - written without `import type`, so a type-level coupling; 1 driver error class; 2 query-builder helpers in utils/; 2 services writing the HTTP response); archestra sample 10: 8 correct, 1 SQL inside an embedded Python script (fixed: strings skipped), 1 Salesforce SOQL query passed to `conn.query` (remains: an external API's query language); mastodon sample 9: 8 correct, 1 IndexedDB `db.delete` (fixed). The first run also listed 17 controller-skips-service breaks against immich's logging, email and storage "repositories" (no database access): fixed by requiring a repository with sql or db-client.
+- archestra acceptance unchanged: 112 of 112; edges identical to main on immich and archestra.
+
+### Not done
+- Eloquent / ActiveRecord / Django ORM model calls are not counted as SQL (they would flag every controller of those frameworks); `wingbox check` and the exports are other work.
+
 ## 2026-11-17 - layer config settled through agents: operator rule, questionnaire, config header
 
 ### Changes

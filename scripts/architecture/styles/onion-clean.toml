@@ -4,6 +4,7 @@ name = "Onion / clean architecture"
 aliases = ["onion", "clean"]
 kind = "style"
 languages = ["any"]                 # languages a new project may choose this style for
+patterns = ["controller-skips-service", "service-builds-http-response", "domain-imports-orm"]   # pattern checks of the style (capabilities.py, code_graph_search.pattern_violations)
 summary = "Concentric rings around the domain model. Source code dependencies point inward only: the domain knows nothing of the application, the application nothing of the database, the web or a framework."
 
 [[sources]]
@@ -140,3 +141,11 @@ layers = { domain = "domain", application = "application", interface = "presenta
 domain = "domain"
 note = "The entities core holds the building blocks; use cases live in application/use-cases and depend only on the domain."
 extra = { application = ["application/use-cases"] }
+
+# What a ring may do: all I/O in infrastructure; the framework stays out of the domain and the use cases.
+[capabilities]
+sql = {allowed_in = ["infrastructure"], fix = "move the query into a repository implementation in infrastructure behind an interface of the domain"}
+db-client = {allowed_in = ["infrastructure"], fix = "keep the database client in infrastructure behind an interface the inner rings own"}
+http-client = {allowed_in = ["infrastructure"], fix = "put the outbound call in an infrastructure gateway behind an interface the inner rings own"}
+framework = {forbidden_in = ["domain", "application"], fix = "keep the framework in the interface and infrastructure rings"}
+env = {allowed_in = ["infrastructure", "interface"], fix = "read the environment in the outer rings and pass the values in"}
