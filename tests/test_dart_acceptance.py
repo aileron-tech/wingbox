@@ -193,7 +193,7 @@ class DartAcceptanceDependencyTests(DartAcceptanceCase):
             "class Account {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             without_extension = self.import_targets(root, "lib/features/without_extension")
@@ -226,7 +226,7 @@ class DartAcceptanceDependencyTests(DartAcceptanceCase):
             "class Body {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             targets = self.import_targets(root, "lib/features/users/detail/body")
@@ -255,7 +255,7 @@ class DartAcceptanceDependencyTests(DartAcceptanceCase):
             "class External {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             edges = self.graph_edges(root)
@@ -288,7 +288,7 @@ class DartAcceptanceDependencyTests(DartAcceptanceCase):
             "class WrongName {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             edges = self.graph_edges(root)
@@ -332,7 +332,7 @@ class DartAcceptancePartTests(DartAcceptanceCase):
             "}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             edges = self.graph_edges(root)
@@ -360,7 +360,7 @@ class DartAcceptancePartTests(DartAcceptanceCase):
             "class CartPage {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             edges = self.graph_edges(root)
@@ -380,7 +380,7 @@ class DartAcceptancePartTests(DartAcceptanceCase):
             "class Generated {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             graph = self.graph(root)
@@ -407,7 +407,7 @@ class DartAcceptanceDiscoveryTests(DartAcceptanceCase):
         files["build/app/intermediates/main.dart"] = "class Main {}\n"
         files["lib/generated_keep.dart"] = "class Kept {}\n"
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             graph = self.graph(root)
@@ -434,7 +434,7 @@ class DartAcceptanceDiscoveryTests(DartAcceptanceCase):
         )
         files["test/helper/fixtures.dart"] = "const fixtureIds = <String>['a'];\n"
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             graph = self.graph(root)
@@ -459,7 +459,7 @@ class DartAcceptanceDiscoveryTests(DartAcceptanceCase):
             "class ExamplePage {}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, files)
 
             graph = self.graph(root)
@@ -514,7 +514,7 @@ class DartAcceptanceAccuracyTests(DartAcceptanceCase):
     def test_the_accuracy_check_passes_on_a_small_synthetic_project(self) -> None:
         """/* REQ-DARTACC-011: benchmarks/dart/check_accuracy.py runs on a project path and exits 0 when the graph agrees with the import statements on disk. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, self._accuracy_project())
 
             completed = subprocess.run(
@@ -553,7 +553,7 @@ class DartAcceptanceAccuracyTests(DartAcceptanceCase):
     def test_the_accuracy_check_exits_1_on_a_graph_lacking_an_import(self) -> None:
         """/* REQ-DARTACC-012: check_accuracy.py exits 1 when the graph misses an importer that the files on disk name. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             write_project(root, self._accuracy_project())
             graph_path, _seconds = ACCURACY.run_builder(str(root))
             # A graph is a text file: remove one fact, the import of user by user_page.
@@ -762,7 +762,7 @@ class DartAcceptancePerformanceTests(DartAcceptanceCase):
     def _synthetic_project_contents(self) -> dict[str, str]:
         """The generated files of the performance project as a mapping, without writing them."""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             self._synthetic_project(root)
             return {
                 str(path.relative_to(root)): path.read_text(encoding="utf-8")

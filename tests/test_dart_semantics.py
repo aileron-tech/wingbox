@@ -193,7 +193,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_test_files_win_over_every_other_dart_rule(self) -> None:
         """/* REQ-DARTLAYER-001: test folders, integration_test and *_test.dart make a Dart file a test whatever its feature folder says. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _flutter_project(root)
             _write(
                 root,
@@ -220,7 +220,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_ui_names_and_folders_take_the_existing_ui_purposes(self) -> None:
         """/* REQ-DARTLAYER-002: Dart pages and page folders are page/route, and screens, views, widgets and widget folders are UI components. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _flutter_project(root)
             _write(root, "lib/pages/orders_page.dart", "class OrdersPage {}\n")
             _write(root, "lib/screens/home_screen.dart", "class HomeScreen {}\n")
@@ -244,7 +244,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_bloc_cubit_state_and_event_names_use_the_state_purpose(self) -> None:
         """/* REQ-DARTLAYER-003: bloc, cubit, state and event names and folders take the existing state purpose. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _flutter_project(root)
             _write(root, "lib/features/orders/bloc/orders_event.dart", "class OrdersEvent {}\n")
             _write(root, "lib/features/orders/state/orders_bloc.dart", "class OrdersBloc {}\n")
@@ -265,7 +265,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_repositories_data_and_services_take_the_existing_service_purposes(self) -> None:
         """/* REQ-DARTLAYER-004: repository files and folders are repositories and service files and folders are services. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _flutter_project(root)
             _write(root, "lib/features/orders/repositories/order_store.dart", "class OrderStore {}\n")
             _write(root, "lib/features/orders/services/pricing.dart", "class Pricing {}\n")
@@ -286,7 +286,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_models_entities_and_generated_parts_take_domain_purposes(self) -> None:
         """/* REQ-DARTLAYER-005: model, entity and generated files, and model, entity and domain folders, take domain purposes. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _flutter_project(root)
             _write(root, "lib/entities/order_entity.dart", "class OrderEntity {}\n")
             _write(
@@ -318,7 +318,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_entry_points_configuration_core_and_routes_use_existing_vocabulary(self) -> None:
         """/* REQ-DARTLAYER-006: main is the existing application entry point, config files are configuration, core is shared utilities and routes are page/route. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _flutter_project(root)
             _write(root, "lib/features/orders/config/orders_config.dart", "class OrdersConfig {}\n")
             _write(root, "lib/core/router/app_router.dart", "class AppRouter {}\n")
@@ -340,7 +340,7 @@ class DartPurposeTest(unittest.TestCase):
     def test_other_languages_keep_their_purposes(self) -> None:
         """/* REQ-DARTLAYER-007: Dart rules do not change the purpose of a TypeScript or Python file. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             with scan_root(str(root)):
                 self.assertEqual(
                     "UI component",
@@ -439,7 +439,7 @@ class DartLayerTest(unittest.TestCase):
     def test_dart_module_ids_resolve_to_their_files(self) -> None:
         """/* REQ-DARTLAYER-011: a Dart module ID resolves to its .dart file and an impact path loses its .dart extension. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _write(root, "lib/features/orders/presentation/orders_page.dart", "class OrdersPage {}\n")
 
             self.assertEqual(
@@ -589,7 +589,7 @@ class DartBuildTest(unittest.TestCase):
     def test_a_parsed_flutter_project_keeps_its_purposes_and_layers(self) -> None:
         """/* REQ-DARTLAYER-014: the parser and graph writer keep Dart purposes and Flutter layers for a whole project. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "example_app"
+            root = Path(directory).resolve() / "example_app"
             root.mkdir()
             _flutter_project(root)
             _build_without_pool(root)
@@ -663,7 +663,7 @@ class DartBuildTest(unittest.TestCase):
     def test_the_builder_runs_on_a_flutter_project(self) -> None:
         """/* REQ-DARTLAYER-015: the builder entry point builds a Flutter project and publishes Dart purposes, layers and boundaries. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory) / "example_app"
+            root = Path(directory).resolve() / "example_app"
             root.mkdir()
             _flutter_project(root)
             completed = subprocess.run(

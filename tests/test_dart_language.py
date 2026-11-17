@@ -41,7 +41,7 @@ class DartLanguageTests(unittest.TestCase):
     def test_parser_extracts_dart_types_members_and_heritage(self) -> None:
         """/* REQ-DART-001: Dart parsing keeps classes, mixins, enums, extensions, functions, members, and heritage. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "lib/features/users/repository.dart",
@@ -135,7 +135,7 @@ int countOf(String name) => name.length;
     def test_mixin_application_class_names_the_mixins_after_its_base(self) -> None:
         """/* REQ-DART-002: A Dart mixin application class takes its superclass first and its mixins after it. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "lib/model/view_state.dart",
@@ -166,7 +166,7 @@ class RetryState = Object with Loaded, Retryable;
     def test_graph_resolves_package_and_relative_imports(self) -> None:
         """/* REQ-DART-003: package: imports of the project's own name resolve to lib files and relative imports to neighbouring files. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             model = self._parse(
                 root,
@@ -219,7 +219,7 @@ class UserDetailPage {
     def test_graph_prefers_the_nearest_pubspec_that_declares_the_name(self) -> None:
         """/* REQ-DART-004: package: names resolve through the pubspec that declares them, the nearest one to the importing file first. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             _pubspec(root / "packages/shared", "shared")
             shared = self._parse(
@@ -257,7 +257,7 @@ class UserDetailPage {
     def test_part_directives_link_part_files_and_their_owner(self) -> None:
         """/* REQ-DART-005: part files are their own modules, linked to the library that parts them, and parts name their owner backwards. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             library = self._parse(
                 root,
@@ -304,7 +304,7 @@ class Store {}
     ) -> None:
         """/* REQ-DART-006: a part of directive with a package: or dart: URI resolves like an import and a missing part is never an error. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             owner = self._parse(
                 root,
@@ -338,7 +338,7 @@ class Store {}
     def test_package_uri_parts_link_in_both_directions(self) -> None:
         """/* REQ-DART-014: a part named by a package: URI is an edge both ways, while dart: and third-party parts stay external. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             library = self._parse(
                 root,
@@ -388,7 +388,7 @@ class B {}
     def test_generated_part_files_on_disk_are_indexed(self) -> None:
         """/* REQ-DART-007: a codegen part that exists on disk is discovered like any other part file, and the missing ones are skipped silently. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             model = _write(
                 root,
@@ -511,7 +511,7 @@ class Profile {
     def test_discovery_excludes_dart_and_flutter_build_output(self) -> None:
         """/* REQ-DART-011: discovery skips .dart_tool everywhere and build folders by name, and keeps other folders of the same name free of that rule. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             _pubspec(root, "example_app")
             _write(root, "lib/main.dart", "void main() {}\n")
             _write(
