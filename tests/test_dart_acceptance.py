@@ -120,9 +120,7 @@ class DartAcceptanceCase(unittest.TestCase):
             # A host may refuse the process pool that the builder shares with every
             # language (no POSIX semaphores): the build then runs the same builder with
             # the serial pool of the accuracy check, unchanged in every other way.
-            ACCURACY.run_builder(
-                str(root), output=str(root / ".code_graph.sexp"), full=full, python=sys.executable
-            )
+            ACCURACY.run_builder(str(root), full=full, python=sys.executable)
             return completed
         self.assertEqual(
             0,
@@ -135,7 +133,7 @@ class DartAcceptanceCase(unittest.TestCase):
         """The loaded code graph of a project, built first."""
         self.build(root, full=full)
         graph = SEARCH.CodeGraph()
-        loaded = graph.load(str(root / ".code_graph.sexp"))
+        loaded = graph.load(str(root / ".wingbox" / "index.sexp"))
         self.assertIsInstance(loaded, SEARCH.MapLoadOk, getattr(loaded, "error", loaded))
         return graph
 
@@ -581,7 +579,7 @@ class DartAcceptanceAccuracyTests(DartAcceptanceCase):
         """/* REQ-DARTACC-013: precision counts a dependent that no import statement backs as extra, while recall counts only the importer pairs of the files. */"""
         report = ACCURACY.Report(
             root="/project",
-            graph="/project/.code_graph.sexp",
+            graph="/project/.wingbox/index.sexp",
             seed=1,
             packages=["example_app"],
             lib_files=3,
@@ -626,7 +624,7 @@ class DartAcceptanceAccuracyTests(DartAcceptanceCase):
 
         report = ACCURACY.Report(
             root="/app",
-            graph="/app/.code_graph.sexp",
+            graph="/app/.wingbox/index.sexp",
             seed=1,
             packages=["example_app"],
             lib_files=1,
@@ -640,7 +638,7 @@ class DartAcceptanceAccuracyTests(DartAcceptanceCase):
             },
             # The adapter records the part -> library direction.
             dependents={"/app/lib/cart/cart.dart": {"/app/lib/cart/cart_total.dart": "imports"}},
-            graph_path="/app/.code_graph.sexp",
+            graph_path="/app/.wingbox/index.sexp",
         )
         specifiers = {
             "/app/lib/cart/cart.dart": [ACCURACY.Specifier("part", "cart_total.dart", "/app/lib/cart/cart_total.dart")],
@@ -724,7 +722,7 @@ class DartAcceptancePerformanceTests(DartAcceptanceCase):
 
             first = self.build(root)
             first_seconds = self.last_build_seconds
-            graph_path = root / ".code_graph.sexp"
+            graph_path = root / ".wingbox" / "index.sexp"
             self.assertTrue(graph_path.is_file(), first.stdout[-2000:])
             first_hash = hashlib.sha256(graph_path.read_bytes()).hexdigest()
 
@@ -757,7 +755,7 @@ class DartAcceptancePerformanceTests(DartAcceptanceCase):
                     # A second copy written a moment later has other mtimes.
                     os.utime(root / relative_path, (time.time() + attempt, time.time() + attempt))
                 self.build(root, full=True)
-                hashes.append(hashlib.sha256((root / ".code_graph.sexp").read_bytes()).hexdigest())
+                hashes.append(hashlib.sha256((root / ".wingbox" / "index.sexp").read_bytes()).hexdigest())
 
         self.assertEqual(hashes[0], hashes[1], "two full builds of one tree wrote different graphs")
 

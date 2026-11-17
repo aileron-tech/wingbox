@@ -1,6 +1,6 @@
-"""File-to-file edges of a Wingbox graph (.code_graph.sexp), by edge kind.
+"""File-to-file edges of a Wingbox graph (.wingbox/index.sexp), by edge kind.
 
-Usage: python3 -I wb_edges.py <dir with .code_graph.sexp> <out.json> [--ext .py]
+Usage: python3 -I wb_edges.py <dir with .wingbox/index.sexp> <out.json> [--ext .py]
 A module id of the graph is a path without extension; the file is found on disk.
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ section = ""
 stack: list[str] = []
 in_tree = False
 LEAF = re.compile(r'^\((\S+) (.+)\)$')
-with open(os.path.join(root, ".code_graph.sexp"), encoding="utf-8") as handle:
+with open(os.path.join(root, ".wingbox", "index.sexp"), encoding="utf-8") as handle:
     for line in handle:
         s = line.strip()
         if s.startswith("; ---"):

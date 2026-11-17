@@ -60,7 +60,7 @@ class PhpLanguageTests(unittest.TestCase):
     def test_parser_extracts_php_declarations_methods_attributes_and_entities(self) -> None:
         """/* REQ-PHP-001: PHP parsing preserves classes, interfaces, traits, enums, attributes, fully qualified names and one entity per method. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "app/Http/Controllers/WidgetController.php",
@@ -134,7 +134,7 @@ enum WidgetStatus: string
     def test_parser_reads_aliased_and_grouped_use_statements(self) -> None:
         """/* REQ-PHP-002: `use` statements, aliases and grouped `use A\\{B, C as D}` produce php-class imports and imported_names. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "app/Support/Widget.php",
@@ -190,7 +190,7 @@ class Widget
     def test_parser_records_inheritance_interface_trait_use_and_abstractness(self) -> None:
         """/* REQ-PHP-003: extends, implements and `use TraitA, TraitB` fill bases, extends, implements and exports_abstract. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "app/Http/Controllers/WidgetController.php",
@@ -240,7 +240,7 @@ class WidgetController extends BaseController implements Runnable, \JsonSerializ
     def test_parser_records_eloquent_events_jobs_and_views_as_relations(self) -> None:
         """/* REQ-PHP-004: Eloquent associations, event(new X), dispatch(new X), X::dispatch and view() carry their relation labels. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "app/Models/Order.php",
@@ -289,7 +289,7 @@ class Order extends Model
     def test_psr4_use_resolves_to_the_model_file_with_an_import_edge(self) -> None:
         """/* REQ-PHP-005: a controller's `use App\\Models\\User;` resolves through the PSR-4 map to app/Models/User with an IMPORTS edge. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -329,7 +329,7 @@ class UserController
     def test_same_namespace_reference_resolves_without_a_use_statement(self) -> None:
         """/* REQ-PHP-006: a class referenced from the same namespace resolves without a `use` statement. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -364,7 +364,7 @@ class Post
     def test_root_composer_module_prefix_resolves_across_modules(self) -> None:
         """/* REQ-PHP-007: a Modules\\Finance\\ -> modules/Finance/src/ prefix in the root composer.json resolves a cross-module class. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -405,7 +405,7 @@ class FinanceController
     def test_duplicate_fully_qualified_names_without_a_psr4_match_make_no_edge(self) -> None:
         """/* REQ-PHP-008: two files declaring one FQCN that no PSR-4 prefix maps produce no guessed edge (fail closed). */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -445,7 +445,7 @@ class Consumer
     def test_an_ide_helper_stub_does_not_steal_a_psr4_class_resolution(self) -> None:
         """/* REQ-PHP-009: an `_ide_helper_models.php` stub declaring a model's FQCN does not take the `use App\\Models\\User` edge away from app/Models/User. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -493,7 +493,7 @@ class UserController
     def test_a_namespaced_view_resolves_through_load_views_from(self) -> None:
         """/* REQ-PHP-010: `view('admin::nav')` resolves to the module Blade template registered by loadViewsFrom. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -540,7 +540,7 @@ class AdminController
     def test_a_dotted_view_resolves_and_blade_module_ids_strip_the_extension(self) -> None:
         """/* REQ-PHP-011: `view('users.index')` resolves to resources/views/users/index and a Blade module ID drops only `.blade.php`. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -581,7 +581,7 @@ class UserController
     def test_blade_extends_and_include_edges_ignore_comments(self) -> None:
         """/* REQ-PHP-012: `@extends` and `@include` create Blade-to-Blade edges while a reference inside `{{-- ... --}}` creates none. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -605,7 +605,7 @@ class UserController
     def test_an_anonymous_component_resolves_to_its_blade_file(self) -> None:
         """/* REQ-PHP-013: `<x-alert>` resolves to resources/views/components/alert. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -627,7 +627,7 @@ class UserController
     def test_livewire_tags_resolve_app_and_module_class_conventions(self) -> None:
         """/* REQ-PHP-014: `<livewire:counter>` resolves to App\\Livewire\\Counter and a dotted alias to the module's nested component. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -673,7 +673,7 @@ class Analytics extends Component
     def test_a_livewire_component_registration_resolves_its_alias(self) -> None:
         """/* REQ-PHP-015: `Livewire::component('alias', Class::class)` makes `<livewire:alias>` resolve to that class. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -719,7 +719,7 @@ class GlobalSearch extends Component
     def test_a_livewire_component_links_its_conventional_view_and_a_page_both(self) -> None:
         """/* REQ-PHP-016: a Livewire component class links to its conventional view and a page embedding it depends on both the class and the template. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -793,7 +793,7 @@ class CardTest
             "modules/Finance/Tests/Feature/Livewire/CardTest.php": ("test", "test"),
         }
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             found = {}
             for relative_path, content in files.items():
                 path = self._write(root, relative_path, content)
@@ -816,7 +816,7 @@ class CardTest
             paths=frozenset(),
         )
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -868,7 +868,7 @@ class Consumer
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             blade_only = self._graph(
                 root,
                 {
@@ -885,7 +885,7 @@ class Consumer
     def test_anonymous_classes_closures_and_attributes_invent_no_declarations(self) -> None:
         """/* REQ-PHP-019: anonymous classes, closures and PHP 8 attributes neither crash the parser nor add declarations or method entities. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             content = r"""
 <?php
 namespace App\Services;
@@ -919,7 +919,7 @@ class Handler
     def test_a_published_vendor_view_is_source_while_root_vendor_is_excluded(self) -> None:
         """/* REQ-PHP-020: `resources/views/vendor` holds published Laravel views and is discovered, while a Composer vendor directory at the repository root is not. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             self._write(
                 root,
                 "resources/views/vendor/jetstream/components/button.blade.php",
@@ -959,7 +959,7 @@ class Thing
     def test_an_explicit_use_import_wins_over_a_same_namespace_class(self) -> None:
         """/* REQ-PHP-021: an explicit `use` import is authoritative, so an external `Request` import gives no edge to a same-namespace class while an aliased local import still resolves. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -1008,7 +1008,7 @@ class Plain
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             aliased = self._graph(
                 root,
                 {
@@ -1042,7 +1042,7 @@ class Aliased
     def test_an_absolute_class_reference_is_global_and_keeps_its_backslash(self) -> None:
         """/* REQ-PHP-022: a leading backslash names a global class and survives in the `php-symbol:` import, so `#[\\Attribute]` does not depend on a local Livewire attribute class. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {
@@ -1080,7 +1080,7 @@ class Async
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             result = self._parse(
                 root,
                 "src/Caller.php",
@@ -1103,7 +1103,7 @@ class Caller
     def test_route_and_response_view_calls_create_blade_edges_only_for_literals(self) -> None:
         """/* REQ-PHP-023: `Route::view()` and `response()->view()` with a literal view create Blade edges, while their dynamic forms create none. */"""
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             graph = self._graph(
                 root,
                 {

@@ -324,7 +324,8 @@ def _entity_output(files: dict[str, str], name: str, positions: bool, cargo: boo
         # A real build (with its cache): the first query that needs positions fills them in.
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             assert builder.main(["--root", str(root)]) == 0
-        map_path = root / ".code_graph.sexp"
+        map_path = root / ".wingbox/index.sexp"
+        map_path.parent.mkdir(exist_ok=True)
         loaded = search.CodeGraph()
         loaded.load(str(map_path), str(root))
         output = io.StringIO()
@@ -332,7 +333,7 @@ def _entity_output(files: dict[str, str], name: str, positions: bool, cargo: boo
             search.cmd_entity(loaded, name, positions=positions)
         return output.getvalue() + "".join(
             "; graph " + line + "\n"
-            for line in map_path.with_name(".code_graph.uses.sexp").read_text(encoding="utf-8").splitlines()
+            for line in map_path.with_name("index.uses.sexp").read_text(encoding="utf-8").splitlines()
             if line.startswith("(use ")
         )
 
@@ -398,7 +399,8 @@ class MethodCallTests(unittest.TestCase):
             # A real build (with its cache): the first query that needs positions fills them in.
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 assert builder.main(["--root", str(root)]) == 0
-            map_path = root / ".code_graph.sexp"
+            map_path = root / ".wingbox/index.sexp"
+            map_path.parent.mkdir(exist_ok=True)
             loaded = search.CodeGraph()
             loaded.load(str(map_path), str(root))
             uses = {

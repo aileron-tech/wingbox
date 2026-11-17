@@ -219,7 +219,7 @@ class McpProtocolTest(unittest.TestCase):
         )
         build = session.reply(2)["result"]
         self.assertFalse(build["isError"], build)
-        self.assertTrue((self.root / ".code_graph.sexp").is_file())
+        self.assertTrue((self.root / ".wingbox/index.sexp").is_file())
         impact = session.reply(3)["result"]
         self.assertFalse(impact["isError"], impact)
         texts = _texts(session.reply(3))

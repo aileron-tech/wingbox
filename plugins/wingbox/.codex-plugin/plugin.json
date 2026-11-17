@@ -1,6 +1,6 @@
 {
   "name": "wingbox",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "Code graph for large repositories and monorepos: what a change will break (blast radius), who depends on a file, module boundaries and the few files to read first. Python, TypeScript, Rust, C#, Java, Go, Ruby. Runs on your machine; no code leaves it.",
   "author": {
     "name": "Aileron Technologies",

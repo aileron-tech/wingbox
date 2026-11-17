@@ -25,6 +25,24 @@
 - Fixtures built in-process: package and relative imports, the nearest pubspec among several, part and part of in both directions, a `part of` with a package URI, generated parts on disk and missing, and discovery of `.dart_tool` and Flutter `build` output. `benchmarks/dart/` checks the accuracy of the graph.
 - `python3 tools/sync_plugin.py` then `--check` exit 0; `tests.test_plugins` and `tests.test_local_only` pass.
 
+## 2026-11-17 - .wingbox/ holds everything and marks the project; a graph is never refreshed into another folder
+
+### Changes
+- `scripts/build_code_graph.py`: `wingbox_directory`, `index_path`, `cache_path`; the build writes `.wingbox/index.sexp`, `index.uses.sexp`, `index.uses-cache.json`, `cache.json` and `.wingbox/.gitignore` (rewritten only while it is Wingbox's own text); `--output` removed; the snapshot records `root`; `keep_published` (set by the refresh) refuses to publish an empty graph over one with modules.
+- `src/wingbox/freshness.py`: `graph_path`, `report_path`, `map_path`, `find_project` (nearest folder with `.wingbox/index.sexp`), `no_project_message`; `ensure_graph_fresh` returns `Unconfirmed(moved|no-snapshot)` and starts no refresh when the snapshot's root is not the folder; the hook gives the context with the note, MCP and queries print it.
+- `scripts/code_graph_search.py`: finds `.wingbox/index.sexp` from the current folder or `--root`, a graph's root is the folder holding its `.wingbox/`; the no-graph error names the paths and `--map`/`--root`; `search` prints `(result-count N)`.
+- `src/wingbox/cli.py`: `BUILD_USAGE` for `wingbox build --help`; `wingbox open`; REPORT.md and map.html in `.wingbox/`. `src/wingbox/update.py`: old-layout warnings (`! WARNING: ...`, yellow on a terminal without NO_COLOR, `(update-warning ...)` with --sexp).
+- hook.py, mcp_server.py, install.py block, SKILL.md and plugin copy, README, references, store docs, Dockerfile, .dockerignore, .gitignore, map-request workflow, benchmark readers: the new paths.
+- Tests: REQ-FRESH-029 to 034, REQ-CLI-008, 009, REQ-CS-074, REQ-UPDATE-008, 009; REQ-FRESH-027, REQ-INSTALL-019, REQ-CS-026 rewritten for the new contract; fixtures moved under `.wingbox/`.
+
+### Motivation
+- A real session: `wingbox build --root P --output O/graph.sexp`, the graph copied to `O/.code_graph.sexp`, `wingbox impact` from O answered `(error no-match ...)` and the refresh had replaced the graph by an empty build of O. Also `--output` still wrote the cache and `wingbox-out/` into P, `wingbox build --help` printed the builder script's usage, `wingbox search` printed nothing on no match, and the agent had to guess where the graph lives.
+- Maintainer: everything under `.wingbox/`, `.wingbox/` is the project marker, no compatibility and nothing deleted; `wingbox update` warns about old files.
+
+### Verification
+- The repro before: graph 544 -> 210 bytes, `refreshes_build 1, files 0`; after: the moved graph answers as it is with the rebuild note, its bytes unchanged, no refresh log.
+- Suite on 3.12 and 3.11; plugin validation; sync_plugin --check.
+
 ## 2026-11-16 - PHP 8 and Laravel (Blade, Livewire) language support
 
 ### Changes
@@ -46,6 +64,46 @@
 ### Verification
 - A Laravel-shaped fixture built in-process: controller to model, job, event, `view()` and namespaced `admin::nav`; Blade to layout, include, component and Livewire; Livewire class to its template; `Livewire::component()` registration and a dotted alias.
 - `python3 tools/sync_plugin.py` then `--check` exit 0; `tests.test_plugins` and `tests.test_install` pass.
+
+## 2026-11-16 - the graph follows the code: dirty marks, outside-change check, partial update
+
+### Changes
+- `src/wingbox/freshness.py`: `ensure_graph_fresh(root)`, used by the search hook, every MCP tool and the query commands. State in `.wingbox/graph-state.json` (schema, dirty, generation, changed files with the generation of their last mark, the last failure, counters), written atomically under an `fcntl.flock` lock (released by the kernel when its process dies). Changes made outside Claude Code: one stat per source, resolution config and folder against `.wingbox/graph-snapshot.json`, which the build writes during discovery; a folder whose time changed is listed for new files. `graph_path(root)` is the one place that names the graph.
+- `wingbox hook dirty` (PostToolUse on Edit, Write, MultiEdit): marks the file and returns; a failed tool call marks only when the file differs from the snapshot.
+- `src/wingbox/refresh.py` (`python -m wingbox.refresh ROOT`, detached, output in `.wingbox/refresh.log`): under the refresh lock and the builder's own lock, records outside changes, patches the graph or runs the incremental build, then clears the marks up to the generation it started with; a failure keeps them and is not retried until a new mark.
+- `scripts/graph_update.py`: the partial update. `scripts/build_code_graph.py`: `build_graph` split into `graph_context`, `module_fragment` (one module's node and edges, its resolved uses, and what it read: modules, module names, provider names, unresolved method names) and `assemble_graph`; the fragment store `.wingbox/graph-fragments.json`; modules resolved in forked processes (`jobs`). `scripts/lang/symbols.py`: the symbol index records what each memoised answer read. `scripts/lang/typescript/imports.py`: one walk for the three config loaders. `scripts/git_ignore.py`: `git_ignored_among` for created files.
+- `src/wingbox/install.py`, the plugin manifest: the PostToolUse group; the search hook timeout 5 -> 10 s.
+- `scripts/build_code_graph.py`: `.wingbox/` and `wingbox-out/` join SKIP_DIRS: a refresh log the repository ignores (`*.log`) entered the ignore set, changed the cache fingerprint and made the next build parse every file again (seen on the monorepo: 19 s -> 38 s).
+- Tests: REQ-FRESH-001 to REQ-FRESH-028.
+
+### Motivation
+- Maintainer's spec (16/11): after an edit the hook and MCP kept answering from the old graph; never present a stale graph as fresh. Then: "can it be faster, with a partial build?": a real partial update, byte for byte the graph of a build, and a parallel resolve phase.
+
+### Verification
+- Byte for byte: a partial update after an edit that adds an import publishes the same `.code_graph.sexp` and `.code_graph.uses.sexp` as a full build, on fastapi (1,227 files, 24 modules redone) and on a 6,834-file TypeScript monorepo (12 redone); the tests compare graph, use file, cache and fragment store for edit, create, delete, rename, export change through a barrel, ignored created file.
+- Wall time, interleaved before/after, load average 20 to 55 (a shared machine; absolute numbers are inflated, the ratios hold): fastapi search hook without change 0.20 -> 0.24 s, edit hook 0.21 s, outside-change check 0.02 s for 1,666 entries, one-file patch 1.0 s (hook including it 1.9 s), incremental build after one edit 11.2 -> 4.4 s, without changes 11.1 -> 3.3 s, cold 24.1 -> 7.0 s. Monorepo: search hook 0.30 -> 0.38 to 0.52 s (0.17 s stat check of 9,748 entries), edit hook 0.26 s, one-file patch 9 to 13 s, incremental after one edit 23.0 -> 25.9 s, without changes 20 to 23 -> 20 s, cold 44 -> 47 s.
+- Profile of the monorepo: the resolve phase is 3.0 s single / 1.4 s with 16 processes (6.8 / 5.3 s with uses) of a 20 s build; the build is spent in discovery, Git ignore rules, hashing and rendering, so parallel resolution does not move it. The patch is spent reading and writing the 35 MB cache and 39 MB fragment store and walking the TypeScript configs.
+- N (MAX_CHANGED_FILES 200, MAX_AFFECTED_SHARE 0.25): fastapi patch 0.58 / 1.07 / 1.37 / 3.34 s for 1 / 10 / 50 / 150 files (1 / 30 / 73 / 234 modules redone) against 3.5 / 3.5 / 4.1 / 5.6 s for the incremental build; the patch stays ahead up to about a fifth of the modules.
+- Headless Claude Code 2.1.325 with the plugin from this branch (`--plugin-dir`): Edit adds `from shop.notes import note`, the PostToolUse hook marks the file, the Grep context then says `(module shop/notes :dependents 1)` (0 before), refresh log "partial in 0.03s".
+- Suite on 3.12 and 3.11.
+
+## 2026-11-16 - usages after a change: walk and resolve only what changed
+
+### Changes
+- `scripts/build_code_graph.py`: `.code_graph.uses-cache.json` next to the graph keeps, per file, its content hash, its full use walk (as JSON text, decoded only when the file is resolved again) and its rendered lines of the use file, with a digest of the surface (every path, and the definitions and bindings of the files with a use index) and the import lookups. `write_use_positions` walks only files whose hash is not in the cache (in this process when they are few), and while the surface is the same resolves only those and reuses the rendered lines of the others; it returns how many files it walked, reused and resolved. A file whose modification time is the one the build saw is not hashed again. Resolvers (tsconfig, packages, ignore rules) are created only on an import lookup the cache does not hold. `wingbox build --full` removes the walk cache.
+- `scripts/code_graph_search.py`: the first pass of the loader stops once the path section is read; `CodeGraph.load(..., focus=name)` reads only the entity and edge lines that mention the name (besides paths and nodes); `usages` and `entity` with a literal name use it.
+- `references/sexp-notation.md` (and the plugin copy), README, `.gitignore`: the walk cache.
+- Tests: REQ-CS-070 to REQ-CS-073.
+
+### Motivation
+- Maintainer: the first `usages` on a large repository took about a minute and later calls about 10 s; target a few seconds after a build without changes or with one changed file, and find the share of graph loading in later calls.
+
+### Verification
+- Same machine, 0.3.0 (PyPI) and this tree one after the other, load 3 to 7 (`wingbox build`, then `usages`; one file changed by appending a comment):
+  - univer: later call 3.93 s -> 0.88 s (graph load alone 3.23 s, 82 % of it -> 1.56 s full, 0.27 s focused); first call after a build without changes 4.14 -> 0.88 s; after a one-file change 26.14 -> 3.76 s; first fill of all positions 22.9 -> 24.9 s (it also writes the walk cache).
+  - archestra: later call 5.42 -> 0.75 s (graph load 4.98 s -> 2.48 full, 0.34 focused); after a build without changes 5.36 -> 0.70 s; after a one-file change 39.13 -> 5.07 s; first fill 39.3 -> 48.3 s.
+  - Walk cache on univer: 51.6 MB.
+- Refactoring benchmark: entity 40/40, 40/40, 20/20 exact; usages files 100/100, positions as before (Python 234/234, Rust 587/587, TypeScript 741/741 plus the 106 `new C()` sites); impact lists unchanged; 711-symbol check unchanged. Suite on 3.12 and 3.11.
 
 ## 2026-11-16 - the use index at the cost of a build without it
 
@@ -763,4 +821,20 @@
 
 ### Motivation
 - The maintainer asked when usages ships and chose to release it now, the architecture commands (init, place, align, learn) following as 0.4.0 after an independent check of learn.
+
+## 2026-11-16 - Release 0.4.0
+
+### Changes
+- Version 0.4.0: the graph keeps itself fresh through hooks (edit marks, outside-change check, partial update), the first `usages` after a change reads only the changed files, PHP 8 and Laravel (#42). The map-request workflow builds with 0.4.0.
+
+### Motivation
+- The maintainer: "давай выпускай".
+
+## 2026-11-17 - Release 0.5.0
+
+### Changes
+- Version 0.5.0: everything in `.wingbox/` (index.sexp, caches, REPORT.md, map.html), `.wingbox/` as the project marker, no refresh into another folder (a copied graph was overwritten in 0.4.0), `--output` removed, `wingbox open`, `wingbox update` warns about old files; no compatibility with the old layout. The map-request workflow builds with 0.5.0.
+
+### Motivation
+- Errors seen in a real session on 0.4.0; maintainer: ".code_graph.sexp -> .wingbox/index.sexp", "все файлы должны быть в каталоге .wingbox", "ничего удалять не надо", "никаких совместимостей", "выпускай сразу версию потом".
 

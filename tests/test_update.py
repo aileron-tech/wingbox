@@ -1,5 +1,6 @@
 import os
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -206,6 +207,63 @@ class UpgradeTest(unittest.TestCase):
         self.assertEqual(["(update-from 0.2.4)", "(update-method pipx)", "(update-to 0.2.5)"], lines[:3])
         self.assertIn(f"(update-refreshed {skill.parent} :what skill :assistant (claude-code))", lines)
         self.assertIn("pipx upgrade wingbox", stubs.called())
+
+
+class OldLayoutWarningTest(unittest.TestCase):
+    """`wingbox update` names files an earlier version left in a project; it deletes nothing."""
+
+    OLD = (".code_graph.sexp", ".code_graph.uses.sexp", ".code_graph.uses-cache.json", ".code_graph_cache.json")
+
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name).resolve()
+        self.project = self.base / "work" / "shop"
+        (self.project / ".git").mkdir(parents=True)
+        (self.project / "src").mkdir()
+        self.recorded = self.base / "other"
+        self.recorded.mkdir()
+
+    def leave_old_files(self, folder: Path) -> dict[str, bytes]:
+        for name in self.OLD:
+            (folder / name).write_text("old\n", encoding="utf-8")
+        (folder / "wingbox-out").mkdir()
+        (folder / "wingbox-out" / "map.html").write_text("<html></html>\n", encoding="utf-8")
+        return {str(path): path.read_bytes() for path in folder.rglob("*") if path.is_file()}
+
+    def test_old_files_are_named_in_yellow_or_plain_and_kept(self) -> None:
+        """/* REQ-UPDATE-008: `wingbox update` must look in the current folder and its parents up to the project root and in every --project install of ~/.wingbox/installed.sexp for .code_graph.sexp, .code_graph.uses.sexp, .code_graph.uses-cache.json, .code_graph_cache.json and wingbox-out/, print for each project one `! WARNING: <project>: old Wingbox files left: <names> - Wingbox now uses .wingbox/ only; remove them yourself` line (yellow on a terminal without NO_COLOR, plain otherwise), the fact `(update-warning <project> :old-files (...))` with --sexp, and delete nothing. */"""
+        kept = self.leave_old_files(self.project)
+        kept.update(self.leave_old_files(self.recorded))
+        installed = [install.Installed("project", str(self.recorded), ("claude-code",))]
+        warnings = update.old_layout_warnings(str(self.project / "src"), installed)
+        self.assertEqual([fact.args[0] for fact in warnings], [str(self.project), str(self.recorded)])
+        self.assertEqual(warnings[0].get("old-files"), self.OLD + ("wingbox-out/",))
+        line = update.warning_text(warnings[0], color=False)
+        self.assertEqual(
+            line,
+            f"! WARNING: {self.project}: old Wingbox files left: {', '.join(self.OLD + ('wingbox-out/',))}"
+            " - Wingbox now uses .wingbox/ only; remove them yourself",
+        )
+        self.assertEqual(update.warning_text(warnings[0], color=True), "\033[33m" + line + "\033[0m")
+        self.assertIn(f"(update-warning {self.project} :old-files (", facts.render_sexp(warnings))
+        self.assertFalse(update.use_color(is_terminal=True, environ={"NO_COLOR": "1"}))
+        self.assertTrue(update.use_color(is_terminal=True, environ={}))
+        self.assertFalse(update.use_color(is_terminal=False, environ={}))
+        self.assertEqual(kept, {path: Path(path).read_bytes() for path in kept})
+
+    def test_a_clean_project_gives_no_warning(self) -> None:
+        """/* REQ-UPDATE-009: without old-layout files `wingbox update` must print no warning; `--check` runs the same check. */"""
+        self.assertEqual(update.old_layout_warnings(str(self.project / "src"), []), [])
+        self.leave_old_files(self.project)
+        completed = subprocess.run(
+            [sys.executable, "-m", "wingbox.cli", "update", "--check"],
+            capture_output=True, text=True, cwd=self.project / "src",
+            env={**os.environ, "PYTHONPATH": str(REPO / "src"), "HOME": str(self.base)}, timeout=300,
+        )
+        self.assertIn(f"! WARNING: {self.project}: old Wingbox files left:", completed.stdout)
+        self.assertNotIn("\033[", completed.stdout)
+        self.assertTrue((self.project / ".code_graph.sexp").is_file())
 
 
 if __name__ == "__main__":

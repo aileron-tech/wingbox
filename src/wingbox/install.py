@@ -10,7 +10,9 @@ Install puts three things in place for each assistant:
 - an always-on block between `<!-- wingbox:begin -->` and `<!-- wingbox:end -->`
   in the instructions file the assistant reads in every session;
 - for Claude Code, a PreToolUse hook on Grep, Glob and Read that runs
-  `wingbox hook pre-search`.
+  `wingbox hook pre-search`, and a PostToolUse hook on Edit and Write that
+  runs `wingbox hook dirty` (it marks the edited file, so the graph is
+  refreshed before its next use).
 
 `--global` (default) writes into the home folder for the assistants whose
 configuration folder exists; `--project` writes into the current repository.
@@ -35,7 +37,12 @@ BEGIN_MARKER = "<!-- wingbox:begin -->"
 END_MARKER = "<!-- wingbox:end -->"
 HOOK_SUBCOMMAND = "hook pre-search"
 HOOK_MATCHER = "Grep|Glob|Read"
-HOOK_TIMEOUT_SECONDS = 5
+# The search hook may wait for a refresh of the graph (WINGBOX_HOOK_WAIT, 3 s) before it reads it.
+HOOK_TIMEOUT_SECONDS = 10
+DIRTY_SUBCOMMAND = "hook dirty"
+DIRTY_MATCHER = "Edit|Write|MultiEdit"
+DIRTY_TIMEOUT_SECONDS = 5
+_HOOK_EVENTS = ("PreToolUse", "PostToolUse")
 BACKUP_SUFFIX = ".wingbox-bak"
 RECORD_RELATIVE = os.path.join(".wingbox", "installed.sexp")
 PROJECT_HOOK_COMMAND = f"wingbox {HOOK_SUBCOMMAND}"
@@ -43,7 +50,7 @@ PROJECT_HOOK_COMMAND = f"wingbox {HOOK_SUBCOMMAND}"
 ALWAYS_ON_BLOCK = f"""{BEGIN_MARKER}
 ## Wingbox code graph
 
-When the project has a Wingbox code graph (`.wingbox/graph.sexp` or `.code_graph.sexp`):
+When the project has a Wingbox code graph (`.wingbox/index.sexp` in the project folder or a parent):
 
 - Before reading code for a task, run `wingbox quick "<keyword>"` or `wingbox analyze <module>` and read the files it names first.
 - Before changing a file, run `wingbox impact <file>` to see what depends on it.
@@ -315,7 +322,16 @@ def is_wingbox_hook(entry: object) -> bool:
     if not isinstance(entry, dict) or entry.get("type") != "command":
         return False
     command = entry.get("command")
-    return isinstance(command, str) and "wingbox" in command and command.rstrip().endswith(HOOK_SUBCOMMAND)
+    return (
+        isinstance(command, str)
+        and "wingbox" in command
+        and command.rstrip().endswith((HOOK_SUBCOMMAND, DIRTY_SUBCOMMAND))
+    )
+
+
+def dirty_command(command: str) -> str:
+    """The PostToolUse command that goes with a search hook command: same program, `hook dirty`."""
+    return command[: -len(HOOK_SUBCOMMAND)] + DIRTY_SUBCOMMAND if command.endswith(HOOK_SUBCOMMAND) else command
 
 
 def hook_group(command: str) -> dict:
@@ -325,23 +341,39 @@ def hook_group(command: str) -> dict:
     }
 
 
-def strip_hook(settings: dict) -> dict:
-    """Settings without Wingbox's hook entries; other entries and groups stay as they are."""
-    hooks = settings.get("hooks")
-    if not isinstance(hooks, dict) or not isinstance(hooks.get("PreToolUse"), list):
-        return settings
-    groups: list = []
-    for group in hooks["PreToolUse"]:
+def dirty_group(command: str) -> dict:
+    return {
+        "matcher": DIRTY_MATCHER,
+        "hooks": [{"type": "command", "command": dirty_command(command), "timeout": DIRTY_TIMEOUT_SECONDS}],
+    }
+
+
+def _stripped_groups(groups: list) -> list:
+    kept: list = []
+    for group in groups:
         entries = group.get("hooks") if isinstance(group, dict) else None
         if not isinstance(entries, list) or not any(is_wingbox_hook(entry) for entry in entries):
-            groups.append(group)
+            kept.append(group)
             continue
         remaining = [entry for entry in entries if not is_wingbox_hook(entry)]
         if remaining:
-            groups.append({**group, "hooks": remaining})
-    new_hooks = {key: value for key, value in hooks.items() if key != "PreToolUse"}
-    if groups:
-        new_hooks["PreToolUse"] = groups
+            kept.append({**group, "hooks": remaining})
+    return kept
+
+
+def strip_hook(settings: dict) -> dict:
+    """Settings without Wingbox's hook entries; other entries and groups stay as they are."""
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict) or not any(isinstance(hooks.get(event), list) for event in _HOOK_EVENTS):
+        return settings
+    new_hooks = {key: value for key, value in hooks.items() if key not in _HOOK_EVENTS}
+    for event in _HOOK_EVENTS:
+        if isinstance(hooks.get(event), list):
+            groups = _stripped_groups(hooks[event])
+            if groups:
+                new_hooks[event] = groups
+        elif event in hooks:
+            new_hooks[event] = hooks[event]
     result = {key: value for key, value in settings.items() if key != "hooks"}
     if new_hooks:
         result["hooks"] = new_hooks
@@ -359,16 +391,20 @@ def _wingbox_entry_count(groups: list) -> int:
 
 
 def merge_hook(settings: dict, command: str) -> dict:
-    """Settings with exactly one Wingbox hook group; other hooks and settings are kept."""
-    group = hook_group(command)
+    """Settings with exactly one Wingbox group per hook event (search and edit); other hooks and settings are kept."""
+    wanted = {"PreToolUse": hook_group(command), "PostToolUse": dirty_group(command)}
     hooks = settings.get("hooks") if isinstance(settings.get("hooks"), dict) else {}
-    groups = hooks.get("PreToolUse") if isinstance(hooks.get("PreToolUse"), list) else []
-    if group in groups and _wingbox_entry_count(groups) == 1:
+    if all(
+        isinstance(hooks.get(event), list) and group in hooks[event] and _wingbox_entry_count(hooks[event]) == 1
+        for event, group in wanted.items()
+    ):
         return settings
     stripped = strip_hook(settings)
     stripped_hooks = stripped.get("hooks") if isinstance(stripped.get("hooks"), dict) else {}
-    pre_tool_use = list(stripped_hooks.get("PreToolUse", [])) + [group]
-    return {**stripped, "hooks": {**stripped_hooks, "PreToolUse": pre_tool_use}}
+    merged = dict(stripped_hooks)
+    for event, group in wanted.items():
+        merged[event] = list(stripped_hooks.get(event, [])) + [group]
+    return {**stripped, "hooks": merged}
 
 
 def settings_text(settings: dict) -> str:

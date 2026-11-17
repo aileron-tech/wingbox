@@ -488,9 +488,9 @@ def run_builder(
     ``_serial_pool_fallback``); pass False to require the unmodified builder.
     """
     root = os.path.realpath(root)
-    graph_path = output or os.path.join(root, ".code_graph.sexp")
+    graph_path = output or os.path.join(root, ".wingbox", "index.sexp")
     interpreter = python or sys.executable
-    builder_arguments = ["--root", root, "--output", graph_path, *(["--full"] if full else [])]
+    builder_arguments = ["--root", root, *(["--full"] if full else [])]
     attempts = [[interpreter, str(BUILD_SCRIPT), *builder_arguments]]
     if allow_serial:
         serial_runner = _serial_pool_fallback()

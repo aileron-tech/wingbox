@@ -106,7 +106,8 @@ def _build_without_pool(root: Path) -> None:
     graph_result = build_graph(results, str(root))
     if not isinstance(graph_result, Ok):
         raise AssertionError(f"Dart graph build failed: {graph_result.error}")
-    (root / ".code_graph.sexp").write_text(
+    (root / ".wingbox").mkdir(parents=True, exist_ok=True)
+    (root / ".wingbox" / "index.sexp").write_text(
         render_sexp(
             graph_result.value.nodes,
             graph_result.value.edges,
@@ -120,7 +121,8 @@ def _build_without_pool(root: Path) -> None:
 
 def _write_graph(root: Path) -> Path:
     """A hand-written graph, because a build pool is not available everywhere."""
-    sexp_path = root / ".code_graph.sexp"
+    (root / ".wingbox").mkdir(parents=True, exist_ok=True)
+    sexp_path = root / ".wingbox" / "index.sexp"
     sexp_path.write_text(
         textwrap.dedent(
             """
@@ -591,7 +593,7 @@ class DartBuildTest(unittest.TestCase):
             root.mkdir()
             _flutter_project(root)
             _build_without_pool(root)
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox" / "index.sexp"
             graph = code_graph_search.CodeGraph()
             self.assertIsInstance(
                 graph.load(str(sexp_path), str(root)),
@@ -682,7 +684,7 @@ class DartBuildTest(unittest.TestCase):
                 # Everything after the pool is the same code, so build serially.
                 self.assertIn("Permission denied", completed.stderr, completed.stderr)
                 _build_without_pool(root)
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox" / "index.sexp"
             self.assertTrue(sexp_path.is_file(), completed.stderr)
             graph = code_graph_search.CodeGraph()
             self.assertIsInstance(

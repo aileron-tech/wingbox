@@ -32,7 +32,7 @@ pipx install wingbox
 
 The skill and the MCP server run only the local `wingbox` command. It reads
 the files of the repository you work in and writes the graph next to them
-(`.code_graph.sexp`, `.wingbox/`, `wingbox-out/`). Nothing is sent anywhere:
+(`.wingbox/`). Nothing is sent anywhere:
 no code, graph, query or telemetry leaves your computer. The MCP server talks
 over stdio only. The only network access is the installation of the package
 from PyPI, which you run yourself. Privacy statement:

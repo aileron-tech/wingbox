@@ -14,27 +14,28 @@ description: >
 
 # Wingbox -- Code Graph Architecture Discovery
 
-Query `.code_graph.sexp` to discover modules, boundaries, and dependencies before reading source files. Never read code blindly -- query the graph first.
+Query `.wingbox/index.sexp` to discover modules, boundaries, and dependencies before reading source files. Never read code blindly -- query the graph first.
 
 ## /wingbox
 
 When the user types `/wingbox` (in Codex `$wingbox`), do this before anything else:
 
-- `/wingbox` with no argument: find the graph (`.wingbox/graph.sexp` or
-  `.code_graph.sexp` in the project root). Build it with `wingbox build .`
-  when it is missing or stale. The graph is stale when a file of the project
-  was modified after the graph file; this check finds one:
+- `/wingbox` with no argument: find the graph (`.wingbox/index.sexp` in the
+  project root; every `wingbox` command finds it from a subfolder too). Build
+  it with `wingbox build .` when it is missing or stale. The graph is stale
+  when a file of the project was modified after the graph file; this check
+  finds one:
 
   ```bash
-  G=$(ls .wingbox/graph.sexp .code_graph.sexp 2>/dev/null | head -1)
-  [ -z "$G" ] || find . -type f -newer "$G" -not -path './.git/*' -not -path './wingbox-out/*' \
-    -not -path './.wingbox/*' -not -name '.code_graph*' -not -path '*/node_modules/*' -print -quit
+  G=.wingbox/index.sexp
+  [ ! -f "$G" ] || find . -type f -newer "$G" -not -path './.git/*' \
+    -not -path './.wingbox/*' -not -path '*/node_modules/*' -print -quit
   ```
 
   A rebuild re-parses only the files whose content changed. Then read
-  `wingbox-out/REPORT.md` and give the user its "Key findings", the most
+  `.wingbox/REPORT.md` and give the user its "Key findings", the most
   depended-on modules and where to start reading, and say that the map is
-  `wingbox-out/map.html` (it opens in a browser, offline).
+  `.wingbox/map.html` (`wingbox open` shows it in a browser, offline).
 - `/wingbox <file>`: run `wingbox impact <file> 2` and summarize what depends
   on the file and which files to read first.
 - `/wingbox <command> ...`: run `wingbox <command> ...` (for example
@@ -49,10 +50,12 @@ they take the same arguments as the scripts. A skill installed by
 
 | Command | Purpose |
 |---|---|
-| `wingbox install [--global\|--project] [--assistant NAME ...] [--dry-run]` | Copy this skill to each assistant, add the always-on block to CLAUDE.md / AGENTS.md, add the Claude Code search hook |
+| `wingbox install [--global\|--project] [--assistant NAME ...] [--dry-run]` | Copy this skill to each assistant, add the always-on block to CLAUDE.md / AGENTS.md, add the Claude Code search and edit hooks |
 | `wingbox uninstall [--global\|--project] [--assistant NAME ...]` | Remove exactly what install added |
-| `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed skills, blocks and hook |
-| `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin |
+| `wingbox open [PATH]` | Open `.wingbox/map.html` of the project in the browser (prints its path when there is no browser) |
+| `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed skills, blocks and hook; warns about files an earlier version left (`.code_graph*`, `wingbox-out/`) |
+| `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin; refreshes the graph before it reads it |
+| `wingbox hook dirty` | The Claude Code PostToolUse hook on Edit and Write: marks the changed file so the graph is refreshed before its next use |
 
 Each of these prints facts as text; add `--sexp` for S-expressions.
 
@@ -73,7 +76,7 @@ Never use project-local copies of these scripts -- they may be outdated and outp
 Locate the code graph. If absent, build it:
 
 ```bash
-ls .code_graph.sexp code_graph.sexp 2>/dev/null
+ls .wingbox/index.sexp 2>/dev/null
 SKILL_ROOT="$(pwd -P)"
 TARGET_ROOT="$(cd /absolute/path/to/project && pwd -P)"
 python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
@@ -164,26 +167,26 @@ S-expression form, which is the format every other command uses.
 
 ## Quick Reference: rg Queries
 
-When you need fast, targeted lookups without invoking the Python script, query the code graph directly with `rg`. The bundled builder writes `.code_graph.sexp`; if a repo still uses the legacy `code_graph.sexp`, substitute that filename in the commands below:
+When you need fast, targeted lookups without invoking the Python script, query the code graph directly with `rg`. The builder writes the graph to `.wingbox/index.sexp`:
 
 ```bash
 # All facts about a module
-rg 'drive/modules/drive_db/api ' .code_graph.sexp
+rg 'drive/modules/drive_db/api ' .wingbox/index.sexp
 
 # Who imports a module
-rg 'imports .* drive/modules/commons/result' .code_graph.sexp
+rg 'imports .* drive/modules/commons/result' .wingbox/index.sexp
 
 # What does a module import
-rg 'imports drive/modules/drive_db/api' .code_graph.sexp
+rg 'imports drive/modules/drive_db/api' .wingbox/index.sexp
 
 # All references to an entity
-rg 'DriveDbCommitResponse' .code_graph.sexp
+rg 'DriveDbCommitResponse' .wingbox/index.sexp
 
 # All classes in a repo
-rg '^\(cls drive/' .code_graph.sexp
+rg '^\(cls drive/' .wingbox/index.sexp
 
 # Data flow edges
-rg 'data-flow' .code_graph.sexp
+rg 'data-flow' .wingbox/index.sexp
 ```
 
 These one-liners are useful for quick checks. For structured output and full analysis, use the Python script commands.
@@ -290,7 +293,7 @@ python3 scripts/code_graph_search.py analyze billing-service/src/modules/invoice
 - **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are internal path-map IDs and must not be used directly. Always `search` first.
 - **Build but never query.** Building the code graph and then never running `search`, `analyze`, or `boundary` provides zero value.
 - **Querying after reading source.** The first source-code read should come from the `boundary-file` lines and the `:file` of the `analyze-dependent` lines in `analyze` output.
-- **Reading `.code_graph.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
+- **Reading `.wingbox/index.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
 - **Skipping the code graph for cross-module tasks.** Always query the graph to understand boundaries before reading source files.
 - **Reading all files in a directory.** When the boundary shows 2-3 files, read only those.
 - **Using project-local scripts.** Always use this skill's bundled scripts. Project copies may output JSON instead of sexp.
@@ -301,8 +304,6 @@ python3 scripts/code_graph_search.py analyze billing-service/src/modules/invoice
 python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
 python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
 python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --lsp
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" \
-  --root "$TARGET_ROOT" --output "$TARGET_ROOT/custom-map.sexp"
 python3 "$SKILL_ROOT/scripts/build_code_graph.py" \
   --root "$TARGET_ROOT" --exclude-dir review-bundles
 ```
@@ -408,13 +409,13 @@ python3 scripts/build_infra_topology.py                    # auto-detect all IaC
 python3 scripts/build_infra_topology.py --kustomize .      # kustomize only
 python3 scripts/build_infra_topology.py --helm ./charts    # helm charts only
 python3 scripts/build_infra_topology.py --terraform ./infra # terraform only
-python3 scripts/build_infra_topology.py --append .code_graph.sexp  # merge into graph
+python3 scripts/build_infra_topology.py --append .wingbox/index.sexp  # merge into graph
 ```
 
 Emits `infra-node`, `k8s-depends`, `k8s-service`, `helm-depends`, `tf-depends`, and `infra-maps` edges. Query with:
 ```bash
-rg 'infra-node' .code_graph.sexp                  # all services
-rg 'k8s-depends' .code_graph.sexp                 # service dependencies
-rg 'infra-node.*:component database' .code_graph.sexp  # all databases
-rg 'infra-maps.*app-service' .code_graph.sexp     # infra -> source code mapping
+rg 'infra-node' .wingbox/index.sexp                  # all services
+rg 'k8s-depends' .wingbox/index.sexp                 # service dependencies
+rg 'infra-node.*:component database' .wingbox/index.sexp  # all databases
+rg 'infra-maps.*app-service' .wingbox/index.sexp     # infra -> source code mapping
 ```

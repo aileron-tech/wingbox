@@ -91,7 +91,9 @@ class LayerRulesFromRealRepositoriesTest(unittest.TestCase):
     def _graph(self, root: Path):
         from scripts import code_graph_search
 
-        sexp_path = root / ".code_graph.sexp"
+        sexp_path = root / ".wingbox/index.sexp"
+
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             "(code-graph :schema 1 :files 6 :nodes 6 :edges 3 :violations 0)\n"
             "(paths\n"
@@ -161,7 +163,8 @@ class ImpactTargetTest(unittest.TestCase):
             root = Path(directory).resolve()
             for relative in ("src/lib/index.ts", "src/app.ts", "src/steer.ts", "src/steer.py"):
                 _write(root, relative, "")
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox/index.sexp"
+            sexp_path.parent.mkdir(exist_ok=True)
             sexp_path.write_text(
                 "(code-graph :schema 1 :files 4 :nodes 4 :edges 2 :violations 0)\n"
                 "(paths\n  (src\n    (m0 lib)\n    (m1 app)\n    (m2 steer)\n    (m3 steer.py)\n  )\n)\n"
@@ -201,7 +204,8 @@ class ImpactRelationTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox/index.sexp"
+            sexp_path.parent.mkdir(exist_ok=True)
             sexp_path.write_text(
                 "(code-graph :schema 1 :files 4 :nodes 4 :edges 5 :violations 0)\n"
                 "(paths\n  (app\n    (m0 models)\n    (m1 routes)\n    (m2 forms)\n    (m3 plugin)\n  )\n)\n"
@@ -233,7 +237,8 @@ class QuotedBracketTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox/index.sexp"
+            sexp_path.parent.mkdir(exist_ok=True)
             sexp_path.write_text(
                 "(code-graph :schema 1 :files 2 :nodes 2 :edges 1 :violations 0)\n"
                 "(paths\n  (src\n    (m0 links)\n    (m1 page)\n  )\n)\n"
@@ -457,7 +462,8 @@ class TypeOnlyImportTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox/index.sexp"
+            sexp_path.parent.mkdir(exist_ok=True)
             sexp_path.write_text(
                 "(code-graph :schema 1 :files 3 :nodes 3 :edges 2 :violations 0)\n"
                 "(paths\n  (src\n    (dtos\n      (m0 stats.dto)\n      (m1 mixed.dto)\n    )\n"
@@ -488,7 +494,8 @@ class TypeOnlyImportTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            sexp_path = root / ".code_graph.sexp"
+            sexp_path = root / ".wingbox/index.sexp"
+            sexp_path.parent.mkdir(exist_ok=True)
             sexp_path.write_text(
                 "(code-graph :schema 1 :files 2 :nodes 2 :edges 2 :violations 0)\n"
                 "(paths\n  (src\n    (domain\n      (m0 order)\n    )\n    (repositories\n      (m1 order.repository)\n    )\n  )\n)\n"
@@ -519,7 +526,8 @@ class AnswerSizeTest(unittest.TestCase):
         leaves = "".join(f"      (m{index + 2} {name})\n" for index, name in enumerate(names))
         nodes = "".join(f'(node m{index} ts "general module")\n' for index in range(dependents + 2))
         edges = "(imports m0 m1)\n" + "".join(f"(imports m{index + 2} m0)\n(refs m{index + 2} m0::Hub)\n" for index in range(dependents))
-        sexp_path = root / ".code_graph.sexp"
+        sexp_path = root / ".wingbox/index.sexp"
+        sexp_path.parent.mkdir(exist_ok=True)
         sexp_path.write_text(
             f"(code-graph :schema 1 :files {dependents + 2} :nodes {dependents + 2} :edges {dependents + 1} :violations 0)\n"
             "(paths\n  (src\n    (m0 hub)\n    (m1 base)\n    (users\n" + leaves + "    )\n  )\n)\n"

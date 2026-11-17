@@ -70,20 +70,36 @@ _BUILD_FORMAT_DIRECTORIES = frozenset({"esm", "cjs", "types"})
 _IMPLIED_SUFFIXES = (".ts", ".tsx", ".js", ".jsx")
 
 
-def _load_ts_path_aliases(
-    root: str,
-    discovery_exclusions: DiscoveryExclusions,
-    loaded: Optional[dict[str, TsPathOptions]] = None,
-) -> tuple[TsPathAliasContext, ...]:
-    """Load validated path mappings without merging independent projects."""
-    contexts: list[TsPathAliasContext] = []
-    loaded = {} if loaded is None else loaded
+WalkedTree = list[tuple[str, list[str]]]  # (folder, its file names) in os.walk order
+
+
+def walk_tree(root: str, discovery_exclusions: DiscoveryExclusions) -> WalkedTree:
+    """The folders under root that discovery keeps, with their file names: one walk for every loader."""
+    found: WalkedTree = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = retained_directory_names(
             discovery_exclusions,
             dirpath,
             dirnames,
         )
+        found.append((dirpath, filenames))
+    return found
+
+
+def _walk_tree(root: str, discovery_exclusions: DiscoveryExclusions, walked: Optional[WalkedTree]) -> WalkedTree:
+    return walk_tree(root, discovery_exclusions) if walked is None else walked
+
+
+def _load_ts_path_aliases(
+    root: str,
+    discovery_exclusions: DiscoveryExclusions,
+    loaded: Optional[dict[str, TsPathOptions]] = None,
+    walked: Optional[WalkedTree] = None,
+) -> tuple[TsPathAliasContext, ...]:
+    """Load validated path mappings without merging independent projects."""
+    contexts: list[TsPathAliasContext] = []
+    loaded = {} if loaded is None else loaded
+    for dirpath, filenames in _walk_tree(root, discovery_exclusions, walked):
         for fname in filenames:
             if fname != "tsconfig.json":
                 continue
@@ -135,15 +151,11 @@ def _load_ts_output_roots(
     root: str,
     discovery_exclusions: DiscoveryExclusions,
     loaded: dict[str, TsPathOptions],
+    walked: Optional[WalkedTree] = None,
 ) -> tuple[TsOutputRoot, ...]:
     """Collect the outDir of every tsconfig*.json and where its sources lie."""
     output_roots: list[TsOutputRoot] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = retained_directory_names(
-            discovery_exclusions,
-            dirpath,
-            dirnames,
-        )
+    for dirpath, filenames in _walk_tree(root, discovery_exclusions, walked):
         for fname in sorted(filenames):
             if not (fname.startswith("tsconfig") and fname.endswith(".json")):
                 continue
@@ -212,15 +224,11 @@ def _package_exports(raw: object) -> tuple[TsPackageExport, ...]:
 def _load_ts_packages(
     root: str,
     discovery_exclusions: DiscoveryExclusions,
+    walked: Optional[WalkedTree] = None,
 ) -> tuple[TsPackage, ...]:
     """Load the packages of the repository and where their manifests point."""
     packages: list[TsPackage] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = retained_directory_names(
-            discovery_exclusions,
-            dirpath,
-            dirnames,
-        )
+    for dirpath, filenames in _walk_tree(root, discovery_exclusions, walked):
         if "package.json" not in filenames:
             continue
 
@@ -517,13 +525,14 @@ class BoundTypeScriptLanguage:
         discovery_exclusions: DiscoveryExclusions,
     ) -> BoundTypeScriptLanguage:
         loaded: dict[str, TsPathOptions] = {}
-        alias_contexts = _load_ts_path_aliases(root, discovery_exclusions, loaded)
+        walked = walk_tree(root, discovery_exclusions)  # one walk for the three loaders
+        alias_contexts = _load_ts_path_aliases(root, discovery_exclusions, loaded, walked)
         if alias_contexts:
             print(
                 f"[code-graph] Loaded {len(alias_contexts)} TS alias contexts",
                 file=sys.stderr,
             )
-        packages = _load_ts_packages(root, discovery_exclusions)
+        packages = _load_ts_packages(root, discovery_exclusions, walked)
         if packages:
             print(
                 f"[code-graph] Loaded {len(packages)} local TS packages",
@@ -538,7 +547,7 @@ class BoundTypeScriptLanguage:
                 + ", ".join(duplicated[:5]),
                 file=sys.stderr,
             )
-        output_roots = _load_ts_output_roots(root, discovery_exclusions, loaded)
+        output_roots = _load_ts_output_roots(root, discovery_exclusions, loaded, walked)
         if output_roots:
             print(
                 f"[code-graph] Loaded {len(output_roots)} TS output directories",

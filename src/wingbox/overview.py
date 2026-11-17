@@ -1,6 +1,6 @@
 """People-facing overview of a code graph: the data behind REPORT.md and map.html.
 
-The code graph file (.code_graph.sexp) is the format for agents. This module
+The code graph file (.wingbox/index.sexp) is the format for agents. This module
 turns a loaded graph into plain values and renders the Markdown report.
 Everything here is pure: no file access, no clock.
 """

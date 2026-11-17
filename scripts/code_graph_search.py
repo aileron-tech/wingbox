@@ -2,7 +2,7 @@
 """
 Code Graph Search -- query tool for S-expression code graphs.
 
-Reads ``.code_graph.sexp`` and provides structured queries: module views,
+Reads ``.wingbox/index.sexp`` and provides structured queries: module views,
 dependency trees, reverse dependency analysis, entity lookups, data flow
 tracing, and boundary discovery for minimal context loading.
 
@@ -435,7 +435,9 @@ class CodeGraph:
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self._root: str = ""
 
-    def load(self, path: str, root: Optional[str] = None) -> MapLoadResult:
+    def load(self, path: str, root: Optional[str] = None, focus: Optional[str] = None) -> MapLoadResult:
+        """Read a code graph. With focus (a name), only the entity and edge facts that mention it are
+        read, besides the paths and the nodes: what a question about that one name needs."""
         self.nodes = {}
         self.entities = {}
         self.entity_by_name = {}
@@ -455,9 +457,7 @@ class CodeGraph:
         self._map_path = path
         self.pmap = {}
         self.package_layers = {}
-        self._root = os.path.abspath(
-            root if root is not None else os.path.dirname(os.path.abspath(path))
-        )
+        self._root = os.path.abspath(root if root is not None else project_root_of(path))
         try:
             with open(path, "r", encoding="utf-8") as code_graph:
                 map_lines = code_graph.readlines()
@@ -473,6 +473,8 @@ class CodeGraph:
         path_stack: list[str] = []
 
         for line in map_lines:
+            if found_paths and not in_paths:
+                break  # header, def lines and paths come first; nothing after them is needed here
             stripped = line.strip()
             if not stripped or stripped.startswith(";") or stripped.startswith(_LAZY_FACTS):
                 continue
@@ -554,6 +556,8 @@ class CodeGraph:
             if line.startswith(_LAZY_FACTS):
                 self._symbol_lines.append(line)
                 continue
+            if focus is not None and focus not in line and not line.startswith(("(node ", "(code-graph")):
+                continue
             tokens = tokenize(line)
             if not tokens:
                 continue
@@ -624,7 +628,7 @@ class CodeGraph:
 
     def _use_lines(self) -> list[str]:
         """The use facts: those of the graph file and those of the use file next to it
-        (.code_graph.uses.sexp), read on first need and only when it belongs to this graph."""
+        (.wingbox/index.uses.sexp), read on first need and only when it belongs to this graph."""
         if not self._uses_file_read:
             self._uses_file_read = True
             path = _uses_path(self._map_path)
@@ -2042,13 +2046,17 @@ def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
         print(f"(result-count {len(module_matches)})")
         return
 
+    count = 0
     try:
         with open(sexp_path, "r", encoding="utf-8") as code_graph:
             for line in code_graph:
                 if search_pattern_matches(parsed_pattern.value, line):
                     print(line.rstrip())
+                    count += 1
     except OSError as error:
         print(f"(error search-read-failed {_q(str(error))})")
+        return
+    print(f"(result-count {count})")
 
 
 # Well-known deny rules (source layer, target layer, reason).
@@ -2776,7 +2784,7 @@ def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
 #   (search "pattern")                      -> raw grep on sexp file
 
 _QUERY_HELP = """\
-; Scheme query language for .code_graph.sexp
+; Scheme query language for .wingbox/index.sexp
 ;
 ; Primitives (return module-set or list):
 ;   (resolve "pattern")                Find module IDs matching pattern
@@ -2787,7 +2795,7 @@ _QUERY_HELP = """\
 ;   (boundary "id")                    Target + deps + rdeps (change boundary)
 ;   (entity "Name")                    Modules defining entity
 ;   (refs-to "Name")                   Modules referencing entity
-;   (search "pattern")                 Grep .code_graph.sexp
+;   (search "pattern")                 Grep .wingbox/index.sexp
 ;
 ; Function & type search (return module-set):
 ;   (find-function "name")             Modules containing function definitions
@@ -3238,42 +3246,41 @@ def cmd_repl(g: CodeGraph, sexp_path: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-def find_sexp_file() -> str:
-    """Find code_graph.sexp in current or parent dirs.
+# The graph of a project is ROOT/.wingbox/index.sexp; the .wingbox/ folder marks the project root.
+WINGBOX_DIRECTORY = ".wingbox"
+INDEX_FILE = "index.sexp"
+NO_PROJECT = "no .wingbox/ in this folder or its parents: run wingbox build"
 
-    Searches for (in priority order per directory):
-      .code_graph.sexp, code_graph.sexp
 
-    If only a JSON code graph is found, prints a migration hint.
+def project_root_of(map_path: str) -> str:
+    """The project a graph belongs to: the folder holding its .wingbox/ (else the graph's own folder)."""
+    folder = os.path.dirname(os.path.abspath(map_path))
+    return os.path.dirname(folder) if os.path.basename(folder) == WINGBOX_DIRECTORY else folder
+
+
+def find_sexp_file(start: Optional[str] = None) -> str:
+    """.wingbox/index.sexp of the nearest folder at or above start (default: the current folder).
+
+    Without one, say so with the paths looked at and the --map and --root options, and exit 1.
     """
-    _SEXP_NAMES = (".code_graph.sexp", "code_graph.sexp")
-    _JSON_NAMES = (".code_graph.json", "code_graph.json")
-    cur = os.getcwd()
-    json_found = ""
+    current = os.path.abspath(start or os.getcwd())
+    searched: list[str] = []
     while True:
-        for name in _SEXP_NAMES:
-            candidate = os.path.join(cur, name)
-            if os.path.isfile(candidate):
-                return candidate
-        if not json_found:
-            for name in _JSON_NAMES:
-                candidate = os.path.join(cur, name)
-                if os.path.isfile(candidate):
-                    json_found = candidate
-        parent = os.path.dirname(cur)
-        if parent == cur:
+        candidate = os.path.join(current, WINGBOX_DIRECTORY, INDEX_FILE)
+        if os.path.isfile(candidate):
+            return candidate
+        searched.append(candidate)
+        parent = os.path.dirname(current)
+        if parent == current:
             break
-        cur = parent
-    if json_found:
-        print(f"Error: found JSON code graph at {json_found} but this script requires sexp format.", file=sys.stderr)
-        print("Rebuild with the sexp builder:", file=sys.stderr)
-        print(
-            "  python3 /absolute/path/to/wingbox/scripts/"
-            "build_code_graph.py --root /absolute/path/to/project",
-            file=sys.stderr,
-        )
-    else:
-        print("Error: .code_graph.sexp not found. Run build_code_graph.py first.", file=sys.stderr)
+        current = parent
+    shown = searched[:6] + ([f"... {len(searched) - 6} more"] if len(searched) > 6 else [])
+    print(
+        f"{NO_PROJECT}\n"
+        f"  looked for: {', '.join(shown)}\n"
+        "  or point at a graph: --map /path/to/project/.wingbox/index.sexp --root /path/to/project",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 
@@ -3346,6 +3353,18 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
     return None
 
 
+def _load_focus(args: list[str]) -> Optional[str]:
+    """The one name a command asks about, when it reads nothing else of the graph: usages, and
+    entity with a literal name (a pattern may match any name, so it reads everything)."""
+    if len(args) < 2 or args[0] not in ("usages", "entity"):
+        return None
+    target = [argument for argument in args[1:] if not argument.startswith("--")][:1]
+    if not target or ".*" in target[0]:
+        return None
+    name = target[0].rpartition("::")[2].split(".", 1)[0]
+    return name or None
+
+
 def main(args: Optional[list[str]] = None) -> int:
     raw_args = list(sys.argv[1:] if args is None else args)
     args, explicit_map, explicit_root, option_error = _extract_query_paths(raw_args)
@@ -3363,9 +3382,9 @@ def main(args: Optional[list[str]] = None) -> int:
         print(f"(error invalid-argument {_q(command_error)})")
         return 2
 
-    sexp_path = explicit_map or find_sexp_file()
+    sexp_path = explicit_map or find_sexp_file(explicit_root)
     g = CodeGraph()
-    load_result = g.load(sexp_path, explicit_root)
+    load_result = g.load(sexp_path, explicit_root, focus=_load_focus(args))
     if isinstance(load_result, MapLoadErr):
         print(f"(error invalid-map {_q(load_result.error)})")
         return 1

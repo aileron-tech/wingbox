@@ -597,8 +597,8 @@ class Profile {
             self.assertIn("requirements/dart.txt", completed.stderr)
             self.assertNotIn("tree-sitter-go", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
-            self.assertFalse((target / ".code_graph.sexp").exists())
-            self.assertFalse((target / ".code_graph_cache.json").exists())
+            self.assertFalse((target / ".wingbox" / "index.sexp").exists())
+            self.assertFalse((target / ".wingbox" / "cache.json").exists())
 
     def test_dart_project_produces_graph_nodes_with_dart_entities(self) -> None:
         """/* REQ-DART-013: a Dart project becomes a graph of dart nodes that carry their class and methods. */"""

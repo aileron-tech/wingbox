@@ -263,7 +263,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            excluded_map = (root / ".code_graph.sexp").read_text(encoding="utf-8")
+            excluded_map = (root / ".wingbox/index.sexp").read_text(encoding="utf-8")
             ignore_path.write_text("", encoding="utf-8")
             included = subprocess.run(
                 command,
@@ -271,7 +271,7 @@ class IssueSevenExclusionTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
-            included_map = (root / ".code_graph.sexp").read_text(encoding="utf-8")
+            included_map = (root / ".wingbox/index.sexp").read_text(encoding="utf-8")
 
         self.assertIn("Found 1 source files", excluded.stdout)
         self.assertNotIn("review-bundles", excluded_map)

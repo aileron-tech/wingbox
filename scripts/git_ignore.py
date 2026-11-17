@@ -129,13 +129,25 @@ def load_git_ignored_paths(
     candidates_result = _discovery_candidates(root, skipped_directory_names)
     if isinstance(candidates_result, GitIgnoreUnavailable):
         return candidates_result
-    if not candidates_result.paths:
+    return _ignored_candidates(repository_root, candidates_result.paths)
+
+
+def git_ignored_among(root: str, candidates: frozenset[str]) -> GitIgnoreLoadResult:
+    """The candidates (absolute paths, folders ending with os.sep) that load_git_ignored_paths would exclude."""
+    repository_result = _repository_root(root)
+    if isinstance(repository_result, _RepositoryRootUnavailable):
+        return GitIgnoreUnavailable(repository_result.reason)
+    return _ignored_candidates(repository_result.path, candidates)
+
+
+def _ignored_candidates(repository_root: str, candidates: frozenset[str]) -> GitIgnoreLoadResult:
+    if not candidates:
         return GitIgnoreLoaded(frozenset())
 
     relative_candidates = tuple(
         sorted(
             _repository_relative_path(repository_root, candidate)
-            for candidate in candidates_result.paths
+            for candidate in candidates
         )
     )
     standard_input = (

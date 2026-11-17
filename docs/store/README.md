@@ -66,7 +66,7 @@ project). Positive:
 
 1. "Build the code graph of this repository and tell me where to start
    reading." Expected: runs `wingbox build .` (MCP tool `build`), summarizes
-   `wingbox-out/REPORT.md`: key findings, most depended-on modules, the map.
+   `.wingbox/REPORT.md`: key findings, most depended-on modules, the map.
 2. "What depends on src/orders/order.py, and what could break if I change it?"
    Expected: `wingbox impact` (tool `impact`): direct dependents, those within
    two hops, the files to read first.

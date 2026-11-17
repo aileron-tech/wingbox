@@ -22,9 +22,8 @@ No code, file name, graph, query or usage data leaves your computer.
 ## What it reads and writes
 
 Wingbox reads the source files of the repository it is run in and writes the
-code graph and its report next to them: `.code_graph.sexp`,
-`.code_graph_cache.json`, `.wingbox/` and `wingbox-out/`. Delete these files
-to remove everything Wingbox wrote. `wingbox install`, which the plugin does
+code graph and its report into one folder of the repository, `.wingbox/`.
+Delete that folder to remove everything Wingbox wrote there. `wingbox install`, which the plugin does
 not run, writes the files listed in its README section and records them in
 `~/.wingbox/installed.sexp`.
 

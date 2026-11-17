@@ -63,7 +63,7 @@ def is_excluded_directory(
     """Apply basename and repository-ignore policy before descending."""
     return (
         (name in exclusions.directory_names and not _is_published_view_directory(parent, name))
-        or name in DART_OUTPUT_DIRECTORIES
+or name in DART_OUTPUT_DIRECTORIES
         or _is_dotnet_output_directory(parent, name)
         or is_excluded_path(exclusions, os.path.join(parent, name))
     )

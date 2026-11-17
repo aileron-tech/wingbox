@@ -45,7 +45,7 @@ class DynamicDependencyTests(unittest.TestCase):
             )
 
             self.assertEqual(0, completed.returncode, completed.stderr)
-            self.assertTrue((target / ".code_graph.sexp").is_file())
+            self.assertTrue((target / ".wingbox/index.sexp").is_file())
 
     def test_missing_detected_language_dependency_has_targeted_error(self) -> None:
         """/* REQ-DEPS-002: A detected language with absent parser packages fails before publication with its exact install command. */"""
@@ -78,8 +78,8 @@ class DynamicDependencyTests(unittest.TestCase):
             self.assertIn("tree-sitter-typescript==0.23.2", completed.stderr)
             self.assertIn("requirements/typescript.txt", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
-            self.assertFalse((target / ".code_graph.sexp").exists())
-            self.assertFalse((target / ".code_graph_cache.json").exists())
+            self.assertFalse((target / ".wingbox/index.sexp").exists())
+            self.assertFalse((target / ".wingbox/cache.json").exists())
 
     def test_missing_detected_ruby_dependency_has_targeted_error(self) -> None:
         """/* REQ-DEPS-004: Ruby parser dependencies remain optional and are requested only when Ruby source is detected. */"""
@@ -114,8 +114,8 @@ class DynamicDependencyTests(unittest.TestCase):
             self.assertNotIn("tree-sitter-java", completed.stderr)
             self.assertNotIn("tree-sitter-dart", completed.stderr)
             self.assertNotIn("Traceback", completed.stderr)
-            self.assertFalse((target / ".code_graph.sexp").exists())
-            self.assertFalse((target / ".code_graph_cache.json").exists())
+            self.assertFalse((target / ".wingbox/index.sexp").exists())
+            self.assertFalse((target / ".wingbox/cache.json").exists())
 
     def test_detected_dart_language_asks_only_for_its_own_parser(self) -> None:
         """/* REQ-DEPS-006: A detected Dart project names the Dart parser install command alone, proving Dart stays optional for other builds. */"""
@@ -181,7 +181,7 @@ class DynamicDependencyTests(unittest.TestCase):
 
             self.assertEqual(0, completed.returncode, completed.stderr)
             self.assertIn("1 pas", completed.stdout)
-            self.assertTrue((target / ".code_graph.sexp").is_file())
+            self.assertTrue((target / ".wingbox/index.sexp").is_file())
 
     def test_language_requirement_files_match_registry_contracts(self) -> None:
         """/* REQ-DEPS-003: Per-language install files exactly match the parser versions declared by each adapter. */"""

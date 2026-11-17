@@ -36,7 +36,7 @@ jobs:
       ISSUE: ${{ github.event.issue.number }}
       REQUEST: ${{ github.event.issue.body || inputs.repository }}
       MAX_KB: "400000"
-      WINGBOX_VERSION: "0.3.0"   # the released version the maps are built with; bump on release
+      WINGBOX_VERSION: "0.5.0"   # the released version the maps are built with; bump on release
     steps:
       - name: Read and check the requested repository
         id: req
@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          cp target/wingbox-out/REPORT.md target/wingbox-out/map.html out/
+          cp target/.wingbox/REPORT.md target/.wingbox/map.html out/
           printf 'repository %s\ncommit %s\n%s\n' "$NAME" "$(cat commit.txt)" "$(cat version.txt)" > out/source.txt
           cat out/source.txt
 
