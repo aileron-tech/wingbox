@@ -8,7 +8,9 @@ when asked; that installer reaches the package index.
   pipx's wingbox environment: `pipx upgrade wingbox`;
 - uv when `uv tool list` names wingbox and the running Python is uv's wingbox
   tool environment: `uv tool upgrade wingbox`;
-- otherwise pip of the Python environment Wingbox runs in.
+- otherwise pip of the Python environment Wingbox runs in; in an environment without pip (made by
+  `uv venv`) `uv pip install --python <this interpreter>` when uv is on PATH, else a message saying what to
+  run.
 
 A Docker image and an editable or local install cannot update themselves: the
 command says so and prints what to run instead. After an upgrade the new
@@ -38,6 +40,7 @@ from wingbox.install import Installed
 PACKAGE = "wingbox"
 _INSTALLER_TIMEOUT_SECONDS = 600
 _LATEST_LINE = re.compile(r"^wingbox \(([^)]+)\)", re.M)
+_UV_LATEST_LINE = re.compile(r"^\s*\+ wingbox==(\S+)", re.M)   # `uv pip install --dry-run`: " + wingbox==0.8.2"
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,7 @@ Origin = Union[FromIndex, FromLocal, InDocker]
 
 @dataclass(frozen=True)
 class Method:
-    name: Literal["pipx", "uv", "pip"]
+    name: Literal["pipx", "uv", "pip", "uv pip"]
     upgrade: tuple[str, ...]
     latest: tuple[str, ...]
 
@@ -104,6 +107,14 @@ class Environment:
     run: Runner  # runs an installer command
     new_version: Callable[[], str]  # version installed after an upgrade, read by a new process
     refresh: Callable[[Installed], list[Fact]]  # `wingbox install` of the new version for one record entry
+    has_pip: bool = True  # pip can be imported in this environment (an environment made by `uv venv` has none)
+
+
+def has_pip() -> bool:
+    """Whether the pip module exists in the running interpreter's environment."""
+    from importlib.util import find_spec
+
+    return find_spec("pip") is not None
 
 
 
@@ -139,7 +150,9 @@ def _runs_from(prefix: str, run: Runner, command: tuple[str, ...]) -> bool:
     return bool(folder) and os.path.realpath(prefix) == os.path.realpath(os.path.join(folder, PACKAGE))
 
 
-def choose_method(origin: Origin, python: str, prefix: str, run: Runner) -> Union[Method, CannotUpdate]:
+def choose_method(
+    origin: Origin, python: str, prefix: str, run: Runner, has_pip: bool = True
+) -> Union[Method, CannotUpdate]:
     if isinstance(origin, InDocker):
         return CannotUpdate("docker-image", "git -C wingbox pull && docker build -t wingbox wingbox")
     if isinstance(origin, FromLocal):
@@ -156,6 +169,18 @@ def choose_method(origin: Origin, python: str, prefix: str, run: Runner) -> Unio
     uv = run(("uv", "tool", "list"))
     if uv.status == 0 and _lists_wingbox(uv.output) and _runs_from(prefix, run, ("uv", "tool", "dir")):
         return Method("uv", ("uv", "tool", "upgrade", PACKAGE), ("uv", "tool", "run", "pip", "index", "versions", PACKAGE))
+    if not has_pip:
+        if run(("uv", "--version")).status == 0:
+            return Method(
+                "uv pip",
+                ("uv", "pip", "install", "--python", python, "--upgrade", PACKAGE),
+                ("uv", "pip", "install", "--python", python, "--dry-run", "--upgrade", "--reinstall-package", PACKAGE, PACKAGE),
+            )
+        return CannotUpdate(
+            "no-pip",
+            f"{python} -m ensurepip && {python} -m pip install --upgrade {PACKAGE}"
+            f" (or with uv: uv pip install --python {python} --upgrade {PACKAGE})",
+        )
     return Method(
         "pip",
         (python, "-m", "pip", "install", "--upgrade", PACKAGE),
@@ -176,7 +201,7 @@ def latest_version(method: Method, run: Runner) -> Union[str, Fact]:
     ran = run(method.latest)
     if ran.status != 0:
         return _failed(method.latest, ran)
-    found = _LATEST_LINE.search(ran.output)
+    found = (_UV_LATEST_LINE if method.name == "uv pip" else _LATEST_LINE).search(ran.output)
     if found is None:
         return make_fact("update-failed", reason=f"{' '.join(method.latest)} named no version of wingbox")
     return found.group(1)
@@ -187,7 +212,7 @@ def _refresh_target(entry: Installed) -> Fact:
 
 
 def update(options: Options, env: Environment) -> list[Fact]:
-    method = choose_method(env.origin, env.python, env.prefix, env.run)
+    method = choose_method(env.origin, env.python, env.prefix, env.run, env.has_pip)
     facts = [make_fact("update-from", env.installed_version)]
     if isinstance(method, CannotUpdate):
         return facts + [make_fact("update-failed", reason=method.reason, instead=method.instead)]

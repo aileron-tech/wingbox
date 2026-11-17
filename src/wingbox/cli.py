@@ -1543,6 +1543,7 @@ def _update_command(rest: list[str]) -> int:
         run=update.run_installer,
         new_version=lambda: update.read_new_version(python),
         refresh=lambda entry: update.refresh_installed(python, package_parent, entry),
+        has_pip=update.has_pip(),
     )
     facts = update.update(options, environment)
     warnings = update.old_layout_warnings(os.getcwd(), installed)
