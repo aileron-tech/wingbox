@@ -37,15 +37,51 @@ kw, kg = kf["wingbox"], kf["graphify"]
 
 add("# Wingbox, Graphify and CodeGraph on the same public tests")
 add("")
-add(f"Run of {versions['date']}. Wingbox {versions['wingbox']} from PyPI. Graphify {gf} from PyPI (`graphifyy`), "
-    "`GRAPHIFY_BACKEND=none` (no model, no key). Every number below is produced by the scripts in `tools/` "
+add(f"Wingbox {versions['wingbox']} from PyPI, run of {versions.get('wingbox_date', versions['date'])}. Graphify {gf} from PyPI (`graphifyy`), "
+    f"`GRAPHIFY_BACKEND=none` (no model, no key), run of {versions['date']}. Every number below is produced by the scripts in `tools/` "
     "from the files in `results/`; this file is written by `tools/make_report.py`, and `run.sh` reproduces tests A, B and C from nothing.")
 add("")
-add(f"CodeGraph {cgv} from npm (`@colbymchenry/codegraph`), run of {versions['codegraph_date']} on the same commits, questions, reference lists "
-    "and scoring; the Wingbox and Graphify figures are those of the first run.")
+add(f"CodeGraph {cgv} from npm (`@colbymchenry/codegraph`), run of {versions['codegraph_date']}. The three tools ran on the same commits, questions, "
+    "reference lists and scoring.")
 add("")
-add(f"Versions: Wingbox {versions['wingbox']}, Graphify {gf}, CodeGraph {cgv}. The Wingbox column is Wingbox {versions['wingbox']} as published on PyPI, "
-    "the version of the first run; later Wingbox releases are not measured here.")
+add(f"Versions: Wingbox {versions['wingbox']}, Graphify {gf}, CodeGraph {cgv}. Test E (build time on a hosted runner) is the only part still measured with "
+    "an earlier Wingbox; its version is named there.")
+add("")
+add("## Which tool for which job")
+add("")
+cg_rows = list(cg_cc.values())
+mean_of = lambda tool, rows: sum(row[tool]["tokens_chars_div_4"] for row in rows) / len(rows)
+edge = {name: load(f"fastapi.{key}.score.all.json") for name, key in (("w", "wb.dependency"), ("g", "gf.imports"), ("c", "cg.all"))}
+wrong_missing = lambda name: f"{len(edge[name]['tool_edges_not_in_code'])} wrong / {len(edge[name]['code_pairs_missing_either'])} missing"
+empty_q = [row["question"] for row in cg_rows if not row["codegraph"]["files_named"]]
+answered_q = {row["question"] for row in cg_rows if row["codegraph"]["files_named"]}
+cg_mean_answered = mean_of("codegraph", [row for row in cg_rows if row["question"] in answered_q])
+wb_mean_answered = mean_of("wingbox", [row for row in cc if row["question"] in answered_q])
+if agent:
+    asm = agent["summary"]
+    usd = {setup: asm[f"all_{setup}"]["cost_usd"] for setup in ("plain", "wb", "gf", "cg") if f"all_{setup}" in asm}
+    f1 = {setup: asm[f"all_{setup}"]["f1"] for setup in usd}
+    label = {"plain": "built-in search", "wb": "Wingbox", "gf": "Graphify", "cg": "CodeGraph"}
+    costliest = max(usd, key=usd.get)
+add(f"- Choose Wingbox for the exact list of files a change reaches: exact lists {exact_w} of {len(cc)} (Graphify {exact_g}, CodeGraph {exact_c}); "
+    f"FastAPI file edges {wrong_missing('w')} (Graphify {wrong_missing('g')}, CodeGraph {wrong_missing('c')})"
+    + (f"; agent cost {usd['wb']:.3f} USD per answer at F1 {f1['wb']:.3f} (Graphify {usd['gf']:.3f} at {f1['gf']:.3f}, CodeGraph {usd['cg']:.3f} at {f1['cg']:.3f}, "
+       f"built-in search {usd['plain']:.3f} at {f1['plain']:.3f})" if agent else "")
+    + ". Per its documentation it also draws an architecture map with layers and boundaries, and runs fully local.")
+add(f"- Where the others fall short for this job: `codegraph impact` named no file on {' and '.join(empty_q)} (Rust), and its file graph links imports to the "
+    f"files that define the names; `graphify affected` answers average {mean_of('graphify', cc) / mean_of('wingbox', cc):.1f} times the tokens of Wingbox's "
+    f"({num(round(mean_of('graphify', cc)))} against {num(round(mean_of('wingbox', cc)))})"
+    + (f", and {label[costliest]} costs the most per answer in the agent test ({usd[costliest]:.3f} USD)." if agent else "."))
+gf_mean_answered = mean_of("graphify", [row for row in cc if row["question"] in answered_q])
+shortest = cg_mean_answered < min(wb_mean_answered, gf_mean_answered)
+add("- What the others do better: " + (
+    f"CodeGraph's answers are the shortest where it answers ({num(round(cg_mean_answered))} tokens against {num(round(wb_mean_answered))} for Wingbox "
+    f"and {num(round(gf_mean_answered))} for Graphify on the same {len(answered_q)} questions). " if shortest else
+    f"where it answers, CodeGraph's answers average {num(round(cg_mean_answered))} tokens ({num(round(wb_mean_answered))} for Wingbox, "
+    f"{num(round(gf_mean_answered))} for Graphify, same {len(answered_q)} questions). ")
+    + "Per its documentation CodeGraph covers more languages "
+    "(Swift, Kotlin, C, C++, Dart, Lua and others), keeps its index in sync with file changes automatically and answers symbol and call-flow "
+    "questions; per its documentation Graphify also maps documents, PDFs, images and videos.")
 add("")
 add("## Summary")
 add("")
@@ -73,7 +109,8 @@ if os.path.exists(os.path.join(R, "build_times.json")):
     rows = load("build_times.json")["summary"]
     big = max(rows, key=lambda row: row["source_files"])
     ratios = [row["extract_to_build_wall_ratio"] for row in rows]
-    add(f"- Building the graph of {big['corpus']} ({big['source_files']:,} source files) takes Wingbox {big['wingbox_build_wall_s']:.1f} s and Graphify "
+    add(f"- Building the graph of {big['corpus']} ({big['source_files']:,} source files) takes Wingbox {big['wingbox_build_wall_s']:.1f} s "
+        f"({load('build_times.json')['versions']['wingbox']}) and Graphify "
         f"{big['graphify_extract_wall_s']:.1f} s on a hosted runner; over the five corpora Graphify's extract takes {min(ratios):.1f} to {max(ratios):.1f} times "
         f"as long as the whole Wingbox build (test E).")
 if os.path.exists(os.path.join(R, "build_times.same_machine.json")):
@@ -276,8 +313,9 @@ if agent:
         "Tokens: everything the model read and wrote, cache included. Seconds: wall clock of one trial while four run.")
     if "all_cg" in sm:
         add("")
-        add(f"The first three setups ran interleaved on {versions['date']}; the CodeGraph trials ran on {versions['codegraph_date']} with the same prompt, model and "
-            "limits, four CodeGraph trials at a time. Tokens and F1 compare directly; seconds less so, since the other trials running at the same time differ.")
+        add(f"Plain search and Graphify ran interleaved on {versions['date']}. The Wingbox {versions['wingbox']} trials ran on {versions.get('wingbox_date', versions['date'])} "
+            f"and the CodeGraph trials on {versions['codegraph_date']}, each setup on its own, four trials at a time, with the same prompt, model and limits. "
+            "Tokens, cost and F1 compare directly; seconds less so, since the other trials running at the same time differ.")
     add("")
     add("| Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | Seconds | USD per trial | Refused shell commands |")
     add("|---|---|---|---|---|---|---|---|---|")

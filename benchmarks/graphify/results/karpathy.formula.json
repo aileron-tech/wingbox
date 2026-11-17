@@ -44,11 +44,11 @@
  "wingbox": {
   "analyze_every_module": {
    "queries": 29,
-   "mean_tokens": 218,
-   "median_tokens": 135,
-   "max_tokens": 617,
-   "reduction_by_mean": 78.1,
-   "reduction_by_max": 27.5
+   "mean_tokens": 192,
+   "median_tokens": 132,
+   "max_tokens": 524,
+   "reduction_by_mean": 88.4,
+   "reduction_by_max": 32.4
   },
   "impact_every_file": {
    "queries": 29,
@@ -69,32 +69,32 @@
      "terms": [
       {
        "term": "entry",
-       "tokens": 79
+       "tokens": 76
       },
       {
        "term": "point",
-       "tokens": 79
+       "tokens": 76
       }
      ],
-     "answer_tokens": 158
+     "answer_tokens": 152
     },
     {
      "question": "what connects the data layer to the api",
      "terms": [
       {
        "term": "data",
-       "tokens": 83
+       "tokens": 80
       },
       {
        "term": "layer",
-       "tokens": 271
+       "tokens": 265
       }
      ],
-     "answer_tokens": 354
+     "answer_tokens": 345
     }
    ],
-   "mean_tokens": 256,
-   "reduction": 66.4
+   "mean_tokens": 248,
+   "reduction": 68.4
   },
   "published_questions": {
    "answered": 2,
@@ -105,28 +105,28 @@
      "terms": [
       {
        "term": "micrograd",
-       "tokens": 79
+       "tokens": 76
       },
       {
        "term": "nanogpt",
-       "tokens": 151
+       "tokens": 145
       }
      ],
-     "answer_tokens": 230
+     "answer_tokens": 221
     },
     {
      "question": "how does the attention mechanism work",
      "terms": [
       {
        "term": "attention",
-       "tokens": 617
+       "tokens": 481
       }
      ],
-     "answer_tokens": 617
+     "answer_tokens": 481
     }
    ],
-   "mean_tokens": 424,
-   "reduction": 40.1
+   "mean_tokens": 351,
+   "reduction": 48.4
   }
  }
 }

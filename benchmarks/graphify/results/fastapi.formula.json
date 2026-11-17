@@ -69,21 +69,21 @@
  "wingbox": {
   "analyze_every_module": {
    "queries": 1223,
-   "mean_tokens": 624,
-   "median_tokens": 476,
-   "max_tokens": 55131,
-   "reduction_by_mean": 687.5,
-   "reduction_by_max": 7.8
+   "mean_tokens": 527,
+   "median_tokens": 466,
+   "max_tokens": 8769,
+   "reduction_by_mean": 813.7,
+   "reduction_by_max": 48.9
   },
   "impact_every_file": {
    "queries": 1223,
-   "mean_tokens": 261,
+   "mean_tokens": 141,
    "median_tokens": 71,
-   "max_tokens": 27622,
-   "reduction_by_mean": 1645.1,
-   "reduction_by_max": 15.5
+   "max_tokens": 5255,
+   "reduction_by_mean": 3039.0,
+   "reduction_by_max": 81.6
   },
-  "whole_graph_file_tokens": 134343,
+  "whole_graph_file_tokens": 137154,
   "modules_without_analyze_answer": [],
   "default_questions": {
    "answered": 5,
@@ -94,70 +94,70 @@
      "terms": [
       {
        "term": "authentication",
-       "tokens": 107
+       "tokens": 104
       }
      ],
-     "answer_tokens": 107
+     "answer_tokens": 104
     },
     {
      "question": "what is the main entry point",
      "terms": [
       {
        "term": "main",
-       "tokens": 474
+       "tokens": 418
       },
       {
        "term": "entry",
-       "tokens": 92
+       "tokens": 89
       },
       {
        "term": "point",
-       "tokens": 455
+       "tokens": 447
       }
      ],
-     "answer_tokens": 1021
+     "answer_tokens": 954
     },
     {
      "question": "how are errors handled",
      "terms": [
       {
        "term": "errors",
-       "tokens": 539
+       "tokens": 531
       },
       {
        "term": "handled",
-       "tokens": 967
+       "tokens": 953
       }
      ],
-     "answer_tokens": 1506
+     "answer_tokens": 1484
     },
     {
      "question": "what connects the data layer to the api",
      "terms": [
       {
        "term": "data",
-       "tokens": 813
+       "tokens": 805
       },
       {
        "term": "api",
-       "tokens": 888
+       "tokens": 682
       }
      ],
-     "answer_tokens": 1701
+     "answer_tokens": 1487
     },
     {
      "question": "what are the core abstractions",
      "terms": [
       {
        "term": "core",
-       "tokens": 1054
+       "tokens": 756
       }
      ],
-     "answer_tokens": 1054
+     "answer_tokens": 756
     }
    ],
-   "mean_tokens": 1078,
-   "reduction": 397.9
+   "mean_tokens": 957,
+   "reduction": 448.2
   },
   "published_questions": {
    "answered": 3,
@@ -168,38 +168,38 @@
      "terms": [
       {
        "term": "memory",
-       "tokens": 80
+       "tokens": 77
       }
      ],
-     "answer_tokens": 80
+     "answer_tokens": 77
     },
     {
      "question": "what are the core abstractions",
      "terms": [
       {
        "term": "core",
-       "tokens": 1054
+       "tokens": 756
       }
      ],
-     "answer_tokens": 1054
+     "answer_tokens": 756
     },
     {
      "question": "how are errors handled",
      "terms": [
       {
        "term": "errors",
-       "tokens": 539
+       "tokens": 531
       },
       {
        "term": "handled",
-       "tokens": 967
+       "tokens": 953
       }
      ],
-     "answer_tokens": 1506
+     "answer_tokens": 1484
     }
    ],
-   "mean_tokens": 880,
-   "reduction": 487.4
+   "mean_tokens": 772,
+   "reduction": 555.3
   }
  }
 }

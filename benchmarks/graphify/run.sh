@@ -14,7 +14,7 @@ T=$HERE/tools
 W=${1:?usage: run.sh <work dir>}
 mkdir -p "$W"
 W=$(cd "$W" && pwd)
-WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.2.0}
+WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.5.1}
 GRAPHIFY_SPEC=graphifyy==0.9.110
 GRIMP_SPEC=grimp==3.20
 CODEGRAPH_SPEC=@colbymchenry/codegraph@1.6.2
@@ -162,6 +162,7 @@ step "report"
   echo "grimp $(uv pip freeze --python venv_ref/bin/python 2>/dev/null | sed -n 's/^grimp==//p')"
   echo "codegraph $(codegraph --version)"
   echo "codegraph_date $(date -u +%Y-%m-%d)"
+  echo "wingbox_date $(date -u +%Y-%m-%d)"
 } > out/versions.txt
 $PY "$T/make_report.py" out out/REPORT.md
 echo "Tests A, B and C of $W/out/REPORT.md are to be equal to benchmarks/graphify/README.md."

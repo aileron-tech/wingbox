@@ -1,19 +1,25 @@
 # Wingbox, Graphify and CodeGraph on the same public tests
 
-Run of 2026-11-16. Wingbox 0.2.0 from PyPI. Graphify 0.9.110 from PyPI (`graphifyy`), `GRAPHIFY_BACKEND=none` (no model, no key). Every number below is produced by the scripts in `tools/` from the files in `results/`; this file is written by `tools/make_report.py`, and `run.sh` reproduces tests A, B and C from nothing.
+Wingbox 0.5.1 from PyPI, run of 2026-11-17. Graphify 0.9.110 from PyPI (`graphifyy`), `GRAPHIFY_BACKEND=none` (no model, no key), run of 2026-11-16. Every number below is produced by the scripts in `tools/` from the files in `results/`; this file is written by `tools/make_report.py`, and `run.sh` reproduces tests A, B and C from nothing.
 
-CodeGraph 1.6.2 from npm (`@colbymchenry/codegraph`), run of 2026-11-17 on the same commits, questions, reference lists and scoring; the Wingbox and Graphify figures are those of the first run.
+CodeGraph 1.6.2 from npm (`@colbymchenry/codegraph`), run of 2026-11-17. The three tools ran on the same commits, questions, reference lists and scoring.
 
-Versions: Wingbox 0.2.0, Graphify 0.9.110, CodeGraph 1.6.2. The Wingbox column is Wingbox 0.2.0 as published on PyPI, the version of the first run; later Wingbox releases are not measured here.
+Versions: Wingbox 0.5.1, Graphify 0.9.110, CodeGraph 1.6.2. Test E (build time on a hosted runner) is the only part still measured with an earlier Wingbox; its version is named there.
+
+## Which tool for which job
+
+- Choose Wingbox for the exact list of files a change reaches: exact lists 5 of 5 (Graphify 1, CodeGraph 1); FastAPI file edges 0 wrong / 0 missing (Graphify 19 wrong / 16 missing, CodeGraph 106 wrong / 24 missing); agent cost 0.021 USD per answer at F1 1.000 (Graphify 0.095 at 0.997, CodeGraph 0.070 at 0.993, built-in search 0.075 at 0.999). Per its documentation it also draws an architecture map with layers and boundaries, and runs fully local.
+- Where the others fall short for this job: `codegraph impact` named no file on Q2 and Q3 (Rust), and its file graph links imports to the files that define the names; `graphify affected` answers average 9.5 times the tokens of Wingbox's (7,896 against 827), and Graphify costs the most per answer in the agent test (0.095 USD).
+- What the others do better: CodeGraph's answers are the shortest where it answers (1,000 tokens against 1,065 for Wingbox and 12,101 for Graphify on the same 3 questions). Per its documentation CodeGraph covers more languages (Swift, Kotlin, C, C++, Dart, Lua and others), keeps its index in sync with file changes automatically and answers symbol and call-flow questions; per its documentation Graphify also maps documents, PDFs, images and videos.
 
 ## Summary
 
-- Graphify's "71.5x fewer tokens per query" is the size of the whole corpus divided by the size of one graph answer. No answer is checked. On the code of its own example corpus Graphify publishes 8.8x; Graphify 0.9.110 gives 3.5x and 5.0x today, and the same formula gives Wingbox 78.1x (test A).
+- Graphify's "71.5x fewer tokens per query" is the size of the whole corpus divided by the size of one graph answer. No answer is checked. On the code of its own example corpus Graphify publishes 8.8x; Graphify 0.9.110 gives 3.5x and 5.0x today, and the same formula gives Wingbox 88.4x (test A).
 - Asked which files depend on a file, `wingbox impact` names the exact list in 5 of 5 questions, `graphify affected` in 1 of 5, `codegraph impact` in 1 of 5 (test C).
 - File-to-file edges of FastAPI against its 1,801 import pairs, a link to the file that defines an imported name counted as right: Wingbox 0 wrong and 0 missing, Graphify 19 and 16, CodeGraph 106 and 24 (test B).
-- A coding agent answers the same questions correctly in all three setups. It spends 25,598 tokens with Wingbox, 59,367 with its built-in search alone and 109,071 with Graphify: Wingbox -57 % against plain search, Graphify +84 % (test D).
+- A coding agent answers the same questions correctly in all three setups. It spends 23,768 tokens with Wingbox, 59,367 with its built-in search alone and 109,071 with Graphify: Wingbox -60 % against plain search, Graphify +84 % (test D).
 - With CodeGraph the agent spends 81,151 tokens (F1 0.993): -26 % against Graphify, +37 % against plain search (test D).
-- Building the graph of fastapi (1,227 source files) takes Wingbox 2.2 s and Graphify 17.9 s on a hosted runner; over the five corpora Graphify's extract takes 3.5 to 19.2 times as long as the whole Wingbox build (test E).
+- Building the graph of fastapi (1,227 source files) takes Wingbox 2.2 s (wingbox 0.2.0) and Graphify 17.9 s on a hosted runner; over the five corpora Graphify's extract takes 3.5 to 19.2 times as long as the whole Wingbox build (test E).
 
 ## What Graphify publishes in its repository
 
@@ -38,13 +44,13 @@ Corpus: the code of karpathy/nanoGPT, minGPT and micrograd: 29 Python files, 12,
 | Graphify, published in `worked/karpathy-repos/review.md` (code only) | not stated | ~1,929 | 8.8x |
 | Graphify 0.9.110, its five default questions, corpus counted by its own word counter | 1 of 5 | 4,909 | 3.5x |
 | Graphify 0.9.110, the five questions of its review | 2 of 5 | 3,413 | 5.0x |
-| Wingbox `analyze`, every module of the corpus | 29 of 29 | 218 | 78.1x |
+| Wingbox `analyze`, every module of the corpus | 29 of 29 | 192 | 88.4x |
 | Wingbox `impact <file> 2`, every file of the corpus | 29 of 29 | 66 | 259.2x |
-| Wingbox, the five questions of Graphify's review, one `quick <keyword>` per keyword | 2 of 5 | 424 | 40.1x |
+| Wingbox, the five questions of Graphify's review, one `quick <keyword>` per keyword | 2 of 5 | 351 | 48.4x |
 
 The literal command `graphify benchmark`, run in the corpus folder after `graphify extract . --code-only`, estimates the corpus from the node count and prints 3.3x (`results/graphify_benchmark_literal.txt`).
 
-Wingbox takes a module or a keyword, not a sentence, so its main row is every module of the corpus instead of five sentences. Largest single `analyze` answer: 617 tokens (27.5x). The whole Wingbox graph file is 1,834 tokens.
+Wingbox takes a module or a keyword, not a sentence, so its main row is every module of the corpus instead of five sentences. Largest single `analyze` answer: 524 tokens (32.4x). The whole Wingbox graph file is 1,834 tokens.
 
 Graphify's published graph of the full corpus (`worked/karpathy-repos/graph.json`) holds 177 nodes and 246 links; its review states 285 and 340. Graphify 0.9.110 run on that file with the published 92,616 words and five questions gives 45.0x with 2 of 5 questions matched (published: 71.5x). Papers and images are outside Wingbox, so the full-corpus row has no Wingbox counterpart.
 
@@ -53,9 +59,9 @@ Same formula on FastAPI (1,223 Python files, 321,676 words, 428,901 tokens):
 | Tool and query set | Queries answered | Mean answer, tokens | Largest answer, tokens | Reduction |
 |---|---|---|---|---|
 | Graphify 0.9.110, five default questions | 5 of 5 | 1,369 | 1,634 | 313.3x |
-| Wingbox `analyze`, every module | 1,223 of 1,223 | 624 | 55,131 | 687.5x |
-| Wingbox `impact <file> 2`, every file | 1,223 of 1,223 | 261 | 27,622 | 1645.1x |
-| Wingbox, Graphify's five default questions by keyword | 5 of 5 | 1,078 | | 397.9x |
+| Wingbox `analyze`, every module | 1,223 of 1,223 | 527 | 8,769 | 813.7x |
+| Wingbox `impact <file> 2`, every file | 1,223 of 1,223 | 141 | 5,255 | 3039.0x |
+| Wingbox, Graphify's five default questions by keyword | 5 of 5 | 957 | | 448.2x |
 
 ## Test B. Are the edges in the code?
 
@@ -116,29 +122,29 @@ Exact list: Wingbox 5 of 5, Graphify 1 of 5, CodeGraph 1 of 5. `graphify affecte
 
 Claude Code, headless, model alias `sonnet` (claude-sonnet-5-5), no user settings, skills or connectors. Four setups: built-in search only; search plus the `wingbox` command; search plus the `graphify` command; search plus the `codegraph` command. Graphs are built beforehand. The prompt names the tool's impact command in one sentence of the same shape for every tool (`tools/agent_test.py`). 3 repeats per question and setup, four trials at a time. Score: F1 of the answer list against the reference list. Tokens: everything the model read and wrote, cache included. Seconds: wall clock of one trial while four run.
 
-The first three setups ran interleaved on 2026-11-16; the CodeGraph trials ran on 2026-11-17 with the same prompt, model and limits, four CodeGraph trials at a time. Tokens and F1 compare directly; seconds less so, since the other trials running at the same time differ.
+Plain search and Graphify ran interleaved on 2026-11-16. The Wingbox 0.5.1 trials ran on 2026-11-17 and the CodeGraph trials on 2026-11-17, each setup on its own, four trials at a time, with the same prompt, model and limits. Tokens, cost and F1 compare directly; seconds less so, since the other trials running at the same time differ.
 
 | Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | Seconds | USD per trial | Refused shell commands |
 |---|---|---|---|---|---|---|---|---|
 | Plain search (Read, Grep, Glob) | 15 | 0.999 | 0.984 | 59,367 | 5.2 | 25.2 | 0.075 | 1 |
-| Wingbox | 15 | 1.000 | 1.000 | 25,598 | 2.5 | 11.2 | 0.016 | 3 |
+| Wingbox | 15 | 1.000 | 1.000 | 23,768 | 2.3 | 9.9 | 0.021 | 0 |
 | Graphify | 15 | 0.997 | 0.975 | 109,071 | 7.8 | 34.9 | 0.095 | 12 |
 | CodeGraph | 15 | 0.993 | 0.912 | 81,151 | 6.2 | 27.0 | 0.070 | 11 |
 
-- Wingbox against Graphify: tokens -77 %, time -68 %, cost -83 %.
-- Wingbox against plain search: tokens -57 %, time -56 %, cost -79 %.
+- Wingbox against Graphify: tokens -78 %, time -72 %, cost -78 %.
+- Wingbox against plain search: tokens -60 %, time -61 %, cost -72 %.
 - Graphify against plain search: tokens +84 %, time +39 %, cost +27 %.
-- CodeGraph against plain search: tokens +37 %, cost -7 %; against Graphify: tokens -26 %, cost -26 %; Wingbox against CodeGraph: tokens -68 %, cost -77 %.
+- CodeGraph against plain search: tokens +37 %, cost -7 %; against Graphify: tokens -26 %, cost -26 %; Wingbox against CodeGraph: tokens -71 %, cost -70 %.
 
 | Question | Plain: F1 / tokens / s | Wingbox: F1 / tokens / s | Graphify: F1 / tokens / s | CodeGraph: F1 / tokens / s |
 |---|---|---|---|---|
-| Q1 (chrome-devtools-mcp, 30 files) | 0.995 / 39,364 / 16.8 | 1.000 / 26,416 / 11.4 | 1.000 / 83,439 / 26.1 | 1.000 / 31,575 / 10.7 |
-| Q2 (agent-browser, 30 files) | 1.000 / 69,193 / 25.5 | 1.000 / 24,274 / 9.8 | 1.000 / 158,897 / 40.4 | 1.000 / 81,990 / 24.4 |
-| Q3 (claudes-c-compiler, 31 files) | 1.000 / 63,529 / 26.2 | 1.000 / 19,832 / 10.5 | 1.000 / 81,091 / 33.0 | 1.000 / 90,432 / 28.9 |
-| Q4 (fastapi, 29 files) | 1.000 / 57,892 / 26.4 | 1.000 / 19,181 / 8.1 | 1.000 / 65,159 / 25.8 | 0.971 / 106,160 / 37.2 |
-| Q5 (fastapi, 99 files) | 1.000 / 66,858 / 31.1 | 1.000 / 38,287 / 16.0 | 0.983 / 156,768 / 49.1 | 0.995 / 95,597 / 34.0 |
+| Q1 (chrome-devtools-mcp, 30 files) | 0.995 / 39,364 / 16.8 | 1.000 / 26,403 / 7.6 | 1.000 / 83,439 / 26.1 | 1.000 / 31,575 / 10.7 |
+| Q2 (agent-browser, 30 files) | 1.000 / 69,193 / 25.5 | 1.000 / 24,259 / 7.5 | 1.000 / 158,897 / 40.4 | 1.000 / 81,990 / 24.4 |
+| Q3 (claudes-c-compiler, 31 files) | 1.000 / 63,529 / 26.2 | 1.000 / 19,988 / 9.2 | 1.000 / 81,091 / 33.0 | 1.000 / 90,432 / 28.9 |
+| Q4 (fastapi, 29 files) | 1.000 / 57,892 / 26.4 | 1.000 / 28,656 / 11.1 | 1.000 / 65,159 / 25.8 | 0.971 / 106,160 / 37.2 |
+| Q5 (fastapi, 99 files) | 1.000 / 66,858 / 31.1 | 1.000 / 19,535 / 14.3 | 0.983 / 156,768 / 49.1 | 0.995 / 95,597 / 34.0 |
 
-Every trial with its answer list is in `results/agent_summary.json`. The 60 trials cost 3.84 USD in total.
+Every trial with its answer list is in `results/agent_summary.json`. The 60 trials cost 3.91 USD in total.
 
 ## Test E. Building the graph
 
@@ -179,7 +185,7 @@ The three tools are built for different questions. Tests B and C ask one questio
 
 | Item | Version or commit |
 |---|---|
-| Wingbox | 0.2.0 (PyPI `wingbox`) |
+| Wingbox | 0.5.1 (PyPI `wingbox`) |
 | Graphify | 0.9.110 (PyPI `graphifyy`); repository read at commit 18cd78f |
 | CodeGraph | 1.6.2 (npm `@colbymchenry/codegraph`) |
 | grimp | 3.20 |

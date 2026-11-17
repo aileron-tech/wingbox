@@ -25,7 +25,9 @@
   lists and scoring: the impact command, every file-to-file edge against the
   import statements, the agent test, and a new build-time test of the three
   tools on one machine, cold and after a one-line edit. `run.sh` installs
-  CodeGraph from npm; the Wingbox and Graphify figures are unchanged.
+  CodeGraph from npm. The Wingbox column is measured with 0.5.1 and `run.sh`
+  pins it; the report opens with "Which tool for which job" and explains in
+  "Why the numbers differ" how each tool's design produces its numbers.
 
 ## 0.5.0 - 2026-11-17
 
