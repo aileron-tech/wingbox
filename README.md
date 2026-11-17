@@ -1,5 +1,7 @@
 # Wingbox: Code Graph and Blast Radius Analysis for AI Coding Agents
 
+<!-- mcp-name: io.github.aileron-tech/wingbox -->
+
 ![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
 > **Give your coding agent a map of your codebase. Half the cost, no missed files.**
@@ -7,7 +9,8 @@
 > Your agent sees every file a change touches before it edits, so it no longer
 > forgets a fix. Half the cost of its own search: [benchmarks](benchmarks/impact/README.md).
 >
-> Wingbox builds a local **code graph** of your repository so that AI coding
+> Wingbox builds a local **code graph** (a code knowledge graph made by static
+> parsing, with no model) of your repository so that AI coding
 > agents and developers can see dependencies, call flows, architecture
 > boundaries and the **blast radius** of a change before editing code.
 > It works as an agent skill in Claude Code, Codex, Gemini CLI, Cursor and

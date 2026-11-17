@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.aileron-tech/wingbox",
+  "title": "Wingbox",
+  "description": "Local code graph: what a change breaks, who uses a symbol, architecture layers. No model.",
+  "version": "0.6.1",
+  "websiteUrl": "https://wingbox.dev",
+  "repository": {
+    "url": "https://github.com/aileron-tech/wingbox",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "wingbox",
+      "version": "0.6.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

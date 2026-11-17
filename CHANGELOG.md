@@ -2,6 +2,12 @@
 
 ## 0.6.1 - 2026-11-17
 
+### Changes
+
+- The MCP server can be listed in the MCP Registry: `server.json` at the root
+  names the PyPI package and starts it with `wingbox mcp`, and the README
+  carries the ownership line the registry checks.
+
 ### Fixes
 
 - `wingbox boundaries` no longer prints `boundaries-ok` for parts that were not
