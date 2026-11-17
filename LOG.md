@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-17 - boundaries says which parts it did not check
+
+### Changes
+- `scripts/code_graph_search.py`: `not_checked_parts` (parts with files and no rule that was read or determined: declared-rules-not-read, style-undetermined, no-layer-style, too-few-files) and `not_checked_text`; `cmd_boundaries` prints `boundaries-not-checked` first, `boundaries-partial` instead of `boundaries-ok`, and returns the exit status (2 not checked because declared rules were not read, 1 violation, capability violation or pattern break, 0 otherwise); `advice_items` gives such parts the same reason.
+- `scripts/architecture/facts.py`: `(arch-declared-unread <part> <file> :reason ...)` for every rule file of a part that was not read.
+- `src/wingbox/overview.py`: REPORT.md names the parts that were not checked in Key findings and in Boundary violations; `src/wingbox/cli.py`: `wingbox advice` prints `not checked: part . - declared rules not read (...)`.
+- Docs: README, SKILL.md, references/sexp-notation.md (facts and exit status).
+- Tests: REQ-BCOV-001..006 (`tests/test_boundaries_coverage.py`); REQ-CLI-012 now expects not-checked for an undetermined part instead of ok.
+- Why: on dirac (its own checker reports 73 violations), kopf and marumie, whose rule files 0.6.0 does not read, `boundaries` printed `(boundaries-ok :checked N)`: a false pass for audit evidence.
+
 ## 2026-11-17 - init names the next step instead of "edit it"
 
 ### Changes

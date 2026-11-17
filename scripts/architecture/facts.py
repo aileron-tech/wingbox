@@ -5,6 +5,7 @@
   (arch-rank <part> <layer> <rank>)                                  ; higher may import lower
   (arch-target <part> <layer> <folder> [:block <id>] :present <folder> | :proposed :source <citation>)
   (arch-known <part> <source module> <target module> <file>)       ; listed in the project's own baseline
+  (arch-declared-unread <part> <file> :reason <why>)               ; a rule file of the part that was not read
   (arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix <text>])
   (arch-pattern <part> <pattern>)                                    ; a pattern check of the style
   (capability <module> <capability> :line <n> :evidence <text> [:suspect])
@@ -98,6 +99,8 @@ def graph_architecture(
             severity = " :severity candidate" if deny.severity == "candidate" else ""
             fix = f" :fix {q(deny.fix)}" if deny.fix else ""
             lines.append(f"(arch-deny {q(part.path)} {deny.source} {deny.target} {q(deny.reason)}{severity}{fix})")
+        for item in part.declared.not_read if part.declared is not None else ():
+            lines.append(f"(arch-declared-unread {q(part.path)} {q(item.file)} :reason {q(item.reason)})")
         for rule in part_capability_rules(part, library):
             allowed = f" :allowed ({' '.join(rule.allowed_in)})" if rule.allowed_in else ""
             forbidden = f" :forbidden ({' '.join(rule.forbidden_in)})" if rule.forbidden_in else ""

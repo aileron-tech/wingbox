@@ -223,7 +223,7 @@ class WingboxBuildArchitectureTest(unittest.TestCase):
         self.assertIn("layered: folder routes/ -\\u003e api", page)
 
     def test_build_follows_the_config_and_an_undetermined_part_has_no_violations(self) -> None:
-        """/* REQ-CLI-012: with .wingbox/config.yaml, build takes styles and folders from it (match config); a part marked undetermined gets no layers from folder rules and no boundary violations. */"""
+        """/* REQ-CLI-012: with .wingbox/config.yaml, build takes styles and folders from it (match config); a part marked undetermined gets no layers from folder rules and no boundary violations, and boundaries says it was not checked instead of ok. */"""
         config = self.root / ".wingbox" / "config.yaml"
         config.parent.mkdir()
         config.write_text("parts:\n  .:\n    style: layered\n    layers:\n      api: [models]\n", encoding="utf-8")
@@ -233,7 +233,9 @@ class WingboxBuildArchitectureTest(unittest.TestCase):
         self.assertIn('(arch-part "." :style layered :state configured :origin config', graph)
         config.write_text("parts:\n  .:\n    style: undetermined\n", encoding="utf-8")
         self.assertEqual(0, _run(["build", str(self.root)])[0])
-        self.assertIn("(boundaries-ok :checked", self._boundaries())
+        boundaries = self._boundaries()
+        self.assertIn("(boundaries-not-checked :part . :reason style-undetermined", boundaries)
+        self.assertNotIn("(boundaries-ok", boundaries)
         self.assertNotRegex((self.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8"), r"\(layer \S+ (api|domain) ")
 
     def test_recommendations_reach_the_report_the_map_analyze_impact_and_init(self) -> None:

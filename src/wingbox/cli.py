@@ -318,7 +318,12 @@ def _advice_command(args: list[str], cwd: str) -> int:
         for part, why in quiet:
             print(f"(advice-none {q(part)} :reason {q(why)})")
     elif quiet:
-        print(f"no advice for {len(quiet)} parts without a determined style: {', '.join(part for part, _ in quiet)}")
+        unchecked = [(part, why) for part, why in quiet if why.startswith("not checked: ")]
+        for part, why in unchecked:
+            print(f"not checked: part {part} - {why[len('not checked: '):]}")
+        others = [part for part, why in quiet if not why.startswith("not checked: ")]
+        if others:
+            print(f"no advice for {len(others)} parts without a determined style: {', '.join(others)}")
     return 0
 
 

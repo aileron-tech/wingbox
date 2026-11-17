@@ -942,6 +942,14 @@ Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 dependent files, nearest first; add `--all` for every file. `boundaries` reports
 an import of TypeScript types only apart from the violations: the compiler
 erases it, but a change of the type still reaches the importing file.
+`boundaries` prints `boundaries-ok` only when every part with files was
+checked. A part whose own rule files were not read (or without a determined
+style) comes first as `(boundaries-not-checked :part . :reason
+declared-rules-not-read :files (.dependency-cruiser.js) :files-in-part 1177)`,
+and `(boundaries-partial :checked N :not-checked M)` replaces `ok`. Exit
+status: 2 when a part's declared rules were not read, 1 when a violation was
+found, 0 otherwise; REPORT.md, `wingbox advice` and the MCP `boundaries` tool
+say the same.
 
 Pass `--map` and `--root` (see [Running the scripts from a clone](#running-the-scripts-from-a-clone))
 when the graph is outside the current directory and its parents.

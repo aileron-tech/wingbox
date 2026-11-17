@@ -387,7 +387,18 @@ counts, then each file with its `line:col` and kind. Kinds: `import`,
 (violation-known <src> <tgt> ... :known "<baseline file>" "<reason>")
 (boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587)
 (boundaries-ok :checked 3587)
+(boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files [:files (<rule file> ...)] :files-in-part <n>)
+(boundaries-partial :checked <n> :not-checked <m>)
 ```
+
+`boundaries-ok` is printed only when every part with files was checked against
+rules that were read or determined. A part whose declared rules were not read,
+whose style is undetermined, that has no layer style or too few files to judge
+is listed first as `boundaries-not-checked`, and `boundaries-partial` replaces
+`boundaries-ok` (it follows `boundaries-summary` when there are violations).
+Exit status: 2 when a part's declared rules were not read (that part was not
+checked), else 1 when a violation, a capability violation or a pattern break
+was found, else 0.
 
 `violation`: both layers come from rules. `violation-known`: the same, but the
 pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`

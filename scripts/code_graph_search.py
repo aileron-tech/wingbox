@@ -498,6 +498,7 @@ class CodeGraph:
         self.arch_patterns: dict[str, set[str]] = {}          # part -> pattern checks of its style
         self.capabilities: dict[str, list[CapabilityFact]] = {}   # module -> what its file does
         self.capability_known: dict[tuple[str, str], str] = {}    # (module, capability) -> baseline file
+        self.declared_unread: dict[str, list[str]] = {}   # part -> its rule files that were not read
         self._root: str = ""
 
     def load(self, path: str, root: Optional[str] = None, focus: Optional[str] = None) -> MapLoadResult:
@@ -536,6 +537,7 @@ class CodeGraph:
         self.arch_patterns = {}
         self.capabilities = {}
         self.capability_known = {}
+        self.declared_unread = {}
         self._root = os.path.abspath(root if root is not None else project_root_of(path))
         try:
             with open(path, "r", encoding="utf-8") as code_graph:
@@ -728,6 +730,8 @@ class CodeGraph:
                 self.capabilities.setdefault(_resolve(tokens[1]), []).append(CapabilityFact(
                     tokens[2], int(values.get("line", "0") or 0), values.get("evidence", ""), ":suspect" in tokens,
                 ))
+            elif kind == "arch-declared-unread" and len(tokens) >= 3:
+                self.declared_unread.setdefault(tokens[1], []).append(tokens[2])
             elif kind == "capability-known" and len(tokens) >= 5:
                 self.capability_known[(_resolve(tokens[2]), tokens[3])] = tokens[4]
             elif kind == "layer" and len(tokens) >= 3:
@@ -2288,12 +2292,13 @@ def pattern_violations(g: CodeGraph, scope_mods: set[str]) -> list[PatternBreak]
     return found
 
 
-def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> None:
-    """The capability and pattern facts of `boundaries`, and their summary; nothing when there is none."""
+def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> int:
+    """The capability and pattern facts of `boundaries`, and their summary; nothing when there is none.
+    Returns 1 when a capability violation or a pattern break was found, else 0."""
     breaks = capability_violations(g, scope_mods)
     patterns = pattern_violations(g, scope_mods)
     if not breaks and not patterns:
-        return
+        return 0
     counts = {"capability-violation": 0, "capability-violation-known": 0, "capability-candidate": 0}
     for item in breaks:
         fact = "capability-candidate" if item.severity == "candidate" else (
@@ -2317,6 +2322,7 @@ def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> None:
         f"(capability-summary :violations {counts['capability-violation']} :known {counts['capability-violation-known']} "
         f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {len(scope_mods)})"
     )
+    return 1 if counts["capability-violation"] or patterns else 0
 
 
 def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
@@ -2327,7 +2333,57 @@ def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
     )
 
 
-def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
+@dataclass(frozen=True)
+class NotChecked:
+    """A part with files that no rule checked: saying ok for it would be a false pass."""
+
+    part: str
+    reason: str               # declared-rules-not-read | style-undetermined | no-layer-style | too-few-files
+    files: tuple[str, ...]    # the rule files that were not read
+    count: int                # files (modules) of the part in the scope
+
+
+_NOT_CHECKED_WORDS = {
+    "declared-rules-not-read": "declared rules not read",
+    "style-undetermined": "style not determined",
+    "no-layer-style": "no layer style",
+    "too-few-files": "too few files to judge a style",
+}
+
+
+def not_checked_text(item: NotChecked, code: str = "") -> str:
+    """The reason in words, with the rule files when there are some: declared rules not read (.dependency-cruiser.js)."""
+    files = ", ".join(f"{code}{name}{code}" for name in item.files)
+    return _NOT_CHECKED_WORDS.get(item.reason, item.reason) + (f" ({files})" if files else "")
+
+
+def not_checked_parts(g: CodeGraph, scope_mods: set[str]) -> list[NotChecked]:
+    """The parts of the scope that hold files and have no rule that was read or determined."""
+    if not g.arch_parts:
+        _default_labels(g)
+    counts: dict[str, int] = {}
+    for module in scope_mods:
+        part = module_label(g, module).part
+        counts[part] = counts.get(part, 0) + 1
+    found: list[NotChecked] = []
+    for part, count in sorted(counts.items()):
+        values = g.arch_parts.get(part)
+        if values is None or g.arch_denies.get(part):
+            continue
+        style, state = values.get("style", "-"), values.get("state", "")
+        if style == "declared":
+            reason = "declared-rules-not-read"
+        elif style == "undetermined":
+            reason = "style-undetermined"
+        elif state == "not-judged":
+            reason = "too-few-files"
+        else:
+            reason = "no-layer-style"
+        found.append(NotChecked(part, reason, tuple(sorted(g.declared_unread.get(part, []))), count))
+    return found
+
+
+def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
     """Check the boundary rules of the style of each part (or of the rules the part declares).
 
     A pair is a violation when both layers come from rules (folders, file
@@ -2346,11 +2402,19 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
         scope_mods = set(matches)
 
     violations = boundary_violations(g, scope_mods)
+    unchecked = not_checked_parts(g, scope_mods)
+    for item in unchecked:
+        files = f" :files ({' '.join(_q(name) for name in item.files)})" if item.files else ""
+        print(f"(boundaries-not-checked :part {_q(item.part)} :reason {item.reason}{files} :files-in-part {item.count})")
+    not_checked = sum(item.count for item in unchecked)
+    coverage = (f"(boundaries-partial :checked {len(scope_mods) - not_checked} :not-checked {not_checked})"
+                if unchecked else "")
+    # Exit 2: a part whose own rules were not read was not checked; 1: a violation; 0 otherwise.
+    status = 2 if any(item.reason == "declared-rules-not-read" for item in unchecked) else 0
 
     if not violations:
-        print(f"(boundaries-ok :checked {len(scope_mods)})")
-        print_capability_findings(g, scope_mods)
-        return
+        print(coverage or f"(boundaries-ok :checked {len(scope_mods)})")
+        return max(status, print_capability_findings(g, scope_mods))
     pairs: dict[str, set[tuple[str, str]]] = {
         "violation": set(), "violation-known": set(), "violation-type-only": set(), "violation-candidate": set(),
     }
@@ -2375,7 +2439,10 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> None:
         f":type-only {len(pairs['violation-type-only'])} "
         f":candidates {len(pairs['violation-candidate'])} :checked {len(scope_mods)})"
     )
-    print_capability_findings(g, scope_mods)
+    if coverage:
+        print(coverage)
+    capability_status = print_capability_findings(g, scope_mods)
+    return status or (1 if pairs["violation"] else capability_status)
 
 
 def cmd_layers(g: CodeGraph) -> None:
@@ -2466,6 +2533,10 @@ def advice_items(g: CodeGraph) -> tuple[tuple, tuple]:
         if not block:
             layer_folders.setdefault(part, {}).setdefault(layer, in_repo(part, present or folder))
     advice, quiet = _advice.advise(parts, modules, dependents, dependencies, violations, targets, layer_folders)
+    # A part no rule checked says so in the same words as `boundaries`.
+    unchecked = {item.part: item for item in not_checked_parts(g, set(g.nodes))}
+    quiet = tuple((part, f"not checked: {not_checked_text(unchecked[part])}" if part in unchecked else why)
+                  for part, why in quiet)
     g.advice_cache = (tuple(advice) + _capability_advice(g), quiet)
     return g.advice_cache
 
@@ -3749,7 +3820,7 @@ def main(args: Optional[list[str]] = None) -> int:
         cmd_search(g, args[1], sexp_path)
     elif cmd == "boundaries":
         target = args[1] if len(args) >= 2 else "all"
-        cmd_boundaries(g, target)
+        return cmd_boundaries(g, target) or 0
     elif cmd == "layers":
         cmd_layers(g)
     elif cmd == "invariants":
