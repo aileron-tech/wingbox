@@ -24,3 +24,12 @@ What is being built next. Items move to the [Changelog](CHANGELOG.md) when they 
 - **Failed queries say so:** a query that could not finish is marked as failed, so it never reads as "nothing depends on this".
 - **A size limit on answers:** long answers stop at a fixed size and the rest goes to a file in `.wingbox/`, with the path in the answer.
 - **A graph of uncommitted changes:** the working tree's edits as a separate layer over the committed graph, so impact can be asked for what is not committed yet.
+
+## Site and reach
+
+So that people who search for this kind of tool can find it. In this order:
+
+- **Directories:** list Wingbox where MCP servers, agent skills and Claude Code plugins are looked up: the official MCP Registry, mcpservers.org, Glama, PulseMCP, the Claude plugin directories and the curated lists of MCP servers and Claude Code tools.
+- **A page per question on wingbox.dev:** one page per integration (Claude Code, Codex, Cursor, MCP), per task (blast radius of a change, find usages, architecture rules, monorepos) and per language, each with a real example and the measured numbers; the term people search for, code knowledge graph, used where it applies.
+- **Comparisons kept current:** the public comparison with other code-graph tools rerun on new versions, and offered to the lists and comparison sites that cover this category.
+- **Articles:** the benchmark method and results written up where developers read (DEV Community, Hacker News), with the scripts to reproduce them.
