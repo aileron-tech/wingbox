@@ -224,12 +224,25 @@ class TerminalTest(ListTestCase):
         self.assertEqual(("git-hook",), self.recorded().without)
 
 
+def _cleanup_when_released(tmp: tempfile.TemporaryDirectory) -> None:
+    """Remove the folder once the background refresh has exited: on Windows its log stays open until the process ends."""
+    deadline = time.monotonic() + 60
+    while True:
+        try:
+            tmp.cleanup()
+            return
+        except PermissionError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.5)
+
+
 class RefreshHooksTest(unittest.TestCase):
     """The session-start hook and the hook after a Bash call, as Claude Code runs them."""
 
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
+        self.addCleanup(_cleanup_when_released, tmp)
         self.root = Path(os.path.realpath(tmp.name)) / "project"
         (self.root / "shop").mkdir(parents=True)
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
