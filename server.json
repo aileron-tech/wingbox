@@ -3,7 +3,7 @@
   "name": "io.github.aileron-tech/wingbox",
   "title": "Wingbox",
   "description": "Local code graph: what a change breaks, who uses a symbol, architecture layers. No model.",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "websiteUrl": "https://wingbox.dev",
   "repository": {
     "url": "https://github.com/aileron-tech/wingbox",
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "wingbox",
-      "version": "0.9.1",
+      "version": "0.10.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-17 - Version 0.10.0: Rust item edges through module facades
+
+### Changes
+- `scripts/lang/rust/imports.py::resolve_named_imports` (the parked branch rust-reexport-names, rebased): a name imported through a module facade also gives an import edge to the file that defines it, marked `:item` (`:item :candidate` for a glob import whose body names the item, alone or as a path head); the facade edge stays. A use path that starts at a module alias (`use crate::m; use m::Name;`) is followed, and a descendant that glob-imports an ancestor sees the ancestor's private imports. `scripts/build_code_graph.py` adds these edges per module and counts the names it could not follow in the build log. Rust entities record `private` (`scripts/lang/interface.py`, `scripts/lang/rust/parser.py`), and a module reached through a re-export must make the item visible (found on a replay: a private `fn parse_rfc3339_to_unix_ms` in one child shadowed the pub(crate) one in another); cache schema 3 -> 4. Tests REQ-RUST-020 to 030 (chains through two facades, glob, renamed and crate-visible re-exports, items of the facade itself, names not followed, private items, alias-led paths, path heads, private imports of a parent, determinism), REQ-FRESH-040 and 044 (one changed Rust file: `wingbox build` equals a full build; two full builds are byte-identical). REQ-RUST-015 changed with the requirement: a use through a glob facade now also imports the defining file (it asserted the opposite).
+- Checks: the graphs of FastAPI, karpathy, chrome-devtools-mcp and immich (server) are byte-identical between 0.9.0 and this version; the usages benchmark's 100 Wingbox rows are unchanged. The Rust benchmark numbers move (impact edge test, Rust impact questions, comparison Q3); they are regenerated on the branches rust-numbers (published reference) and rust-reference-definers (a reference that follows items to their definers) for the maintainer to decide.
+- Version 0.10.0 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`; the `:item` edge in the S-expression notation reference, the edge model and the README language table.
+
+### Motivation
+- The maintainer's decision of 2026-11-17: fix the Rust facade edges, test first; 0.10.0 because the impact answers for Rust change materially.
+
 ## 2026-11-17 - Version 0.9.1: Homebrew installs, and a Python reference that counts modules loaded by name
 
 ### Changes

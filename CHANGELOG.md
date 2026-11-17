@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.0 - 2026-11-17
+
+The answers of `wingbox impact` for Rust change: a file that uses an item through a module facade now
+depends on the file that defines the item.
+
+### Changes
+
+- Rust: a file that names an item through a module facade (`use crate::domain::ForkContext` where
+  `src/domain/mod.rs` has `pub use types::*`) now also depends on the file that defines the item, an
+  import edge marked `:item`; the edge to the facade stays. Chains of facades, renamed re-exports
+  (`pub use child::Name as Alias`), `pub(crate)` re-exports, a use path that starts at a module brought
+  in by an earlier `use`, and items reached through a glob import whose body names them, alone or as
+  the head of a path (`Handler::new()`), are followed (`:item :candidate`); a child that glob-imports
+  its parent (`use super::*`) also reaches what the parent imports privately. A private item is never
+  carried by a glob re-export. An item defined in the facade itself, or made by a macro, behind
+  `#[path]` or `cfg`, stays on the facade (the build log counts those). `wingbox impact` on a Rust file
+  therefore lists the files that use its items, not only the facade: on claudes-c-compiler,
+  `src/backend/x86/assembler/encoder/registers.rs` goes from 1 direct dependent (the facade) to 7.
+- The cache format changes (Rust items record whether they are private): the first build after the
+  upgrade parses every file again.
+
 ## 0.9.1 - 2026-11-17
 
 ### Fixes
