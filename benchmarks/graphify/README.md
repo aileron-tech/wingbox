@@ -63,9 +63,9 @@ Same formula on FastAPI (1,223 Python files, 321,676 words, 428,901 tokens):
 | Tool and query set | Queries answered | Mean answer, tokens | Largest answer, tokens | Reduction |
 |---|---|---|---|---|
 | Graphify 0.9.110, five default questions | 5 of 5 | 1,369 | 1,634 | 313.3x |
-| Wingbox `analyze`, every module | 1,223 of 1,223 | 527 | 8,769 | 813.7x |
-| Wingbox `impact <file> 2`, every file | 1,223 of 1,223 | 141 | 5,255 | 3039.0x |
-| Wingbox, Graphify's five default questions by keyword | 5 of 5 | 957 | | 448.2x |
+| Wingbox `analyze`, every module | 1,223 of 1,223 | 542 | 8,863 | 790.8x |
+| Wingbox `impact <file> 2`, every file | 1,223 of 1,223 | 154 | 6,536 | 2778.7x |
+| Wingbox, Graphify's five default questions by keyword | 5 of 5 | 1,023 | | 419.3x |
 
 ## Test B. Are the edges in the code?
 

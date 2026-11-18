@@ -69,21 +69,21 @@
  "wingbox": {
   "analyze_every_module": {
    "queries": 1223,
-   "mean_tokens": 527,
-   "median_tokens": 466,
-   "max_tokens": 8769,
-   "reduction_by_mean": 813.7,
-   "reduction_by_max": 48.9
+   "mean_tokens": 542,
+   "median_tokens": 478,
+   "max_tokens": 8863,
+   "reduction_by_mean": 790.8,
+   "reduction_by_max": 48.4
   },
   "impact_every_file": {
    "queries": 1223,
-   "mean_tokens": 141,
+   "mean_tokens": 154,
    "median_tokens": 71,
-   "max_tokens": 5255,
-   "reduction_by_mean": 3039.0,
-   "reduction_by_max": 81.6
+   "max_tokens": 6536,
+   "reduction_by_mean": 2778.7,
+   "reduction_by_max": 65.6
   },
-  "whole_graph_file_tokens": 137154,
+  "whole_graph_file_tokens": 206923,
   "modules_without_analyze_answer": [],
   "default_questions": {
    "answered": 5,
@@ -104,7 +104,7 @@
      "terms": [
       {
        "term": "main",
-       "tokens": 418
+       "tokens": 428
       },
       {
        "term": "entry",
@@ -112,52 +112,56 @@
       },
       {
        "term": "point",
-       "tokens": 447
+       "tokens": 468
       }
      ],
-     "answer_tokens": 954
+     "answer_tokens": 985
     },
     {
      "question": "how are errors handled",
      "terms": [
       {
        "term": "errors",
-       "tokens": 531
+       "tokens": 552
       },
       {
        "term": "handled",
-       "tokens": 953
+       "tokens": 992
       }
      ],
-     "answer_tokens": 1484
+     "answer_tokens": 1544
     },
     {
      "question": "what connects the data layer to the api",
      "terms": [
       {
        "term": "data",
-       "tokens": 805
+       "tokens": 826
+      },
+      {
+       "term": "layer",
+       "tokens": 197
       },
       {
        "term": "api",
-       "tokens": 682
+       "tokens": 692
       }
      ],
-     "answer_tokens": 1487
+     "answer_tokens": 1715
     },
     {
      "question": "what are the core abstractions",
      "terms": [
       {
        "term": "core",
-       "tokens": 756
+       "tokens": 766
       }
      ],
-     "answer_tokens": 756
+     "answer_tokens": 766
     }
    ],
-   "mean_tokens": 957,
-   "reduction": 448.2
+   "mean_tokens": 1023,
+   "reduction": 419.3
   },
   "published_questions": {
    "answered": 3,
@@ -178,28 +182,28 @@
      "terms": [
       {
        "term": "core",
-       "tokens": 756
+       "tokens": 766
       }
      ],
-     "answer_tokens": 756
+     "answer_tokens": 766
     },
     {
      "question": "how are errors handled",
      "terms": [
       {
        "term": "errors",
-       "tokens": 531
+       "tokens": 552
       },
       {
        "term": "handled",
-       "tokens": 953
+       "tokens": 992
       }
      ],
-     "answer_tokens": 1484
+     "answer_tokens": 1544
     }
    ],
-   "mean_tokens": 772,
-   "reduction": 555.3
+   "mean_tokens": 796,
+   "reduction": 539.0
   }
  }
 }
