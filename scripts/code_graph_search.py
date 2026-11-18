@@ -81,6 +81,7 @@ if __package__:
     from .architecture.plan import PartPlan, layer_folders
     from .architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from .architecture.words import levenshtein as _levenshtein
+    from . import layer_guess as _layer_guess
     from . import portable
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -91,6 +92,7 @@ else:
     from architecture.plan import PartPlan, layer_folders
     from architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from architecture.words import levenshtein as _levenshtein
+    import layer_guess as _layer_guess
     import portable
 
 MAP_SCHEMA_VERSION = 1
@@ -571,6 +573,7 @@ class CodeGraph:
         self.arch_ranks: dict[str, dict[str, int]] = {}         # part -> layer -> rank
         self.arch_targets: list[tuple[str, str, str, str, bool, str, str]] = []   # part, layer, block, folder, proposed, present, source
         self.advice_cache: Optional[tuple] = None
+        self._layer_guesses: Optional[dict[str, str]] = None   # purpose -> layer the build stored, read on first need
         self.labels: dict[str, "ModuleLabel"] = {}   # module -> layer label written by the build
         self.known: dict[tuple[str, str], str] = {}   # (source, target) -> baseline file of the project
         self.arch_capabilities: dict[str, dict[str, CapabilityRuleFact]] = {}   # part -> capability -> rule
@@ -611,6 +614,7 @@ class CodeGraph:
         self.arch_ranks = {}
         self.arch_targets = []
         self.advice_cache = None
+        self._layer_guesses = None
         self.labels = {}
         self.known = {}
         self.arch_capabilities = {}
@@ -1059,6 +1063,15 @@ class CodeGraph:
         node = self.nodes.get(module_id)
         return node.purpose if node else ""
 
+    def layer_guess(self, purpose: str) -> str:
+        """The layer the purpose of a module suggests. The build stored it for every purpose of the graph
+        (.wingbox/cache.layer-guess.json, read once, at the first guess asked for); a purpose that file does
+        not hold is matched here, with the same result."""
+        if self._layer_guesses is None:
+            self._layer_guesses = _stored_layer_guesses(self._root)
+        stored = self._layer_guesses.get(purpose)
+        return stored if stored is not None else _classify_layer_by_purpose(purpose)
+
     def module_lang(self, module_id: str) -> str:
         """Return the language of a module ('py', 'ts', 'tsx'). Empty if unknown."""
         node = self.nodes.get(module_id)
@@ -1128,100 +1141,10 @@ def _walk_rdeps(
 # Layer classifier + boundary rules
 # ---------------------------------------------------------------------------
 
-_PURPOSE_TO_LAYER: dict[str, str] = {
-    # Domain layer
-    "domain logic": "domain",
-    "domain entity": "domain",
-    "data model": "domain",
-    "data transfer object": "domain",
-    "schema": "domain",
-    "enum definitions": "domain",
-    "policy": "domain",
-    "value object": "domain",
-    "aggregate root": "domain",
-    "domain event": "domain",
-    "Specification pattern": "domain",
-    # Infrastructure layer
-    "infrastructure adapter": "infra",
-    "database migration": "infra",
-    "database seed": "infra",
-    "repository": "infra",
-    "adapter": "infra",
-    "gateway": "infra",
-    "client": "infra",
-    "connector": "infra",
-    "scheduler": "infra",
-    "worker": "infra",
-    "Unit of Work": "infra",
-    "Identity Map": "infra",
-    "Proxy pattern": "infra",
-    "SDK": "infra",
-    "API client": "infra",
-    # API layer
-    "API layer": "api",
-    "API controller": "api",
-    "router": "api",
-    "access guard": "api",
-    "middleware": "api",
-    "interceptor": "api",
-    "validation pipe": "api",
-    "resolver": "api",
-    # Service layer
-    "service": "service",
-    "application service": "service",
-    "mailer": "service",
-    "event handler": "service",
-    "handler": "service",
-    "event listener": "service",
-    "processor": "service",
-    "provider": "service",
-    "registry": "service",
-    "agent": "service",
-    "manager": "service",
-    "subscriber": "service",
-    "dispatcher": "service",
-    "emitter": "service",
-    "Facade pattern": "service",
-    "Mediator pattern": "service",
-    "Observer pattern": "service",
-    "Command pattern": "service",
-    "Chain of Responsibility": "service",
-    "Memento pattern": "service",
-    # Config layer
-    "NestJS wiring module": "config",
-    "NestJS injectable": "config",
-    "configuration": "config",
-    "application entry point": "config",
-    "application bootstrap": "config",
-    "module entry point": "config",
-    # UI layer
-    "UI component": "ui",
-    "page/route": "ui",
-    "React hook": "ui",
-    "state store": "other",
-    # Test layer
-    "test": "test",
-    "test fixture": "test",
-    "test mock": "test",
-    # Shared layer
-    "shared utilities": "shared",
-    "utility helpers": "shared",
-    "constants": "shared",
-    "type definitions": "shared",
-    "interface definitions": "shared",
-    "decorator": "shared",
-    "data mapper": "shared",
-    "barrel re-exports": "shared",
-    "plugin": "shared",
-    "Factory pattern": "shared",
-    "Builder pattern": "shared",
-    "Strategy pattern": "shared",
-    "Singleton pattern": "shared",
-    "Composite pattern": "shared",
-    "Visitor pattern": "shared",
-    "Iterator pattern": "shared",
-    "Decorator pattern": "shared",
-}
+# The keyword table and the matching live in layer_guess.py, which the builder shares: it stores the guess of
+# every purpose of a graph next to it (CodeGraph.layer_guess reads that file). The names below stay: the
+# matching runs here with this module's _within, so its comparisons can be counted where they are asked for.
+_PURPOSE_TO_LAYER: dict[str, str] = _layer_guess.PURPOSE_TO_LAYER
 
 
 def _within(word: str, keyword: str, threshold: int) -> int:
@@ -1233,42 +1156,24 @@ def _within(word: str, keyword: str, threshold: int) -> int:
 
 @functools.lru_cache(maxsize=None)
 def _classify_layer_by_purpose(purpose: str) -> str:
-    """Classify layer from the module's purpose string using fuzzy matching.
+    """Classify layer from the module's purpose string using fuzzy matching (layer_guess.classify):
+    exact match, then substring, then Levenshtein distance on individual words. What a query runs
+    for a purpose the stored guesses of its graph do not hold."""
+    return _layer_guess.classify(purpose, _within)
 
-    Tries exact match, then substring, then Levenshtein distance on
-    individual words from the purpose against the keyword map.
-    """
-    if not purpose or purpose == "general module":
-        return "other"
-    pl = purpose.lower()
-    # 1. Exact match
-    for key, layer in _PURPOSE_TO_LAYER.items():
-        if key.lower() == pl:
-            return layer
-    # 2. Substring match
-    for key, layer in _PURPOSE_TO_LAYER.items():
-        if key.lower() in pl:
-            return layer
-    # 3. Fuzzy word match: split purpose into words, compare each word
-    #    against keywords from the map using Levenshtein distance.
-    #    Threshold: distance <= 2 for words >= 5 chars, <= 1 for shorter.
-    purpose_words = re.split(r"[\s;,/]+", pl)
-    best_layer = "other"
-    best_dist = 999
-    for key, layer in _PURPOSE_TO_LAYER.items():
-        key_words = key.lower().split()
-        for kw in key_words:
-            if len(kw) < 4:
-                continue  # skip short keywords (api, ui, dto) -- too ambiguous for fuzzy
-            threshold = 2 if len(kw) >= 5 else 1
-            for pw in purpose_words:
-                if len(pw) < 4:
-                    continue
-                dist = _within(pw, kw, threshold)
-                if dist <= threshold and dist < best_dist:
-                    best_dist = dist
-                    best_layer = layer
-    return best_layer
+
+def _stored_layer_guesses(root: str) -> dict[str, str]:
+    """purpose -> layer from .wingbox/cache.layer-guess.json of the project; {} when the file is missing,
+    unreadable, not such a file or written for another keyword table or matching. Never an error: the
+    file is a cache of _classify_layer_by_purpose, and a query without it gives the same answer."""
+    if not root:
+        return {}
+    try:
+        with open(os.path.join(root, WINGBOX_DIRECTORY, _layer_guess.FILE_NAME), "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except (OSError, ValueError):   # ValueError: bytes that are not UTF-8
+        return {}
+    return _layer_guess.parse(text)
 
 
 # ---------------------------------------------------------------------------
@@ -1608,7 +1513,7 @@ def module_label(g: CodeGraph, module_id: str) -> ModuleLabel:
         return _package_label(g, module_id, label)
     if label.layer == "other" and g.arch_parts.get(label.part, {}).get("style") in _ROLE_GUESS_STYLES:
         purpose = g.module_purpose(module_id)
-        guess = _classify_layer_by_purpose(purpose) if purpose else "other"
+        guess = g.layer_guess(purpose) if purpose else "other"
         if g.module_lang(module_id) == "dart" and purpose.lower() == "state store":
             # A Dart state store (bloc, cubit, notifier) is application state; a JS store may be a UI concern.
             guess = "service"
