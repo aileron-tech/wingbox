@@ -632,8 +632,9 @@ def _server_info() -> dict[str, str]:
 
 def _instructions(root: str) -> str:
     return (
-        f"Wingbox answers questions about the code graph of {root}. Call impact before editing a file, "
-        "analyze or quick to understand a module, boundary for the files to read. "
+        f"Wingbox answers questions about the code graph of {root}. Call impact before editing a file: it lists "
+        "what the change reaches and the files to read first. Call module to understand a module or find a feature, "
+        "usages for every use of one function or type. "
         "If a tool says the graph is missing, call build first; call build again after large edits."
     )
 

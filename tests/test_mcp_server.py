@@ -215,8 +215,8 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse(deps["isError"], deps)
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
 
-    def test_analyze_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
-        """/* REQ-MCP-020: after `build`, the `analyze` tool prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
+    def test_module_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
+        """/* REQ-MCP-020: after `build`, the `module` tool (the `analyze` command) prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
         _make_shop(self.root)
         shop = self.root / "shop"
         (shop / "forms.py").write_text(
@@ -230,8 +230,8 @@ class McpProtocolTest(unittest.TestCase):
             [
                 _initialize(),
                 _call(2, "build", {}),
-                _call(3, "analyze", {"module": "shop/api"}),
-                _call(4, "analyze", {"module": "shop/report"}),
+                _call(3, "module", {"module": "shop/api"}),
+                _call(4, "module", {"module": "shop/report"}),
             ],
         )
         self.assertFalse(session.reply(2)["result"]["isError"], session.reply(2))

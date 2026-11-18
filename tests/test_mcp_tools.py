@@ -2,6 +2,7 @@
 neighbours apart."""
 from __future__ import annotations
 
+import re
 import subprocess
 import tempfile
 import unittest
@@ -27,7 +28,7 @@ class ToolListTest(unittest.TestCase):
         self.root = Path(tmpdir.name).resolve()
 
     def test_the_server_offers_eleven_tools_named_after_their_answers(self) -> None:
-        """/* REQ-MCP-020: `tools/list` offers exactly eleven tools (within the 3 to 15 a tool directory grades
+        """/* REQ-MCP-029: `tools/list` offers exactly eleven tools (within the 3 to 15 a tool directory grades
         best), in this order: build, impact, module, definitions, usages, dependencies, calls, layers,
         boundaries, changes, query. Every name is one lowercase word; no name is a prefix of another or shares
         its first six letters with another; the names of the merged and removed tools are gone. */"""
@@ -42,6 +43,15 @@ class ToolListTest(unittest.TestCase):
             for second in names:
                 if first != second:
                     self.assertNotEqual(first[:6], second[:6], (first, second))
+
+    def test_the_instructions_name_only_tools_that_exist(self) -> None:
+        """/* REQ-MCP-030: the instructions the server gives at `initialize` and `server/discover` name tools of
+        the current list only: no merged or removed tool name is left in them, and they name impact, module,
+        usages and build. */"""
+        instructions = McpSession(self.root, [_initialize()]).reply(1)["result"]["instructions"]
+        words = set(re.findall(r"[a-z_]+", instructions))
+        self.assertEqual(set(), words & set(REMOVED))
+        self.assertLessEqual({"impact", "module", "usages", "build"}, words)
 
     def test_every_description_says_when_to_take_a_neighbour(self) -> None:
         """/* REQ-MCP-021: the description of every tool that has a neighbour names it: it says for which question

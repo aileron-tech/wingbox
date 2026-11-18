@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- The MCP server has eleven tools instead of eighteen, each named after its answer: `build`,
+  `impact`, `module`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`,
+  `changes`, `query`. **An MCP client that calls a tool by its old name must use the new one**:
+  `analyze` and `quick` are `module`; `find_function`, `find_type` and `entity` are `definitions`
+  (`kind`: any, function, type); `deps` and `rdeps` are `dependencies` (`direction`: out, in);
+  `find_callers`, `find_calls` and `find_callchain` are `calls` (`direction`: in, out; `to`);
+  `diff_functions` is `changes`; `boundary` is gone, `impact` lists the files to read first. Every description says what the answer holds and
+  when to take the neighbouring tool, and every parameter is described. The `wingbox` command
+  keeps its command names.
+
 ## 0.12.0 - 2026-11-18
 
 ### Changes
