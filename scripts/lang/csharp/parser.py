@@ -12,6 +12,7 @@ from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
+from .validation import validation_evidence
 
 
 _CSHARP_LANGUAGE = _TreeSitterLanguage(_tsc.language())
@@ -255,6 +256,12 @@ def parse_csharp_treesitter(
     bases = unique_strings(
         base for entity in entities for base in entity.bases
     )
+    validation = validation_evidence(
+        root,
+        content,
+        frozenset(using.target for using in usings if using.alias is None and not using.is_static),
+        {using.alias: using.target for using in usings if using.alias is not None},
+    )
     return FileResult(
         path=path,
         language="csharp",
@@ -267,11 +274,9 @@ def parse_csharp_treesitter(
         extends=bases,
         purpose=infer_purpose(path, content, "csharp", entity_payloads),
         naming_convention=detect_naming(path),
-        has_validation=bool(re.search(
-            r"\[(?:Required|Validate|Validation)|FluentValidation|ValidationAttribute",
-            content,
-        )),
+        has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[entity.name for entity in entities],
+        validation_evidence=validation,
     )

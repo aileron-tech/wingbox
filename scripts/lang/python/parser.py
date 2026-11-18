@@ -17,24 +17,11 @@ from .dynamic import find_module_loads, find_registry_calls
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .symbols import module_bindings, module_variables, use_sites
+from .validation import validation_evidence
 
 
 PY_ABC_RE = re.compile(r"""class\s+\w+\s*\(.*(?:ABC|ABCMeta|Protocol).*\)""")
 
-
-def _detect_validation(content: str) -> bool:
-    head = content[:4096]
-    if re.search(
-        r"pydantic|BaseModel|validator|field_validator|Annotated\[|attrs|@attr",
-        head,
-    ):
-        return True
-    if re.search(r"@dataclass", head) and re.search(
-        r"frozen\s*=\s*True|def\s+__post_init__|:\s*(?:str|int|float|bool|list|dict|Optional)",
-        head,
-    ):
-        return True
-    return bool(re.search(r"TypedDict|NamedTuple", head))
 
 def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult:
     imports: list[str] = []
@@ -49,6 +36,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     uses: list[UsePayload] = []
     module_loads: list[ModuleLoadPayload] = []
     registry_calls: list[RegistryCallPayload] = []
+    validation = ""
 
     try:
         tree = ast.parse(content, filename=path)
@@ -150,6 +138,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         )
         bindings = module_bindings(tree)
         uses = _use_sites(tree, path, entities, variables, bindings, full=False)
+        validation = validation_evidence(tree, bindings)
 
     except SyntaxError as error:
         print(
@@ -178,7 +167,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         implements=implements, extends=extends,
         purpose=infer_purpose(path, content, "python", [e.to_dict() for e in entities]),
         naming_convention=detect_naming(path),
-        has_validation=_detect_validation(content),
+        has_validation=bool(validation),
         entities=[e.to_dict() for e in (*entities, *variables)],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
@@ -186,6 +175,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         uses=uses,
         module_loads=module_loads,
         registry_calls=registry_calls,
+        validation_evidence=validation,
     )
 
 

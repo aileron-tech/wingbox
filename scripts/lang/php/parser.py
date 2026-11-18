@@ -8,7 +8,6 @@ file system except ``file_hash``.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 
 import tree_sitter_php as _tsphp
@@ -19,6 +18,7 @@ from ..interface import Entity, FileResult, ImportedName, SourceRelationPayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
+from .validation import validation_evidence
 
 
 _PHP_LANGUAGE = _TreeSitterLanguage(_tsphp.language_php())
@@ -66,13 +66,6 @@ _ASSOCIATION_NAMES = (
     "morphedByMany",
 )
 _ASSOCIATIONS = frozenset(name.casefold() for name in _ASSOCIATION_NAMES)
-_VALIDATION_RE = re.compile(
-    r"\$request\s*->\s*validate\s*\("
-    r"|Validator\s*::\s*make\s*\("
-    r"|\bFormRequest\b"
-    r"|#\[\s*(?:\\?[A-Za-z_][A-Za-z0-9_]*\\)*Validate\b",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -703,7 +696,9 @@ def parse_php_treesitter(
         seen_imports.add(target)
         imports.append(target)
 
-    for alias, fqcn in _collect_uses(root):
+    uses = _collect_uses(root)
+    validation = validation_evidence(root, content, uses)
+    for alias, fqcn in uses:
         add_import(f"php-class:{fqcn}")
         imported_names.append(ImportedName(
             local_name=alias,
@@ -738,11 +733,12 @@ def parse_php_treesitter(
         ),
         purpose=infer_purpose(path, content, "php", entity_payloads),
         naming_convention=detect_naming(path),
-        has_validation=bool(_VALIDATION_RE.search(content)),
+        has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[info.declaration.name for info in declarations],
         relations=relations,
+        validation_evidence=validation,
     )
 
 

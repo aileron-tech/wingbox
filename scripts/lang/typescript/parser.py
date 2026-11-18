@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 import tree_sitter_typescript as _tst
 from tree_sitter import Language as _TsLanguage
 from tree_sitter import Node, Parser as _TsParser
@@ -11,6 +9,7 @@ from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .javascript import is_javascript_file
 from .symbols import module_bindings, module_names, use_sites
+from .validation import validation_evidence
 
 
 _TS_LANG = _TsLanguage(_tst.language_typescript())
@@ -22,12 +21,6 @@ def _node_text(node: Node | None) -> str:
         return ""
     return node.text.decode("utf-8")
 
-
-def _detect_validation(content: str) -> bool:
-    return bool(re.search(
-        r"\.safeParse|\.parse\(|zod\.|z\.|Joi\.|yup\.|ajv|validateSchema",
-        content[:4096],
-    ))
 
 def _ts_get_decorators(node) -> list[str]:  # type: ignore[no-untyped-def]
     """Extract @Decorator names from a node's preceding decorator nodes."""
@@ -527,6 +520,7 @@ def parse_typescript_treesitter(
                 exported_names.append(name)
 
     bindings = module_bindings(root)
+    validation = validation_evidence(root, bindings, lang)
     file_lang = "tsx" if path.endswith(".tsx") else "typescript"
     if is_javascript:
         file_lang = "javascript"
@@ -537,11 +531,12 @@ def parse_typescript_treesitter(
         implements=implements_list, extends=extends_list,
         purpose=infer_purpose(path, content, "typescript", [e.to_dict() for e in entities]),
         naming_convention=detect_naming(path),
-        has_validation=_detect_validation(content),
+        has_validation=bool(validation),
         entities=[e.to_dict() for e in entities],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
         import_forms=_ts_import_forms(root),
         bindings=bindings,
         uses=_use_sites(root, bindings, lang, full=False),
+        validation_evidence=validation,
     )

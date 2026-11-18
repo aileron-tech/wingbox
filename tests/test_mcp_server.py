@@ -234,6 +234,37 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse(deps["isError"], deps)
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
 
+    def test_analyze_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
+        """/* REQ-MCP-020: after `build`, the `analyze` tool prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
+        _make_shop(self.root)
+        shop = self.root / "shop"
+        (shop / "forms.py").write_text(
+            "from pydantic import BaseModel\n\n\nclass Order(BaseModel):\n    total: int\n", encoding="utf-8"
+        )
+        (shop / "notes.py").write_text("# BaseModel, pydantic, validator\nLIMIT = 1\n", encoding="utf-8")
+        (shop / "api.py").write_text("from shop.forms import Order\n\n\ndef read(raw):\n    return Order(**raw)\n", encoding="utf-8")
+        (shop / "report.py").write_text("from shop.notes import LIMIT\n\n\ndef top():\n    return LIMIT\n", encoding="utf-8")
+        session = McpSession(
+            self.root,
+            [
+                _initialize(),
+                _call(2, "build", {}),
+                _call(3, "analyze", {"module": "shop/api"}),
+                _call(4, "analyze", {"module": "shop/report"}),
+            ],
+        )
+        self.assertFalse(session.reply(2)["result"]["isError"], session.reply(2))
+        with_model = _texts(session.reply(3))[0]
+        without = _texts(session.reply(4))[0]
+        self.assertIn(
+            '(analyze-dataflow shop/api shop/forms :lang py :validation-module :evidence "base pydantic.BaseModel")',
+            with_model.splitlines(),
+        )
+        self.assertIn("(analyze shop/report ", without)
+        self.assertNotIn("analyze-dataflow", without)
+        self.assertNotIn(":validated", with_model + without)
+        self.assertNotIn(":validated", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
+
     def test_usages_returns_the_text_answer(self) -> None:
         """/* REQ-MCP-011: the `usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
         _make_shop(self.root)

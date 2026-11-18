@@ -47,8 +47,10 @@ Edge Types
 - ``imports`` -- module imports module. ``:via-base`` if target exports
   abstract types.
 - ``calls-api`` -- implements/extends abstract type. ``:via-ifc``.
-- ``data-flow`` -- data flows to validation module. ``:validated``; or to the
-  next step of a configured pipeline, ``:pipeline``.
+- ``data-flow`` -- the target is a validation module: its syntax tree defines a
+  validator, named after the mark, ``:validation-module :evidence "<kind>
+  <name>"`` (the importer is not shown to call it); or the target is the next
+  step of a configured pipeline, ``:pipeline``.
 - ``registry-wires`` -- module loads module by a name read from a configuration
   file beside it (Python ``importlib``). ``:config <path>``.
 - ``refs`` -- entity-level cross-file reference (``Module::Entity``).
@@ -281,7 +283,7 @@ def prepare_wingbox_directory(root: str) -> None:
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
 # 3: Python results carry module_loads and registry_calls.
-CACHE_SCHEMA_VERSION = 5  # 5: Rust results record impl blocks and type aliases (type_members)
+CACHE_SCHEMA_VERSION = 6  # 6: validation is read from the syntax tree and stored with its evidence
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -800,6 +802,8 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
         return Err("cache result field mtime must be numeric")
     if not isinstance(raw_result.get("has_validation"), bool):
         return Err("cache result field has_validation must be boolean")
+    if not isinstance(raw_result.get("validation_evidence", ""), str):
+        return Err("cache result field validation_evidence must be a string")
     list_fields = (
         "imports",
         "exports_abstract",
@@ -1523,7 +1527,8 @@ def _module_facts(
         target_id = bound_language.resolve_import(imp, r.path)
         if target_id and target_id != node_id:
             target_r = id_to_result.get(target_id)
-            if target_r and target_r.has_validation:
+            # The mark states what the target's syntax tree holds; without evidence there is no fact.
+            if target_r and target_r.has_validation and target_r.validation_evidence:
                 edge_key = (node_id, target_id, "DATA_FLOWS_TO")
                 if edge_key not in seen_edges:
                     seen_edges.add(edge_key)
@@ -1532,7 +1537,7 @@ def _module_facts(
                             "source": node_id,
                             "target": target_id,
                             "type": "DATA_FLOWS_TO",
-                            "validated": True,
+                            "validation_evidence": target_r.validation_evidence,
                         }
                     )
 
@@ -3546,7 +3551,8 @@ def render_sexp(
             lsp = " :lsp" if edge.get("lsp_verified") else ""
             lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
         elif etype == "DATA_FLOWS_TO":
-            flags = " :validated" if edge.get("validated") else ""
+            evidence = edge.get("validation_evidence", "")
+            flags = f' :validation-module :evidence "{_sexp_escape(evidence)}"' if evidence else ""
             if edge.get("pipeline"):
                 flags += " :pipeline"
             lines.append(f"(data-flow {src} {tgt}{flags})")
@@ -4142,6 +4148,7 @@ def _serialize_file_result(result: FileResult) -> dict:
             "uses": result.uses,
             "module_loads": result.module_loads,
             "registry_calls": result.registry_calls,
+            "validation_evidence": result.validation_evidence,
         },
     }
 

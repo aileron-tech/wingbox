@@ -8,6 +8,7 @@ from ..interface import Entity, EntityPayload, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from ..treesitter import node_text, unique_strings
+from .validation import validation_evidence
 
 
 # tree-sitter-dart node types (package tree-sitter-dart 0.1.0). A class, a
@@ -574,6 +575,7 @@ def parse_dart_treesitter(
             *_exported_names(root, directives),
         ]
     ))
+    validation = validation_evidence(root, content)
     return FileResult(
         path=path,
         language="dart",
@@ -597,10 +599,11 @@ def parse_dart_treesitter(
             [entity for entity in entity_payloads if entity["kind"] != "type"],
         ),
         naming_convention=detect_naming(path),
-        has_validation=_has_validation(content),
+        has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=exported_names,
+        validation_evidence=validation,
     )
 
 
@@ -656,16 +659,6 @@ def _implemented_types(node) -> list:
             if child.type == "type_identifier" and child not in seen:
                 seen.append(child)
     return seen
-
-
-def _has_validation(content: str) -> bool:
-    """True for a file that declares a validator, a form, or a validator rule."""
-    return bool(re.search(
-        r"\bFormState\b|\bTextFormField\b|\bvalidator\s*:"
-        r"|\bInputFormatter\b|\bRegisterValidators\b"
-        r"|\bYupValidator\b|\bFieldValidator\b",
-        content,
-    ))
 
 
 __all__ = ["DartDirective", "parse_dart_treesitter"]

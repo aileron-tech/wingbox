@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 import tree_sitter_ruby as _tsruby
 from tree_sitter import Language as _TreeSitterLanguage
 from tree_sitter import Node, Parser
@@ -10,6 +8,7 @@ from ..interface import Entity, FileResult, ImportedName, SourceRelationPayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from ..treesitter import node_text, unique_strings
+from .validation import validation_evidence
 
 
 _RUBY_LANGUAGE = _TreeSitterLanguage(_tsruby.language())
@@ -432,6 +431,7 @@ def parse_ruby_treesitter(
         if entity.kind == "class"
         for base in entity.bases
     ))
+    validation = validation_evidence(root, content)
     return FileResult(
         path=path,
         language="ruby",
@@ -444,13 +444,10 @@ def parse_ruby_treesitter(
         extends=bases,
         purpose=infer_purpose(path, content, "ruby", entity_payloads),
         naming_convention=detect_naming(path),
-        has_validation=bool(re.search(
-            r"^\s*(?:validates|validate)\b",
-            content,
-            re.MULTILINE,
-        )),
+        has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=exported_names,
         relations=relations,
+        validation_evidence=validation,
     )

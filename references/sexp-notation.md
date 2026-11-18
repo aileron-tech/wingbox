@@ -18,7 +18,7 @@ or `rb`.
 (enm <mod> <name> <line> :eid <uuid>)
 (imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp] [(:use|:reexport|:glob|:member|:macro ...)])
 (calls-api <src> <tgt> :via-ifc [:lsp])
-(data-flow <src> <tgt> [:validated] [:pipeline])
+(data-flow <src> <tgt> [:validation-module :evidence "<kind> <name>"] [:pipeline])
 (registry-wires <src> <tgt> [:config <path>])
 (refs <src> <tgt>::<Entity> [:callback] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
@@ -37,6 +37,22 @@ re-exports, `(:glob "super" A)` names used after `use super::*`,
 `(:macro m)` an exported macro. A member named through a type path (`Type::member`,
 `Self::member`) gives the same edge to the file whose inherent `impl` block of
 the type defines the member.
+
+`data-flow ... :validation-module`: `<src>` imports `<tgt>`, and the syntax tree
+of `<tgt>` defines a validator. `:evidence` is what was found there, the first
+in the file: `base pydantic.BaseModel`, `decorator pydantic.field_validator`,
+`call z.object from zod`, `tag validate` (Go struct tag), `annotation
+jakarta.validation.constraints.NotNull`, `attribute Required with using
+System.ComponentModel.DataAnnotations`, `call validates in User` (Ruby),
+`base Illuminate\\Foundation\\Http\\FormRequest` (PHP; a quoted value writes a
+backslash twice), `argument validator of TextFormField` (Dart). The name is one the file binds by an import of the
+validation library, or writes in full; `with import` and `with using` name a
+wildcard import or a using directive that stands beside the bare name. Ruby
+and Dart bind no names, so their evidence is the construct alone. A comment, a
+string, an unused import and a type-only declaration (`TypedDict`,
+`NamedTuple`, a dataclass) give no mark. The mark says nothing about `<src>`:
+it is not shown to call the validator. Graphs written up to 0.11.0 carry
+`:validated` instead, set from a text match; it is read as no mark.
 
 Modules loaded at run time (Python):
 
@@ -314,7 +330,7 @@ method call is not guessed: `unresolved` counts them per module.
 (analyze <mod> :lang py "<purpose>" :file <path>)
 (cls <mod> <Name> <line> :lang py (:bases A) (:deco D) (:methods m1 m2))
 (analyze-import <mod> <tgt> :lang ts :file <path>)
-(analyze-dataflow <mod> <tgt> :lang py :validated)
+(analyze-dataflow <mod> <tgt> :lang py [:validation-module :evidence "<kind> <name>"])
 (refs <src> <tgt>::<Entity>)
 (analyze-dependent <mod> <src> :lang tsx :via imports refs :file <path>)
 (analyze-more <mod> :dependents 298 :rerun "analyze <mod> --all")
@@ -326,6 +342,9 @@ method call is not guessed: `unresolved` counts them per module.
 (layer <mod> <dep-name> :layer domain :style layered :rule "folder models/ -> domain")
 (analyze-summary <mod> :entities 31 :imports 1 :dataflows 0 :refs 1 :dependents 50 :boundary-files 2)
 ```
+
+An `analyze-dataflow` line carries the marks of the stored `data-flow` fact and
+no other; two facts of one pair with different marks give two lines.
 
 Paths are relative to the repository root. Each dependent file is named once, on
 its `analyze-dependent` line; `boundary-file` names the module and the files it

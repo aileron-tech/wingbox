@@ -161,6 +161,9 @@ class EntityFact:
     methods: list[str] = field(default_factory=list)
 
 
+# Graphs written up to 0.11.0 mark a data-flow fact with this flag from a text match on the imported
+# file. It is read as no mark, so no answer states validation on that ground.
+_RETIRED_VALIDATION_MARK = ":validated"
 # Edge facts of the code graph; every kind except a pipeline data-flow is a dependency of its source.
 _EDGE_KINDS = ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls", "registry-wires")
 
@@ -210,6 +213,7 @@ class Edge:
     target: str
     flags: list[str] = field(default_factory=list)
     names: tuple[NameRoute, ...] = ()   # imports: the names followed to the target, by the way they arrive
+    evidence: str = ""   # data-flow: the text of :evidence, what makes the target a validation module
 
 
 def parse_search_pattern(raw: str) -> SearchPatternResult:
@@ -430,10 +434,15 @@ def parse_sub_list(token: str) -> list[str]:
 # S-expression output helpers
 # ---------------------------------------------------------------------------
 
+def _escaped(s: str) -> str:
+    """The text of a quoted S-expression value: backslash and double quote escaped."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _q(s: str) -> str:
     """Quote a string for S-expression output if it contains spaces."""
     if " " in s or '"' in s:
-        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        return '"' + _escaped(s) + '"'
     return s
 
 
@@ -752,7 +761,11 @@ class CodeGraph:
                 flags = [t for t in tokens[3:] if t.startswith(":")]
                 routes = tuple(route for route in map(parse_name_route, tokens[3:]) if route is not None) \
                     if kind == "imports" else ()
-                edge = Edge(kind, source, target, flags, routes)
+                evidence = ""
+                if kind == "data-flow":
+                    flags = [flag for flag in flags if flag != _RETIRED_VALIDATION_MARK]
+                    evidence = _keywords(tokens[3:]).get("evidence", "")
+                edge = Edge(kind, source, target, flags, routes, evidence)
                 self.all_edges.append(edge)
                 if kind == "data-flow" and ":pipeline" in flags:
                     # The next step of a pipeline consumes the output of this one; it is
@@ -1276,10 +1289,17 @@ def _entity_sexp(e: EntityFact, lang: str = "") -> str:
     return f"({' '.join(parts)})"
 
 
+def _edge_marks(e: Edge) -> str:
+    """The marks of an edge as stored, each after a space; :evidence keeps its quoted text."""
+    return "".join(
+        f' {flag} "{_escaped(e.evidence)}"' if flag == ":evidence" and e.evidence else f" {flag}"
+        for flag in e.flags
+    )
+
+
 def _edge_sexp(e: Edge) -> str:
     """Format an edge as an S-expression fact."""
-    flags = " " + " ".join(e.flags) if e.flags else ""
-    return f"({e.etype} {e.source} {e.target}{flags})"
+    return f"({e.etype} {e.source} {e.target}{_edge_marks(e)})"
 
 
 def cmd_module(g: CodeGraph, module_id: str) -> None:
@@ -2054,7 +2074,7 @@ def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
     # Classify outgoing edges
     import_targets: list[str] = []
     ref_targets: list[tuple[str, str]] = []
-    data_flow_targets: list[str] = []
+    data_flow_targets: list[tuple[str, str]] = []   # target module, the marks of the stored fact
     call_targets: list[tuple[str, str]] = []
     for e in out_edges:
         tgt_mod = e.target.split("::")[0]
@@ -2062,8 +2082,8 @@ def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
             import_targets.append(tgt_mod)
         elif e.etype == "refs":
             ref_targets.append((e.source, e.target))
-        elif e.etype == "data-flow" and tgt_mod not in data_flow_targets:
-            data_flow_targets.append(tgt_mod)
+        elif e.etype == "data-flow" and (tgt_mod, _edge_marks(e)) not in data_flow_targets:
+            data_flow_targets.append((tgt_mod, _edge_marks(e)))
         elif e.etype == "calls":
             call_targets.append((e.source, e.target))
 
@@ -2117,7 +2137,7 @@ def _analyze_sexp(
     g: CodeGraph, nid: str, node: Node, target_file: str,
     ents: list[EntityFact],
     import_targets: list[str], ref_targets: list[tuple[str, str]],
-    data_flow_targets: list[str], call_targets: list[tuple[str, str]],
+    data_flow_targets: list[tuple[str, str]], call_targets: list[tuple[str, str]],
     importers: set[str], referencers: set[str],
     key_entity_usage: list[tuple[EntityFact, int, set[str]]],
     boundary_files: list[str],
@@ -2137,8 +2157,9 @@ def _analyze_sexp(
         print(f"(analyze-import {nid} {t} :lang {g.module_lang(t)} :file {_q(_impact_file(g, t))})")
 
     # Data flows
-    for t in sorted(data_flow_targets):
-        print(f"(analyze-dataflow {nid} {t} :lang {g.module_lang(t)} :validated)")
+    # Data flows: the marks are those of the stored fact, one line per different set of marks
+    for t, marks in sorted(data_flow_targets):
+        print(f"(analyze-dataflow {nid} {t} :lang {g.module_lang(t)}{marks})")
 
     # Entity refs
     for src, tgt in sorted(ref_targets):
@@ -2188,7 +2209,7 @@ def _analyze_sexp(
         print(advice_sexp(item))
 
     # Summary
-    print(f"(analyze-summary {nid} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len(data_flow_targets)} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
+    print(f"(analyze-summary {nid} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len({t for t, _marks in data_flow_targets})} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
 
 
 def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str, show_all: bool = False) -> None:
