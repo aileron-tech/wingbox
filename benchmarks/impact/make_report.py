@@ -108,7 +108,7 @@ add("")
 if agent:
     add(f"## Test 2. A coding agent with and without Wingbox, {len(ids)} questions")
     add("")
-    add("Claude Code, headless, model alias `sonnet`, no user settings, skills or connectors. Two setups: built-in search only (Read, Grep, Glob), "
+    add("Claude Code, headless, model `claude-opus-5-5`, no user settings, skills or connectors. Two setups: built-in search only (Read, Grep, Glob), "
         "and the same with the `wingbox` command added; the graph is built beforehand and the prompt names `wingbox impact <file> 2` in one "
         f"sentence. One trial per question and setup. The agent subset is drawn at random among the questions whose required list holds 3 to "
         f"{meta['agent_max_files']} files (up to {meta['agent_per_repo']} per repository). Tokens: everything the model read and wrote, cache included.")

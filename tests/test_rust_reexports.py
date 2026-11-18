@@ -10,7 +10,7 @@ from pathlib import Path
 from scripts.build_code_graph import Ok, build_graph
 from scripts.lang.rust import parse_rust_treesitter
 
-# The shape of ccbox's src/domain: a facade that re-exports every child with `pub use child::*`.
+# The shape of a real `src/domain`: a facade that re-exports every child with `pub use child::*`.
 FILES = {
     "src/main.rs": "mod app;\nmod domain;\nmod store;\nmod net;\nmod shapes;\nmod platform;\nmod api;\nmod prelude;\nfn main() {}\n",
     "src/domain/mod.rs": (

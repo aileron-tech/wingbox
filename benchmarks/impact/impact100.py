@@ -44,9 +44,15 @@ REPOS = [
 TASK = (
     "Before changing `{file}`, I need a complete review list: every file of this repository, test files included, that depends on "
     "`{file}` directly, or through exactly one other file. File A is on the list if A depends on `{file}`, or if A "
-    "depends on some file B that depends on `{file}`. \"A depends on B\" means that the source of A imports or names "
-    "the module of B (TypeScript: import or export ... from, type-only imports included; Rust: a `mod` declaration of "
-    "it, a `use` of it, or a path that names it; Python: an `import` or `from ... import` statement that names its module). "
+    "depends on some file B that depends on `{file}`. \"A depends on B\" means: "
+    "TypeScript: an import or `export ... from` of it, type-only imports included, a side-effect `import`, or a dynamic "
+    "`import()` of it. "
+    "Rust: A declares B's module with `mod`, or names B's module in a `use` or a path, or uses an item that B defines (a "
+    "function, type, trait, constant, static or macro), whether A names the item in a `use` or a path or uses it by name "
+    "after a glob import such as `use super::*`, including when the item reaches A through `pub use` re-exports of other "
+    "modules. "
+    "Python: an `import` or `from ... import` statement that names its module, or a call that loads it by a literal name "
+    "(`importlib.import_module(\"a.b\")`, `__import__(\"a.b\")`). "
     "Do not list `{file}` itself. Answer with only a JSON array of repository-relative file paths."
 )
 NOTES = {
@@ -274,7 +280,7 @@ def trial(work: str, question: dict, setup: str) -> dict:
         return json.load(open(path))["trial"]
     claude = os.environ.get("CLAUDE_BIN") or shutil.which("claude") or "claude"
     command_line = [
-        claude, "-p", TASK.format(file=question["file"]) + NOTES[setup], "--model", "sonnet", "--output-format", "json",
+        claude, "-p", TASK.format(file=question["file"]) + NOTES[setup], "--model", "claude-opus-5-5", "--output-format", "json",
         "--max-budget-usd", "2", "--setting-sources", "project", "--disable-slash-commands", "--strict-mcp-config",
         "--no-session-persistence", "--tools", "Read,Grep,Glob" if setup == "plain" else "Read,Grep,Glob,Bash",
     ]

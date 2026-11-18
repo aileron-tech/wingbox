@@ -326,7 +326,7 @@ if agent:
     repeats = max(t["repeat"] for t in trials)
     add("## Test D. A coding agent answers the same five questions")
     add("")
-    add(f"Claude Code, headless, model alias `sonnet` ({models}), no user settings, skills or connectors. Four setups: built-in search only; search plus the `wingbox` command; "
+    add(f"Claude Code, headless, model `claude-opus-5-5` ({models}), no user settings, skills or connectors. Four setups: built-in search only; search plus the `wingbox` command; "
         "search plus the `graphify` command; search plus the `codegraph` command. Graphs are built beforehand. The prompt names the tool's impact command in one sentence of the same shape for every tool "
         f"(`tools/agent_test.py`). {repeats} repeats per question and setup, four trials at a time. Score: F1 of the answer list against the reference list. "
         "Tokens: everything the model read and wrote, cache included. Seconds: wall clock of one trial while four run.")
