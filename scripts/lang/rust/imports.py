@@ -9,7 +9,7 @@ from typing import Callable, Mapping
 
 from ..interface import DiscoveryExclusions, FileResult
 from .cargo import RustPackage, load_rust_packages as _load_rust_packages
-from .definers import Definers
+from .definers import Definers, ItemRoute
 from .modules import ModuleLayout, PathModule, path_modules
 
 
@@ -288,9 +288,9 @@ class BoundRustLanguage:
         result: FileResult,
         results: Mapping[str, FileResult],
         resolve: Callable[[str, str], str | None] | None = None,
-    ) -> tuple[dict[str, frozenset[str]], int]:
+    ) -> tuple[dict[str, frozenset[str]], int, dict[str, tuple[ItemRoute, ...]]]:
         """Files that define the names this file imports through a module facade or names as members of a type,
-        and how many names could not be followed (see Definers.named_imports). `resolve` is the resolver to ask
+        how many names could not be followed, and the names followed to each module (see Definers.named_imports). `resolve` is the resolver to ask
         (a traced one during a graph update); results are the parse results by module ID."""
         resolve = resolve or self.resolve_import
         # One Definers per set of results: the index of type members is built once for a build.

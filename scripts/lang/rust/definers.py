@@ -18,6 +18,11 @@ from .modules import ModuleLayout
 
 Resolve = Callable[[str, str], str | None]
 Definition = tuple[str, str]  # (module ID, name of the item in that module)
+# How names of a file arrive at a module it depends on: (way, what it arrives through, the names as the file
+# writes them). Ways: "use" an item of the module named in a `use` or a path; "reexport" an item a facade
+# re-exports, through that facade as written; "glob" a name used after the glob import of that module;
+# "member" a member an impl block of the module defines, through the type as written; "macro" an exported macro.
+ItemRoute = tuple[str, str, tuple[str, ...]]
 _FOLLOWED_ALIASES = 4
 
 
@@ -65,9 +70,10 @@ class Definers:
     path_to_id: Mapping[str, str]
     _members: dict[Definition, dict[str, set[str]]] | None = field(default=None, repr=False)
 
-    def named_imports(self, result: FileResult) -> tuple[dict[str, frozenset[str]], int]:
-        """Files that define the names a file imports through a module facade or names as members of a type, and
-        how many names could not be followed.
+    def named_imports(self, result: FileResult) -> tuple[dict[str, frozenset[str]], int, dict[str, tuple[ItemRoute, ...]]]:
+        """Files that define the names a file imports through a module facade or names as members of a type, how
+        many names could not be followed, and for each module the file depends on the names that were followed
+        to it (ItemRoute).
 
         `use crate::m::{A, B}` (or `m::A` after `use crate::m`) where m re-exports its children (`pub use child::*`,
         `pub use child::A`, also `pub(crate)` and through a grandchild) depends on the child that defines A: that
@@ -79,9 +85,15 @@ class Definers:
         file whose inherent impl block of the type defines the member."""
         resolve = self.resolve
         found: dict[str, set[str]] = {}
+        routes: dict[str, dict[tuple[str, str], set[str]]] = {}
+
+        def followed(module: str, way: str, through: str, name: str) -> None:
+            routes.setdefault(module, {}).setdefault((way, through), set()).add(name)
+
         not_followed = 0
         aliases = _module_aliases(result)
-        for spec in result.imports:
+        for written in result.imports:
+            spec = written
             target = resolve(spec, result.path)
             head, _, rest = spec.partition("::")
             if target is None and rest and head in aliases:
@@ -89,9 +101,17 @@ class Definers:
                 target = resolve(spec, result.path)
             if target is None:
                 continue
-            facade, rest = self._through_module_reexports(target, _rest_of_path(spec, result.path, target, resolve))
+            segments = [segment for segment in written.split("::") if segment]
+            rest = _rest_of_path(spec, result.path, target, resolve)
+            owner = self.results.get(target)
+            if not rest and owner is not None and segments[-1] in self.macros.get(os.path.normpath(owner.path), ()) \
+                    and resolve("::".join(segments[:-1]), result.path) != target:
+                followed(target, "macro", "", segments[-1])  # `crate::emit`: an exported macro, defined in target
+            facade, rest = self._through_module_reexports(target, rest)
             if facade != target:
                 found.setdefault(facade, set()).add("item")
+                named = len(segments) - len(rest) - 1
+                followed(facade, "reexport", "::".join(segments[:named]), segments[named])
             if not rest or (len(rest) > 1 and rest[0][:1].islower()):
                 continue  # a module path, or a name inside an inline module
             definition = self._definition(facade, rest[0], set(), self._inside(result, facade), result.path)
@@ -99,6 +119,9 @@ class Definers:
                 not_followed += 1
             elif definition[0] != target:
                 found.setdefault(definition[0], set()).add("item")
+                followed(definition[0], "reexport", "::".join(segments[:len(segments) - len(rest)]), rest[0])
+            else:
+                followed(target, "use", "", rest[0])
         # Names the body uses, alone or as the head of a path (`Handler::new()`, `Kind::A`). A name the file
         # defines or imports by name shadows a glob import.
         shadowing = {entity["name"] for entity in result.entities} | set(aliases)
@@ -114,9 +137,17 @@ class Definers:
                 definition = self._definition(facade, name, set(), inside, result.path)
                 if definition is not None and definition[0] != facade:
                     found.setdefault(definition[0], set()).update(("item", "candidate"))
-        for target in self._member_files(result):
+                    followed(definition[0], "glob", str(binding.get("module", "")), name)
+        for target, members in self._member_files(result).items():
             found.setdefault(target, set()).add("item")
-        return {target: frozenset(relations) for target, relations in found.items()}, not_followed
+            for written_type, member in members:
+                followed(target, "member", written_type, member)
+        return (
+            {target: frozenset(relations) for target, relations in found.items()},
+            not_followed,
+            {module: tuple((way, through, tuple(sorted(names))) for (way, through), names in sorted(by_way.items()))
+             for module, by_way in routes.items()},
+        )
 
     def _through_module_reexports(self, module: str, rest: list[str]) -> tuple[str, list[str]]:
         """Follow a path through modules a facade re-exports by name (`pub use self::inner as api;`, then
@@ -257,12 +288,13 @@ class Definers:
                         self._members.setdefault(owner, {}).setdefault(member, set()).add(module)
         return self._members
 
-    def _member_files(self, result: FileResult) -> set[str]:
-        """The modules that define the members a file names through a type path (the module of the type too: a
-        file that names the type through an alias of another module has no other edge to it)."""
+    def _member_files(self, result: FileResult) -> dict[str, set[tuple[str, str]]]:
+        """The modules that define the members a file names through a type path, each with the (type as written,
+        member) pairs that lead to it (the module of the type too: a file that names the type through an alias of
+        another module has no other edge to it)."""
         index = self._member_index()
         if not index:
-            return set()
+            return {}
         types: dict[tuple[str, ...], tuple[Definition | None, ...]] = {}
 
         def owners(written: tuple[str, ...]) -> tuple[Definition | None, ...]:
@@ -272,15 +304,15 @@ class Definers:
                                        if "alias" not in entry) if written == ("Self",) else (self._type(result, written),)
             return types[written]
 
-        files: set[str] = set()
+        files: dict[str, set[tuple[str, str]]] = {}
         for use in result.uses:
             path = use["path"]
             if len(path) < 2 or "module" in use or "member" in use or use.get("kind") in ("import", "re-export"):
                 continue
             for owner in owners(tuple(path[:-1])):
-                if owner is not None:
-                    files.update(index.get(owner, {}).get(path[-1], ()))
+                for module in index.get(owner, {}).get(path[-1], ()) if owner is not None else ():
+                    files.setdefault(module, set()).add(("::".join(path[:-1]), path[-1]))
         return files
 
 
-__all__ = ["Definers", "Resolve"]
+__all__ = ["Definers", "ItemRoute", "Resolve"]

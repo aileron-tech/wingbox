@@ -134,7 +134,7 @@ changes no path outside `.wingbox/` and that home folder.
 </p>
 
 Once the graph is built, an agent asks what a change breaks before it edits
-anything. Real output, Wingbox 0.7.1 on the server of
+anything. Real output on the server of
 [immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
 
 ```text
@@ -144,25 +144,27 @@ Impact of changing src/dtos/asset.dto.ts
   within 2 hops       30
 
 Depth 1
-  src/controllers/asset-media.controller.ts   imports
-  src/controllers/asset.controller.ts         imports
-  src/controllers/shared-link.controller.ts   imports
-  src/controllers/user-admin.controller.ts    imports
-  src/dtos/asset-media.dto.ts                 imports
-  src/services/asset-media.service.ts         imports
-  src/services/asset.service.ts               imports
-  src/services/asset.service.spec.ts          imports
-  src/services/shared-link.service.ts         imports
-  src/services/user-admin.service.ts          imports
+  src/controllers/asset-media.controller.ts   imports it
+  src/controllers/asset.controller.ts         imports it
+  src/controllers/shared-link.controller.ts   imports it
+  src/controllers/user-admin.controller.ts    imports it
+  src/dtos/asset-media.dto.ts                 imports it
+  src/services/asset-media.service.ts         imports it
+  src/services/asset.service.ts               imports it
+  src/services/asset.service.spec.ts          imports it
+  src/services/shared-link.service.ts         imports it
+  src/services/user-admin.service.ts          imports it
 
 Depth 2
-  src/controllers/index.ts                                 imports
-  src/controllers/asset-media.controller.spec.ts           imports
-  src/controllers/asset.controller.spec.ts                 imports
+  src/controllers/index.ts                                 through src/controllers/asset-media.controller.ts (or 3 other files): imports it
+  src/controllers/asset-media.controller.spec.ts           through src/controllers/asset-media.controller.ts (or 1 other file): imports it
+  src/controllers/asset.controller.spec.ts                 through src/controllers/asset.controller.ts (or 1 other file): imports it
   ...
 ```
 
-The answer is 30 files in about 600 tokens, and it is exact: a TypeScript
+Every row says why the file is listed: the import, and below depth 1 the file
+it is reached through. For Rust the row also names the items (`uses HarEntry
+by name after `use super::*``). The answer is 30 files in about 880 tokens, and it is exact: a TypeScript
 import resolver written separately from Wingbox finds the same 3,795
 dependencies between the 707 modules, none extra and none missing.
 
@@ -212,14 +214,19 @@ the same facts as a tree and as a change boundary.
 $ wingbox impact scripts/lang/treesitter.py
 
 Impact of changing scripts/lang/treesitter.py
-  direct dependents   4
-  within 2 hops       11
+  direct dependents   6
+  within 2 hops       17
 
 Depth 1
-  scripts/lang/csharp/parser.py   imports
-  scripts/lang/go/parser.py       imports
-  scripts/lang/java/parser.py     imports
-  scripts/lang/ruby/parser.py     imports
+  scripts/lang/csharp/parser.py   imports it
+  scripts/lang/dart/parser.py     imports it
+  scripts/lang/go/parser.py       imports it
+  scripts/lang/java/parser.py     imports it
+  scripts/lang/php/parser.py      imports it
+  scripts/lang/ruby/parser.py     imports it
+
+Depth 2
+  scripts/lang/csharp/__init__.py   through scripts/lang/csharp/parser.py: imports it
 ...
 ```
 
