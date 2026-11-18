@@ -29,7 +29,7 @@ TOOLS = {
         "command": "`ontoindex impact File:<file> --depth 2`",
         "variants": {"ontoindex": "default (test files left out)", "ontoindex_include_tests": "with `--include-tests`, as in its README",
                      "ontoindex_file_imports": "its file-level IMPORTS edges, two steps back (`ontoindex cypher`)"},
-        "agent_date": "2026-11-17",
+        "agent_date": "2026-11-18",
         "cold": [("analyze", "`analyze`")],
         "edit": [("edit", "`analyze` again"), ("edit_overlay", "`analyze --dirty-overlay`")],
     },
@@ -115,15 +115,15 @@ def _section(results: str, name: str, spec: dict) -> list[str]:
         add(f"Test D, the agent of test D with the `{name}` command (`tools/{spec['prefix']}_agent_test.py`: same prompt, model alias, flags, budget, "
             f"{a[key]['trials']} trials, run of {spec['agent_date']}; the other rows are the committed test D):")
         add("")
-        add("| Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | Seconds | USD per trial | Refused shell commands |")
-        add("|---|---|---|---|---|---|---|---|---|")
+        add("| Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | USD per trial | Refused shell commands |")
+        add("|---|---|---|---|---|---|---|---|")
         for setup, title in (("plain", "Plain search"), ("wb", "Wingbox"), ("gf", "Graphify"), ("cg", "CodeGraph"), (spec["prefix"], label)):
             src = a if setup == spec["prefix"] else b
             r = src.get(f"all_{setup}")
             if r:
-                add(f"| {title} | {r['trials']} | {r['f1']:.3f} | {r['f1_min']:.3f} | {r['tokens']:,} | {r['turns']:.1f} | {r['seconds']:.1f} | {r['cost_usd']:.3f} | {r['denials']} |")
+                add(f"| {title} | {r['trials']} | {r['f1']:.3f} | {r['f1_min']:.3f} | {r['tokens']:,} | {r['turns']:.1f} | {r['cost_usd']:.3f} | {r['denials']} |")
         add("")
-        add(f"Every trial is in `results/agent_summary.{name}.json`. Seconds include starting the container on every `{name}` call.")
+        add(f"Every trial is in `results/agent_summary.{name}.json`.")
         add("")
     bt = _load(results, f"build_times.{name}.json")
     if bt:

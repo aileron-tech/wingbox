@@ -44,9 +44,15 @@ REPOS = [
 TASK = (
     "Before changing `{file}`, I need a complete review list: every file of this repository, test files included, that depends on "
     "`{file}` directly, or through exactly one other file. File A is on the list if A depends on `{file}`, or if A "
-    "depends on some file B that depends on `{file}`. \"A depends on B\" means that the source of A imports or names "
-    "the module of B (TypeScript: import or export ... from, type-only imports included; Rust: a `mod` declaration of "
-    "it, a `use` of it, or a path that names it; Python: an `import` or `from ... import` statement that names its module). "
+    "depends on some file B that depends on `{file}`. \"A depends on B\" means: "
+    "TypeScript: an import or `export ... from` of it, type-only imports included, a side-effect `import`, or a dynamic "
+    "`import()` of it. "
+    "Rust: A declares B's module with `mod`, or names B's module in a `use` or a path, or uses an item that B defines (a "
+    "function, type, trait, constant, static or macro), whether A names the item in a `use` or a path or uses it by name "
+    "after a glob import such as `use super::*`, including when the item reaches A through `pub use` re-exports of other "
+    "modules. "
+    "Python: an `import` or `from ... import` statement that names its module, or a call that loads it by a literal name "
+    "(`importlib.import_module(\"a.b\")`, `__import__(\"a.b\")`). "
     "Do not list `{file}` itself. Answer with only a JSON array of repository-relative file paths."
 )
 NOTES = {
@@ -118,6 +124,13 @@ def ancestor_module_edges(data: dict) -> set[tuple[str, str]]:
     return edges
 
 
+def rust_edges(data: dict) -> set[tuple[str, str]]:
+    """Required Rust edges: the module a path reaches, and the file that defines the item it names (followed
+    through `pub use` re-exports, and named in a module that imports a facade with a glob)."""
+    return {(ref["frm"], target) for ref in data["refs"] for target in (ref["to"], ref["to_followed"])
+            if ref["frm"] != target}
+
+
 def reference(work: str, repo: str, language: str) -> tuple[set[tuple[str, str]], set[tuple[str, str]]]:
     """(required edges, accepted edges).
 
@@ -132,7 +145,7 @@ def reference(work: str, repo: str, language: str) -> tuple[set[tuple[str, str]]
         return edges, edges | compiled_output_edges(os.path.join(work, "bench", "plain", repo), files)
     if language == "rust":
         data = json.load(open(os.path.join(out, repo + ".rust_refs.json")))
-        edges = {(ref["frm"], ref["to"]) for ref in data["refs"]}
+        edges = rust_edges(data)
         return edges, edges | ancestor_module_edges(data)
     data = json.load(open(os.path.join(out, repo + ".ref.json")))
     required = {tuple(pair) for pair in data["pairs"]}
@@ -143,6 +156,11 @@ def drawn_from(work: str, repo: str, language: str, required: set[tuple[str, str
     """The edges whose targets the questions are drawn from: in Python those of import statements, so that the
     question set stays the one drawn before the reference also counted modules loaded by a literal name
     (`importlib.import_module("a.b")`, added 2026-11-17). Those edges are in the gold of every question."""
+    if language == "rust":
+        # The question set was drawn from the modules the paths reach, before the reference followed items
+        # (through re-exports and glob imports on 2026-11-17, to the members of a type on 2026-11-18).
+        data = json.load(open(os.path.join(work, "out", repo + ".rust_refs.json")))
+        return {(ref["frm"], ref["to"]) for ref in data["refs"] if ref.get("category") not in ("glob-use", "type-member")}
     if language != "python":
         return required
     data = json.load(open(os.path.join(work, "out", repo + ".ref.json")))
@@ -172,7 +190,8 @@ def sample(work: str) -> None:
     for repo, language in REPOS:
         required, accepted = reference(work, repo, language)
         root = os.path.join(work, "bench", "plain", repo)
-        imported = sorted({destination for source, destination in drawn_from(work, repo, language, required)
+        drawn = drawn_from(work, repo, language, required)
+        imported = sorted({destination for source, destination in drawn
                            if source != destination and os.path.isfile(os.path.join(root, destination))})
         chosen = sorted(rng.sample(imported, SAMPLE_PER_REPO))
         rows = []
@@ -180,7 +199,9 @@ def sample(work: str) -> None:
             first, second = two_hops(required, path)
             a_first, a_second = two_hops(accepted, path)
             rows.append((path, first, second, (a_first | a_second) - first - second))
-        fits = [row[0] for row in rows if 3 <= len(row[1] | row[2]) <= AGENT_MAX_FILES]
+        # The agent subset is drawn by the size of the lists over the same edges as the questions, so that a
+        # reference that counts more edges changes the lists, not the questions.
+        fits = [path for path in chosen if 3 <= len(set().union(*two_hops(drawn, path))) <= AGENT_MAX_FILES]
         agent = set(rng.sample(fits, min(AGENT_PER_REPO, len(fits))))
         for number, (path, first, second, extra) in enumerate(rows, start=1):
             qid = f"{repo}-{number:02d}"
@@ -259,7 +280,7 @@ def trial(work: str, question: dict, setup: str) -> dict:
         return json.load(open(path))["trial"]
     claude = os.environ.get("CLAUDE_BIN") or shutil.which("claude") or "claude"
     command_line = [
-        claude, "-p", TASK.format(file=question["file"]) + NOTES[setup], "--model", "sonnet", "--output-format", "json",
+        claude, "-p", TASK.format(file=question["file"]) + NOTES[setup], "--model", "claude-opus-5-5", "--output-format", "json",
         "--max-budget-usd", "2", "--setting-sources", "project", "--disable-slash-commands", "--strict-mcp-config",
         "--no-session-persistence", "--tools", "Read,Grep,Glob" if setup == "plain" else "Read,Grep,Glob,Bash",
     ]

@@ -1,7 +1,7 @@
 {
- "wingbox": "wingbox 0.2.3",
- "date": "2026-11-16",
- "agent_wingbox": "0.2.1",
- "agent_note": "the 100 answers of `wingbox impact` are identical in 0.2.1, 0.2.2 and 0.2.3",
- "edge_test_python": "run again with Wingbox 0.9.1 on 2026-11-17, when `tools/py_edges.py` started to count modules loaded by a literal name (`importlib.import_module`, `__import__`)"
+ "wingbox": "wingbox 0.10.0",
+ "date": "2026-11-18",
+ "agent_wingbox": "0.10.0",
+ "agent_note": "both arms ran on claude-opus-5-5 on 2026-11-18 with the question text that states what the reference counts; the search-alone arm ran before the reference followed members of a type, and its answers are scored on the current lists; the Wingbox arm ran again with the release build, whose impact output says why each file is on the list; the answers are in agent_answers.json",
+ "agent_model": "claude-opus-5-5"
 }

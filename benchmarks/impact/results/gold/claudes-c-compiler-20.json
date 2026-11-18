@@ -17,7 +17,14 @@
   "src/passes/mod.rs"
  ],
  "also_accepted": [
+  "src/passes/cfg_simplify.rs",
+  "src/passes/constant_fold.rs",
+  "src/passes/copy_prop.rs",
+  "src/passes/dce.rs",
+  "src/passes/gvn.rs",
   "src/passes/iv_strength_reduce.rs",
-  "src/passes/licm.rs"
+  "src/passes/licm.rs",
+  "src/passes/narrow.rs",
+  "src/passes/simplify.rs"
  ]
 }

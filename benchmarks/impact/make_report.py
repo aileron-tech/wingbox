@@ -74,7 +74,28 @@ add("Reference lists come from resolvers that share no code with Wingbox, all in
     "pairs of its import statements equal the import graph of grimp, `results/fastapi.grimp_check.json`"
     + (f"; it also counts a module loaded by a literal name, `importlib.import_module(\"a.b\")` or `__import__(\"a.b\")`, which grimp does not "
        f"read: {len(loaded)} pair on FastAPI" if loaded else "")
-    + "), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`).")
+    + "), an own TypeScript resolver (`ts_resolve.py`) and an own Rust resolver (`rust_resolve.py`). "
+    "Since Wingbox 0.10.0 (2026-11-18) the Rust resolver also counts, for a path that names an item, the file that defines the item "
+    "(followed through `pub use` re-exports), the items a module names after a glob import (`use x::*`), found by scanning the module text, "
+    "and a member named through a type (`Type::member`, `Self::member`), which leads to the file whose inherent `impl` block defines it. "
+    "A file that uses an item depends on the file that defines it; the earlier reference stopped at the module facade that re-exports the item. "
+    "The questions were drawn before this change and stay the same.")
+checks = [(repo, load(f"{repo}.rust_compiler_check.json")) for repo in ("agent-browser", "claudes-c-compiler")
+          if exists(f"{repo}.rust_compiler_check.json")]
+if checks:
+    parts = []
+    for repo, check in checks:
+        text = (f"{repo}: {check['reference_confirmed']:,} of {check['reference_required']:,} required pairs confirmed, "
+                f"{len(check['reference_not_confirmed'])} contradicted")
+        if check["reference_not_checked"]:
+            text += f", {len(check['reference_not_checked'])} in a file the compiler did not read"
+        if check["compiler_counted_missing_in_reference"]:
+            text += (f"; it also names {len(check['compiler_counted_missing_in_reference'])} pairs the reference accepts and does not require "
+                     "(`use crate::<exported macro>`, to the crate root file)")
+        parts.append(text)
+    add("")
+    add("Check of the Rust reference: `tools/rust_compiler_check.py` reads what rust-analyzer resolves every name of the source to "
+        f"(`results/<repo>.rust_compiler_check.json`). " + "; ".join(parts) + ".")
 add("")
 add("Three kinds of file are accepted when an answer names them and are not required: in Python a package `__init__.py` executed on the way "
     "to the imported module; in TypeScript a file that imports the compiled output of X, which `tsconfig.json` maps back to X through `outDir` "
@@ -107,10 +128,16 @@ add("")
 if agent:
     add(f"## Test 2. A coding agent with and without Wingbox, {len(ids)} questions")
     add("")
-    add("Claude Code, headless, model alias `sonnet`, no user settings, skills or connectors. Two setups: built-in search only (Read, Grep, Glob), "
+    add("Claude Code, headless, model `claude-opus-5-5`, no user settings, skills or connectors. Two setups: built-in search only (Read, Grep, Glob), "
         "and the same with the `wingbox` command added; the graph is built beforehand and the prompt names `wingbox impact <file> 2` in one "
         f"sentence. One trial per question and setup. The agent subset is drawn at random among the questions whose required list holds 3 to "
         f"{meta['agent_max_files']} files (up to {meta['agent_per_repo']} per repository). Tokens: everything the model read and wrote, cache included.")
+    add("")
+    add("The question states, for each language, what the reference counts (since 2026-11-18). Before, its Rust clause named only a `mod` "
+        "declaration, a `use` or a path of the module; on that text the agents left out files that use an item through a re-export or a glob "
+        "import, which the reference counts. Both setups ran on 2026-11-18. The search-alone setup ran before the reference followed members "
+        "of a type, and its answers are scored on the current lists; the Wingbox setup ran again with the release build of Wingbox 0.10.0, "
+        "which follows them too and whose `impact` output says why each file is on the list.")
     add("")
     add("| Setup | Trials | Complete answers (95 % interval) | F1, mean (95 % interval) | Tokens, mean (95 % interval) | USD per answer | Turns |")
     add("|---|---|---|---|---|---|---|")

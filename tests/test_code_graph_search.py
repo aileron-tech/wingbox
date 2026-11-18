@@ -458,7 +458,7 @@ class CodeGraphImpactTest(unittest.TestCase):
         self.assertEqual(relative, absolute)
 
     def test_impact_text_lists_dependents_by_depth_and_files_to_read(self) -> None:
-        """/* REQ-CS-039: impact must print a readable summary: counts, dependents per depth, files to read first. */"""
+        """/* REQ-CS-039: impact must print a readable summary: counts, dependents per depth, files to read first; since REQ-CS-076 and REQ-CS-077 each row says why the file is on the list. */"""
         graph, _root = self._load_graph()
 
         self.assertEqual(
@@ -470,11 +470,11 @@ class CodeGraphImpactTest(unittest.TestCase):
                   within 2 hops       3
 
                 Depth 1
-                  app/billing/invoice.py   imports
-                  app/billing/report.py    imports
+                  app/billing/invoice.py   imports it
+                  app/billing/report.py    imports it
 
                 Depth 2
-                  app/api/handler.py   imports
+                  app/api/handler.py   through app/billing/invoice.py (or 1 other file): imports it
 
                 Read first (3 files)
                   app/core/util.py
@@ -485,7 +485,7 @@ class CodeGraphImpactTest(unittest.TestCase):
         )
 
     def test_impact_sexp_reports_each_dependent_once_at_its_shortest_depth(self) -> None:
-        """/* REQ-CS-040: impact --sexp must emit compact facts with every dependent once, at its shortest depth. */"""
+        """/* REQ-CS-040: impact --sexp must emit compact facts with every dependent once, at its shortest depth; a deeper fact names the module it is reached through (REQ-CS-077). */"""
         graph, _root = self._load_graph()
 
         self.assertEqual(
@@ -494,7 +494,7 @@ class CodeGraphImpactTest(unittest.TestCase):
                 "(impact-root app/core/util :lang py :file app/core/util.py)",
                 "(impact app/core/util app/billing/invoice :lang py :via imports :depth 1)",
                 "(impact app/core/util app/billing/report :lang py :via imports :depth 1)",
-                "(impact app/core/util app/api/handler :lang py :via imports :depth 2)",
+                "(impact app/core/util app/api/handler :lang py :via imports :depth 2 :through app/billing/invoice :more 1)",
                 "(impact-summary app/core/util :direct 2 :total 3 :depth 2)",
                 "(read-first app/core/util.py)",
                 "(read-first app/billing/invoice.py)",

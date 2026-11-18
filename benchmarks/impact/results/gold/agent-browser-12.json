@@ -51,6 +51,7 @@
   "cli/src/native/inspect_server.rs",
   "cli/src/native/interaction.rs",
   "cli/src/native/network.rs",
+  "cli/src/native/providers.rs",
   "cli/src/native/react/mod.rs",
   "cli/src/native/recording.rs",
   "cli/src/native/screenshot.rs",

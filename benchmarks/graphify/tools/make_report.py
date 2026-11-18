@@ -109,7 +109,8 @@ add(f"- File-to-file edges of FastAPI against its {cg_fa['reference_pairs']:,} i
 if agent:
     sm = agent["summary"]
     w, g, p = sm["all_wb"], sm["all_gf"], sm["all_plain"]
-    add(f"- A coding agent answers the same questions correctly in all three setups. It spends {w['tokens']:,} tokens with Wingbox, "
+    add(f"- A coding agent answers the same questions with mean F1 {w['f1']:.3f} with Wingbox, {p['f1']:.3f} with its built-in search alone "
+        f"and {g['f1']:.3f} with Graphify. It spends {w['tokens']:,} tokens with Wingbox, "
         f"{p['tokens']:,} with its built-in search alone and {g['tokens']:,} with Graphify: Wingbox {pct(w['tokens'], p['tokens'])} "
         f"against plain search, Graphify {pct(g['tokens'], p['tokens'])} (test D).")
     if "all_cg" in sm:
@@ -287,7 +288,7 @@ add("Question: every file that depends on file X directly or through one other f
     "and the files they name are compared with the reference list.")
 add("")
 add("Reference lists (`gold/`), none taken from either tool: Q1 from an own TypeScript resolver (`tools/ts_resolve.py`); Q2 and Q3 from an own Rust resolver "
-    "(`tools/rust_resolve.py`), every file of the two lists read against the source; Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. "
+    "(`tools/rust_resolve.py`), every file of the two lists read against the source; Since 2026-11-17 (Wingbox 0.10.0) the Rust resolver also counts, for a path that names an item, the file that defines the item (followed through `pub use` re-exports), and the items a module names after a glob import (`use x::*`), found by scanning the module text. A file that uses an item depends on the file that defines it; the earlier reference stopped at the module facade that re-exports the item. The questions stay the same. Q4 and Q5 from `tools/py_edges.py`, whose import statements equal grimp. "
     "`run.sh` computes the five lists again and stops when one differs from the committed list.")
 add("")
 add("| Question | Reference files | Wingbox: right / wrong / missing | Wingbox output, tokens | Graphify: right / wrong / missing | Graphify output, tokens "
@@ -326,26 +327,35 @@ if agent:
     repeats = max(t["repeat"] for t in trials)
     add("## Test D. A coding agent answers the same five questions")
     add("")
-    add(f"Claude Code, headless, model alias `sonnet` ({models}), no user settings, skills or connectors. Four setups: built-in search only; search plus the `wingbox` command; "
+    add(f"Claude Code, headless, model `{models}`, no user settings, skills or connectors. Four setups: built-in search only; search plus the `wingbox` command; "
         "search plus the `graphify` command; search plus the `codegraph` command. Graphs are built beforehand. The prompt names the tool's impact command in one sentence of the same shape for every tool "
         f"(`tools/agent_test.py`). {repeats} repeats per question and setup, four trials at a time. Score: F1 of the answer list against the reference list. "
-        "Tokens: everything the model read and wrote, cache included. Seconds: wall clock of one trial while four run.")
-    if "all_cg" in sm:
+        "Tokens: everything the model read and wrote, cache included.")
+    if "wingbox_test_d" in versions:
+        add("")
+        add(f"All five setups ran again on {versions['wingbox_test_d_date']} on `claude-opus-5-5`, Graphify {gf}, CodeGraph {cgv} and "
+            "OntoIndex 3.1.9 on the graphs of the first run, one setup after the other, four trials at a time, with the same prompt, limits and "
+            "reference lists. The question states, for each language, what the reference counts (since that day): before, its Rust clause named "
+            "only a `mod` declaration, a `use` or a path of the module, and the agents left out files that use an item through a re-export or a "
+            f"glob import. The Wingbox setup ran again on the same day with Wingbox {versions['wingbox_test_d']} after it followed members of a "
+            "type, and a third time with the release build, whose `impact` output says why each file is on the list; the reference lists of "
+            "the five questions did not change with that.")
+    elif "all_cg" in sm:
         add("")
         add(f"Plain search and Graphify ran interleaved on {versions['date']}. The Wingbox {versions['wingbox']} trials ran on {versions.get('wingbox_date', versions['date'])} "
             f"and the CodeGraph trials on {versions['codegraph_date']}, each setup on its own, four trials at a time, with the same prompt, model and limits. "
-            "Tokens, cost and F1 compare directly; seconds less so, since the other trials running at the same time differ.")
+            "Tokens, cost and F1 compare directly.")
     add("")
-    add("| Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | Seconds | USD per trial | Refused shell commands |")
-    add("|---|---|---|---|---|---|---|---|---|")
+    add("| Setup | Trials | F1 mean | F1 lowest | Tokens | Turns | USD per trial | Refused shell commands |")
+    add("|---|---|---|---|---|---|---|---|")
     for setup in setups:
         s = sm[f"all_{setup}"]
-        add(f"| {names[setup]} | {s['trials']} | {s['f1']:.3f} | {s['f1_min']:.3f} | {s['tokens']:,} | {s['turns']:.1f} | {s['seconds']:.1f} | {s['cost_usd']:.3f} | {s['denials']} |")
+        add(f"| {names[setup]} | {s['trials']} | {s['f1']:.3f} | {s['f1_min']:.3f} | {s['tokens']:,} | {s['turns']:.1f} | {s['cost_usd']:.3f} | {s['denials']} |")
     add("")
     w, g, p = sm["all_wb"], sm["all_gf"], sm["all_plain"]
-    add(f"- Wingbox against Graphify: tokens {pct(w['tokens'], g['tokens'])}, time {pct(w['seconds'], g['seconds'])}, cost {pct(w['cost_usd'], g['cost_usd'])}.")
-    add(f"- Wingbox against plain search: tokens {pct(w['tokens'], p['tokens'])}, time {pct(w['seconds'], p['seconds'])}, cost {pct(w['cost_usd'], p['cost_usd'])}.")
-    add(f"- Graphify against plain search: tokens {pct(g['tokens'], p['tokens'])}, time {pct(g['seconds'], p['seconds'])}, cost {pct(g['cost_usd'], p['cost_usd'])}.")
+    add(f"- Wingbox against Graphify: tokens {pct(w['tokens'], g['tokens'])}, cost {pct(w['cost_usd'], g['cost_usd'])}.")
+    add(f"- Wingbox against plain search: tokens {pct(w['tokens'], p['tokens'])}, cost {pct(w['cost_usd'], p['cost_usd'])}.")
+    add(f"- Graphify against plain search: tokens {pct(g['tokens'], p['tokens'])}, cost {pct(g['cost_usd'], p['cost_usd'])}.")
     if "all_cg" in sm:
         c = sm["all_cg"]
         add(f"- CodeGraph against plain search: tokens {pct(c['tokens'], p['tokens'])}, cost {pct(c['cost_usd'], p['cost_usd'])}; against Graphify: tokens "
@@ -353,11 +363,11 @@ if agent:
             f"cost {pct(w['cost_usd'], c['cost_usd'])}.")
     add("")
     short = {"plain": "Plain", "wb": "Wingbox", "gf": "Graphify", "cg": "CodeGraph"}
-    add("| Question | " + " | ".join(f"{short[s]}: F1 / tokens / s" for s in setups) + " |")
+    add("| Question | " + " | ".join(f"{short[s]}: F1 / tokens" for s in setups) + " |")
     add("|---" * (len(setups) + 1) + "|")
     for row in cc:
         q = row["question"]
-        cells = [f"{sm[f'{q}_{s}']['f1']:.3f} / {sm[f'{q}_{s}']['tokens']:,} / {sm[f'{q}_{s}']['seconds']:.1f}" for s in setups]
+        cells = [f"{sm[f'{q}_{s}']['f1']:.3f} / {sm[f'{q}_{s}']['tokens']:,}" for s in setups]
         add(f"| {q} ({row['repo']}, {row['reference_files']} files) | " + " | ".join(cells) + " |")
     add("")
     add(f"Every trial with its answer list is in `results/agent_summary.json`. The {len(trials)} trials cost "

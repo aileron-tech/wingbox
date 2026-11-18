@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.10.0 - 2026-11-18
+
+The answers of `wingbox impact` for Rust change: a file that uses an item through a module facade now
+depends on the file that defines the item.
+
+### Changes
+
+- Rust: a file that names an item through a module facade (`use crate::domain::ForkContext` where
+  `src/domain/mod.rs` has `pub use types::*`) now also depends on the file that defines the item, an
+  import edge marked `:item`; the edge to the facade stays. Chains of facades, renamed re-exports
+  (`pub use child::Name as Alias`), `pub(crate)` re-exports, a use path that starts at a module brought
+  in by an earlier `use`, and items reached through a glob import whose body names them, alone or as
+  the head of a path (`Handler::new()`), are followed (`:item :candidate`); a child that glob-imports
+  its parent (`use super::*`) also reaches what the parent imports privately. A private item is never
+  carried by a glob re-export. An item defined in the facade itself stays on the facade; so does one a
+  macro makes in a module the facade re-exports with a glob (the build log counts those). `wingbox impact` on a Rust file
+  therefore lists the files that use its items, not only the facade: on claudes-c-compiler,
+  `src/backend/x86/assembler/encoder/registers.rs` goes from 1 direct dependent (the facade) to 7.
+- Rust: a member named through a type path (`Running::from_env()`, `Self::LIMIT`, `<Type>::new()`,
+  `Type::<T>::new()`, the type named by a `use`, a facade, a glob import or a type alias) depends on
+  the file whose inherent `impl` block of the type defines the member, an import edge marked `:item`;
+  the edge to the file of the type stays. A type's `impl` blocks often lie in several files: on
+  agent-browser, `cli/src/session_settings/seed.rs` goes from 1 direct dependent to 5. A method called
+  on a value (`value.method()`) and a member a trait gives need the type checker and give no edge.
+- Rust module files follow the compiler's layout rules: the root file of every Cargo target owns its
+  folder whatever its name (`mod common;` in `tests/it.rs` is `tests/common/mod.rs`, `mod helper;` in
+  `src/bin/tool.rs` is `src/bin/helper.rs`) and `crate::` in such a file is that target, not the
+  library; `#[path = "f.rs"]` and `#[cfg_attr(.., path = "f.rs")]` name the file of a module (every
+  candidate is kept) and paths through the module follow it; a module declared inside an inline
+  module lies in that module's folder; `mod r#type;` is `type.rs`.
+- Rust crate names follow Cargo: `[lib] name` and `path`, `[[bin]] path`, a dependency renamed with
+  `package = ".."`, `extern crate a as b;` and `extern crate self as me;`. In a package of edition
+  2015 (no `edition` key) a `use` path and `::name` start at the crate root.
+- The cache format changes (Rust items record whether they are private; Rust files record their
+  `impl` blocks and type aliases): the first build after the upgrade parses every file again.
+- `wingbox impact` says why each file is on the list: the import, or the items the file uses (for Rust
+  with their names and how they arrive: a `use`, a facade re-export, a glob import, a member of a type,
+  a macro), and below depth 1 the file it is reached through; the `--sexp` facts carry `:through`,
+  `:more` and the name lists, and the MCP tool prints the same. The list of files is unchanged.
+- The `wingbox` skill now installs the program by itself when it is missing: a skill that came from a
+  plugin directory tells you, runs `pipx install wingbox` or `uv tool install wingbox`, and builds the
+  map. `plugins/wingbox-skill` is the skill alone, the form the Claude plugin directory accepts from any
+  organization (it takes hooks and a local MCP server only from organizations it has verified); the
+  full plugin in `plugins/wingbox` is unchanged.
+
+### Fixes
+
+- Rust: a named re-export of an item that a macro invocation defines (`pub use spec::Key;` with
+  `keys! { .. }` in `spec.rs`) leads to the module the re-export names; it stayed on the facade.
+- Rust: after a glob import, a name the file defines itself or imports by name is no longer taken
+  from the glob (it gave an edge to the wrong file); variants re-exported with `pub use Kind::*;`,
+  a `macro_rules!` macro re-exported as an item and a module re-exported under a name
+  (`pub use self::inner as api;`) are followed; a `#[macro_export]` macro of another workspace crate
+  resolves to the file that defines it. An item declared `pub(super)` or `pub(in path)` is carried by
+  a glob re-export only into that scope, and `pub(self)` is private.
+
+### Benchmarks
+
+- The Rust reference of the benchmarks (`tools/rust_resolve.py`, no Wingbox code) counts, besides the
+  module a path reaches, the file that defines a named item (through `pub use` re-exports), the items a
+  module names after a glob import, and a member named through a type (`Type::member`) to the file whose
+  `impl` block defines it. A file that uses an item depends on the file that defines it; the earlier
+  reference stopped at the module facade. `tools/rust_compiler_check.py` checks the reference against
+  rust-analyzer: every required pair the compiler can see is confirmed on both Rust repositories.
+  Against this reference the graph has 0 wrong and 0 missing Rust edges (456 and 2,084), and
+  `wingbox impact` is complete on 100 of 100 questions. The 100 questions stay the same draw.
+- The agent tests ask a question that states, for each language, what the reference counts; before,
+  its Rust clause named only a `mod`, a `use` or a path of the module, and agents left out the files
+  that use an item through a re-export. They run on `claude-opus-5-5`. Impact test, 55 questions:
+  complete answers 55 of 55 with Wingbox against 48 of 55 with the agent's own search, cost per answer
+  -38 % (0.110 against 0.179 USD), tokens -32 %. Comparison test: Wingbox F1 1.000 in 15 of 15 trials,
+  at 0.121 USD per trial against 0.354 to 0.402 for the other setups.
+
 ## 0.9.2 - 2026-11-18
 
 ### Fixes

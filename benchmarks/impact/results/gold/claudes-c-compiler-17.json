@@ -5,6 +5,7 @@
   "file": "src/ir/lowering/global_init.rs"
  },
  "direct": [
+  "src/ir/lowering/global_init_compound.rs",
   "src/ir/lowering/mod.rs"
  ],
  "through_one": [
@@ -13,6 +14,7 @@
  ],
  "gold": [
   "src/driver/pipeline.rs",
+  "src/ir/lowering/global_init_compound.rs",
   "src/ir/lowering/mod.rs",
   "src/ir/mod.rs"
  ],
@@ -37,7 +39,6 @@
   "src/ir/lowering/func_state.rs",
   "src/ir/lowering/global_decl.rs",
   "src/ir/lowering/global_init_bytes.rs",
-  "src/ir/lowering/global_init_compound.rs",
   "src/ir/lowering/global_init_compound_ptrs.rs",
   "src/ir/lowering/global_init_compound_struct.rs",
   "src/ir/lowering/lower.rs",

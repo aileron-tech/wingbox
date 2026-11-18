@@ -29,8 +29,8 @@
  {
   "corpus": "agent-browser, Rust sources",
   "language": "Rust",
-  "pairs": 391,
-  "edges": 391,
+  "pairs": 456,
+  "edges": 456,
   "wrong": 0,
   "missing": 0,
   "accepted_extra": 0,
@@ -40,8 +40,8 @@
  {
   "corpus": "claudes-c-compiler",
   "language": "Rust",
-  "pairs": 1462,
-  "edges": 1462,
+  "pairs": 2084,
+  "edges": 2084,
   "wrong": 0,
   "missing": 0,
   "accepted_extra": 0,

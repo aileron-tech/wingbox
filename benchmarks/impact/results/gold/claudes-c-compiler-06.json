@@ -5,18 +5,22 @@
   "file": "src/backend/linker_common/dynamic.rs"
  },
  "direct": [
+  "src/backend/arm/linker/input.rs",
+  "src/backend/arm/linker/link.rs",
   "src/backend/linker_common/archive.rs",
-  "src/backend/linker_common/mod.rs"
+  "src/backend/linker_common/mod.rs",
+  "src/backend/x86/linker/input.rs",
+  "src/backend/x86/linker/link.rs"
  ],
  "through_one": [
   "src/backend/arm/linker/elf.rs",
   "src/backend/arm/linker/emit_dynamic.rs",
   "src/backend/arm/linker/emit_shared.rs",
   "src/backend/arm/linker/emit_static.rs",
-  "src/backend/arm/linker/input.rs",
-  "src/backend/arm/linker/link.rs",
+  "src/backend/arm/linker/mod.rs",
   "src/backend/arm/linker/reloc.rs",
   "src/backend/arm/linker/types.rs",
+  "src/backend/common.rs",
   "src/backend/i686/linker/emit.rs",
   "src/backend/i686/linker/gnu_hash.rs",
   "src/backend/i686/linker/mod.rs",
@@ -35,8 +39,7 @@
   "src/backend/x86/linker/elf.rs",
   "src/backend/x86/linker/emit_exec.rs",
   "src/backend/x86/linker/emit_shared.rs",
-  "src/backend/x86/linker/input.rs",
-  "src/backend/x86/linker/link.rs",
+  "src/backend/x86/linker/mod.rs",
   "src/backend/x86/linker/types.rs"
  ],
  "gold": [
@@ -46,8 +49,10 @@
   "src/backend/arm/linker/emit_static.rs",
   "src/backend/arm/linker/input.rs",
   "src/backend/arm/linker/link.rs",
+  "src/backend/arm/linker/mod.rs",
   "src/backend/arm/linker/reloc.rs",
   "src/backend/arm/linker/types.rs",
+  "src/backend/common.rs",
   "src/backend/i686/linker/emit.rs",
   "src/backend/i686/linker/gnu_hash.rs",
   "src/backend/i686/linker/mod.rs",
@@ -70,6 +75,7 @@
   "src/backend/x86/linker/emit_shared.rs",
   "src/backend/x86/linker/input.rs",
   "src/backend/x86/linker/link.rs",
+  "src/backend/x86/linker/mod.rs",
   "src/backend/x86/linker/types.rs"
  ],
  "also_accepted": [

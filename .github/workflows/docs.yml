@@ -3,7 +3,7 @@ name: docs
 
 on:
   push:
-    branches: [main, windows-console-and-refresh, write-zones-and-install-list]
+    branches: [main, windows-console-and-refresh, write-zones-and-install-list, rust-definer-edges, rust-numbers, rust-reference-definers]
     paths: ["**/*.md", "docs/**", "LICENSE"]
   pull_request:
     paths: ["**/*.md", "docs/**", "LICENSE"]

@@ -44,21 +44,21 @@
  "wingbox": {
   "analyze_every_module": {
    "queries": 29,
-   "mean_tokens": 192,
+   "mean_tokens": 198,
    "median_tokens": 132,
-   "max_tokens": 524,
-   "reduction_by_mean": 88.4,
-   "reduction_by_max": 32.4
+   "max_tokens": 555,
+   "reduction_by_mean": 86.0,
+   "reduction_by_max": 30.6
   },
   "impact_every_file": {
    "queries": 29,
    "mean_tokens": 66,
    "median_tokens": 54,
-   "max_tokens": 194,
-   "reduction_by_mean": 259.2,
-   "reduction_by_max": 87.6
+   "max_tokens": 201,
+   "reduction_by_mean": 258.2,
+   "reduction_by_max": 84.6
   },
-  "whole_graph_file_tokens": 1834,
+  "whole_graph_file_tokens": 3262,
   "modules_without_analyze_answer": [],
   "default_questions": {
    "answered": 2,
@@ -87,14 +87,14 @@
       },
       {
        "term": "layer",
-       "tokens": 265
+       "tokens": 275
       }
      ],
-     "answer_tokens": 345
+     "answer_tokens": 355
     }
    ],
-   "mean_tokens": 248,
-   "reduction": 68.4
+   "mean_tokens": 254,
+   "reduction": 67.0
   },
   "published_questions": {
    "answered": 2,
@@ -109,24 +109,24 @@
       },
       {
        "term": "nanogpt",
-       "tokens": 145
+       "tokens": 155
       }
      ],
-     "answer_tokens": 221
+     "answer_tokens": 231
     },
     {
      "question": "how does the attention mechanism work",
      "terms": [
       {
        "term": "attention",
-       "tokens": 481
+       "tokens": 491
       }
      ],
-     "answer_tokens": 481
+     "answer_tokens": 491
     }
    ],
-   "mean_tokens": 351,
-   "reduction": 48.4
+   "mean_tokens": 361,
+   "reduction": 47.1
   }
  }
 }

@@ -33,6 +33,7 @@ Non-goals:
 | `import` | a repository file imports another one (the default, implicit in the graph file) | yes |
 | `type` | an import of types only (`import type`), erased by the compiler | yes, as today |
 | `re-export` | a module re-exports names of another one | yes, as today |
+| `item` | Rust: a file names an item that a module facade re-exports (`pub use child::*`, `pub use child::Name as Alias`); the edge goes to the file that defines the item, next to the edge to the facade (`:item`, with `:candidate` for a glob import whose body names the item; since 0.9.1). Also a member named through a type path (`Type::member`): the edge goes to the file whose inherent `impl` block defines the member | yes |
 | `dynamic` | a module loaded at run time from a literal name (`import()`, `importlib`) | yes |
 | `runtime` | a module loaded by a name read from configuration (the plugin-loader edges) | yes, as today |
 | `mock` | a test mocks a module (`vi.mock`, `jest.mock`) | yes for impact; no for layer rules |

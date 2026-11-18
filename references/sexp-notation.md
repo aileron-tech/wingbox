@@ -16,13 +16,27 @@ or `rb`.
 (ifc <mod> <name> <line> :eid <uuid> (:methods m1 m2))
 (typ <mod> <name> <line> :eid <uuid>)
 (enm <mod> <name> <line> :eid <uuid>)
-(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:lsp])
+(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp] [(:use|:reexport|:glob|:member|:macro ...)])
 (calls-api <src> <tgt> :via-ifc [:lsp])
 (data-flow <src> <tgt> [:validated] [:pipeline])
 (registry-wires <src> <tgt> [:config <path>])
 (refs <src> <tgt>::<Entity> [:callback] [:lsp])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
+
+`:item` (Rust): the file names an item that a module facade re-exports
+(`pub use child::*`, `pub use child::Name`); the edge goes to the file that
+defines the item, next to the plain edge to the facade, and `impact` follows it.
+With `:candidate` the file imports the facade with a glob (`use m::*`) and its
+body names the item. A Rust import edge also lists the names the builder
+followed to its target, one list per way they arrive, at most three names and
+`:of <count>` when there are more: `(:use A B)` items of the module named in
+a `use` or a path, `(:reexport "crate::m" A)` items the facade `crate::m`
+re-exports, `(:glob "super" A)` names used after `use super::*`,
+`(:member "Type" new)` members an impl block of the target defines,
+`(:macro m)` an exported macro. A member named through a type path (`Type::member`,
+`Self::member`) gives the same edge to the file whose inherent `impl` block of
+the type defines the member.
 
 Modules loaded at run time (Python):
 
@@ -443,6 +457,8 @@ has a service layer), `service-builds-http-response`, `domain-imports-orm`
 ```scheme
 (impact-root <mod> :lang ts :file <path>)
 (impact <root> <src> :lang ts :via imports :depth 1)
+(impact <root> <src> :lang ts :via imports :depth 2 :through <mod> :more 1)
+(impact <root> <src> :lang rs :via imports :depth 2 :through <mod> (:glob "super" HarEntry))
 (impact-more <root> :hidden 549 :rerun "impact <file> 2 --all")
 (impact-summary <root> :direct 650 :total 749 :depth 2)
 (read-first <path>)
@@ -451,6 +467,18 @@ has a service layer), `service-builds-http-response`, `domain-imports-orm`
 
 The counts are complete. Without `--all` at most 200 dependents are listed,
 nearest first, and `read-first` names the file and its first 10 direct dependents.
+
+Each `impact` fact says why the file is on the list. Below depth 1,
+`:through` is the module of the previous depth it is reached through (the
+first in the order of the list) and `:more` the number of other modules of
+that depth it also depends on; `:via` and the name lists are those of its edge
+to `:through` (to the root at depth 1). The name lists are the ones of the
+import edge (see `imports` above): the names the builder followed, never a
+text search. The text form prints the same as one line per file:
+`imports it`, `imports A, B from it`, `uses A, re-exported by crate::m`,
+`uses A by name after `use super::*``, `uses T::new, defined in an impl block
+there`, `uses the macro m, exported at the crate root`, and below depth 1
+`through <file> (or 2 other files): ...`.
 
 ## invariants Output
 

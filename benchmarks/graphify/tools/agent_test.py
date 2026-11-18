@@ -2,7 +2,7 @@
 
 Usage: python3 -I agent_test.py <work dir> run [filter] [workers]   run the trials; filter = regular expression on the trial name
        python3 -I agent_test.py <work dir> report                  print the summary and save <work dir>/out/agent_summary.json
-Agent: Claude Code, headless (`claude -p`), model alias `sonnet`; no user settings, skills or connectors.
+Agent: Claude Code, headless (`claude -p`), model `claude-opus-5-5`; no user settings, skills or connectors.
 The `claude` command is taken from PATH, or from the environment variable CLAUDE_BIN. Each trial is one paid
 model session; a finished trial is kept in <work dir>/bench/trials/ and is not run again.
 Reference lists: <work dir>/bench/gold/, written by tools/gold.py.
@@ -29,9 +29,15 @@ REPEATS = 3
 TASK = (
     "Before changing `{file}`, I need a complete review list: every file of this repository, test files included, that depends on "
     "`{file}` directly, or through exactly one other file. File A is on the list if A depends on `{file}`, or if A "
-    "depends on some file B that depends on `{file}`. \"A depends on B\" means that the source of A imports or names "
-    "the module of B (TypeScript: import or export ... from, type-only imports included; Rust: a `mod` declaration of "
-    "it, a `use` of it, or a path that names it; Python: an `import` or `from ... import` statement that names its module). "
+    "depends on some file B that depends on `{file}`. \"A depends on B\" means: "
+    "TypeScript: an import or `export ... from` of it, type-only imports included, a side-effect `import`, or a dynamic "
+    "`import()` of it. "
+    "Rust: A declares B's module with `mod`, or names B's module in a `use` or a path, or uses an item that B defines (a "
+    "function, type, trait, constant, static or macro), whether A names the item in a `use` or a path or uses it by name "
+    "after a glob import such as `use super::*`, including when the item reaches A through `pub use` re-exports of other "
+    "modules. "
+    "Python: an `import` or `from ... import` statement that names its module, or a call that loads it by a literal name "
+    "(`importlib.import_module(\"a.b\")`, `__import__(\"a.b\")`). "
     "Do not list `{file}` itself. Answer with only a JSON array of repository-relative file paths."
 )
 GRAPHIFY_NOTE = (
@@ -91,7 +97,7 @@ def run_trial(question: dict, setup: str, repeat: int) -> dict:
         return json.load(open(out_path))
     prompt = TASK.format(file=question["file"]) + {"wb": WINGBOX_NOTE, "gf": GRAPHIFY_NOTE, "cg": CODEGRAPH_NOTE}.get(setup, "")
     command = [
-        CLAUDE, "-p", prompt, "--model", "sonnet", "--output-format", "json", "--max-budget-usd", "2",
+        CLAUDE, "-p", prompt, "--model", "claude-opus-5-5", "--output-format", "json", "--max-budget-usd", "2",
         "--setting-sources", "project", "--disable-slash-commands", "--strict-mcp-config", "--no-session-persistence",
         "--tools", "Read,Grep,Glob" if setup == "plain" else "Read,Grep,Glob,Bash",
     ]

@@ -4,10 +4,12 @@
 
 ![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
-> **Give your coding agent a map of your codebase. Half the cost, no missed files.**
+> **Give your coding agent a map of your codebase. 2-4x cheaper, no missed files.**
+>
+> Up to 5x faster, up to 8.8x fewer tokens, up to $484 saved per 1,000 questions, no missed files.
 >
 > Your agent sees every file a change touches before it edits, so it no longer
-> forgets a fix. Half the cost of its own search: [benchmarks](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md).
+> forgets a fix. 2-4x cheaper per answer than its own search or another code-graph tool: [benchmarks](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md).
 >
 > Wingbox builds a local **code graph** (a code knowledge graph made by static
 > parsing, with no model) of your repository so that AI coding
@@ -134,7 +136,7 @@ changes no path outside `.wingbox/` and that home folder.
 </p>
 
 Once the graph is built, an agent asks what a change breaks before it edits
-anything. Real output, Wingbox 0.7.1 on the server of
+anything. Real output on the server of
 [immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
 
 ```text
@@ -144,25 +146,27 @@ Impact of changing src/dtos/asset.dto.ts
   within 2 hops       30
 
 Depth 1
-  src/controllers/asset-media.controller.ts   imports
-  src/controllers/asset.controller.ts         imports
-  src/controllers/shared-link.controller.ts   imports
-  src/controllers/user-admin.controller.ts    imports
-  src/dtos/asset-media.dto.ts                 imports
-  src/services/asset-media.service.ts         imports
-  src/services/asset.service.ts               imports
-  src/services/asset.service.spec.ts          imports
-  src/services/shared-link.service.ts         imports
-  src/services/user-admin.service.ts          imports
+  src/controllers/asset-media.controller.ts   imports it
+  src/controllers/asset.controller.ts         imports it
+  src/controllers/shared-link.controller.ts   imports it
+  src/controllers/user-admin.controller.ts    imports it
+  src/dtos/asset-media.dto.ts                 imports it
+  src/services/asset-media.service.ts         imports it
+  src/services/asset.service.ts               imports it
+  src/services/asset.service.spec.ts          imports it
+  src/services/shared-link.service.ts         imports it
+  src/services/user-admin.service.ts          imports it
 
 Depth 2
-  src/controllers/index.ts                                 imports
-  src/controllers/asset-media.controller.spec.ts           imports
-  src/controllers/asset.controller.spec.ts                 imports
+  src/controllers/index.ts                                 through src/controllers/asset-media.controller.ts (or 3 other files): imports it
+  src/controllers/asset-media.controller.spec.ts           through src/controllers/asset-media.controller.ts (or 1 other file): imports it
+  src/controllers/asset.controller.spec.ts                 through src/controllers/asset.controller.ts (or 1 other file): imports it
   ...
 ```
 
-The answer is 30 files in about 600 tokens, and it is exact: a TypeScript
+Every row says why the file is listed: the import, and below depth 1 the file
+it is reached through. For Rust the row also names the items (`uses HarEntry
+by name after `use super::*``). The answer is 30 files in about 880 tokens, and it is exact: a TypeScript
 import resolver written separately from Wingbox finds the same 3,795
 dependencies between the 707 modules, none extra and none missing.
 
@@ -212,14 +216,19 @@ the same facts as a tree and as a change boundary.
 $ wingbox impact scripts/lang/treesitter.py
 
 Impact of changing scripts/lang/treesitter.py
-  direct dependents   4
-  within 2 hops       11
+  direct dependents   6
+  within 2 hops       17
 
 Depth 1
-  scripts/lang/csharp/parser.py   imports
-  scripts/lang/go/parser.py       imports
-  scripts/lang/java/parser.py     imports
-  scripts/lang/ruby/parser.py     imports
+  scripts/lang/csharp/parser.py   imports it
+  scripts/lang/dart/parser.py     imports it
+  scripts/lang/go/parser.py       imports it
+  scripts/lang/java/parser.py     imports it
+  scripts/lang/php/parser.py      imports it
+  scripts/lang/ruby/parser.py     imports it
+
+Depth 2
+  scripts/lang/csharp/__init__.py   through scripts/lang/csharp/parser.py: imports it
 ...
 ```
 
@@ -239,12 +248,14 @@ a fixed seed in five public repositories (TypeScript, Rust, Python):
 
 | Setup | Complete answers | Tokens per answer | Cost per answer |
 |---|---|---|---|
-| With Wingbox | 55 of 55 | 32,183 | 0.031 USD |
-| Built-in search only | 48 of 55 | 49,292 | 0.063 USD |
+| With Wingbox | 55 of 55 | 67,579 | 0.110 USD |
+| Built-in search only | 48 of 55 | 98,800 | 0.179 USD |
 
-  Tokens -35 % (95 % interval -47 % to -20 %), cost -51 % (-58 % to -43 %).
-  The saving is large on the Rust and Python repositories and absent on the
-  two TypeScript ones.
+  Cost -38 % (95 % interval -49 % to -25 %), tokens -32 % (-47 % to -12 %),
+  on `claude-opus-5-5` with Wingbox 0.10.0 (2026-11-18). Tokens fall on the
+  two Rust repositories (agent-browser -67 %, claudes-c-compiler -32 %) and
+  are higher on the other three (chrome-devtools-mcp +13 %, immich +26 %,
+  FastAPI +43 %).
 - Checked against every import statement of seven corpora (3,795 dependencies
   in the largest), the graph has no wrong dependency and one missing: an
   import of a vendored bundle, which Wingbox leaves out of the graph.
@@ -274,9 +285,9 @@ no model inside any of the tools):
 |---|---|---|---|---|
 | Exact list of dependent files, five questions | 5 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
 | File dependencies of FastAPI against its 1,802 import pairs, wrong / missing | 0 / 0 | 19 / 17 | 106 / 25 | 22 / 118 |
-| Tokens a coding agent spends per answer (built-in search alone: 59,367) | 23,768 | 109,071 | 81,151 | 78,070 |
-| Cost per answer in that test, USD (built-in search alone: 0.075) | 0.021 | 0.095 | 0.070 | 0.075 |
-| Answer quality in that test, F1 (built-in search alone: 0.999) | 1.000 | 0.997 | 0.993 | 0.977 |
+| Tokens a coding agent spends per answer (built-in search alone: 254,967) | 66,628 | 314,516 | 297,215 | 362,509 |
+| Cost per answer in that test, USD (built-in search alone: 0.357) | 0.121 | 0.395 | 0.354 | 0.402 |
+| Answer quality in that test, F1 (built-in search alone: 0.989) | 1.000 | 0.984 | 0.984 | 0.984 |
 
 Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
 Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).
@@ -1144,7 +1155,7 @@ when the graph is outside the current directory and its parents.
 |---|---|
 | Python | Modules, imports, modules loaded through `importlib` (literal names, and names read from a JSON, YAML or TOML file beside the loader), classes, functions, methods, inheritance, and references |
 | TypeScript, TSX and JavaScript | Imports, re-exports, classes, interfaces, functions, types, decorators, aliases, and references |
-| Rust | Cargo crates, modules, `use` dependencies, structs, traits, enums, functions, implementations, and methods |
+| Rust | Cargo crates and targets (libraries, binaries, tests, examples, `build.rs`), modules (`#[path]`, inline modules), `use` dependencies (through module facades to the file that defines the item, and from `Type::member` to the file of the `impl` block that defines the member), structs, traits, enums, functions, implementations, and methods |
 | C# | Namespaces, types, interfaces, records, enums, methods, attributes, inheritance, and local type dependencies |
 | Java | Packages, imports, classes, interfaces, records, enums, methods, annotations, inheritance, and local type dependencies |
 | Go | Modules, packages, imports, structs, interfaces, functions, constants, variables, receiver methods, and local package dependencies |

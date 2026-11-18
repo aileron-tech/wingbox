@@ -2,7 +2,7 @@
 
 Usage: python3 -I oi_agent_test.py <work dir> run [workers]     run the trials (paid model sessions)
        python3 -I oi_agent_test.py <work dir> report            write <work dir>/out/agent_summary.ontoindex.json
-Same prompt, model alias, flags, budget, repeats, answer parsing and scoring as agent_test.py (its TASK,
+Same prompt, model, flags, budget, repeats, answer parsing and scoring as agent_test.py (its TASK,
 parse_answer and score are used as they are); the setup adds one sentence that names OntoIndex's impact
 command, in the shape of the Graphify and Wingbox sentences, and allows `ontoindex` and the same text tools.
 `ontoindex` runs in the container of oi_run.sh (`--network none`) through a small wrapper put first on PATH;
@@ -61,7 +61,7 @@ def run_trial(question: dict, repeat: int) -> dict:
     if os.path.exists(out_path):
         return json.load(open(out_path))
     command = [
-        AT["CLAUDE"], "-p", AT["TASK"].format(file=question["file"]) + NOTE, "--model", "sonnet", "--output-format", "json",
+        AT["CLAUDE"], "-p", AT["TASK"].format(file=question["file"]) + NOTE, "--model", "claude-opus-5-5", "--output-format", "json",
         "--max-budget-usd", "2", "--setting-sources", "project", "--disable-slash-commands", "--strict-mcp-config",
         "--no-session-persistence", "--tools", "Read,Grep,Glob,Bash",
         "--allowedTools", "Bash(ontoindex:*)", *[f"Bash({tool}:*)" for tool in TEXT_TOOLS],
