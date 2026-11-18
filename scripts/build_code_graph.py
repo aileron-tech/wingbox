@@ -280,7 +280,7 @@ def prepare_wingbox_directory(root: str) -> None:
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
 # 3: Python results carry module_loads and registry_calls.
-CACHE_SCHEMA_VERSION = 4  # 4: Rust entities record whether they are private
+CACHE_SCHEMA_VERSION = 5  # 5: Rust results record impl blocks and type aliases (type_members)
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -813,7 +813,7 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
         if not isinstance(raw_result.get(field_name), list):
             return Err(f"cache result field {field_name} must be a list")
 
-    for field_name in ("module_loads", "registry_calls"):
+    for field_name in ("module_loads", "registry_calls", "type_members"):
         if not isinstance(raw_result.get(field_name, []), list):
             return Err(f"cache result field {field_name} must be a list")
     if not isinstance(raw_result.get("import_forms", {}), dict):

@@ -1140,7 +1140,7 @@ when the graph is outside the current directory and its parents.
 |---|---|
 | Python | Modules, imports, modules loaded through `importlib` (literal names, and names read from a JSON, YAML or TOML file beside the loader), classes, functions, methods, inheritance, and references |
 | TypeScript, TSX and JavaScript | Imports, re-exports, classes, interfaces, functions, types, decorators, aliases, and references |
-| Rust | Cargo crates, modules, `use` dependencies (through module facades to the file that defines the item), structs, traits, enums, functions, implementations, and methods |
+| Rust | Cargo crates and targets (libraries, binaries, tests, examples, `build.rs`), modules (`#[path]`, inline modules), `use` dependencies (through module facades to the file that defines the item, and from `Type::member` to the file of the `impl` block that defines the member), structs, traits, enums, functions, implementations, and methods |
 | C# | Namespaces, types, interfaces, records, enums, methods, attributes, inheritance, and local type dependencies |
 | Java | Packages, imports, classes, interfaces, records, enums, methods, annotations, inheritance, and local type dependencies |
 | Go | Modules, packages, imports, structs, interfaces, functions, constants, variables, receiver methods, and local package dependencies |

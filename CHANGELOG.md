@@ -14,12 +14,38 @@ depends on the file that defines the item.
   in by an earlier `use`, and items reached through a glob import whose body names them, alone or as
   the head of a path (`Handler::new()`), are followed (`:item :candidate`); a child that glob-imports
   its parent (`use super::*`) also reaches what the parent imports privately. A private item is never
-  carried by a glob re-export. An item defined in the facade itself, or made by a macro, behind
-  `#[path]` or `cfg`, stays on the facade (the build log counts those). `wingbox impact` on a Rust file
+  carried by a glob re-export. An item defined in the facade itself stays on the facade; so does one a
+  macro makes in a module the facade re-exports with a glob (the build log counts those). `wingbox impact` on a Rust file
   therefore lists the files that use its items, not only the facade: on claudes-c-compiler,
   `src/backend/x86/assembler/encoder/registers.rs` goes from 1 direct dependent (the facade) to 7.
-- The cache format changes (Rust items record whether they are private): the first build after the
-  upgrade parses every file again.
+- Rust: a member named through a type path (`Running::from_env()`, `Self::LIMIT`, `<Type>::new()`,
+  `Type::<T>::new()`, the type named by a `use`, a facade, a glob import or a type alias) depends on
+  the file whose inherent `impl` block of the type defines the member, an import edge marked `:item`;
+  the edge to the file of the type stays. A type's `impl` blocks often lie in several files: on
+  agent-browser, `cli/src/session_settings/seed.rs` goes from 1 direct dependent to 5. A method called
+  on a value (`value.method()`) and a member a trait gives need the type checker and give no edge.
+- Rust module files follow the compiler's layout rules: the root file of every Cargo target owns its
+  folder whatever its name (`mod common;` in `tests/it.rs` is `tests/common/mod.rs`, `mod helper;` in
+  `src/bin/tool.rs` is `src/bin/helper.rs`) and `crate::` in such a file is that target, not the
+  library; `#[path = "f.rs"]` and `#[cfg_attr(.., path = "f.rs")]` name the file of a module (every
+  candidate is kept) and paths through the module follow it; a module declared inside an inline
+  module lies in that module's folder; `mod r#type;` is `type.rs`.
+- Rust crate names follow Cargo: `[lib] name` and `path`, `[[bin]] path`, a dependency renamed with
+  `package = ".."`, `extern crate a as b;` and `extern crate self as me;`. In a package of edition
+  2015 (no `edition` key) a `use` path and `::name` start at the crate root.
+- The cache format changes (Rust items record whether they are private; Rust files record their
+  `impl` blocks and type aliases): the first build after the upgrade parses every file again.
+
+### Fixes
+
+- Rust: a named re-export of an item that a macro invocation defines (`pub use spec::Key;` with
+  `keys! { .. }` in `spec.rs`) leads to the module the re-export names; it stayed on the facade.
+- Rust: after a glob import, a name the file defines itself or imports by name is no longer taken
+  from the glob (it gave an edge to the wrong file); variants re-exported with `pub use Kind::*;`,
+  a `macro_rules!` macro re-exported as an item and a module re-exported under a name
+  (`pub use self::inner as api;`) are followed; a `#[macro_export]` macro of another workspace crate
+  resolves to the file that defines it. An item declared `pub(super)` or `pub(in path)` is carried by
+  a glob re-export only into that scope, and `pub(self)` is private.
 
 ## 0.9.1 - 2026-11-17
 

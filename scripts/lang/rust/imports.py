@@ -3,21 +3,14 @@ from __future__ import annotations
 import os
 import re
 import sys
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Mapping
 
-from ..discovery import is_excluded_path, retained_directory_names
 from ..interface import DiscoveryExclusions, FileResult
-
-
-@dataclass(frozen=True)
-class RustPackage:
-    """One local Cargo package and its Rust crate identifier."""
-
-    crate_name: str
-    directory: str
+from .cargo import RustPackage, load_rust_packages as _load_rust_packages
+from .definers import Definers
+from .modules import ModuleLayout, PathModule, path_modules
 
 
 def _is_within(path: str, directory: str) -> bool:
@@ -31,96 +24,11 @@ def _is_within(path: str, directory: str) -> bool:
         return False
 
 
-def _load_rust_packages(
-    root: str,
-    discovery_exclusions: DiscoveryExclusions,
-) -> tuple[RustPackage, ...]:
-    packages: list[RustPackage] = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = retained_directory_names(
-            discovery_exclusions,
-            dirpath,
-            dirnames,
-        )
-        if "Cargo.toml" not in filenames:
-            continue
-
-        manifest_path = os.path.join(dirpath, "Cargo.toml")
-        if is_excluded_path(discovery_exclusions, manifest_path):
-            continue
-        try:
-            with open(manifest_path, "rb") as manifest_file:
-                manifest = tomllib.load(manifest_file)
-        except (OSError, tomllib.TOMLDecodeError) as error:
-            print(
-                f"[code-graph] Cannot read Rust package identity from {manifest_path}: {error}",
-                file=sys.stderr,
-            )
-            continue
-
-        package = manifest.get("package")
-        if not isinstance(package, dict):
-            continue
-        package_name = package.get("name")
-        if not isinstance(package_name, str) or not package_name:
-            continue
-        packages.append(
-            RustPackage(
-                crate_name=package_name.replace("-", "_"),
-                directory=os.path.normpath(dirpath),
-            )
-        )
-
-    return tuple(
-        sorted(
-            packages,
-            key=lambda package: len(Path(package.directory).parts),
-            reverse=True,
-        )
-    )
-
-
 def _candidate_id(
     candidate: str,
     path_to_id: Mapping[str, str],
 ) -> str | None:
     return path_to_id.get(os.path.normpath(candidate))
-
-
-def _resolve_from_directory(
-    directory: str,
-    segments: tuple[str, ...],
-    path_to_id: Mapping[str, str],
-    fallback_files: tuple[str, ...] = (),
-) -> str | None:
-    for segment_count in range(len(segments), 0, -1):
-        module_path = os.path.join(directory, *segments[:segment_count])
-        for candidate in (f"{module_path}.rs", os.path.join(module_path, "mod.rs")):
-            target_id = _candidate_id(candidate, path_to_id)
-            if target_id is not None:
-                return target_id
-
-    for fallback_file in fallback_files:
-        target_id = _candidate_id(fallback_file, path_to_id)
-        if target_id is not None:
-            return target_id
-    return None
-
-
-def _package_entrypoints(package: RustPackage) -> tuple[str, ...]:
-    source_directory = os.path.join(package.directory, "src")
-    return (
-        os.path.join(source_directory, "lib.rs"),
-        os.path.join(source_directory, "main.rs"),
-    )
-
-
-def _logical_module_files(module_directory: str) -> tuple[str, ...]:
-    """Return the physical Rust files that can define one logical module."""
-    return (
-        f"{module_directory}.rs",
-        os.path.join(module_directory, "mod.rs"),
-    )
 
 
 def _owning_package(
@@ -138,36 +46,18 @@ def _owning_package(
     )
 
 
-def _logical_module_directory(source_path: str) -> str:
-    source_path = os.path.normpath(source_path)
-    filename = os.path.basename(source_path)
-    if filename in ("lib.rs", "main.rs", "mod.rs"):
-        return os.path.dirname(source_path)
-    return os.path.splitext(source_path)[0]
+def _crate_root(source_path: str, owner: RustPackage | None) -> str | None:
+    """The root file of the crate a file belongs to: the target root in the nearest folder at or above the file
+    (the library before a binary of the same folder)."""
+    if owner is None:
+        return None
+    if source_path in owner.crate_roots:
+        return source_path
+    containing = [root for root in owner.crate_roots if _is_within(source_path, os.path.dirname(root))]
+    return max(containing, key=lambda root: len(os.path.dirname(root)), default=None)
 
 
-# Folders whose subfolders Cargo builds as crates of their own: tests/<name>/main.rs and the like.
-_SEPARATE_CRATE_FOLDERS = ("tests", "benches", "examples")
-
-
-def _separate_crate_directory(source_path: str, owner: RustPackage) -> str | None:
-    """Root folder of the test, bench or example crate a file belongs to, if any."""
-    relative = os.path.relpath(source_path, owner.directory).split(os.sep)
-    if len(relative) >= 3 and relative[0] in _SEPARATE_CRATE_FOLDERS:
-        return os.path.join(owner.directory, relative[0], relative[1])
-    return None
-
-
-def _crate_source_directory(
-    source_path: str,
-    owner: RustPackage | None,
-) -> str:
-    if owner is not None:
-        separate = _separate_crate_directory(source_path, owner)
-        if separate is not None:
-            return separate
-        return os.path.join(owner.directory, "src")
-
+def _source_directory_without_package(source_path: str) -> str:
     source = Path(source_path)
     for parent in source.parents:
         if parent.name == "src":
@@ -178,18 +68,37 @@ def _crate_source_directory(
 _EXPORTED_MACRO = re.compile(
     r"#\[macro_export[^\]]*\]\s*(?:#\[[^\]]*\]\s*)*macro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)"
 )
+_MACRO = re.compile(r"(?<![A-Za-z0-9_])macro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)")
+_EXTERN_CRATE_ALIAS = re.compile(
+    r"^\s*(?:pub\s+)?extern\s+crate\s+([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", re.M
+)
 
 
-def _load_exported_macros(
+@dataclass(frozen=True)
+class RustSources:
+    """What resolving a path reads of the sources of a tree."""
+
+    exported_macros: Mapping[str, Mapping[str, str]]  # package directory -> macro name -> defining file
+    macros: Mapping[str, frozenset[str]]  # file -> the macro_rules! names it defines
+    path_modules: tuple[PathModule, ...]
+    extern_aliases: Mapping[str, Mapping[str, str]]  # folder of a crate root -> alias -> crate (`extern crate a as b;`)
+
+
+def _scan_sources(
     path_to_id: Mapping[str, str],
     packages: tuple[RustPackage, ...],
-) -> dict[str, dict[str, str]]:
-    """Files that define #[macro_export] macros, by package directory and macro name.
+) -> RustSources:
+    """One reading of every Rust file: the files that define #[macro_export] macros, the macros of each file,
+    the modules declared with a `#[path]` attribute and the `extern crate .. as ..;` names of the crate roots.
 
     An exported macro lives at the crate root by name (use crate::emit), wherever
     it is written; without this index such a use would point at lib.rs.
     """
-    macros: dict[str, dict[str, str]] = {}
+    exported: dict[str, dict[str, str]] = {}
+    macros: dict[str, frozenset[str]] = {}
+    declarations: list[PathModule] = []
+    aliases: dict[str, dict[str, str]] = {}
+    crate_roots = {root for package in packages for root in package.crate_roots}
     for path in sorted(path_to_id):
         if not path.endswith(".rs"):
             continue
@@ -199,13 +108,20 @@ def _load_exported_macros(
         except (OSError, UnicodeDecodeError) as error:
             print(f"[code-graph] Cannot read Rust macros from {path}: {error}", file=sys.stderr)
             continue
+        declarations.extend(path_modules(path, text))
+        if path in crate_roots and "extern" in text:
+            for match in _EXTERN_CRATE_ALIAS.finditer(text):
+                aliases.setdefault(os.path.dirname(path), {}).setdefault(match.group(2), match.group(1))
+        if "macro_rules!" not in text:
+            continue
+        macros[path] = frozenset(match.group(1) for match in _MACRO.finditer(text))
         if "macro_export" not in text:
             continue
         owner = _owning_package(path, packages)
-        by_name = macros.setdefault(owner.directory if owner is not None else "", {})
+        by_name = exported.setdefault(owner.directory if owner is not None else "", {})
         for match in _EXPORTED_MACRO.finditer(text):
             by_name.setdefault(match.group(1), path)
-    return macros
+    return RustSources(exported, macros, tuple(declarations), aliases)
 
 
 @dataclass(frozen=True)
@@ -214,7 +130,11 @@ class BoundRustLanguage:
     path_to_id: Mapping[str, str]
     packages: tuple[RustPackage, ...]
     exported_macros: Mapping[str, Mapping[str, str]]
+    layout: ModuleLayout = field(default_factory=lambda: ModuleLayout(frozenset()))
+    macros: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    extern_aliases: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
     _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
+    _definers: list[Definers] = field(default_factory=list, compare=False, repr=False)
 
     @classmethod
     def create(
@@ -229,12 +149,11 @@ class BoundRustLanguage:
                 f"[code-graph] Loaded {len(packages)} local Rust packages",
                 file=sys.stderr,
             )
-        return cls(
-            os.path.normpath(root),
-            path_to_id,
-            packages,
-            _load_exported_macros(path_to_id, packages),
-        )
+        sources = _scan_sources(path_to_id, packages)
+        layout = ModuleLayout.create(
+            (crate_root for package in packages for crate_root in package.crate_roots), sources.path_modules)
+        return cls(os.path.normpath(root), path_to_id, packages, sources.exported_macros, layout, sources.macros,
+                   sources.extern_aliases)
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         # One build asks the same (specifier, file) pairs many times (imports, imported names,
@@ -244,8 +163,58 @@ class BoundRustLanguage:
             self._resolved[key] = self._resolve_import(import_name, source_path)
         return self._resolved[key]
 
+    def _resolve_below(
+        self,
+        directory: str,
+        segments: tuple[str, ...],
+        fallback_files: tuple[str, ...] = (),
+    ) -> str | None:
+        """The file of the deepest module a path names below a module directory, else the first fallback."""
+        for segment_count in range(len(segments), 0, -1):
+            for candidate in self.layout.candidates(directory, segments[:segment_count]):
+                target_id = _candidate_id(candidate, self.path_to_id)
+                if target_id is not None:
+                    return target_id
+        for fallback_file in fallback_files:
+            target_id = _candidate_id(fallback_file, self.path_to_id)
+            if target_id is not None:
+                return target_id
+        return None
+
+    def _exported_macro(self, package: RustPackage | None, name: str) -> str | None:
+        macro_file = self.exported_macros.get(package.directory if package is not None else "", {}).get(name)
+        return _candidate_id(macro_file, self.path_to_id) if macro_file is not None else None
+
+    def _crate_named(self, name: str, owner: RustPackage | None) -> RustPackage | None:
+        """The local package code of owner names by a crate name: a renamed dependency first."""
+        renamed = dict(owner.renamed_dependencies).get(name) if owner is not None else None
+        if renamed is not None:
+            return next((package for package in self.packages if package.package_name == renamed), None)
+        return next((package for package in self.packages if package.crate_name == name), None)
+
+    def _resolve_in_crate(self, source: str, owner: RustPackage | None, segments: tuple[str, ...],
+                          root_fallback: bool = True) -> str | None:
+        """A path below the root of the crate the source file belongs to."""
+        root_file = _crate_root(source, owner)
+        if root_file is not None and owner is not None:
+            directory = os.path.dirname(root_file)
+            fallbacks = (root_file, *(root for root in owner.crate_roots if os.path.dirname(root) == directory))
+        elif owner is not None:
+            directory = os.path.join(owner.directory, "src")
+            fallbacks = (os.path.join(directory, "lib.rs"), os.path.join(directory, "main.rs"))
+        else:
+            directory, fallbacks = _source_directory_without_package(source), (source,)
+        module_target = self._resolve_below(directory, segments)
+        if module_target is not None or not root_fallback:
+            return module_target
+        if len(segments) == 1:
+            macro_target = self._exported_macro(owner, segments[0])
+            if macro_target is not None:
+                return macro_target
+        return self._resolve_below(directory, (), fallbacks)
+
     def _resolve_import(self, import_name: str, source_path: str) -> str | None:
-        segments = tuple(segment for segment in import_name.split("::") if segment)
+        segments = tuple(segment.removeprefix("r#") for segment in import_name.split("::") if segment)
         if not segments:
             return None
 
@@ -254,45 +223,16 @@ class BoundRustLanguage:
         first = segments[0]
 
         if first == "crate":
-            source_directory = _crate_source_directory(absolute_source, owner)
-            separate = (
-                _separate_crate_directory(absolute_source, owner) if owner is not None else None
-            )
-            if separate is not None:
-                fallbacks = (os.path.join(separate, "main.rs"),)
-            elif owner is not None:
-                fallbacks = _package_entrypoints(owner)
-            else:
-                fallbacks = (absolute_source,)
-            module_target = _resolve_from_directory(
-                source_directory,
-                segments[1:],
-                self.path_to_id,
-            )
-            if module_target is not None:
-                return module_target
-            if len(segments) == 2:
-                macro_file = self.exported_macros.get(
-                    owner.directory if owner is not None else "", {}
-                ).get(segments[1])
-                if macro_file is not None:
-                    macro_target = _candidate_id(macro_file, self.path_to_id)
-                    if macro_target is not None:
-                        return macro_target
-            return _resolve_from_directory(
-                source_directory,
-                (),
-                self.path_to_id,
-                fallbacks,
-            )
+            return self._resolve_in_crate(absolute_source, owner, segments[1:])
 
         if first in ("self", "super"):
-            module_directory = _logical_module_directory(absolute_source)
+            module_directory = self.layout.module_directory(absolute_source)
             index = 0
             traversed_parent = False
             while index < len(segments) and segments[index] in ("self", "super"):
                 if segments[index] == "super":
-                    module_directory = os.path.dirname(module_directory)
+                    module_directory = (os.path.dirname(module_directory) if traversed_parent
+                                        else self.layout.parent_directory(absolute_source))
                     traversed_parent = True
                 index += 1
             remaining_segments = segments[index:]
@@ -300,40 +240,48 @@ class BoundRustLanguage:
             if traversed_parent:
                 # `super::Item` depends on the parent module wherever Item is defined:
                 # the parent may only re-export it.
-                fallbacks = _logical_module_files(module_directory)
-                crate_source = _crate_source_directory(absolute_source, owner)
-                if module_directory == crate_source and owner is not None:
-                    fallbacks = (*fallbacks, *_package_entrypoints(owner))
+                roots = owner.crate_roots if owner is not None else ()
+                fallbacks = (f"{module_directory}.rs", os.path.join(module_directory, "mod.rs"),
+                             *(root for root in roots if os.path.dirname(root) == module_directory))
             elif not remaining_segments:
                 fallbacks = (absolute_source,)
-            return _resolve_from_directory(
-                module_directory,
-                remaining_segments,
-                self.path_to_id,
-                fallbacks,
-            )
+            return self._resolve_below(module_directory, remaining_segments, fallbacks)
 
-        package = next(
-            (package for package in self.packages if package.crate_name == first),
-            None,
-        )
+        package = self._crate_named(first, owner)
+        if package is None:
+            # `extern crate app as other;` in the crate root: other names the crate app, or this crate for self.
+            root_file = _crate_root(absolute_source, owner)
+            crate = self.extern_aliases.get(os.path.dirname(root_file), {}).get(first) if root_file is not None else None
+            if crate == "self":
+                return self._resolve_in_crate(absolute_source, owner, segments[1:])
+            package = self._crate_named(crate, owner) if crate is not None else None
+        if package is None and import_name.startswith("::"):
+            # `::name` is a crate; in edition 2015 it is the root of this crate.
+            if owner is not None and owner.edition_2015:
+                return self._resolve_in_crate(absolute_source, owner, segments, root_fallback=False)
+            return None
         if package is None:
             # A relative path that starts at a child module: use codegen::emit::X.
             # An external crate has no file below this module, so it resolves to nothing.
-            return _resolve_from_directory(
-                _logical_module_directory(absolute_source),
-                segments,
-                self.path_to_id,
-            )
-        return _resolve_from_directory(
-            os.path.join(package.directory, "src"),
-            segments[1:],
-            self.path_to_id,
-            _package_entrypoints(package),
-        )
+            relative = self._resolve_below(self.layout.module_directory(absolute_source), segments)
+            if relative is None and owner is not None and owner.edition_2015:
+                # Edition 2015: a `use` path starts at the crate root.
+                return self._resolve_in_crate(absolute_source, owner, segments, root_fallback=False)
+            return relative
+        if package.library_root:
+            directory, fallbacks = os.path.dirname(package.library_root), (package.library_root,)
+        else:
+            directory = os.path.join(package.directory, "src")
+            fallbacks = (os.path.join(directory, "lib.rs"), os.path.join(directory, "main.rs"))
+        module_target = self._resolve_below(directory, segments[1:])
+        if module_target is None and len(segments) == 2:
+            module_target = self._exported_macro(package, segments[1])
+        return module_target if module_target is not None else self._resolve_below(directory, (), fallbacks)
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
-        return ()
+        """The files the `#[path]` declarations of a file load: every candidate of a cfg-dependent path."""
+        declared = self.layout.declared.get(os.path.normpath(result.path), ())
+        return tuple(target for target in (_candidate_id(path, self.path_to_id) for path in declared) if target is not None)
 
     def resolve_named_imports(
         self,
@@ -341,111 +289,11 @@ class BoundRustLanguage:
         results: Mapping[str, FileResult],
         resolve: Callable[[str, str], str | None] | None = None,
     ) -> tuple[dict[str, frozenset[str]], int]:
-        """Files that define the names this file imports through a module facade, and how many names could not
-        be followed.
-
-        `use crate::m::{A, B}` (or `m::A` after `use crate::m`) where m re-exports its children (`pub use child::*`,
-        `pub use child::A`, also `pub(crate)` and through a grandchild) depends on the child that defines A: that
-        edge carries the relation "item" (the file names an item of the module; `impact` follows it like any import,
-        unlike the entity-level "reexport" of refs). A glob import `use crate::m::*` gives "item" and "candidate" to
-        the children whose items the body names. A name the facade itself defines, or one in an inline module of it,
-        stays with the facade. A name no file defines (made by a macro, behind #[path] or cfg) is counted; its
-        importer keeps the facade edge, which is always kept. `resolve` is the resolver to ask (a traced one during
-        a graph update); results are the parse results by module ID."""
+        """Files that define the names this file imports through a module facade or names as members of a type,
+        and how many names could not be followed (see Definers.named_imports). `resolve` is the resolver to ask
+        (a traced one during a graph update); results are the parse results by module ID."""
         resolve = resolve or self.resolve_import
-        found: dict[str, set[str]] = {}
-        not_followed = 0
-        # `use crate::store;` then `use store::Cache;`: a path that starts with a module brought in by a `use`.
-        aliases = {
-            str(binding["local"]): f"{binding.get('module')}::{binding.get('name')}" if binding.get("module") else str(binding.get("name"))
-            for binding in result.bindings
-            if binding.get("local") not in (None, "", "*") and binding.get("name") not in (None, "", "*")
-        }
-        for spec in result.imports:
-            target = resolve(spec, result.path)
-            head, _, rest = spec.partition("::")
-            if target is None and rest and head in aliases:
-                spec = f"{aliases[head]}::{rest}"
-                target = resolve(spec, result.path)
-            named = self._named_item(spec, result.path, target, resolve) if target is not None else None
-            if named is None:
-                continue
-            definer = self._definer(target, named, results, resolve, set(), self._inside(result, target, results))
-            if definer is None:
-                not_followed += 1
-            elif definer != target:
-                found.setdefault(definer, set()).add("item")
-        # Names the body uses, alone or as the head of a path (`Handler::new()`, `Kind::A`).
-        used = {use["path"][0] for use in result.uses if "module" not in use and use.get("kind") != "import"}
-        for binding in result.bindings:
-            if binding.get("name") != "*" or binding.get("export"):
-                continue
-            facade = resolve(str(binding.get("module", "")), result.path)
-            if facade is None:
-                continue
-            inside = self._inside(result, facade, results)
-            for name in sorted(used):
-                definer = self._definer(facade, name, results, resolve, set(), inside)
-                if definer is not None and definer != facade:
-                    found.setdefault(definer, set()).update(("item", "candidate"))
-        return {target: frozenset(relations) for target, relations in found.items()}, not_followed
-
-    @staticmethod
-    def _named_item(
-        spec: str, source: str, target: str, resolve: Callable[[str, str], str | None]
-    ) -> str | None:
-        """The item a path names after the module it resolves to (crate::m::A -> A), or None for a module path or
-        a name inside an inline module of the target file."""
-        segments = [segment for segment in spec.split("::") if segment]
-        for count in range(1, len(segments)):
-            if resolve("::".join(segments[:count]), source) == target:
-                name = segments[count]
-                inline_module = count < len(segments) - 1 and name[:1].islower()
-                return None if inline_module else name
-        return None
-
-    @staticmethod
-    def _inside(result: FileResult, module: str, results: Mapping[str, FileResult]) -> bool:
-        """Whether the file of result lies inside module (a descendant sees the private imports of its ancestors)."""
-        facade = results.get(module)
-        if facade is None:
-            return False
-        return os.path.normpath(result.path).startswith(_logical_module_directory(facade.path) + os.sep)
-
-    def _definer(
-        self,
-        module: str,
-        name: str,
-        results: Mapping[str, FileResult],
-        resolve: Callable[[str, str], str | None],
-        seen: set[str],
-        inside: bool = False,
-    ) -> str | None:
-        """The module that defines name as module sees it: module itself, or the file a `pub use` leads to; with
-        inside (the importer is a descendant of module), also a private `use` of module itself."""
-        if module in seen:
-            return None
-        seen.add(module)
-        result = results.get(module)
-        if result is None:
-            return None
-        # The module the path names may define the item with any visibility (a child module sees the private items of
-        # its parent); a module reached through a re-export must make it visible to the facade (`pub`, `pub(crate)`,
-        # `pub(super)`, `pub(in ...)`): a glob re-export does not carry a private item.
-        reached = len(seen) > 1
-        if any(entity["name"] == name and not (reached and entity.get("private")) for entity in result.entities):
-            return module
-        for binding in result.bindings:
-            if not binding.get("export") and not (inside and not reached):
-                continue
-            original, local, source = binding.get("name", ""), binding.get("local", ""), binding.get("module", "")
-            if original == "*":
-                child = resolve(source, result.path)
-                found = self._definer(child, name, results, resolve, seen) if child is not None else None
-                if found is not None:
-                    return found
-            elif local == name and original:
-                child = resolve(f"{source}::{original}", result.path)
-                if child is not None and child != module:
-                    return self._definer(child, original, results, resolve, seen)
-        return None
+        # One Definers per set of results: the index of type members is built once for a build.
+        if not self._definers or self._definers[0].results is not results or self._definers[0].resolve != resolve:
+            self._definers[:] = [Definers(results, resolve, self.layout, self.macros, self.path_to_id)]
+        return self._definers[0].named_imports(result)
