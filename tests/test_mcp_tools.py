@@ -59,6 +59,21 @@ class ToolListTest(unittest.TestCase):
                 others = [name for name in TOOLS if name != tool["name"] and f"take {name}" in text]
                 self.assertTrue(others, f"{tool['name']}: no neighbour named in {text!r}")
 
+    def test_every_parameter_is_described_and_every_choice_is_closed(self) -> None:
+        """/* REQ-MCP-028: every parameter of every tool has a description of at least ten characters; a parameter
+        that is a choice lists its values (`enum`) and has a default among them; an integer parameter has a
+        lower and an upper bound. */"""
+        tools = McpSession(self.root, [_initialize(), _request(2, "tools/list")]).reply(2)["result"]["tools"]
+        for tool in tools:
+            for name, rule in tool["inputSchema"]["properties"].items():
+                where = f"{tool['name']}.{name}"
+                self.assertGreaterEqual(len(rule.get("description", "").strip()), 10, where)
+                if "enum" in rule:
+                    self.assertIn(rule.get("default"), rule["enum"], where)
+                if rule.get("type") == "integer":
+                    self.assertIn("minimum", rule, where)
+                    self.assertIn("maximum", rule, where)
+
     def test_a_removed_tool_is_an_unknown_tool(self) -> None:
         """/* REQ-MCP-022: a call of a removed tool name gets the unknown-tool error (-32602), as any unknown tool. */"""
         session = McpSession(self.root, [_initialize(), _call(2, "find_callers", {"function": "pay"}), _call(3, "rdeps", {"module": "shop/pricing"})])
