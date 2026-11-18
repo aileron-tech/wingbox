@@ -48,7 +48,7 @@ class SkippedLanguageNoticeTest(FreshnessTestCase):
         )
 
     def test_a_skipped_language_is_said_wherever_the_graph_is_read(self) -> None:
-        """/* REQ-FRESH-052: after a build that skipped a language, every reader of the graph carries the one-line fact `(skipped-language csharp :files N :add "wingbox add csharp")`: a query command prints it on stderr, an MCP answer starts with it, the search hook adds it to the context it gives (and stays silent when it has no context), the build ends with a line that names the command, and REPORT.md says it in its key findings. */"""
+        """/* REQ-FRESH-052: after a build that skipped a language, every reader of the graph carries the one-line fact `(skipped-language csharp :files N :add "wingbox add csharp")`: a query command prints it on stderr, an MCP answer starts with it (an answer that is an error stays marked as one), the search hook adds it to the context it gives (and stays silent when it has no context), the build ends with a line that names the command, and REPORT.md says it in its key findings. */"""
         out = io.StringIO()
         with without_csharp_parser(), redirect_stdout(out), redirect_stderr(io.StringIO()):
             self.assertEqual(cli.main(["build", str(self.root)]), 0)
@@ -62,6 +62,10 @@ class SkippedLanguageNoticeTest(FreshnessTestCase):
         server = mcp_server.Server(str(self.root))
         answer = mcp_server.TOOLS_BY_NAME["impact"].run(server, {"target": "shop/pricing.py"})
         self.assertTrue(answer.texts[0].startswith(FACT + "\n"), answer.texts[0][:200])
+        self.assertFalse(answer.is_error)
+        missing = mcp_server.TOOLS_BY_NAME["analyze"].run(server, {"module": "no/such/module"})
+        self.assertTrue(missing.texts[0].startswith(FACT + "\n(error "), missing.texts[0][:200])
+        self.assertTrue(missing.is_error)
         with without_csharp_parser():
             rebuilt = mcp_server.TOOLS_BY_NAME["build"].run(server, {})
         self.assertIn("wingbox add csharp", rebuilt.texts[0])
