@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.1 - 2026-11-18
+
+### Fixes
+
+- A source file or a manifest (`Cargo.toml`, `go.mod`, `pubspec.yaml`) that starts with a UTF-8 byte
+  order mark is read like the same file without it. Before, a Python file saved with a mark (Visual
+  Studio and some Windows editors write one) lost its functions, classes and references in the graph,
+  and a `Cargo.toml` or `go.mod` with a mark lost the edges between packages.
+
+Thanks to @just4just2 for the report with a reproduction
+([#105](https://github.com/aileron-tech/wingbox/issues/105)).
+
 ## 0.10.0 - 2026-11-18
 
 The answers of `wingbox impact` for Rust change: a file that uses an item through a module facade now
