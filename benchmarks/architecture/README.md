@@ -14,7 +14,7 @@ model.
 - History: a third step, a built-in table of word vectors for the names the
   first two leave unmatched, was measured on the same held-out half; it did
   not beat the dictionaries (accuracy 75.4 % against 76.2 %) and was removed
-  in the version after 0.10.2, with the `--synonyms` option that turned it on.
+  in 0.11.0, with the `--synonyms` option that turned it on.
 - Style detection on 33 parts of the same repositories: 31 right with
   dictionaries (with or without Levenshtein).
 

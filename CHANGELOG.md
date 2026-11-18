@@ -1,9 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 - 2026-11-18
 
 ### Changes
 
+- The package is about 3 MB smaller (wheel 3.56 MB -> 0.60 MB): the built-in word-vector table and
+  the `--synonyms` option of `wingbox init` and `wingbox build` are removed. On the held-out half
+  of the architecture benchmark the table did not beat the style dictionaries. Folder names are
+  matched by the dictionaries and by spelling, as before; output without the option is unchanged.
 - `WINGBOX_JOBS` sets the most worker processes a build or a background refresh starts (a whole
   number from 1; default: one per processor). `WINGBOX_JOBS=1` parses in the one process, for a
   laptop that has other work to do or a shared build machine.
