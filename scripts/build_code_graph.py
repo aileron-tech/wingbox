@@ -151,7 +151,6 @@ try:
         from .architecture.library import load_library
         from .architecture.plan import RepositoryPlan, detect_plan
         from .architecture.repository import list_files, text_reader
-        from .architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
         from .architecture.decisions import STORE_FILE, learned_layers, read_store
         from .architecture.plan import apply_learned
     else:
@@ -186,7 +185,6 @@ try:
         from architecture.library import load_library
         from architecture.plan import RepositoryPlan, detect_plan
         from architecture.repository import list_files, text_reader
-        from architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
         from architecture.decisions import STORE_FILE, learned_layers, read_store
         from architecture.plan import apply_learned
 except ModuleNotFoundError as dependency_error:
@@ -4077,13 +4075,12 @@ class BuilderOptions:
     fragments_path: Optional[str] = None  # write the fragment store there (partial updates)
     snapshot_path: Optional[str] = None  # write the snapshot of the tree there (change detection)
     keep_published: bool = False  # an automatic refresh: never replace a graph with modules by an empty one
-    synonyms: bool = False
 
 
 def _builder_usage() -> str:
     return (
         "usage: build_code_graph.py --root ABSOLUTE_PATH [--full] [--lsp] "
-        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...] [--synonyms]\n"
+        "[--lsp-timeout SECONDS] [--exclude-dir NAME ...]\n"
         "Writes ROOT/.wingbox/index.sexp and the files that go with it."
     )
 
@@ -4107,7 +4104,6 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
     root_argument: Optional[str] = None
     full_rebuild = False
     use_lsp = False
-    synonyms = False
     lsp_timeout = LSP_REQUEST_TIMEOUT
     excluded_directories: set[str] = set()
 
@@ -4142,10 +4138,6 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
             use_lsp = True
             index += 1
             continue
-        if argument == "--synonyms":
-            synonyms = True
-            index += 1
-            continue
         return Err(f"unknown argument: {argument}")
 
     if root_argument is None:
@@ -4167,7 +4159,6 @@ def parse_builder_options(args: list[str]) -> Result[BuilderOptions, str]:
             use_lsp=use_lsp,
             lsp_timeout=lsp_timeout,
             skip_directories=frozenset(SKIP_DIRS | excluded_directories),
-            synonyms=synonyms,
         )
     )
 
@@ -4343,7 +4334,7 @@ def _run_build(options: BuilderOptions) -> int:
         t_lsp = time.monotonic() - t_lsp_start
         print(f"[code-graph] LSP pass: {t_lsp:.2f}s")
 
-    built = project_architecture(root, exclusions, options.synonyms, all_results, nodes)
+    built = project_architecture(root, exclusions, all_results, nodes)
     if isinstance(built, Err):
         print(f"[code-graph] ERROR: {built.error}", file=sys.stderr)
         return 2
@@ -4425,7 +4416,6 @@ def _published_modules(path: str) -> bool:
 def project_architecture(
     root: str,
     exclusions: DiscoveryExclusions,
-    synonyms: bool,
     results: Sequence[FileResult],
     nodes: Sequence[dict],
 ) -> Result[tuple[GraphArchitecture, RepositoryPlan], str]:
@@ -4434,7 +4424,7 @@ def project_architecture(
     A build and a partial update both call it, so the published graph is the same either way.
     """
     plan_paths = list_files(root, exclusions.directory_names, exclusions.paths)
-    plan = architecture_plan(root, exclusions.directory_names, exclusions.paths, synonyms, plan_paths)
+    plan = architecture_plan(root, exclusions.directory_names, exclusions.paths, plan_paths)
     if isinstance(plan, Err):
         return plan
     names_by_path = {
@@ -4510,15 +4500,11 @@ def _file_digest(path: str) -> str:
 
 
 def architecture_plan(
-    root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str], synonyms: bool = False,
+    root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str],
     listed: Optional[tuple[str, ...]] = None,
 ) -> Result[RepositoryPlan, str]:
-    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection.
-
-    `synonyms` adds the word-vector step when folders are mapped to layers (`--synonyms`).
-    """
+    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection."""
     library = load_library()
-    settings = SYNONYM_SETTINGS if synonyms else DEFAULT_SETTINGS
     paths = listed if listed is not None else list_files(root, skip_directories, ignored_paths)
     read = text_reader(root)
     config = read_config(read, library)
@@ -4528,9 +4514,9 @@ def architecture_plan(
         print(f"[wingbox] note: {config.note}", file=sys.stderr)
     learned = learned_layers(read_store(read(STORE_FILE) or ""))
     if config is None:
-        plan = detect_plan(paths, read, library, settings)
+        plan = detect_plan(paths, read, library)
         return Ok(apply_learned(plan, learned))
-    return Ok(apply_learned(plan_from_config(config, paths, read, library, settings), learned, from_config=True))
+    return Ok(apply_learned(plan_from_config(config, paths, read, library), learned, from_config=True))
 
 
 def _ignore_note(reason: str) -> str:

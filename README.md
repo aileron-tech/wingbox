@@ -58,8 +58,7 @@ analysis, call-flow tracing, monorepo navigation, and safer AI-assisted coding.
 
 Everything runs on your machine. The code graph is built by deterministic
 static parsing: no LLM call, no vector database, and no network access to build
-or query it. Wingbox does not embed your code; to read folder names it uses a
-built-in table of word vectors for architecture terms.
+or query it. Wingbox does not embed your code.
 
 ## INSTALL AND RUN
 
@@ -534,7 +533,7 @@ not (database client types in DTOs and services, query-builder helpers in
 
 ### The architecture of each part: `wingbox init`
 
-`wingbox init [PATH] [--force] [--sexp] [--details] [--synonyms]` splits the repository into parts and
+`wingbox init [PATH] [--force] [--sexp] [--details]` splits the repository into parts and
 judges the architecture style of each, then writes `.wingbox/config.yaml`:
 
 ```
@@ -583,12 +582,7 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   cannot read is named and no violation is stated for that part.
 - **Folder names.** A folder matches a style word as a whole name after
   lowercasing and dropping `-` and `_`; a spelling variant one edit away
-  matches (`controlers`). With `--synonyms`, a name still unmatched is
-  compared with the style words through a built-in table of word vectors for
-  architecture terms (GloVe, public domain), above a threshold; it is off by
-  default because it did not improve accuracy on
-  [benchmarks/architecture](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/architecture/README.md). Each label
-  says which step matched.
+  matches (`controlers`). Each label says which step matched.
 
 - **Target layout.** For each part with a style, `init` lists the full layout
   of that style: one folder per layer and the building blocks of the domain
@@ -1342,11 +1336,7 @@ image with `--network none`.
 Wingbox does not embed your code, and it has no vector database. The graph is
 built by parsers that read the source; a question is answered by following
 recorded import, reference and inheritance edges, not by retrieving text that
-looks similar. To read folder names it ships a built-in table of word vectors
-for architecture terms (30,102 English words from GloVe, public domain),
-used with `--synonyms` to match a folder name that no style dictionary holds
-to the nearest style word. Only folder names are looked up; no code is turned
-into vectors.
+looks similar.
 
 ### How is Wingbox different from RAG or vector search?
 

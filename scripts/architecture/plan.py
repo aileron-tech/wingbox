@@ -23,7 +23,7 @@ from .detect import (
     split_parts,
 )
 from .library import Library, Style, load_library
-from .words import DEFAULT_SETTINGS, DETECTION_SETTINGS, MatchSettings, match_name, normalise
+from .words import DEFAULT_SETTINGS, MatchSettings, match_name, normalise
 
 NO_STYLE = "none"
 UNDETERMINED = "undetermined"
@@ -34,7 +34,7 @@ DECLARED = "declared"
 class LayerFolder:
     folder: str      # folder name as found in the part
     layer: str
-    match: str       # exact | spelling | synonym | config
+    match: str       # exact | spelling | config
     via: str         # dictionary word (or the config file)
     files: int
 
@@ -92,7 +92,7 @@ def layer_folders(
 ) -> tuple[tuple[LayerFolder, ...], tuple[str, ...]]:
     """Folders of the part that name a layer of the style, and its routing roots (route-tree)."""
     library = library or load_library()
-    dictionary = layer_dictionary(style, settings.synonyms)
+    dictionary = layer_dictionary(style)
     # Without its own CQRS evidence a part's commands/ and queries/ are not CQRS commands of the domain
     # (a CLI command, a data-fetching query); other layers keep them.
     skipped = frozenset() if cqrs else library.cqrs_words()[0]
@@ -143,7 +143,6 @@ def declared_rules(files: tuple[DeclaredFile, ...], read_text: ReadText) -> Decl
 
 def detect_plan(
     paths: tuple[str, ...], read_text: ReadText, library: Library, settings: MatchSettings = DEFAULT_SETTINGS,
-    detection: MatchSettings = DETECTION_SETTINGS,
 ) -> RepositoryPlan:
     """Parts, levels and styles of a repository from its file list alone (no configuration)."""
     roots = part_roots(paths, library)
@@ -161,10 +160,10 @@ def detect_plan(
             plans.append(replace(
                 base, style=DECLARED, origin="declared", declared=rules,
                 state="declared" if rules.layers is not None else "declared-unread",
-                judgement=judge(part, library, detection),
+                judgement=judge(part, library, settings),
             ))
             continue
-        judgement = judge(part, library, detection)
+        judgement = judge(part, library, settings)
         if judgement.state == "not-judged":
             plans.append(replace(base, judgement=judgement))
         elif judgement.state == "undetermined" or judgement.best is None:

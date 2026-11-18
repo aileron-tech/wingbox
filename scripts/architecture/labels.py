@@ -38,7 +38,7 @@ class Label:
     layer: str
     style: str     # style id of the part, "declared", or "-" outside any part
     rule: str      # what set the layer, for people and agents
-    match: str     # exact | spelling | synonym | config | file | declared | test | none
+    match: str     # exact | spelling | config | file | declared | test | none
     root: bool = False   # a composition root (index.toml): it wires the layers and may import every one
 
 
@@ -57,7 +57,7 @@ def _relative(path: str, part: PartPlan) -> str:
 
 def _folder_rule(found: LayerFolder) -> tuple[str, str]:
     rule = f"folder {found.folder}/ -> {found.layer}"
-    if found.match in ("spelling", "synonym"):
+    if found.match == "spelling":
         rule += f" ({found.match} of {found.via})"
     elif found.match == "learned":
         rule += f" (learned from {found.via})"

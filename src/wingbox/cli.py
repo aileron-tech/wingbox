@@ -1,6 +1,6 @@
 """Command-line entry point for Wingbox.
 
-    wingbox init [PATH] [--force] [--sexp] [--synonyms] [--language L --style S --yes --scaffold]
+    wingbox init [PATH] [--force] [--sexp] [--language L --style S --yes --scaffold]
                                             Detect the parts of a repository and the architecture style of each,
                                             print the candidates and write .wingbox/config.yaml (kept if present
                                             unless --force) and .wingbox/assistant-setup.md (lines a team may
@@ -836,7 +836,7 @@ def _learn_command(args: list[str], cwd: str) -> int:
         base = _replace(part, style=style.id, state="configured", layers=layers, routing_root=routing)
         folders = top_folders(files.files)
         unplaced = unplaced_folders(base, files.files, library)
-        weak = {f.folder: f"{f.match} of {f.via}" for f in layers if f.match in ("spelling", "synonym")}
+        weak = {f.folder: f"{f.match} of {f.via}" for f in layers if f.match == "spelling"}
         prefix = "" if part.path == "." else part.path + "/"
         infos, known_rows = [], []
         # Nested folders whose files break a rule, or rest on a guess, at the deepest folder that holds them.
@@ -857,7 +857,7 @@ def _learn_command(args: list[str], cwd: str) -> int:
                 breaks[nested_folder(module)] = breaks.get(nested_folder(module), 0) + 1
         for module in (m for m in graph.nodes if m.startswith(prefix) or part.path == "."):
             label = search.module_label(graph, module)
-            if label.part == part.path and label.match in ("role", "synonym", "spelling"):
+            if label.part == part.path and label.match in ("role", "spelling"):
                 breaks.setdefault(nested_folder(module), 0)
         asked = sorted(set(unplaced) | (set(weak) & set(folders)))
         deep = sorted((f for f in breaks if f and f in nested and f not in asked), key=lambda f: (-breaks[f], f))
@@ -1174,7 +1174,6 @@ class InitArguments:
     root: str
     force: bool
     sexp: bool
-    synonyms: bool
     language: str = ""
     style: str = ""
     yes: bool = False
@@ -1183,8 +1182,8 @@ class InitArguments:
 
 
 def init_arguments(args: list[str], cwd: str) -> InitArguments | str:
-    """Arguments of `wingbox init [PATH] [--force] [--sexp] [--synonyms]`, or an error."""
-    flags = ("--force", "--sexp", "--synonyms", "--yes", "--scaffold", "--details")
+    """Arguments of `wingbox init [PATH] [--force] [--sexp]`, or an error."""
+    flags = ("--force", "--sexp", "--yes", "--scaffold", "--details")
     values: dict[str, str] = {}
     rest: list[str] = []
     index = 0
@@ -1207,7 +1206,7 @@ def init_arguments(args: list[str], cwd: str) -> InitArguments | str:
     if not os.path.isdir(root):
         return f"{root} is not a directory"
     return InitArguments(
-        root, "--force" in args, "--sexp" in args, "--synonyms" in args, values.get("--language", ""),
+        root, "--force" in args, "--sexp" in args, values.get("--language", ""),
         values.get("--style", ""), "--yes" in args, "--scaffold" in args, "--details" in args,
     )
 
@@ -1384,7 +1383,6 @@ def _init(args: list[str], cwd: str) -> int:
     from architecture.plan import detect_plan
     from architecture.repository import list_files, text_reader
     from architecture.sexp import q
-    from architecture.words import DEFAULT_SETTINGS, SYNONYM_SETTINGS
 
     skip = frozenset(builder.SKIP_DIRS)
     ignored = builder.load_git_ignored_paths(root, skip)
@@ -1394,13 +1392,12 @@ def _init(args: list[str], cwd: str) -> int:
     else:
         ignored_paths = ignored.paths
     library = load_library()
-    settings = SYNONYM_SETTINGS if parsed.synonyms else DEFAULT_SETTINGS
     paths = list_files(root, skip, ignored_paths)
     from architecture.detect import is_source
 
     if not any(is_source(path) for path in paths):
         return _init_new_project(parsed, library)
-    plan = detect_plan(paths, text_reader(root), library, settings)
+    plan = detect_plan(paths, text_reader(root), library)
     config_path = os.path.join(root, CONFIG_FILE)
     if os.path.exists(config_path) and not force:
         config_line = f"(arch-config-kept {q(CONFIG_FILE)} :reason {q('the file exists; wingbox init --force rewrites it')})"

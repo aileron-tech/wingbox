@@ -1493,7 +1493,7 @@ class ModuleLabel:
     part: str
     style: str
     rule: str
-    match: str   # exact | spelling | synonym | config | file | declared | test | role | package | none
+    match: str   # exact | spelling | config | file | declared | test | role | package | none
     root: bool = False   # a composition root: wires the layers, may import every one
 
 

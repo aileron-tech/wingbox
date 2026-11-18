@@ -7,7 +7,7 @@ Forms (see references/sexp-notation.md):
 
   (arch-part <part> :level <c4 level> :kind <kind> :files <n> :style <style> :state <state>
              :origin detected|config|declared [:score <s> :coverage <c>] [:name <style name>] [:source <citation>])
-  (arch-evidence <part> <style> <folder or file pattern> :files <n> :group <group> :match exact|spelling|synonym|file [:via <word>])
+  (arch-evidence <part> <style> <folder or file pattern> :files <n> :group <group> :match exact|spelling|file [:via <word>])
   (arch-candidate <part> <style> :score <s> :coverage <c> :status candidate|below :source <citation>)
   (arch-overlay <part> <overlay> :score <s> :coverage <c>)
   (arch-layer <part> <layer> <folder> :files <n> :match <step> [:via <word>])
@@ -84,7 +84,7 @@ def part_facts(part: PartPlan, library: Library, paths: tuple[str, ...] = (), de
             if score is None:
                 continue
             for item in score.evidence:
-                via = f" :via {q(item.via)}" if item.match in ("spelling", "synonym") else ""
+                via = f" :via {q(item.via)}" if item.match == "spelling" else ""
                 facts.append(
                     f"(arch-evidence {_name(part.path)} {score.style} {q(item.folder)} :files {item.files} "
                     f":group {item.group} :match {item.match}{via})"
@@ -105,7 +105,7 @@ def part_facts(part: PartPlan, library: Library, paths: tuple[str, ...] = (), de
     for root in part.routing_root:
         facts.append(f"(arch-layer {_name(part.path)} routing-root {q(root)} :files 0 :match exact)")
     for folder in part.layers:
-        via = f" :via {q(folder.via)}" if folder.match in ("spelling", "synonym") else ""
+        via = f" :via {q(folder.via)}" if folder.match == "spelling" else ""
         facts.append(
             f"(arch-layer {_name(part.path)} {folder.layer} {q(folder.folder)} :files {folder.files} :match {folder.match}{via})"
         )
@@ -246,7 +246,7 @@ def render_text(facts: list[str], min_source_files: int) -> str:
         evidence.sort(key=lambda t: -int(keyword(t, "files", "0") or 0))
         shown = []
         for t in evidence[:_EVIDENCE_SHOWN]:
-            note = f" ({keyword(t, 'match')} of {keyword(t, 'via')})" if keyword(t, "match") in ("spelling", "synonym") else ""
+            note = f" ({keyword(t, 'match')} of {keyword(t, 'via')})" if keyword(t, "match") == "spelling" else ""
             shown.append(f"{t[3]} {_number(keyword(t, 'files', '0') or '0')}{note}")
         if shown:
             lines.append("  " + "  ".join(shown))

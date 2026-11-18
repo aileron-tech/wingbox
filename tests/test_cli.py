@@ -4,7 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 
@@ -177,15 +177,23 @@ class WingboxInitTest(unittest.TestCase):
         self.assertEqual(0, status)
         self.assertIn("style: layered", config.read_text(encoding="utf-8"))
 
-    def test_init_uses_word_vectors_only_with_synonyms(self) -> None:
-        """/* REQ-CLI-016: `wingbox init` maps a folder name that no dictionary holds only with --synonyms, and the config says which folder came from a synonym. */"""
-        (self.root / "src" / "webhooks").mkdir()
-        (self.root / "src" / "webhooks" / "hook0.ts").write_text("export const h = 1;\n", encoding="utf-8")
-        self.assertEqual(0, _run(["init", str(self.root)])[0])
-        config = self.root / ".wingbox" / "config.yaml"
-        self.assertNotIn("webhooks", config.read_text(encoding="utf-8"))
-        self.assertEqual(0, _run(["init", str(self.root), "--force", "--synonyms"])[0])
-        self.assertIn("webhooks: synonym of hooks", config.read_text(encoding="utf-8"))
+    def test_no_word_vector_table_and_no_synonyms_option(self) -> None:
+        """/* REQ-CLI-025: the package ships no word-vector table (no vectors folder, no .i8 or .npy file under scripts/ or src/), and neither `wingbox init` nor the builder knows --synonyms: both refuse it the way they refuse any unknown option, and init writes nothing. */"""
+        repository = CLI_PATH.parents[2]
+        shipped = [path for folder in ("scripts", "src") for path in (repository / folder).rglob("*")]
+        self.assertEqual([], [str(path) for path in shipped if path.name == "vectors" or path.suffix in (".i8", ".npy")])
+        here = str(self.root)
+        self.assertEqual("unknown option --synonyms", wingbox_cli.init_arguments([here, "--synonyms"], here))
+        self.assertEqual("unknown option --no-such-option", wingbox_cli.init_arguments([here, "--no-such-option"], here))
+        errors = io.StringIO()
+        with redirect_stderr(errors):
+            status, _ = _run(["init", here, "--synonyms"])
+        self.assertEqual(2, status)
+        self.assertIn("unknown option --synonyms", errors.getvalue())
+        self.assertFalse((self.root / ".wingbox").exists())
+        builder = wingbox_cli.load_script("build_code_graph")
+        self.assertEqual("unknown argument: --synonyms", builder.parse_builder_options(["--root", here, "--synonyms"]).error)
+        self.assertEqual("unknown argument: --no-such-option", builder.parse_builder_options(["--root", here, "--no-such-option"]).error)
 
     def test_init_sexp_prints_the_facts_the_text_is_made_from(self) -> None:
         """/* REQ-CLI-010: `wingbox init --sexp` prints the S-expression facts (arch-part, arch-evidence, arch-config-written, and last init-assistant-setup naming .wingbox/assistant-setup.md) for agents. */"""

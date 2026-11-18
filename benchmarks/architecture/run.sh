@@ -1,6 +1,6 @@
 #!/bin/sh
 # The architecture benchmark of benchmarks/architecture/README.md: role mapping of folder names
-# (dictionaries, + Levenshtein, + word vectors) and style detection. No network, no model.
+# (dictionaries, + Levenshtein) and style detection. No network, no model.
 #
 # Usage: benchmarks/architecture/run.sh
 # Writes results/ and compares them with the committed files (git diff --exit-code).

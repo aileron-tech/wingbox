@@ -1,477 +1,477 @@
-repository	part	style	folder	role	half	dictionaries	+levenshtein	+vectors	step
-jasontaylordev/CleanArchitecture	.	onion-clean	src	none	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Application	application	tune	application	application	application	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	Infrastructure	infrastructure	test	infrastructure	infrastructure	infrastructure	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	Common	none	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Web	interface	test	interface	interface	interface	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	Commands	application	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Domain	domain	tune	domain	domain	domain	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	TodoLists	none	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	TodoItems	none	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Queries	application	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Data	infrastructure	test	infrastructure	infrastructure	infrastructure	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	Behaviours	application	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	GetTodos	none	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Endpoints	interface	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Exceptions	none	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Interfaces	application	tune	interface	interface	interface	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	Identity	infrastructure	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	AppHost	none	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Models	none	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	CreateTodoItem	none	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Entities	domain	tune	domain	domain	domain	exact
-jasontaylordev/CleanArchitecture	.	onion-clean	Configurations	infrastructure	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Interceptors	infrastructure	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	templates	none	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	ValueObjects	domain	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Events	domain	test	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Enums	domain	tune	none	none	none	none
-jasontaylordev/CleanArchitecture	.	onion-clean	Services	application	tune	none	none	none	none
-thombergs/buckpal	.	hexagonal	src	none	tune	none	none	none	none
-thombergs/buckpal	.	hexagonal	main	none	test	none	none	none	none
-thombergs/buckpal	.	hexagonal	java	none	test	none	none	none	none
-thombergs/buckpal	.	hexagonal	io	none	tune	none	none	none	none
-thombergs/buckpal	.	hexagonal	application	application	tune	application	application	application	exact
-thombergs/buckpal	.	hexagonal	domain	domain	tune	domain	domain	domain	exact
-thombergs/buckpal	.	hexagonal	in	driving-adapter	test	driving-adapter	driving-adapter	driving-adapter	exact
-thombergs/buckpal	.	hexagonal	port	application	tune	application	application	application	exact
-thombergs/buckpal	.	hexagonal	model	domain	tune	domain	domain	domain	exact
-thombergs/buckpal	.	hexagonal	service	application	tune	application	application	application	exact
-thombergs/buckpal	.	hexagonal	common	none	tune	none	none	none	none
-thombergs/buckpal	.	hexagonal	adapter	adapter	test	adapter	adapter	adapter	exact
-thombergs/buckpal	.	hexagonal	web	driving-adapter	test	driving-adapter	driving-adapter	driving-adapter	exact
-thombergs/buckpal	.	hexagonal	persistence	driven-adapter	test	driven-adapter	driven-adapter	driven-adapter	exact
-thombergs/buckpal	.	hexagonal	out	driven-adapter	tune	driven-adapter	driven-adapter	driven-adapter	exact
-thombergs/buckpal	.	hexagonal	validation	none	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	internal	none	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	controller	interface	test	interface	interface	interface	exact
-evrone/go-clean-template	.	onion-clean	v1	none	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	pkg	none	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	nats_rpc	interface	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	restapi	interface	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	amqp_rpc	interface	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	response	interface	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	grpc	interface	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	request	interface	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	repo	infrastructure	tune	infrastructure	infrastructure	infrastructure	exact
-evrone/go-clean-template	.	onion-clean	usecase	application	test	application	application	application	exact
-evrone/go-clean-template	.	onion-clean	rabbitmq	infrastructure	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	rmq_rpc	infrastructure	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	persistent	infrastructure	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	nats	infrastructure	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	entity	domain	tune	domain	domain	domain	exact
-evrone/go-clean-template	.	onion-clean	middleware	interface	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	task	none	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	translation	none	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	user	none	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	client	infrastructure	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	server	infrastructure	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	app	none	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	webapi	infrastructure	test	interface	interface	interface	exact
-evrone/go-clean-template	.	onion-clean	grpcserver	infrastructure	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	httpserver	infrastructure	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	postgres	infrastructure	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	cmd	none	test	none	none	none	none
-evrone/go-clean-template	.	onion-clean	config	none	tune	none	none	none	none
-evrone/go-clean-template	.	onion-clean	logger	none	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Modules	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Meetings	none	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Application	application	tune	application	application	application	exact
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Infrastructure	infrastructure	tune	infrastructure	infrastructure	infrastructure	exact
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Domain	domain	tune	domain	domain	domain	exact
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Payments	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Configuration	infrastructure	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Processing	infrastructure	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Administration	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	UserAccess	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Registrations	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Events	domain	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Subscriptions	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	API	interface	test	interface	interface	interface	exact
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	MeetingGroupProposals	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Rules	domain	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	BuildingBlocks	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	MeetingGroups	none	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	MeetingComments	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Outbox	infrastructure	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Contracts	application	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Members	none	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	PriceListItems	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	InternalCommands	application	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Users	none	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Inbox	infrastructure	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Commands	application	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Queries	application	tune	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Persistence	infrastructure	test	infrastructure	infrastructure	infrastructure	exact
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Controllers	interface	test	interface	interface	interface	exact
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	Projections	application	test	none	none	none	none
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	DomainServices	domain	tune	none	none	domain	synonym
-ardalis/CleanArchitecture	.	onion-clean	src	none	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	sample	none	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Contributors	none	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Projects	none	test	none	none	infrastructure	synonym
-ardalis/CleanArchitecture	.	onion-clean	Data	infrastructure	test	infrastructure	infrastructure	infrastructure	exact
-ardalis/CleanArchitecture	.	onion-clean	Infrastructure	infrastructure	test	infrastructure	infrastructure	infrastructure	exact
-ardalis/CleanArchitecture	.	onion-clean	Configurations	infrastructure	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	ProjectAggregate	domain	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Domain	domain	test	domain	domain	domain	exact
-ardalis/CleanArchitecture	.	onion-clean	Config	none	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	ContributorAggregate	domain	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Queries	application	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Specifications	domain	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Email	infrastructure	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	List	none	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	CartFeatures	none	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	GetById	none	tune	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	ProductFeatures	none	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Create	none	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Events	domain	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	UseCases	application	test	application	application	application	exact
-ardalis/CleanArchitecture	.	onion-clean	Core	domain	tune	domain	domain	domain	exact
-ardalis/CleanArchitecture	.	onion-clean	Web	interface	test	interface	interface	interface	exact
-ardalis/CleanArchitecture	.	onion-clean	Handlers	application	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Services	domain	test	none	none	none	none
-ardalis/CleanArchitecture	.	onion-clean	Interfaces	domain	tune	interface	interface	interface	exact
-mastodon/mastodon	.	mvc	app	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	mastodon	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	javascript	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	db	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	migrate	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	components	view	test	none	none	none	none
-mastodon/mastodon	.	mvc	views	view	test	view	view	view	exact
-mastodon/mastodon	.	mvc	admin	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	controllers	controller	test	controller	controller	controller	exact
-mastodon/mastodon	.	mvc	features	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	models	model	tune	model	model	model	exact
-mastodon/mastodon	.	mvc	lib	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	api	controller	tune	none	none	none	none
-mastodon/mastodon	.	mvc	serializers	view	test	none	none	none	none
-mastodon/mastodon	.	mvc	activitypub	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	workers	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	v1	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	services	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	concerns	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	rest	controller	tune	none	none	none	none
-mastodon/mastodon	.	mvc	settings	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	post_migrate	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	config	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	actions	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	ui	view	test	none	none	none	none
-mastodon/mastodon	.	mvc	initializers	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	policies	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	reducers	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	user_mailer	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	helpers	view	test	view	view	view	exact
-mastodon/mastodon	.	mvc	trends	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	status	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	hooks	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	fasp	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	auth	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	metrics	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	utils	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	accounts	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	compose	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	notifications	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	statuses	none	tune	none	none	none	none
-mastodon/mastodon	.	mvc	form_fields	view	test	none	none	none	none
-mastodon/mastodon	.	mvc	notifications_v2	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	emoji	none	test	none	none	none	none
-mastodon/mastodon	.	mvc	validators	model	test	none	none	none	none
-mastodon/mastodon	.	mvc	templates	view	test	view	view	view	exact
-mastodon/mastodon	.	mvc	layouts	view	tune	none	none	none	none
-mastodon/mastodon	.	mvc	presenters	view	test	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	conduit	none	test	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	apps	none	test	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	articles	none	tune	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	authentication	none	tune	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	profiles	none	tune	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	core	none	test	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	migrations	none	test	none	none	none	none
-gothinkster/django-realworld-example-app	.	mvc	templates	view	test	view	view	view	exact
-gothinkster/laravel-realworld-example-app	.	mvc	app	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Http	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Api	controller	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	RealWorld	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Controllers	controller	test	controller	controller	controller	exact
-gothinkster/laravel-realworld-example-app	.	mvc	config	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Requests	controller	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	resources	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Transformers	view	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Middleware	controller	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Providers	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Auth	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	js	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	lang	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	en	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	routes	controller	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Filters	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	database	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Models	model	tune	model	model	model	exact
-gothinkster/laravel-realworld-example-app	.	mvc	assets	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Favorite	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Slug	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	bootstrap	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	seeds	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	public	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Console	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Exceptions	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Helpers	none	tune	view	view	view	exact
-gothinkster/laravel-realworld-example-app	.	mvc	Follow	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	Paginate	none	test	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	factories	none	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	components	view	tune	none	none	none	none
-gothinkster/laravel-realworld-example-app	.	mvc	views	view	test	view	view	view	exact
-spring-projects/spring-petclinic	.	layered	src	none	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	main	none	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	java	none	test	none	none	none	none
-spring-projects/spring-petclinic	.	layered	org	none	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	springframework	none	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	samples	none	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	petclinic	none	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	owner	none	test	none	none	none	none
-spring-projects/spring-petclinic	.	layered	vet	none	test	none	none	none	none
-spring-projects/spring-petclinic	.	layered	system	config	tune	none	none	none	none
-spring-projects/spring-petclinic	.	layered	model	domain	test	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	src	none	test	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	app	app	tune	app	app	app	exact
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	features	features	test	features	features	features	exact
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	widgets	widgets	tune	widgets	widgets	widgets	exact
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	infrastructure	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	api	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todos	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	mock	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	entities	entities	test	entities	entities	entities	exact
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo-filter	none	test	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	init	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	query-policy	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	page	none	tune	none	none	pages	synonym
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	shared	shared	test	shared	shared	shared	exact
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	ui	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo-form	none	test	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo-item	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	model	none	tune	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	use-cases	none	test	none	none	none	none
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	pages	pages	tune	pages	pages	pages	exact
-vercel/commerce	.	route-tree	components	ui	test	ui	ui	ui	exact
-vercel/commerce	.	route-tree	lib	shared	tune	shared	shared	shared	exact
-vercel/commerce	.	route-tree	shopify	none	test	none	none	none	none
-vercel/commerce	.	route-tree	search	none	tune	none	none	none	none
-vercel/commerce	.	route-tree	layout	ui	test	none	none	none	none
-vercel/commerce	.	route-tree	cart	none	tune	none	none	none	none
-vercel/commerce	.	route-tree	queries	state	test	state	state	state	exact
-vercel/commerce	.	route-tree	product	none	tune	none	none	none	none
-vercel/commerce	.	route-tree	fragments	none	tune	none	none	none	none
-vercel/commerce	.	route-tree	grid	ui	tune	none	none	none	none
-vercel/commerce	.	route-tree	navbar	ui	tune	none	none	none	none
-vercel/commerce	.	route-tree	filter	none	tune	none	none	none	none
-vercel/commerce	.	route-tree	api	state	tune	state	state	state	exact
-vercel/commerce	.	route-tree	revalidate	none	test	none	none	none	none
-vercel/commerce	.	route-tree	icons	ui	tune	none	none	none	none
-vercel/commerce	.	route-tree	mutations	state	test	state	state	state	exact
-vercel/commerce	.	route-tree	utils	shared	tune	shared	shared	shared	exact
-vercel/commerce	.	route-tree	hooks	state	tune	state	state	state	exact
-immich-app/immich	server	nestjs	src	none	test	none	none	none	none
-immich-app/immich	server	nestjs	schema	domain	test	none	none	domain	synonym
-immich-app/immich	server	nestjs	tables	domain	tune	none	none	none	none
-immich-app/immich	server	nestjs	repositories	infra	tune	infra	infra	infra	exact
-immich-app/immich	server	nestjs	services	service	tune	service	service	service	exact
-immich-app/immich	server	nestjs	dtos	domain	tune	domain	domain	domain	exact
-immich-app/immich	server	nestjs	controllers	api	tune	api	api	api	exact
-immich-app/immich	server	nestjs	utils	shared	test	shared	shared	shared	exact
-immich-app/immich	server	nestjs	commands	none	test	domain	domain	domain	exact
-immich-app/immich	server	nestjs	emails	none	tune	none	none	none	none
-immich-app/immich	server	nestjs	middleware	api	test	api	api	api	exact
-immich-app/immich	server	nestjs	maintenance	none	tune	none	none	none	none
-immich-app/immich	server	nestjs	components	none	test	none	none	none	none
-immich-app/immich	server	nestjs	workers	service	tune	none	none	service	synonym
-immich-app/immich	server	nestjs	cores	none	tune	none	none	none	none
-immich-app/immich	server	nestjs	shared	shared	test	shared	shared	shared	exact
-immich-app/immich	server	nestjs	migrations	infra	tune	infra	infra	infra	exact
-immich-app/immich	server	nestjs	queries	none	tune	domain	domain	domain	exact
-immich-app/immich	server	nestjs	types	domain	tune	none	none	none	none
-immich-app/immich	server	nestjs	enum	domain	test	none	none	none	none
-immich-app/immich	server	nestjs	decorators	shared	tune	shared	shared	shared	exact
-immich-app/immich	server	nestjs	config	shared	tune	shared	shared	shared	exact
-immich-app/immich	web	route-tree	src	none	test	none	none	none	none
-immich-app/immich	web	route-tree	lib	shared	test	shared	shared	shared	exact
-immich-app/immich	web	route-tree	components	ui	tune	ui	ui	ui	exact
-immich-app/immich	web	route-tree	modals	ui	test	none	none	none	none
-immich-app/immich	web	route-tree	shared-components	ui	test	none	none	ui	synonym
-immich-app/immich	web	route-tree	asset-viewer	none	tune	none	none	none	none
-immich-app/immich	web	route-tree	managers	state	test	none	none	none	none
-immich-app/immich	web	route-tree	actions	state	test	state	state	state	exact
-immich-app/immich	web	route-tree	system-settings	none	test	none	none	none	none
-immich-app/immich	web	route-tree	queries	state	test	state	state	state	exact
-immich-app/immich	web	route-tree	services	state	test	state	state	state	exact
-immich-app/immich	web	route-tree	utils	shared	tune	shared	shared	shared	exact
-immich-app/immich	web	route-tree	utilities	shared	test	none	none	none	none
-immich-app/immich	web	route-tree	stores	state	test	state	state	state	exact
-immich-app/immich	web	route-tree	elements	ui	test	none	none	none	none
-immich-app/immich	web	route-tree	search-bar	none	tune	none	none	none	none
-immich-app/immich	web	route-tree	side-bar	none	tune	none	none	none	none
-immich-app/immich	web	route-tree	timeline	none	tune	none	none	none	none
-immich-app/immich	web	route-tree	i18n	shared	test	shared	shared	shared	exact
-immich-app/immich	web	route-tree	constants	shared	tune	shared	shared	shared	exact
-immich-app/immich	web	route-tree	types	shared	test	shared	shared	shared	exact
-immich-app/immich	web	route-tree	helpers	shared	test	shared	shared	shared	exact
-archestra-ai/archestra	platform/backend	layered	src	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	routes	api	tune	api	api	api	exact
-archestra-ai/archestra	platform/backend	layered	services	service	tune	service	service	service	exact
-archestra-ai/archestra	platform/backend	layered	types	domain	tune	shared	shared	shared	exact
-archestra-ai/archestra	platform/backend	layered	models	domain	test	domain	domain	domain	exact
-archestra-ai/archestra	platform/backend	layered	database	infra	test	infra	infra	infra	exact
-archestra-ai/archestra	platform/backend	layered	schemas	domain	test	domain	domain	domain	exact
-archestra-ai/archestra	platform/backend	layered	proxy	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	llm-providers	infra	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	utils	shared	test	shared	shared	shared	exact
-archestra-ai/archestra	platform/backend	layered	knowledge-base	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	adapters	infra	tune	infra	infra	infra	exact
-archestra-ai/archestra	platform/backend	layered	agent-connection-setup	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	chat	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	openappa	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	agent-runtime	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	agents	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	k8s	infra	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	archestra-mcp-server	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	clients	infra	tune	infra	infra	infra	exact
-archestra-ai/archestra	platform/backend	layered	observability	shared	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	connectors	infra	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	plugins	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	task-queue	infra	tune	none	none	infra	synonym
-archestra-ai/archestra	platform/backend	layered	payloads	domain	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	skills	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	handlers	service	tune	service	service	service	exact
-archestra-ai/archestra	platform/backend	layered	auth	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	appa-plugin-archestra	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	standalone-scripts	config	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	a2a	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	model-fetchers	infra	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	metrics	shared	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	chatops	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	apps	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	auto-routing	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	mcp-server-runtime	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	scripts	config	tune	config	config	config	exact
-archestra-ai/archestra	platform/backend	layered	mcp-gateway	api	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	embedding-clients	infra	tune	none	none	infra	synonym
-archestra-ai/archestra	platform/backend	layered	identity-providers	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	skills-sandbox	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	tracing	shared	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	guard	api	tune	none	none	api	synonym
-archestra-ai/archestra	platform/backend	layered	normalization	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	middleware	api	test	api	api	api	exact
-archestra-ai/archestra	platform/backend	layered	hooks	api	test	ui	ui	ui	exact
-archestra-ai/archestra	platform/backend	layered	server	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	entrypoints	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	openapi	api	tune	none	none	api	synonym
-archestra-ai/archestra	platform/backend	layered	secrets-manager	infra	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	logging	shared	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	blob-providers	infra	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	git-hosts	infra	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	integrations	infra	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	tokenizers	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	content-encryption	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	data-retention	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	features	none	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	ambient	domain	tune	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	app-templates	none	test	none	none	ui	synonym
-archestra-ai/archestra	platform/backend	layered	sandbox-runtime	none	test	none	none	none	none
-archestra-ai/archestra	platform/backend	layered	log-content	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	src	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	components	ui	test	ui	ui	ui	exact
-archestra-ai/archestra	platform/frontend	route-tree	lib	shared	tune	shared	shared	shared	exact
-archestra-ai/archestra	platform/frontend	route-tree	ui	ui	test	ui	ui	ui	exact
-archestra-ai/archestra	platform/frontend	route-tree	hooks	state	tune	state	state	state	exact
-archestra-ai/archestra	platform/frontend	route-tree	utils	shared	tune	shared	shared	shared	exact
-archestra-ai/archestra	platform/frontend	route-tree	types	shared	tune	shared	shared	shared	exact
-archestra-ai/archestra	platform/frontend	route-tree	config	shared	tune	shared	shared	shared	exact
-archestra-ai/archestra	platform/frontend	route-tree	mocks	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	static	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	fonts	shared	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	chat	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	mcp	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	llm	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	settings	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	registry	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	logs	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	knowledge	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	openappa	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	connection	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	skills	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	auth	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	knowledge-bases	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	agents	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	plugins	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	messaging-channels	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	account	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	identity-providers	none	tune	none	none	state	synonym
-archestra-ai/archestra	platform/frontend	route-tree	projects	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	connectors	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	ai-elements	ui	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	validation	shared	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	roles	none	tune	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	version-history	none	test	none	none	none	none
-archestra-ai/archestra	platform/frontend	route-tree	appearance	none	test	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	interactions	none	test	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	hey-api	infra	tune	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	llmProviders	none	tune	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	clients	infra	tune	infra	infra	infra	exact
-archestra-ai/archestra	platform/shared	layered	api	api	tune	api	api	api	exact
-archestra-ai/archestra	platform/shared	layered	archestra-catalog	none	tune	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	core	none	tune	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	client	infra	test	none	none	none	none
-archestra-ai/archestra	platform/shared	layered	themes	ui	test	none	none	none	none
-fastapi/fastapi	.	layered	docs_src	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	fastapi	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	dependencies	none	test	none	none	none	none
-fastapi/fastapi	.	layered	query_params_str_validations	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	security	none	test	none	none	none	none
-fastapi/fastapi	.	layered	scripts	config	test	config	config	config	exact
-fastapi/fastapi	.	layered	settings	config	tune	config	config	config	exact
-fastapi/fastapi	.	layered	custom_response	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	request_form_models	none	test	none	none	none	none
-fastapi/fastapi	.	layered	python_types	none	tune	none	none	shared	synonym
-fastapi/fastapi	.	layered	path_params_numeric_validations	none	test	none	none	none	none
-fastapi/fastapi	.	layered	response_model	none	test	none	none	ui	synonym
-fastapi/fastapi	.	layered	playwright	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	app_testing	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	request_files	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	body_multiple_params	none	test	none	none	none	none
-fastapi/fastapi	.	layered	body_nested_models	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	header_param_models	none	test	none	none	none	none
-fastapi/fastapi	.	layered	query_param_models	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	bigger_applications	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	middleware	api	tune	api	api	api	exact
-fastapi/fastapi	.	layered	schema_extra_example	none	test	none	none	none	none
-fastapi/fastapi	.	layered	app	none	test	none	none	none	none
-fastapi/fastapi	.	layered	cookie_param_models	none	test	none	none	none	none
-fastapi/fastapi	.	layered	path_operation_advanced_configuration	none	test	none	none	none	none
-fastapi/fastapi	.	layered	separate_openapi_schemas	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	frontend	none	test	none	none	none	none
-fastapi/fastapi	.	layered	handling_errors	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	header_params	none	test	none	none	none	none
-fastapi/fastapi	.	layered	path_params	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	query_params	none	test	none	none	none	none
-fastapi/fastapi	.	layered	sql_databases	none	test	none	none	infra	synonym
-fastapi/fastapi	.	layered	behind_a_proxy	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	custom_request_and_route	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	extra_models	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	generate_clients	none	tune	none	none	infra	synonym
-fastapi/fastapi	.	layered	metadata	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	server_sent_events	none	test	none	none	none	none
-fastapi/fastapi	.	layered	templates	ui	test	ui	ui	ui	exact
-fastapi/fastapi	.	layered	additional_responses	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	body	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	pydantic_v1_in_v2	none	test	none	none	none	none
-fastapi/fastapi	.	layered	request_forms	none	test	none	none	none	none
-fastapi/fastapi	.	layered	websockets_	none	tune	none	none	none	none
-fastapi/fastapi	.	layered	openapi	api	tune	none	none	api	synonym
-fastapi/fastapi	.	layered	encoders	none	test	none	none	none	none
-fastapi/fastapi	.	layered	routers	api	test	none	none	none	none
-fastapi/fastapi	.	layered	internal	none	tune	none	none	none	none
-karpathy/nanoGPT	.	layered	config	config	test	config	config	config	exact
-karpathy/nanoGPT	.	layered	data	none	tune	none	none	none	none
-karpathy/nanoGPT	.	layered	openwebtext	none	test	none	none	none	none
-karpathy/nanoGPT	.	layered	shakespeare	none	test	none	none	none	none
-karpathy/nanoGPT	.	layered	shakespeare_char	none	tune	none	none	none	none
+repository	part	style	folder	role	half	dictionaries	+levenshtein	step
+jasontaylordev/CleanArchitecture	.	onion-clean	src	none	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Application	application	tune	application	application	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	Infrastructure	infrastructure	test	infrastructure	infrastructure	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	Common	none	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Web	interface	test	interface	interface	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	Commands	application	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Domain	domain	tune	domain	domain	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	TodoLists	none	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	TodoItems	none	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Queries	application	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Data	infrastructure	test	infrastructure	infrastructure	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	Behaviours	application	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	GetTodos	none	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Endpoints	interface	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Exceptions	none	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Interfaces	application	tune	interface	interface	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	Identity	infrastructure	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	AppHost	none	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Models	none	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	CreateTodoItem	none	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Entities	domain	tune	domain	domain	exact
+jasontaylordev/CleanArchitecture	.	onion-clean	Configurations	infrastructure	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Interceptors	infrastructure	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	templates	none	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	ValueObjects	domain	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Events	domain	test	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Enums	domain	tune	none	none	none
+jasontaylordev/CleanArchitecture	.	onion-clean	Services	application	tune	none	none	none
+thombergs/buckpal	.	hexagonal	src	none	tune	none	none	none
+thombergs/buckpal	.	hexagonal	main	none	test	none	none	none
+thombergs/buckpal	.	hexagonal	java	none	test	none	none	none
+thombergs/buckpal	.	hexagonal	io	none	tune	none	none	none
+thombergs/buckpal	.	hexagonal	application	application	tune	application	application	exact
+thombergs/buckpal	.	hexagonal	domain	domain	tune	domain	domain	exact
+thombergs/buckpal	.	hexagonal	in	driving-adapter	test	driving-adapter	driving-adapter	exact
+thombergs/buckpal	.	hexagonal	port	application	tune	application	application	exact
+thombergs/buckpal	.	hexagonal	model	domain	tune	domain	domain	exact
+thombergs/buckpal	.	hexagonal	service	application	tune	application	application	exact
+thombergs/buckpal	.	hexagonal	common	none	tune	none	none	none
+thombergs/buckpal	.	hexagonal	adapter	adapter	test	adapter	adapter	exact
+thombergs/buckpal	.	hexagonal	web	driving-adapter	test	driving-adapter	driving-adapter	exact
+thombergs/buckpal	.	hexagonal	persistence	driven-adapter	test	driven-adapter	driven-adapter	exact
+thombergs/buckpal	.	hexagonal	out	driven-adapter	tune	driven-adapter	driven-adapter	exact
+thombergs/buckpal	.	hexagonal	validation	none	test	none	none	none
+evrone/go-clean-template	.	onion-clean	internal	none	test	none	none	none
+evrone/go-clean-template	.	onion-clean	controller	interface	test	interface	interface	exact
+evrone/go-clean-template	.	onion-clean	v1	none	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	pkg	none	test	none	none	none
+evrone/go-clean-template	.	onion-clean	nats_rpc	interface	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	restapi	interface	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	amqp_rpc	interface	test	none	none	none
+evrone/go-clean-template	.	onion-clean	response	interface	test	none	none	none
+evrone/go-clean-template	.	onion-clean	grpc	interface	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	request	interface	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	repo	infrastructure	tune	infrastructure	infrastructure	exact
+evrone/go-clean-template	.	onion-clean	usecase	application	test	application	application	exact
+evrone/go-clean-template	.	onion-clean	rabbitmq	infrastructure	test	none	none	none
+evrone/go-clean-template	.	onion-clean	rmq_rpc	infrastructure	test	none	none	none
+evrone/go-clean-template	.	onion-clean	persistent	infrastructure	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	nats	infrastructure	test	none	none	none
+evrone/go-clean-template	.	onion-clean	entity	domain	tune	domain	domain	exact
+evrone/go-clean-template	.	onion-clean	middleware	interface	test	none	none	none
+evrone/go-clean-template	.	onion-clean	task	none	test	none	none	none
+evrone/go-clean-template	.	onion-clean	translation	none	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	user	none	test	none	none	none
+evrone/go-clean-template	.	onion-clean	client	infrastructure	test	none	none	none
+evrone/go-clean-template	.	onion-clean	server	infrastructure	test	none	none	none
+evrone/go-clean-template	.	onion-clean	app	none	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	webapi	infrastructure	test	interface	interface	exact
+evrone/go-clean-template	.	onion-clean	grpcserver	infrastructure	test	none	none	none
+evrone/go-clean-template	.	onion-clean	httpserver	infrastructure	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	postgres	infrastructure	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	cmd	none	test	none	none	none
+evrone/go-clean-template	.	onion-clean	config	none	tune	none	none	none
+evrone/go-clean-template	.	onion-clean	logger	none	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Modules	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Meetings	none	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Application	application	tune	application	application	exact
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Infrastructure	infrastructure	tune	infrastructure	infrastructure	exact
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Domain	domain	tune	domain	domain	exact
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Payments	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Configuration	infrastructure	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Processing	infrastructure	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Administration	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	UserAccess	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Registrations	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Events	domain	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Subscriptions	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	API	interface	test	interface	interface	exact
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	MeetingGroupProposals	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Rules	domain	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	BuildingBlocks	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	MeetingGroups	none	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	MeetingComments	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Outbox	infrastructure	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Contracts	application	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Members	none	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	PriceListItems	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	InternalCommands	application	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Users	none	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Inbox	infrastructure	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Commands	application	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Queries	application	tune	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Persistence	infrastructure	test	infrastructure	infrastructure	exact
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Controllers	interface	test	interface	interface	exact
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	Projections	application	test	none	none	none
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	DomainServices	domain	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	src	none	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	sample	none	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Contributors	none	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Projects	none	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Data	infrastructure	test	infrastructure	infrastructure	exact
+ardalis/CleanArchitecture	.	onion-clean	Infrastructure	infrastructure	test	infrastructure	infrastructure	exact
+ardalis/CleanArchitecture	.	onion-clean	Configurations	infrastructure	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	ProjectAggregate	domain	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Domain	domain	test	domain	domain	exact
+ardalis/CleanArchitecture	.	onion-clean	Config	none	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	ContributorAggregate	domain	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Queries	application	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Specifications	domain	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Email	infrastructure	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	List	none	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	CartFeatures	none	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	GetById	none	tune	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	ProductFeatures	none	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Create	none	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Events	domain	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	UseCases	application	test	application	application	exact
+ardalis/CleanArchitecture	.	onion-clean	Core	domain	tune	domain	domain	exact
+ardalis/CleanArchitecture	.	onion-clean	Web	interface	test	interface	interface	exact
+ardalis/CleanArchitecture	.	onion-clean	Handlers	application	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Services	domain	test	none	none	none
+ardalis/CleanArchitecture	.	onion-clean	Interfaces	domain	tune	interface	interface	exact
+mastodon/mastodon	.	mvc	app	none	test	none	none	none
+mastodon/mastodon	.	mvc	mastodon	none	test	none	none	none
+mastodon/mastodon	.	mvc	javascript	none	tune	none	none	none
+mastodon/mastodon	.	mvc	db	none	test	none	none	none
+mastodon/mastodon	.	mvc	migrate	none	test	none	none	none
+mastodon/mastodon	.	mvc	components	view	test	none	none	none
+mastodon/mastodon	.	mvc	views	view	test	view	view	exact
+mastodon/mastodon	.	mvc	admin	none	test	none	none	none
+mastodon/mastodon	.	mvc	controllers	controller	test	controller	controller	exact
+mastodon/mastodon	.	mvc	features	none	test	none	none	none
+mastodon/mastodon	.	mvc	models	model	tune	model	model	exact
+mastodon/mastodon	.	mvc	lib	none	test	none	none	none
+mastodon/mastodon	.	mvc	api	controller	tune	none	none	none
+mastodon/mastodon	.	mvc	serializers	view	test	none	none	none
+mastodon/mastodon	.	mvc	activitypub	none	tune	none	none	none
+mastodon/mastodon	.	mvc	workers	none	test	none	none	none
+mastodon/mastodon	.	mvc	v1	none	tune	none	none	none
+mastodon/mastodon	.	mvc	services	none	tune	none	none	none
+mastodon/mastodon	.	mvc	concerns	none	test	none	none	none
+mastodon/mastodon	.	mvc	rest	controller	tune	none	none	none
+mastodon/mastodon	.	mvc	settings	none	tune	none	none	none
+mastodon/mastodon	.	mvc	post_migrate	none	tune	none	none	none
+mastodon/mastodon	.	mvc	config	none	tune	none	none	none
+mastodon/mastodon	.	mvc	actions	none	tune	none	none	none
+mastodon/mastodon	.	mvc	ui	view	test	none	none	none
+mastodon/mastodon	.	mvc	initializers	none	test	none	none	none
+mastodon/mastodon	.	mvc	policies	none	test	none	none	none
+mastodon/mastodon	.	mvc	reducers	none	test	none	none	none
+mastodon/mastodon	.	mvc	user_mailer	none	tune	none	none	none
+mastodon/mastodon	.	mvc	helpers	view	test	view	view	exact
+mastodon/mastodon	.	mvc	trends	none	tune	none	none	none
+mastodon/mastodon	.	mvc	status	none	test	none	none	none
+mastodon/mastodon	.	mvc	hooks	none	test	none	none	none
+mastodon/mastodon	.	mvc	fasp	none	tune	none	none	none
+mastodon/mastodon	.	mvc	auth	none	test	none	none	none
+mastodon/mastodon	.	mvc	metrics	none	tune	none	none	none
+mastodon/mastodon	.	mvc	utils	none	test	none	none	none
+mastodon/mastodon	.	mvc	accounts	none	test	none	none	none
+mastodon/mastodon	.	mvc	compose	none	test	none	none	none
+mastodon/mastodon	.	mvc	notifications	none	tune	none	none	none
+mastodon/mastodon	.	mvc	statuses	none	tune	none	none	none
+mastodon/mastodon	.	mvc	form_fields	view	test	none	none	none
+mastodon/mastodon	.	mvc	notifications_v2	none	test	none	none	none
+mastodon/mastodon	.	mvc	emoji	none	test	none	none	none
+mastodon/mastodon	.	mvc	validators	model	test	none	none	none
+mastodon/mastodon	.	mvc	templates	view	test	view	view	exact
+mastodon/mastodon	.	mvc	layouts	view	tune	none	none	none
+mastodon/mastodon	.	mvc	presenters	view	test	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	conduit	none	test	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	apps	none	test	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	articles	none	tune	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	authentication	none	tune	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	profiles	none	tune	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	core	none	test	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	migrations	none	test	none	none	none
+gothinkster/django-realworld-example-app	.	mvc	templates	view	test	view	view	exact
+gothinkster/laravel-realworld-example-app	.	mvc	app	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Http	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Api	controller	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	RealWorld	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Controllers	controller	test	controller	controller	exact
+gothinkster/laravel-realworld-example-app	.	mvc	config	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Requests	controller	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	resources	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Transformers	view	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Middleware	controller	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Providers	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Auth	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	js	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	lang	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	en	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	routes	controller	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Filters	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	database	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Models	model	tune	model	model	exact
+gothinkster/laravel-realworld-example-app	.	mvc	assets	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Favorite	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Slug	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	bootstrap	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	seeds	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	public	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Console	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Exceptions	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Helpers	none	tune	view	view	exact
+gothinkster/laravel-realworld-example-app	.	mvc	Follow	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	Paginate	none	test	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	factories	none	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	components	view	tune	none	none	none
+gothinkster/laravel-realworld-example-app	.	mvc	views	view	test	view	view	exact
+spring-projects/spring-petclinic	.	layered	src	none	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	main	none	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	java	none	test	none	none	none
+spring-projects/spring-petclinic	.	layered	org	none	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	springframework	none	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	samples	none	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	petclinic	none	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	owner	none	test	none	none	none
+spring-projects/spring-petclinic	.	layered	vet	none	test	none	none	none
+spring-projects/spring-petclinic	.	layered	system	config	tune	none	none	none
+spring-projects/spring-petclinic	.	layered	model	domain	test	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	src	none	test	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	app	app	tune	app	app	exact
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	features	features	test	features	features	exact
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	widgets	widgets	tune	widgets	widgets	exact
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	infrastructure	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	api	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todos	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	mock	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	entities	entities	test	entities	entities	exact
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo-filter	none	test	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	init	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	query-policy	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	page	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	shared	shared	test	shared	shared	exact
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	ui	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo-form	none	test	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	todo-item	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	model	none	tune	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	use-cases	none	test	none	none	none
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	pages	pages	tune	pages	pages	exact
+vercel/commerce	.	route-tree	components	ui	test	ui	ui	exact
+vercel/commerce	.	route-tree	lib	shared	tune	shared	shared	exact
+vercel/commerce	.	route-tree	shopify	none	test	none	none	none
+vercel/commerce	.	route-tree	search	none	tune	none	none	none
+vercel/commerce	.	route-tree	layout	ui	test	none	none	none
+vercel/commerce	.	route-tree	cart	none	tune	none	none	none
+vercel/commerce	.	route-tree	queries	state	test	state	state	exact
+vercel/commerce	.	route-tree	product	none	tune	none	none	none
+vercel/commerce	.	route-tree	fragments	none	tune	none	none	none
+vercel/commerce	.	route-tree	grid	ui	tune	none	none	none
+vercel/commerce	.	route-tree	navbar	ui	tune	none	none	none
+vercel/commerce	.	route-tree	filter	none	tune	none	none	none
+vercel/commerce	.	route-tree	api	state	tune	state	state	exact
+vercel/commerce	.	route-tree	revalidate	none	test	none	none	none
+vercel/commerce	.	route-tree	icons	ui	tune	none	none	none
+vercel/commerce	.	route-tree	mutations	state	test	state	state	exact
+vercel/commerce	.	route-tree	utils	shared	tune	shared	shared	exact
+vercel/commerce	.	route-tree	hooks	state	tune	state	state	exact
+immich-app/immich	server	nestjs	src	none	test	none	none	none
+immich-app/immich	server	nestjs	schema	domain	test	none	none	none
+immich-app/immich	server	nestjs	tables	domain	tune	none	none	none
+immich-app/immich	server	nestjs	repositories	infra	tune	infra	infra	exact
+immich-app/immich	server	nestjs	services	service	tune	service	service	exact
+immich-app/immich	server	nestjs	dtos	domain	tune	domain	domain	exact
+immich-app/immich	server	nestjs	controllers	api	tune	api	api	exact
+immich-app/immich	server	nestjs	utils	shared	test	shared	shared	exact
+immich-app/immich	server	nestjs	commands	none	test	domain	domain	exact
+immich-app/immich	server	nestjs	emails	none	tune	none	none	none
+immich-app/immich	server	nestjs	middleware	api	test	api	api	exact
+immich-app/immich	server	nestjs	maintenance	none	tune	none	none	none
+immich-app/immich	server	nestjs	components	none	test	none	none	none
+immich-app/immich	server	nestjs	workers	service	tune	none	none	none
+immich-app/immich	server	nestjs	cores	none	tune	none	none	none
+immich-app/immich	server	nestjs	shared	shared	test	shared	shared	exact
+immich-app/immich	server	nestjs	migrations	infra	tune	infra	infra	exact
+immich-app/immich	server	nestjs	queries	none	tune	domain	domain	exact
+immich-app/immich	server	nestjs	types	domain	tune	none	none	none
+immich-app/immich	server	nestjs	enum	domain	test	none	none	none
+immich-app/immich	server	nestjs	decorators	shared	tune	shared	shared	exact
+immich-app/immich	server	nestjs	config	shared	tune	shared	shared	exact
+immich-app/immich	web	route-tree	src	none	test	none	none	none
+immich-app/immich	web	route-tree	lib	shared	test	shared	shared	exact
+immich-app/immich	web	route-tree	components	ui	tune	ui	ui	exact
+immich-app/immich	web	route-tree	modals	ui	test	none	none	none
+immich-app/immich	web	route-tree	shared-components	ui	test	none	none	none
+immich-app/immich	web	route-tree	asset-viewer	none	tune	none	none	none
+immich-app/immich	web	route-tree	managers	state	test	none	none	none
+immich-app/immich	web	route-tree	actions	state	test	state	state	exact
+immich-app/immich	web	route-tree	system-settings	none	test	none	none	none
+immich-app/immich	web	route-tree	queries	state	test	state	state	exact
+immich-app/immich	web	route-tree	services	state	test	state	state	exact
+immich-app/immich	web	route-tree	utils	shared	tune	shared	shared	exact
+immich-app/immich	web	route-tree	utilities	shared	test	none	none	none
+immich-app/immich	web	route-tree	stores	state	test	state	state	exact
+immich-app/immich	web	route-tree	elements	ui	test	none	none	none
+immich-app/immich	web	route-tree	search-bar	none	tune	none	none	none
+immich-app/immich	web	route-tree	side-bar	none	tune	none	none	none
+immich-app/immich	web	route-tree	timeline	none	tune	none	none	none
+immich-app/immich	web	route-tree	i18n	shared	test	shared	shared	exact
+immich-app/immich	web	route-tree	constants	shared	tune	shared	shared	exact
+immich-app/immich	web	route-tree	types	shared	test	shared	shared	exact
+immich-app/immich	web	route-tree	helpers	shared	test	shared	shared	exact
+archestra-ai/archestra	platform/backend	layered	src	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	routes	api	tune	api	api	exact
+archestra-ai/archestra	platform/backend	layered	services	service	tune	service	service	exact
+archestra-ai/archestra	platform/backend	layered	types	domain	tune	shared	shared	exact
+archestra-ai/archestra	platform/backend	layered	models	domain	test	domain	domain	exact
+archestra-ai/archestra	platform/backend	layered	database	infra	test	infra	infra	exact
+archestra-ai/archestra	platform/backend	layered	schemas	domain	test	domain	domain	exact
+archestra-ai/archestra	platform/backend	layered	proxy	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	llm-providers	infra	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	utils	shared	test	shared	shared	exact
+archestra-ai/archestra	platform/backend	layered	knowledge-base	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	adapters	infra	tune	infra	infra	exact
+archestra-ai/archestra	platform/backend	layered	agent-connection-setup	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	chat	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	openappa	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	agent-runtime	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	agents	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	k8s	infra	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	archestra-mcp-server	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	clients	infra	tune	infra	infra	exact
+archestra-ai/archestra	platform/backend	layered	observability	shared	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	connectors	infra	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	plugins	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	task-queue	infra	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	payloads	domain	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	skills	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	handlers	service	tune	service	service	exact
+archestra-ai/archestra	platform/backend	layered	auth	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	appa-plugin-archestra	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	standalone-scripts	config	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	a2a	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	model-fetchers	infra	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	metrics	shared	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	chatops	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	apps	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	auto-routing	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	mcp-server-runtime	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	scripts	config	tune	config	config	exact
+archestra-ai/archestra	platform/backend	layered	mcp-gateway	api	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	embedding-clients	infra	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	identity-providers	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	skills-sandbox	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	tracing	shared	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	guard	api	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	normalization	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	middleware	api	test	api	api	exact
+archestra-ai/archestra	platform/backend	layered	hooks	api	test	ui	ui	exact
+archestra-ai/archestra	platform/backend	layered	server	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	entrypoints	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	openapi	api	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	secrets-manager	infra	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	logging	shared	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	blob-providers	infra	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	git-hosts	infra	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	integrations	infra	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	tokenizers	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	content-encryption	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	data-retention	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	features	none	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	ambient	domain	tune	none	none	none
+archestra-ai/archestra	platform/backend	layered	app-templates	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	sandbox-runtime	none	test	none	none	none
+archestra-ai/archestra	platform/backend	layered	log-content	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	src	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	components	ui	test	ui	ui	exact
+archestra-ai/archestra	platform/frontend	route-tree	lib	shared	tune	shared	shared	exact
+archestra-ai/archestra	platform/frontend	route-tree	ui	ui	test	ui	ui	exact
+archestra-ai/archestra	platform/frontend	route-tree	hooks	state	tune	state	state	exact
+archestra-ai/archestra	platform/frontend	route-tree	utils	shared	tune	shared	shared	exact
+archestra-ai/archestra	platform/frontend	route-tree	types	shared	tune	shared	shared	exact
+archestra-ai/archestra	platform/frontend	route-tree	config	shared	tune	shared	shared	exact
+archestra-ai/archestra	platform/frontend	route-tree	mocks	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	static	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	fonts	shared	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	chat	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	mcp	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	llm	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	settings	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	registry	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	logs	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	knowledge	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	openappa	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	connection	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	skills	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	auth	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	knowledge-bases	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	agents	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	plugins	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	messaging-channels	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	account	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	identity-providers	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	projects	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	connectors	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	ai-elements	ui	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	validation	shared	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	roles	none	tune	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	version-history	none	test	none	none	none
+archestra-ai/archestra	platform/frontend	route-tree	appearance	none	test	none	none	none
+archestra-ai/archestra	platform/shared	layered	interactions	none	test	none	none	none
+archestra-ai/archestra	platform/shared	layered	hey-api	infra	tune	none	none	none
+archestra-ai/archestra	platform/shared	layered	llmProviders	none	tune	none	none	none
+archestra-ai/archestra	platform/shared	layered	clients	infra	tune	infra	infra	exact
+archestra-ai/archestra	platform/shared	layered	api	api	tune	api	api	exact
+archestra-ai/archestra	platform/shared	layered	archestra-catalog	none	tune	none	none	none
+archestra-ai/archestra	platform/shared	layered	core	none	tune	none	none	none
+archestra-ai/archestra	platform/shared	layered	client	infra	test	none	none	none
+archestra-ai/archestra	platform/shared	layered	themes	ui	test	none	none	none
+fastapi/fastapi	.	layered	docs_src	none	tune	none	none	none
+fastapi/fastapi	.	layered	fastapi	none	tune	none	none	none
+fastapi/fastapi	.	layered	dependencies	none	test	none	none	none
+fastapi/fastapi	.	layered	query_params_str_validations	none	tune	none	none	none
+fastapi/fastapi	.	layered	security	none	test	none	none	none
+fastapi/fastapi	.	layered	scripts	config	test	config	config	exact
+fastapi/fastapi	.	layered	settings	config	tune	config	config	exact
+fastapi/fastapi	.	layered	custom_response	none	tune	none	none	none
+fastapi/fastapi	.	layered	request_form_models	none	test	none	none	none
+fastapi/fastapi	.	layered	python_types	none	tune	none	none	none
+fastapi/fastapi	.	layered	path_params_numeric_validations	none	test	none	none	none
+fastapi/fastapi	.	layered	response_model	none	test	none	none	none
+fastapi/fastapi	.	layered	playwright	none	tune	none	none	none
+fastapi/fastapi	.	layered	app_testing	none	tune	none	none	none
+fastapi/fastapi	.	layered	request_files	none	tune	none	none	none
+fastapi/fastapi	.	layered	body_multiple_params	none	test	none	none	none
+fastapi/fastapi	.	layered	body_nested_models	none	tune	none	none	none
+fastapi/fastapi	.	layered	header_param_models	none	test	none	none	none
+fastapi/fastapi	.	layered	query_param_models	none	tune	none	none	none
+fastapi/fastapi	.	layered	bigger_applications	none	tune	none	none	none
+fastapi/fastapi	.	layered	middleware	api	tune	api	api	exact
+fastapi/fastapi	.	layered	schema_extra_example	none	test	none	none	none
+fastapi/fastapi	.	layered	app	none	test	none	none	none
+fastapi/fastapi	.	layered	cookie_param_models	none	test	none	none	none
+fastapi/fastapi	.	layered	path_operation_advanced_configuration	none	test	none	none	none
+fastapi/fastapi	.	layered	separate_openapi_schemas	none	tune	none	none	none
+fastapi/fastapi	.	layered	frontend	none	test	none	none	none
+fastapi/fastapi	.	layered	handling_errors	none	tune	none	none	none
+fastapi/fastapi	.	layered	header_params	none	test	none	none	none
+fastapi/fastapi	.	layered	path_params	none	tune	none	none	none
+fastapi/fastapi	.	layered	query_params	none	test	none	none	none
+fastapi/fastapi	.	layered	sql_databases	none	test	none	none	none
+fastapi/fastapi	.	layered	behind_a_proxy	none	tune	none	none	none
+fastapi/fastapi	.	layered	custom_request_and_route	none	tune	none	none	none
+fastapi/fastapi	.	layered	extra_models	none	tune	none	none	none
+fastapi/fastapi	.	layered	generate_clients	none	tune	none	none	none
+fastapi/fastapi	.	layered	metadata	none	tune	none	none	none
+fastapi/fastapi	.	layered	server_sent_events	none	test	none	none	none
+fastapi/fastapi	.	layered	templates	ui	test	ui	ui	exact
+fastapi/fastapi	.	layered	additional_responses	none	tune	none	none	none
+fastapi/fastapi	.	layered	body	none	tune	none	none	none
+fastapi/fastapi	.	layered	pydantic_v1_in_v2	none	test	none	none	none
+fastapi/fastapi	.	layered	request_forms	none	test	none	none	none
+fastapi/fastapi	.	layered	websockets_	none	tune	none	none	none
+fastapi/fastapi	.	layered	openapi	api	tune	none	none	none
+fastapi/fastapi	.	layered	encoders	none	test	none	none	none
+fastapi/fastapi	.	layered	routers	api	test	none	none	none
+fastapi/fastapi	.	layered	internal	none	tune	none	none	none
+karpathy/nanoGPT	.	layered	config	config	test	config	config	exact
+karpathy/nanoGPT	.	layered	data	none	tune	none	none	none
+karpathy/nanoGPT	.	layered	openwebtext	none	test	none	none	none
+karpathy/nanoGPT	.	layered	shakespeare	none	test	none	none	none
+karpathy/nanoGPT	.	layered	shakespeare_char	none	tune	none	none	none

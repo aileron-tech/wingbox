@@ -8,21 +8,15 @@ model.
 ## Summary
 
 - 476 folders of 19 public repositories labelled by hand with the layer they
-  play in the style of their part (or "none"). The synonym threshold was chosen
-  on one half (236 folders); all comparisons are on the other half (240).
-- On the held-out half, word vectors do **not** beat dictionaries and
-  Levenshtein: accuracy 75.4 % against 76.2 % (2 folders fewer right); they
-  match 2.5 % more folders, but wrong matches rise from 1.2 % to 2.9 %.
-  Levenshtein changes nothing on this set: it holds almost no misspelt names.
-- The vector step is already the last one: it looks only at the names that
-  the dictionaries and Levenshtein leave unmatched. Used that way it lowers
-  the unmatched share (77.5 % to 75.0 %) but also the accuracy, so word
-  vectors are **off by default**; `wingbox init --synonyms` and
-  `wingbox build --synonyms` turn them on for the folder -> layer step, and
-  every match they make is labelled `:match synonym`.
+  play in the style of their part (or "none"). All comparisons are on the
+  held-out half (240 folders).
+- Levenshtein changes nothing on this set: it holds almost no misspelt names.
+- History: a third step, a built-in table of word vectors for the names the
+  first two leave unmatched, was measured on the same held-out half; it did
+  not beat the dictionaries (accuracy 75.4 % against 76.2 %) and was removed
+  in the version after 0.10.2, with the `--synonyms` option that turned it on.
 - Style detection on 33 parts of the same repositories: 31 right with
-  dictionaries (with or without Levenshtein), 30 with vectors. Detection never
-  uses vectors.
+  dictionaries (with or without Levenshtein).
 
 ## Data
 
@@ -47,32 +41,27 @@ model.
 |---|---:|---:|---:|---:|
 | dictionaries | 76.2 % | 77.5 % | 1.2 % | 22.5 % |
 | + Levenshtein | 76.2 % | 77.5 % | 1.2 % | 22.5 % |
-| + word vectors (threshold 0.74, margin 0.10) | 75.4 % | 75.0 % | 2.9 % | 21.7 % |
 
 "Missed": the folder has a role but no match. "Unmatched" includes the folders
 whose right answer is none.
 
-By style (accuracy: dictionaries / + Levenshtein / + vectors):
+By style (accuracy: dictionaries / + Levenshtein):
 
 | Style | Folders | Accuracy |
 |---|---:|---|
-| feature-sliced | 7 | 100 % / 100 % / 100 % |
-| hexagonal | 7 | 100 % / 100 % / 100 % |
-| layered | 63 | 79 % / 79 % / 75 % |
-| mvc | 54 | 83 % / 83 % / 83 % |
-| nestjs | 8 | 62 % / 62 % / 75 % |
-| onion-clean | 65 | 62 % / 62 % / 60 % |
-| route-tree | 36 | 81 % / 81 % / 83 % |
+| feature-sliced | 7 | 100 % / 100 % |
+| hexagonal | 7 | 100 % / 100 % |
+| layered | 63 | 79 % / 79 % |
+| mvc | 54 | 83 % / 83 % |
+| nestjs | 8 | 62 % / 62 % |
+| onion-clean | 65 | 62 % / 62 % |
+| route-tree | 36 | 81 % / 81 % |
 
-Every synonym match on the test half (`results/summary.txt`): `schema` ->
-domain (right), `shared-components` -> ui (right), `Projects` ->
-infrastructure, `app-templates` -> ui, `response_model` -> ui, `sql_databases`
--> infra (all four wrong). Of the 52 folders missed by every variant, many
-are technology names (`rabbitmq`, `nats`, `grpcserver`, `k8s`), patterns of a
-style that its dictionary does not list (`Commands`, `Events`, `Handlers`,
-`Specifications`, `serializers`, `presenters` in MVC) and project words
-(`Behaviours`, `Outbox`, `llm-providers`); a general English model does not
-place them near the layer words.
+Of the 54 folders missed by both variants, many are technology names
+(`rabbitmq`, `nats`, `grpcserver`, `k8s`), patterns of a style that its
+dictionary does not list (`Commands`, `Events`, `Handlers`, `Specifications`,
+`serializers`, `presenters` in MVC) and project words (`Behaviours`, `Outbox`,
+`llm-providers`).
 
 ## Style detection (33 parts)
 
@@ -80,28 +69,14 @@ place them near the layer words.
 |---|---:|
 | dictionaries | 31 |
 | + Levenshtein | 31 |
-| + word vectors | 30 |
 
 The two parts every variant misses stay undetermined: the Laravel example
-(expected mvc) and the smaller Feature-Sliced example (13 source files). With vectors the immich web frontend becomes undetermined: synonyms
-lift the layered score to a tie with route-tree. Per part: `results/detection.tsv`.
+(expected mvc) and the smaller Feature-Sliced example (13 source files). Per part: `results/detection.tsv`.
 
 ## Method
 
 - Matching steps (scripts/architecture/words.py): exact normalised name, then
-  Levenshtein distance 1 for names of at least 7 letters, then the nearest
-  dictionary word by cosine similarity of word vectors (mean vector of the
-  words of a folder name) when it reaches the threshold and leads the best
-  word of another layer by the margin.
-- The threshold and margin were chosen by grid search (0.40 to 0.95 by 0.01;
-  margin 0 to 0.10) on the tune half, best accuracy, ties to the stricter
-  setting. They were not changed after the test half was read.
-- Word vectors: GloVe 6B, 100 dimensions (Pennington, Socher and Manning,
-  2014; Public Domain Dedication and License), the 30,000 most frequent
-  alphabetic words plus the words of the style files, quantised to signed
-  bytes: `scripts/architecture/vectors/` (3 MB). `build_vectors.py` in this
-  folder builds the table; it is run by the maintainer and needs the network,
-  the package does not.
+  Levenshtein distance 1 for names of at least 7 letters.
 
 ## Run
 
