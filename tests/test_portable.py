@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -56,6 +57,52 @@ class PortableTest(unittest.TestCase):
             default = _build(root, "")   # the methods a build uses when nothing overrides them
         self.assertEqual(default, spawned)
         self.assertIn(b"(imports ", spawned)
+
+    def test_a_text_file_another_process_is_replacing_is_read_after_a_moment(self) -> None:
+        """/* REQ-PORT-013: portable.read_text returns the text of a file, None when it does not exist, and on Windows tries again while the system reports the file in use (another process is replacing it); elsewhere a PermissionError is raised at once. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "note.txt")
+            self.assertIsNone(portable.read_text(path))
+            with open(path, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write("kept\n")
+            self.assertEqual("kept\n", portable.read_text(path))
+            real_open, calls = open, []
+
+            def busy_twice(file, *args, **kwargs):
+                calls.append(file)
+                if len(calls) <= 2:
+                    raise PermissionError(13, "Permission denied", file)
+                return real_open(file, *args, **kwargs)
+
+            with mock.patch.object(portable, "WINDOWS", True), mock.patch.object(portable, "_REPLACE_PAUSE", 0), mock.patch("builtins.open", busy_twice):
+                self.assertEqual("kept\n", portable.read_text(path))
+            self.assertEqual(3, len(calls))
+            with mock.patch.object(portable, "WINDOWS", False), mock.patch("builtins.open", side_effect=PermissionError(13, "Permission denied", path)):
+                with self.assertRaises(PermissionError):
+                    portable.read_text(path)
+
+    def test_two_processes_preparing_the_folder_do_not_stop_on_its_gitignore(self) -> None:
+        """/* REQ-PORT-014: prepare_wingbox_directory reads .wingbox/.gitignore through portable.read_text, so a second process that starts while the first is replacing the file (two MCP servers started together on Windows) waits a moment and goes on. */"""
+        sys.path.insert(0, str(REPO))
+        from scripts import build_code_graph as builder
+
+        with tempfile.TemporaryDirectory() as directory:
+            builder.prepare_wingbox_directory(directory)
+            path = os.path.join(directory, ".wingbox", ".gitignore")
+            real_open, failures = open, []
+
+            def busy_once(file, *args, **kwargs):
+                if str(file) == path and not failures:
+                    failures.append(file)
+                    raise PermissionError(13, "Permission denied", file)
+                return real_open(file, *args, **kwargs)
+
+            # The builder holds its own copy of the helpers module (imported as scripts.portable).
+            with mock.patch.object(builder.portable, "WINDOWS", True), mock.patch.object(builder.portable, "_REPLACE_PAUSE", 0), mock.patch("builtins.open", busy_once):
+                builder.prepare_wingbox_directory(directory)
+            self.assertEqual(1, len(failures))
+            with open(path, encoding="utf-8") as handle:
+                self.assertEqual(builder.GITIGNORE_TEXT, handle.read())
 
 
 if __name__ == "__main__":
