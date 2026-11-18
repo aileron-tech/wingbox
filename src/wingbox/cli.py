@@ -35,6 +35,11 @@
     wingbox update [--check] [--dry-run] [--sexp]
                                             Upgrade with the installer that installed Wingbox (pipx, uv
                                             or pip), then refresh what install put in place
+    wingbox add LANGUAGE [LANGUAGE ...] [--from PATH] [--sexp]
+                                            Install the parser of csharp, java, go, ruby, php or dart: the
+                                            pinned wheel, checked by sha256, into ~/.wingbox/parsers (--from:
+                                            a wheel file or folder instead of the network); --list shows
+                                            which are installed. The only command that downloads a parser
     wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
     wingbox hook dirty                      The Claude Code PostToolUse hook on Edit and Write: marks the
                                             changed file so the graph is refreshed before its next use
@@ -48,6 +53,11 @@ Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
 ~/.agents/skills folder). Without --assistant, install uses those whose
 configuration folder exists in the home folder. Wingbox writes only into a
 project's .wingbox/ and your own settings in the home folder.
+
+Python, TypeScript, Rust and Pascal are parsed as installed. The parsers of
+C#, Java, Go, Ruby, PHP and Dart are added on demand: a build that meets such
+files without their parser skips them, says how many, and names
+`wingbox add <language>`. Nothing is downloaded unless you run that command.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -78,7 +88,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from importlib import import_module
 from pathlib import Path
@@ -1154,6 +1164,7 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
     if isinstance(shown, str):
         return OutputsFailed(shown)
     view = overview.build_overview(graph, search, os.path.basename(os.path.normpath(root)) or root, advice=shown)
+    view = replace(view, skipped_languages=_skipped_languages(load_script("build_code_graph"), root))
     generated = date.today().isoformat()
     report = freshness.report_path(root)
     page = freshness.map_path(root)
@@ -1471,7 +1482,18 @@ def _build_outputs(builder: ModuleType, status: int, options) -> int:
     relative = os.path.relpath(outputs.page, options.root).replace(os.sep, "/")
     print(f"[wingbox] Report  {os.path.relpath(outputs.report, options.root).replace(os.sep, '/')}")
     print(f"[wingbox] Map     {relative}  (wingbox open shows it in a browser)")
+    for display, name, files in _skipped_languages(builder, options.root):
+        print(f"[wingbox] Skipped {files} {display} file{'' if files == 1 else 's'}: the {display} parser is not "
+              f"installed. Run {builder.add_command(name)}, then wingbox build")
     return 0
+
+
+def _skipped_languages(builder: ModuleType, root: str) -> tuple[tuple[str, str, int], ...]:
+    """(display name, language, files) of each language the last build of root left out."""
+    from wingbox import freshness, overview
+
+    display = {language.name: language.display_name for language in builder.LANGUAGES}
+    return overview.skipped_languages(freshness.skipped_languages_line(root), display)
 
 
 def _open_command(rest: list[str], cwd: str) -> int:
@@ -1631,6 +1653,29 @@ def _update_command(rest: list[str]) -> int:
     return update.exit_status(facts)
 
 
+def _add_command(rest: list[str], cwd: str) -> int:
+    """`wingbox add LANGUAGE ...`: the one command that downloads a parser (wingbox/add.py)."""
+    from wingbox import add, freshness
+    from wingbox.facts import render_sexp
+
+    if any(argument in ("-h", "--help") for argument in rest):
+        print(add.USAGE)
+        return 0
+    options = add.parse_arguments(rest)
+    if isinstance(options, add.UsageError):
+        print(f"[wingbox] add: {options.message}", file=sys.stderr)
+        return 2
+    machine, extensions = add.this_machine()
+    facts = add.add(options, machine)
+    if isinstance(facts, add.UsageError):
+        print(f"[wingbox] add: {facts.message}", file=sys.stderr)
+        return 2
+    if not options.listing:
+        facts = facts + add.project_facts(freshness.find_project(cwd), facts, extensions)
+    sys.stdout.write(render_sexp(facts) if options.sexp else add.render_text(facts, str(Path.home())))
+    return add.exit_status(facts)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     """Run a command; a reader that closes the pipe (`| head`) ends it quietly."""
     # A Windows console with a legacy code page must never stop a command on a character it cannot show.
@@ -1665,6 +1710,8 @@ def _run(argv: Optional[list[str]] = None) -> int:
         return _install_command(command, rest, cwd)
     if command == "update":
         return _update_command(rest)
+    if command == "add":
+        return _add_command(rest, cwd)
     if command == "build":
         if any(argument in ("-h", "--help") for argument in rest):
             print(BUILD_USAGE)
@@ -1714,6 +1761,8 @@ def _refresh_before_query(args: list[str], cwd: str) -> None:
     line = freshness.stale_line(freshness.ensure_graph_fresh(root, freshness.refresh_wait()), root)
     if line:
         print(f"[wingbox] WARNING: {line}", file=sys.stderr)
+    for skipped in freshness.skipped_languages_line(root).splitlines():
+        print(f"[wingbox] NOTE: {skipped}", file=sys.stderr)
 
 
 if __name__ == "__main__":

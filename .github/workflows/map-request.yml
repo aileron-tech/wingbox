@@ -69,7 +69,8 @@ jobs:
 
       - name: Install Wingbox from PyPI
         run: |
-          pipx install "wingbox==$WINGBOX_VERSION"
+          # Every language parser with the package: a requested repository may be in any language.
+          pipx install "wingbox[all]==$WINGBOX_VERSION"
           wingbox --version | tee version.txt
 
       - name: Build the graph, the report and the map

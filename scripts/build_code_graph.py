@@ -83,6 +83,12 @@ only for languages present in the target repository::
 The builder detects missing or incompatible packages before publication and
 prints only the commands required by the discovered languages.
 
+The installed ``wingbox`` package carries the TypeScript and Rust parsers. Those
+of C#, Java, Go, Ruby, PHP and Dart are added on demand, ``wingbox add csharp``,
+into a per-user folder (``lang/ondemand.py``); the builder never downloads one.
+Files of such a language without its parser are skipped with a warning and
+recorded in ``.wingbox/graph-skipped.sexp``; the other languages are mapped.
+
 Optional for ``--lsp``: ``typescript-language-server``, ``pyright-langserver``,
 ``rust-analyzer``, ``csharp-ls``, ``jdtls``, ``gopls``, or ``ruby-lsp``.
 
@@ -125,10 +131,12 @@ try:
     if __package__:
         from .lang import (
             LANGUAGES,
+            ON_DEMAND_LANGUAGES,
             BoundLanguage,
             DiscoveryExclusions,
             FileResult,
             Language,
+            activate_user_parsers,
             language_for_file,
             language_for_name,
             language_for_result,
@@ -159,10 +167,12 @@ try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
             LANGUAGES,
+            ON_DEMAND_LANGUAGES,
             BoundLanguage,
             DiscoveryExclusions,
             FileResult,
             Language,
+            activate_user_parsers,
             language_for_file,
             language_for_name,
             language_for_result,
@@ -592,20 +602,63 @@ def _dependency_issues(
     return tuple(issues)
 
 
-# Languages whose grammar is an opt-in extra of the wingbox package. Without
-# it their files are left out of the graph with a warning; the build goes on.
-OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {"dart": "dart"}
+# Languages whose parser is installed on demand: `wingbox add <language>` (or the pip extra of the same
+# name). Without it their files are left out of the graph with a warning; the build goes on.
+OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {name: name for name in ON_DEMAND_LANGUAGES}
+# What the last build left out, for the readers of the graph: one `(skipped-language ...)` fact per language.
+SKIPPED_FILE = "graph-skipped.sexp"
+
+
+def add_command(language_name: str) -> str:
+    """The command that installs the parser of an on-demand language."""
+    return f"wingbox add {OPTIONAL_LANGUAGE_EXTRAS[language_name]}"
+
+
+def skipped_path(root: str) -> str:
+    return os.path.join(wingbox_directory(root), SKIPPED_FILE)
+
+
+def skipped_language_facts(skipped: Sequence[tuple[str, int]]) -> str:
+    """The record of the languages a build left out: (name, files) -> one fact per line."""
+    return "".join(
+        f'(skipped-language {name} :files {files} :add "{add_command(name)}")\n' for name, files in skipped
+    )
+
+
+def _publish_skipped(root: str, skipped: Sequence[tuple[str, int]]) -> None:
+    """Write the record beside the graph, or remove the one of an earlier build when nothing was skipped."""
+    path = skipped_path(root)
+    if skipped:
+        _atomic_write_text(path, skipped_language_facts(skipped))
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
+def _requirements_command(language_name: str) -> Optional[str]:
+    """The pip command of a clone for one language; None in the installed package, which has no requirements files."""
+    path = Path(__file__).resolve().parent.parent / "requirements" / f"{language_name}.txt"
+    if not path.is_file():
+        return None
+    return f'{"python" if portable.WINDOWS else "python3"} -m pip install -r "{path.as_posix()}"'
 
 
 def _report_skipped_optional_languages(
     issues: tuple[LanguageDependencyIssue, ...],
+    counts: Mapping[str, int],
 ) -> None:
     for issue in issues:
-        extra = OPTIONAL_LANGUAGE_EXTRAS[issue.language.name]
+        name = issue.language.name
+        files = counts.get(name, 0)
+        from_clone = _requirements_command(name)
         print(
-            f"[code-graph] WARNING: {issue.language.display_name} files are skipped: "
-            f"{', '.join(issue.unavailable)}. To include them: "
-            f"pipx install --force \"wingbox[{extra}]\" (or pip install \"wingbox[{extra}]\")",
+            f"[code-graph] WARNING: {issue.language.display_name} files are skipped "
+            f"({files} file{'' if files == 1 else 's'}): {', '.join(issue.unavailable)}. "
+            f"To include them: {add_command(name)} "
+            f"(or pip install \"wingbox[{OPTIONAL_LANGUAGE_EXTRAS[name]}]\""
+            + (f"; from a clone: {from_clone}" if from_clone else "") + ")",
             file=sys.stderr,
         )
 
@@ -626,17 +679,16 @@ def _report_dependency_issues(
         "[code-graph] Install only the detected language dependencies:",
         file=sys.stderr,
     )
-    skill_root = Path(__file__).resolve().parent.parent
     for issue in issues:
-        requirements_path = skill_root / "requirements" / f"{issue.language.name}.txt"
-        print(
-            f'[code-graph]   {"python" if portable.WINDOWS else "python3"} -m pip install -r "{requirements_path.as_posix()}"',
-            file=sys.stderr,
-        )
-        extra = OPTIONAL_LANGUAGE_EXTRAS.get(issue.language.name)
-        if extra is not None:
+        if issue.language.name in OPTIONAL_LANGUAGE_EXTRAS:
+            print(f"[code-graph]   {add_command(issue.language.name)}", file=sys.stderr)
+        from_clone = _requirements_command(issue.language.name)
+        if from_clone:
+            print(f"[code-graph]   {from_clone}", file=sys.stderr)
+        elif issue.language.name not in OPTIONAL_LANGUAGE_EXTRAS:
             print(
-                f'[code-graph]   or, for an installed wingbox: pipx install --force "wingbox[{extra}]"',
+                f"[code-graph]   reinstall wingbox: {', '.join(dep.requirement for dep in issue.language.dependencies)} "
+                "are its own dependencies",
                 file=sys.stderr,
             )
     print(
@@ -4192,13 +4244,16 @@ def _run_build(options: BuilderOptions) -> int:
     print(f"[code-graph] Supported source: {extensions}")
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
+    activate_user_parsers()   # a parser `wingbox add` installed since this process started
     dependency_issues = _dependency_issues(active_language_names)
     skipped = tuple(issue for issue in dependency_issues if issue.language.name in OPTIONAL_LANGUAGE_EXTRAS)
     # Skip an opt-in language only when other source files remain to map; a
     # project of that language alone stops with the install command below.
     skipped_names = frozenset(issue.language.name for issue in skipped)
+    skipped_counts: list[tuple[str, int]] = []
     if skipped and any(item[1] not in skipped_names for item in files):
-        _report_skipped_optional_languages(skipped)
+        _report_skipped_optional_languages(skipped, language_counts)
+        skipped_counts = [(issue.language.name, language_counts[issue.language.name]) for issue in skipped]
         files = [item for item in files if item[1] not in skipped_names]
         active_language_names = active_language_names - skipped_names
         dependency_issues = tuple(issue for issue in dependency_issues if issue not in skipped)
@@ -4317,6 +4372,7 @@ def _run_build(options: BuilderOptions) -> int:
     )
     _atomic_write_text(options.output_path, map_content)
     _atomic_write_text(uses_path(options.output_path), uses_content)
+    _publish_skipped(root, skipped_counts)
     if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
     if options.snapshot_path and snapshot is not None:

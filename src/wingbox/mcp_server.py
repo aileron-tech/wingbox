@@ -332,7 +332,7 @@ class Server:
             if isinstance(loaded, search.MapLoadErr):
                 return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the build tool.")
             self._cache_key, self._cache_graph = key, graph
-        return GraphReady(self._cache_graph, path, freshness.stale_line(fresh, project))
+        return GraphReady(self._cache_graph, path, freshness.notes(fresh, project))
 
 
 def _captured(action: Callable[[], Any]) -> tuple[Any, str, str]:

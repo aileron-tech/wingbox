@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### Changes
+
+- Language parsers on demand. The package carries the parsers of TypeScript, JavaScript and Rust
+  (Python and Pascal need none); the parsers of C#, Java, Go, Ruby, PHP and Dart are added with one
+  command, `wingbox add <language>`. **After upgrading, a project in one of these six languages
+  needs one `wingbox add <language>`** (for example `wingbox add csharp`); until then a build maps
+  the other languages, says how many files it left out and names the command. `wingbox add csharp
+  php` adds several, `wingbox add --list` shows which are installed and from where, and `wingbox
+  add csharp --from FILE` takes a wheel file or a folder of wheels on a machine without network
+  access.
+- Nothing is downloaded on its own. `wingbox add` is the only command that fetches a parser: one
+  file, the pinned wheel for your system from `files.pythonhosted.org`, refused unless its sha256
+  is the one recorded in the package. A build, a refresh, a hook and the MCP server never
+  download; a test proves that the download code is reachable from `wingbox add` alone.
+- The parser goes into your home folder, `~/.wingbox/parsers/<platform>/<package>-<version>/`
+  (`WINGBOX_PARSERS_DIR` names another folder), and is shared by every Wingbox on the machine:
+  pipx, `uv tool`, `uvx` (the Claude Code plugin, the Claude Desktop extension), Homebrew and pip.
+  No pip is needed to add one.
+- A clean install is 10.2 MB smaller: 17,211,725 -> 7,023,433 bytes installed with its
+  dependencies (CPython 3.12, macOS x86-64).
+- A language that was left out is said wherever the graph is read, as one line,
+  `(skipped-language csharp :files 214 :add "wingbox add csharp")`: on stderr of every query
+  command, at the head of every MCP answer, in the context the search hook gives, in the last
+  lines of `wingbox build` and under the key findings of `REPORT.md`. `wingbox add` marks the
+  graph of the current project, so its next use rebuilds it with the language.
+- Every on-demand parser is also a pip extra with the same pin, and `all` has them all:
+  `pipx install "wingbox[csharp]"`, `pip install "wingbox[all]"`. A parser installed that way is
+  used first. The Docker image and the map-request workflow install `wingbox[all]`.
+- The graphs are unchanged: for 61 projects in the six languages, the graph built after
+  `wingbox add` is byte for byte the graph 0.11.0 builds.
+
 ### Fixes
 
 - A `data-flow` fact no longer carries `:validated` on the strength of a text match in the imported

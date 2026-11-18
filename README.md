@@ -75,6 +75,11 @@ what it adds, lets you untick items, and writes only your own settings in your h
 folder. The second maps the repository you are in into its `.wingbox/` folder. Then
 ask your agent, or run `wingbox impact path/to/file`.
 
+Python, TypeScript, JavaScript, Rust and Pascal are parsed as installed. For C#, Java,
+Go, Ruby, PHP or Dart, add the parser once per machine, for example `wingbox add csharp`:
+see [Language parsers on demand](#language-parsers-on-demand). A build that meets such
+files without their parser tells you the command; nothing is downloaded on its own.
+
 With Homebrew, on macOS or Linux: `brew install aileron-tech/wingbox/wingbox && wingbox install`
 ([tap](https://github.com/aileron-tech/homebrew-wingbox)).
 
@@ -98,8 +103,10 @@ Wingbox is safe to run on code that must not leave the company:
   Run it with the network switched off to see for yourself:
   `docker run --rm --network none -v "$PWD":/repo wingbox`
   (PowerShell: `docker run --rm --network none -v "${PWD}:/repo" wingbox`).
-  The one command that reaches the network is `wingbox update`, which runs
-  your package installer (pipx, uv or pip) when you ask it to.
+  Two commands reach the network, and only when you run them: `wingbox update`,
+  which runs your package installer (pipx, uv or pip), and `wingbox add <language>`,
+  which downloads the pinned parser of that language from the Python Package Index
+  and checks its sha256. Nothing is downloaded on its own.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
@@ -110,8 +117,10 @@ Wingbox is safe to run on code that must not leave the company:
   graph `index.sexp`, `REPORT.md` and `map.html`. The map is one HTML file
   that loads nothing from outside and opens offline.
 - **Works on a machine with no internet.** Fetch the package and its pinned
-  dependencies once (`pip download wingbox -d wheels`), carry the folder
-  inside, and install with `pip install --no-index --find-links wheels wingbox`.
+  dependencies once (`pip download "wingbox[all]" -d wheels`; `all` brings every
+  language parser), carry the folder inside, and install with
+  `pip install --no-index --find-links wheels "wingbox[all]"`. A parser alone goes in
+  the same way: `wingbox add csharp --from wheels`.
 - **Deterministic and open.** The same code gives the same graph; the source
   is MIT licensed and small enough to review.
 
@@ -122,11 +131,14 @@ Wingbox is safe to run on code that must not leave the company:
 | `wingbox build` (and the refresh after a change) | the repository's `.wingbox/` |
 | `wingbox init` (project setup) | the repository's `.wingbox/` |
 | `wingbox install` (your assistants) | your own settings in your home folder (the assistants' files, `~/.wingbox/`) |
+| `wingbox add <language>` (a parser) | `~/.wingbox/parsers/` in your home folder |
 
-Three tests of the repository keep this true: the package imports no module
-that opens network connections, the map page loads no outside resource, and
-every command run in a temporary repository with a temporary home folder
-changes no path outside `.wingbox/` and that home folder.
+Tests of the repository keep this true: the package imports no module that
+opens network connections outside the one file `wingbox add` downloads with,
+that file is reachable from no other command (not from a build, a refresh, a
+hook or the MCP server), the map page loads no outside resource, and every
+command run in a temporary repository with a temporary home folder changes no
+path outside `.wingbox/` and that home folder.
 
 ## See it in action
 
@@ -393,6 +405,8 @@ the latest release tag, which uv fetches on first use. Claude Code starts `uvx` 
 shell, so the plugin works the same on macOS, Linux and Windows, with or without Git for Windows.
 The hooks run `uvx --offline`: they never download, and while uv is missing or has not fetched
 Wingbox yet they fail without blocking the search or the edit (`"onFailure": "continue"`).
+For a C#, Java, Go, Ruby, PHP or Dart repository add the parser once: `wingbox add csharp`, or
+`uvx wingbox add csharp` when the command is not installed; the plugin finds it in `~/.wingbox/parsers`.
 
 Codex:
 
@@ -431,8 +445,10 @@ macOS, Windows and Linux, so no compiler is needed. If your Claude Desktop
 reports that it cannot start the server, install
 [uv](https://docs.astral.sh/uv/getting-started/installation/) and restart it.
 The first start downloads the package from PyPI; after that the server opens
-no network connection. `python3 tools/build_mcpb.py` builds the file from a
-checkout.
+no network connection. For a C#, Java, Go, Ruby, PHP or Dart repository, run
+`uvx wingbox add csharp` (the language you need) once in a terminal: the
+answers say so while files of such a language are left out.
+`python3 tools/build_mcpb.py` builds the file from a checkout.
 
 ## Quick start from the command line
 
@@ -803,9 +819,9 @@ wingbox update            # upgrade, then refresh what wingbox install put in pl
 (`pipx upgrade wingbox`), uv (`uv tool upgrade wingbox`) or pip of the Python
 environment it runs in. A Homebrew install is upgraded by Homebrew
 (`brew upgrade wingbox`), and a Docker image or an editable or local install
-cannot update itself; the command says so and prints what to run instead. Wingbox
-itself opens no network connection: only the installer reaches the package
-index, and only when you run `wingbox update`.
+cannot update itself; the command says so and prints what to run instead. Here
+Wingbox itself opens no network connection: only the installer reaches the
+package index, and only when you run `wingbox update`.
 
 On Windows the `wingbox` program is `wingbox.exe`, which runs for as long as
 the command does, and Windows lets nobody overwrite a running program. For the
@@ -822,6 +838,74 @@ on a terminal); it deletes nothing. `wingbox update` refreshes only your own
 settings: for each repository where a version before 0.9.0 installed with
 `--project` it says once that those files are still there and that
 `wingbox uninstall --project` in that folder removes them.
+
+### Language parsers on demand
+
+The package carries the parsers of TypeScript, JavaScript and Rust; Python and
+Pascal need none. The parsers of C#, Java, Go, Ruby, PHP and Dart are added
+when you need them, with one command:
+
+```bash
+wingbox add csharp            # one language
+wingbox add java go ruby      # several at once
+wingbox add --list            # each on-demand language: installed or not, and from where
+wingbox add php --from DIR    # no network: a wheel file, or a folder of wheel files
+```
+
+A build never downloads anything. When it meets files of a language whose
+parser is not installed, it maps the other languages, says how many files it
+left out and names the command:
+
+```text
+[code-graph] WARNING: C# files are skipped (214 files): tree-sitter-c-sharp==0.23.5 (missing). To include them: wingbox add csharp (or pip install "wingbox[csharp]")
+```
+
+Hooks and the MCP server build in the background, where nobody reads that
+line, so the same fact travels with the graph: the build records it in
+`.wingbox/graph-skipped.sexp`, every query command prints it on stderr, every
+MCP answer starts with it, the search hook adds it to the context it gives,
+and `REPORT.md` lists it under the key findings:
+
+```text
+(skipped-language csharp :files 214 :add "wingbox add csharp")
+```
+
+A build that parses every language removes the record. A project whose only
+source files are in a language without its parser publishes no graph; the
+build stops with the command.
+
+What `wingbox add csharp` does:
+
+- It downloads one file: the wheel of the pinned version for this system and
+  processor, over https from `files.pythonhosted.org`. The package holds the
+  list of these files (name, URL and sha256 of every wheel of the pinned
+  versions, in `wingbox/assets/parsers.json`); a file whose sha256 differs is
+  refused before it is opened, and no other URL is ever fetched.
+- It needs no pip, so it works the same in a pipx, `uv tool`, `uvx`, Homebrew
+  or plain pip install: the standard library downloads and unpacks.
+- It unpacks into your home folder, `~/.wingbox/parsers/<platform>/<package>-<version>/`
+  (for example `darwin-arm64/tree-sitter-c-sharp-0.23.5`), written aside and
+  renamed into place once complete. The folder is shared by every Wingbox on
+  the machine that pins the same version: the command, the Claude Code plugin
+  and the Claude Desktop extension. `WINGBOX_PARSERS_DIR` names another
+  folder. To remove a parser, delete its folder.
+- A second run changes nothing. A parser that is already in the environment
+  that runs Wingbox is used from there and wins over the per-user folder.
+- In a project whose graph left the language out, it marks those files
+  changed: the next query, MCP call or search hook rebuilds the graph with
+  them. In other projects run `wingbox build`.
+
+Without network access, `wingbox add csharp` fails and prints the URL and the
+name of the file it needs: fetch that file on another machine and pass it with
+`--from` (the file, or the folder that holds it). The sha256 check is the same.
+
+The parsers are also pip extras with the same pins, for a setup that prefers
+its package installer: `pipx install "wingbox[csharp]"`, `pip install
+"wingbox[java,go]"`, or `"wingbox[all]"` for every language. Wheels exist for
+macOS (x86_64, arm64), Linux (glibc and musl, x86_64 and aarch64) and Windows
+(amd64, arm64), except PHP, Ruby and Java on musl aarch64 and Dart on Windows
+arm64; there `wingbox add` says so and names the extra, which builds from
+source where the package has one.
 
 ### Keeping the graph fresh
 
@@ -852,6 +936,9 @@ are brought in:
 - A build and a refresh parse in as many worker processes as the machine has
   processors. `WINGBOX_JOBS=2` (any whole number from 1) sets the most they
   start, for a laptop that has other work to do or a shared build machine.
+- `WINGBOX_PARSERS_DIR=/path` names the folder of the parsers added with
+  `wingbox add` (default `~/.wingbox/parsers`); a build looks there after the
+  environment it runs in. See [Language parsers on demand](#language-parsers-on-demand).
 - The search hook waits up to `WINGBOX_HOOK_WAIT` seconds (3) for the refresh;
   a longer one goes on in the background and publishes when it is done. While
   the graph misses known changes, after a failed refresh (not repeated until
@@ -941,8 +1028,9 @@ docker run --rm --network none -v "${PWD}:/repo" wingbox impact path/to/file.py
 The first `docker run` builds the code graph, the report and the map of the
 mounted project; any other Wingbox command goes after the image name. The
 container needs no network, and `--network none` shows it: nothing leaves the
-machine. On Linux add `--user "$(id -u):$(id -g)"` so that the written files
-belong to you.
+machine. The image holds every language parser (it installs `wingbox[all]`),
+so nothing has to be added in it. On Linux add `--user "$(id -u):$(id -g)"` so
+that the written files belong to you.
 
 ### Running the scripts from a clone
 
@@ -982,9 +1070,11 @@ and LSP project discovery. Tracked snapshot paths that still match
 `.gitignore` are excluded as well.
 
 Parser packages are loaded only for languages found in that project. Python
-needs no extra parser package. If another detected language is not installed,
-the builder stops before publishing and prints its exact install command, for
-example:
+needs no extra parser package. If the parser of TypeScript or Rust is not
+installed, the builder stops before publishing and prints its exact install
+command; files of C#, Java, Go, Ruby, PHP or Dart without their parser are
+skipped with a warning that prints it (a project of such a language alone
+stops too). For example:
 
 ```bash
 python3 -m pip install -r requirements/typescript.txt
@@ -995,12 +1085,12 @@ python3 -m pip install -r requirements/dart.txt
 ```
 
 Install only the files for languages you use, then run the same build command
-again. `requirements/php.txt` pins `tree-sitter==0.25.2` and
-`tree-sitter-php==0.24.1` and `requirements/dart.txt` pins
-`tree-sitter-dart==0.1.0`. The package dependencies list the PHP grammar, so an
-installed `wingbox` needs no separate step for PHP. The Dart grammar is an
-opt-in extra: `pipx install "wingbox[dart]"` (or `pip install "wingbox[dart]"`);
-without it a build skips `.dart` files with a warning and maps the rest.
+again. Each file pins `tree-sitter==0.25.2` and the grammar of its language
+(`requirements/php.txt`: `tree-sitter-php==0.24.1`, `requirements/dart.txt`:
+`tree-sitter-dart==0.1.0`). An installed `wingbox` adds the same pinned
+parsers with `wingbox add <language>`
+([Language parsers on demand](#language-parsers-on-demand)), and a build from a
+clone finds them in `~/.wingbox/parsers` as well.
 `requirements.txt` contains the separate infrastructure-topology dependency.
 
 Run a relevant search and get the first matching module with its full context:
@@ -1178,7 +1268,15 @@ supported languages stored under the same path.
 
 It can also map infrastructure relationships from Kustomize, Helm, and Terraform.
 
+Python, TypeScript, TSX, JavaScript, Rust, Free Pascal and Lazarus are parsed
+as installed. C#, Java, Go, Ruby, PHP and Dart need their parser added once:
+`wingbox add csharp`, `wingbox add java`, `wingbox add go`, `wingbox add ruby`,
+`wingbox add php`, `wingbox add dart`
+([Language parsers on demand](#language-parsers-on-demand)).
+
 ## Ruby and Rails dependency search
+
+Add the Ruby parser once: `wingbox add ruby`.
 
 Rails code often depends on constants without an explicit `require`. Wingbox
 builds a project-local constant index and follows conservative Zeitwerk naming
@@ -1191,6 +1289,8 @@ calls are not guessed. This keeps blast-radius results useful without executing
 application code.
 
 ## PHP and Laravel dependency search
+
+Add the PHP parser once: `wingbox add php`.
 
 PHP and Laravel code names classes through Composer instead of relative paths,
 and one feature can span PHP classes, Blade templates and Livewire components.
@@ -1232,7 +1332,8 @@ or opens a network connection; the graph comes from source text and
 
 ## Dart and Flutter dependency search
 
-Install the Dart grammar with the extra: `pipx install "wingbox[dart]"`.
+Add the Dart parser once: `wingbox add dart` (or install the extra,
+`pipx install "wingbox[dart]"`).
 
 Dart names its dependencies by library URI, not by file path. Wingbox reads
 every `pubspec.yaml` and its top-level `name:`, then resolves `import` and
@@ -1316,7 +1417,9 @@ module loaded by a name read from a JSON, YAML or TOML file beside the loader
 
 No. The code graph is built and queried locally by deterministic static
 parsing. Building and querying need no LLM, no vector database and no network
-access.
+access. The two commands that download something, `wingbox update` and
+`wingbox add <language>`, fetch packages from the Python Package Index when you
+run them, and send nothing about your code.
 
 ### Is Wingbox free?
 
@@ -1326,10 +1429,12 @@ and no usage limit.
 ### Can I run it fully offline?
 
 Yes. Building and querying never use the network; `wingbox update` runs your
-package installer (pipx, uv or pip) when you ask it to. On a machine with no internet,
-install from wheels fetched once elsewhere (`pip download wingbox -d wheels`,
-then `pip install --no-index --find-links wheels wingbox`), or run the Docker
-image with `--network none`.
+package installer (pipx, uv or pip) and `wingbox add <language>` downloads a
+parser, each only when you ask it to. On a machine with no internet, install
+from wheels fetched once elsewhere (`pip download "wingbox[all]" -d wheels`,
+then `pip install --no-index --find-links wheels "wingbox[all]"`), add a parser
+from a file (`wingbox add csharp --from wheels`), or run the Docker image with
+`--network none`.
 
 ### Does it use embeddings or a vector database?
 
@@ -1423,6 +1528,8 @@ must be verified against the running application.
 Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on
 Rails, PHP and Laravel (Blade and Livewire), Dart and Flutter, Free Pascal and
 Lazarus, plus infrastructure relationships from Kustomize, Helm and Terraform.
+The parsers of C#, Java, Go, Ruby, PHP and Dart are added with one command,
+`wingbox add <language>`; the others come with the package.
 
 ### Which operating systems does it run on?
 
