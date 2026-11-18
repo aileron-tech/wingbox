@@ -14,26 +14,7 @@ MCP_PATH = SOURCE / "wingbox" / "mcp_server.py"
 
 LEGACY_VERSION = "2025-11-25"
 MODERN_VERSION = "2026-07-28"
-EXPECTED_TOOLS = {
-    "build",
-    "impact",
-    "analyze",
-    "quick",
-    "boundary",
-    "boundaries",
-    "layers",
-    "deps",
-    "rdeps",
-    "entity",
-    "usages",
-    "find_function",
-    "find_type",
-    "find_callers",
-    "find_calls",
-    "find_callchain",
-    "diff_functions",
-    "query",
-}
+EXPECTED_TOOLS = {"build", "impact", "module", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "query"}
 
 
 def _load_mcp_module():
@@ -217,7 +198,7 @@ class McpProtocolTest(unittest.TestCase):
                 _initialize(),
                 _call(2, "build", {}),
                 _call(3, "impact", {"target": "shop/pricing.py"}),
-                _call(4, "deps", {"module": "shop/checkout", "depth": 1}),
+                _call(4, "dependencies", {"module": "shop/checkout", "depth": 1}),
             ],
         )
         build = session.reply(2)["result"]
