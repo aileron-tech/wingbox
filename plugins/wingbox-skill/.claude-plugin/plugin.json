@@ -1,0 +1,30 @@
+{
+  "name": "wingbox",
+  "version": "0.9.2",
+  "description": "A map of your codebase for coding agents: what a change touches, where a symbol is used.",
+  "author": {
+    "name": "Aileron Technologies",
+    "url": "https://wingbox.dev"
+  },
+  "homepage": "https://wingbox.dev",
+  "repository": "https://github.com/aileron-tech/wingbox",
+  "license": "MIT",
+  "keywords": [
+    "code-graph",
+    "blast-radius",
+    "impact-analysis",
+    "dependency-graph",
+    "code-search",
+    "architecture",
+    "local-first",
+    "mcp",
+    "monorepo",
+    "large-codebase",
+    "codebase-map",
+    "call-graph",
+    "refactoring",
+    "code-navigation"
+  ],
+  "icon": "./assets/icon.png",
+  "privacyPolicyUrl": "https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md"
+}

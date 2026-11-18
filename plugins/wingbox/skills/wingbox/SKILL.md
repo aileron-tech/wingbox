@@ -19,6 +19,7 @@ Query `.wingbox/index.sexp` to discover modules, boundaries, and dependencies be
 ## /wingbox
 
 When the user types `/wingbox` (in Codex `$wingbox`), do this before anything else:
+(when `command -v wingbox` finds nothing, read "Running the commands" below first)
 
 - `/wingbox` with no argument: find the graph (`.wingbox/index.sexp` in the
   project root; every `wingbox` command finds it from a subfolder too). Build
@@ -47,6 +48,23 @@ When the `wingbox` command is installed (`command -v wingbox`), run
 `wingbox <command> ...` for every query below and `wingbox build PATH` to build;
 they take the same arguments as the scripts. A skill installed by
 `wingbox install` has no `scripts/` folder and always uses the command.
+
+When the command is missing and this skill has no `scripts/` folder (a skill
+installed from a plugin directory), install the program before the first
+query. Tell the user in one line that Wingbox needs its open-source program
+(MIT, it runs on this machine), then run the first of these the machine has:
+
+```bash
+pipx install wingbox
+uv tool install wingbox
+```
+
+With neither pipx nor uv, ask the user to install one of them
+([pipx](https://pipx.pypa.io/stable/installation/),
+[uv](https://docs.astral.sh/uv/getting-started/installation/)) and stop there.
+After the install run `wingbox build .` in the project: it writes only the
+`.wingbox/` folder. Leave `wingbox install` to the user: it changes their own
+assistant settings.
 
 | Command | Purpose |
 |---|---|
