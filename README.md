@@ -6,6 +6,8 @@
 
 > **Give your coding agent a map of your codebase. 2-4x cheaper, no missed files.**
 >
+> Up to 5x faster, up to 8.8x fewer tokens, up to $484 saved per 1,000 questions, no missed files.
+>
 > Your agent sees every file a change touches before it edits, so it no longer
 > forgets a fix. 2-4x cheaper per answer than its own search or another code-graph tool: [benchmarks](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md).
 >
