@@ -25,12 +25,22 @@ mkdir -p out/results
 
 step() { printf '\n== %s\n' "$1"; }
 
+# The Wingbox under test with every language parser: the extra `all` (C#, Java, Go, Ruby, PHP and Dart are
+# installed on demand otherwise). A release up to 0.11.0 carries its parsers as dependencies and has no
+# such extra: uv says so and installs it as it is.
+with_all() {
+  case "$1" in
+    wingbox==*) printf 'wingbox[all]==%s' "${1#wingbox==}" ;;
+    *) printf '%s[all]' "$1" ;;
+  esac
+}
+
 step "environments"
 for venv in venv_before venv_after venv_tocs; do
   [ -d "$venv" ] || uv venv --quiet --python 3.12 "$venv"
 done
-uv pip install --quiet --python venv_before/bin/python "$WINGBOX_BEFORE"
-uv pip install --quiet --python venv_after/bin/python "$WINGBOX_SPEC"
+uv pip install --quiet --python venv_before/bin/python "$(with_all "$WINGBOX_BEFORE")"
+uv pip install --quiet --python venv_after/bin/python "$(with_all "$WINGBOX_SPEC")"
 uv pip install --quiet --python venv_tocs/bin/python "pydantic==2.12.5" "typer==0.20.0"
 TOCS_PY="$W/venv_tocs/bin/python -I"
 

@@ -13,6 +13,7 @@ from .interface import (
     LanguageDependency,
 )
 from .java import JAVA_LANGUAGE
+from .ondemand import ON_DEMAND_LANGUAGES, activate as _activate_user_parsers
 from .pascal import PASCAL_LANGUAGE
 from .php import PHP_LANGUAGE
 from .python import PYTHON_LANGUAGE
@@ -37,6 +38,15 @@ LANGUAGES: tuple[Language, ...] = (
     PASCAL_LANGUAGE,
     DART_LANGUAGE,
 )
+
+def activate_user_parsers() -> tuple[str, ...]:
+    """Make the parsers `wingbox add` put into the per-user folder importable; those of the environment keep
+    precedence. Runs when the languages are loaded (a build, its workers, a refresh) and again at the start
+    of every build, so a process that lives long (the MCP server) finds a parser added since it started."""
+    return _activate_user_parsers(LANGUAGES)
+
+
+activate_user_parsers()
 
 
 def language_for_file(file_name: str) -> Language | None:
@@ -71,7 +81,9 @@ __all__ = [
     "LANGUAGES",
     "Language",
     "LanguageDependency",
+    "ON_DEMAND_LANGUAGES",
     "UnsupportedLanguageError",
+    "activate_user_parsers",
     "language_for_file",
     "language_for_name",
     "language_for_result",

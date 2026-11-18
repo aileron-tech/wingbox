@@ -41,11 +41,21 @@ mkdir -p out corpus bench/plain bench/wb bench/log
 
 step() { printf '\n== %s\n' "$1"; }
 
+# The Wingbox under test with every language parser: the extra `all` (C#, Java, Go, Ruby, PHP and Dart are
+# installed on demand otherwise). A release up to 0.11.0 carries its parsers as dependencies and has no
+# such extra: uv says so and installs it as it is.
+with_all() {
+  case "$1" in
+    wingbox==*) printf 'wingbox[all]==%s' "${1#wingbox==}" ;;
+    *) printf '%s[all]' "$1" ;;
+  esac
+}
+
 step "environment"
 [ -d venv_wb ] || uv venv --quiet --python 3.12 venv_wb
 # --reinstall: a second run in the same work dir must test the current source,
 # not the wheel installed the first time.
-uv pip install --quiet --reinstall --no-cache --python venv_wb/bin/python "$WINGBOX_SPEC"
+uv pip install --quiet --reinstall --no-cache --python venv_wb/bin/python "$(with_all "$WINGBOX_SPEC")"
 WINGBOX=$W/venv_wb/bin/wingbox
 WINGBOX_BUILD=${WINGBOX_BUILD:-$WINGBOX}
 "$WINGBOX" --version

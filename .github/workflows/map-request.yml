@@ -36,7 +36,7 @@ jobs:
       ISSUE: ${{ github.event.issue.number }}
       REQUEST: ${{ github.event.issue.body || inputs.repository }}
       MAX_KB: "400000"
-      WINGBOX_VERSION: "0.11.0"   # the released version the maps are built with; bump on release
+      WINGBOX_VERSION: "0.12.0"   # the released version the maps are built with; bump on release
     steps:
       - name: Read and check the requested repository
         id: req
@@ -69,7 +69,8 @@ jobs:
 
       - name: Install Wingbox from PyPI
         run: |
-          pipx install "wingbox==$WINGBOX_VERSION"
+          # Every language parser with the package: a requested repository may be in any language.
+          pipx install "wingbox[all]==$WINGBOX_VERSION"
           wingbox --version | tee version.txt
 
       - name: Build the graph, the report and the map

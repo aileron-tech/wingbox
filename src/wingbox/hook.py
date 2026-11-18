@@ -522,7 +522,10 @@ def context_for(payload: object, cwd: str) -> str:
     lines = answer_file(graph, query) if isinstance(query, FileQuery) else answer_pattern(graph, query)
     if not lines:
         return note
-    return capped([f"(wingbox-graph {atom(_graph_name(graph))})"] + ([note] if note else []) + lines)
+    # Context from a graph that left a language out says so: the answer may miss files of that language.
+    skipped = freshness.skipped_languages_line(found[0])
+    notes = ([note] if note else []) + (skipped.splitlines() if skipped else [])
+    return capped([f"(wingbox-graph {atom(_graph_name(graph))})"] + notes + lines)
 
 
 def hook_output(context: str) -> str:

@@ -39,11 +39,21 @@ export GRAPHIFY_BACKEND=none
 
 step() { printf '\n== %s\n' "$1"; }
 
+# The Wingbox under test with every language parser: the extra `all` (C#, Java, Go, Ruby, PHP and Dart are
+# installed on demand otherwise). A release up to 0.11.0 carries its parsers as dependencies and has no
+# such extra: uv says so and installs it as it is.
+with_all() {
+  case "$1" in
+    wingbox==*) printf 'wingbox[all]==%s' "${1#wingbox==}" ;;
+    *) printf '%s[all]' "$1" ;;
+  esac
+}
+
 step "tools, each in its own folder under $W"
 for venv in venv_wb venv_gf; do
   [ -d "$venv" ] || uv venv --quiet --python 3.12 "$venv"
 done
-uv pip install --quiet --python venv_wb/bin/python "$WINGBOX_SPEC"
+uv pip install --quiet --python venv_wb/bin/python "$(with_all "$WINGBOX_SPEC")"
 uv pip install --quiet --python venv_gf/bin/python "$GRAPHIFY_SPEC"
 [ -x cg/node_modules/.bin/codegraph ] || npm install --silent --prefix "$W/cg" --no-audit --no-fund --no-save "$CODEGRAPH_SPEC"
 # Every CodeGraph run as in benchmarks/graphify/run.sh: a private HOME, no daemon, no file watcher, no background network calls.

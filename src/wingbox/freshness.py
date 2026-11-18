@@ -31,6 +31,9 @@ Settings (environment):
   checks for changes made outside Claude Code; 0 checks before every use.
 - WINGBOX_JOBS (a whole number, default every processor): the most worker
   processes a build or a refresh starts (`portable.worker_count`).
+- WINGBOX_PARSERS_DIR (a folder, default ~/.wingbox/parsers): where `wingbox add`
+  puts the parsers installed on demand and where a build looks for them
+  (scripts/lang/ondemand.py).
 """
 from __future__ import annotations
 
@@ -54,6 +57,7 @@ LOCK_NAME = "graph-state.lock"
 REFRESH_LOCK_NAME = "refresh.lock"
 REFRESH_LOG_NAME = "refresh.log"
 CHECKED_NAME = "graph-checked"
+SKIPPED_NAME = "graph-skipped.sexp"   # written by the builder: the languages its last build left out
 EDIT_TOOLS = frozenset(("Edit", "Write", "MultiEdit"))
 DEFAULT_HOOK_WAIT = 3.0
 DEFAULT_REFRESH_WAIT = 600.0
@@ -830,6 +834,23 @@ def stale_line(result: Freshness, root: str = ".") -> str:
     if not isinstance(result, Stale):
         return ""
     return f"(wingbox-graph-stale :reason {result.reason} :changed-files {result.changed})"
+
+
+def skipped_languages_line(root: str) -> str:
+    """The facts of the languages the last build left out because their parser is not installed, one per line:
+    `(skipped-language csharp :files 214 :add "wingbox add csharp")`; empty when the build parsed them all.
+    Every reader of the graph passes it on (query commands on stderr, MCP answers, the hook context)."""
+    try:
+        with open(_state_file(root, SKIPPED_NAME), "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return ""
+    return "\n".join(line for line in text.splitlines() if line.startswith("(skipped-language "))
+
+
+def notes(result: Freshness, root: str) -> str:
+    """What a reader says before an answer from the graph: the stale line, then the skipped languages."""
+    return "\n".join(line for line in (stale_line(result, root), skipped_languages_line(root)) if line)
 
 
 def withholds_context(result: Freshness) -> bool:

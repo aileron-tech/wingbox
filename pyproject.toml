@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wingbox"
-version = "0.11.0"
+version = "0.12.0"
 description = "A map of your codebase for AI coding agents: what a change breaks, where a symbol is used, how the architecture is layered. Local, no model."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -56,19 +56,29 @@ classifiers = [
 dependencies = [
     "tree-sitter==0.25.2",
     "tree-sitter-typescript==0.23.2",
-    "tree-sitter-php==0.24.1",
     "tree-sitter-rust==0.24.2",
-    "tree-sitter-c-sharp==0.23.5",
-    "tree-sitter-java==0.23.5",
-    "tree-sitter-go==0.25.0",
-    "tree-sitter-ruby==0.23.1",
     "PyYAML==6.0.3",
 ]
 
 [project.optional-dependencies]
-# Dart and Flutter: the grammar is a separate, opt-in package
-# (pipx install "wingbox[dart]"); without it .dart files are skipped.
+# The parsers of these languages are installed on demand: `wingbox add csharp` puts the pinned wheel
+# into ~/.wingbox/parsers, and without it the files of the language are skipped. An extra installs the
+# same parser with the package instead (pip install "wingbox[csharp]", "wingbox[all]"). The pins equal
+# those of the language adapters and of src/wingbox/assets/parsers.json (tools/update_parsers.py).
+csharp = ["tree-sitter-c-sharp==0.23.5"]
+java = ["tree-sitter-java==0.23.5"]
+go = ["tree-sitter-go==0.25.0"]
+ruby = ["tree-sitter-ruby==0.23.1"]
+php = ["tree-sitter-php==0.24.1"]
 dart = ["tree-sitter-dart==0.1.0"]
+all = [
+    "tree-sitter-c-sharp==0.23.5",
+    "tree-sitter-java==0.23.5",
+    "tree-sitter-go==0.25.0",
+    "tree-sitter-ruby==0.23.1",
+    "tree-sitter-php==0.24.1",
+    "tree-sitter-dart==0.1.0",
+]
 
 [project.urls]
 Homepage = "https://wingbox.dev"

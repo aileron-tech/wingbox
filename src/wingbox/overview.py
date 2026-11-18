@@ -6,8 +6,9 @@ Everything here is pure: no file access, no clock.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 LAYER_ORDER: tuple[str, ...] = (
     "ui", "api", "service", "domain", "infra", "shared", "config", "test", "other",
@@ -110,6 +111,7 @@ class Overview:
     not_checked: tuple[tuple[str, str, int], ...] = ()   # (part, reason in words, files) of parts no rule checked
     capability_breaks: tuple[CapabilityInfo, ...] = ()   # what a file does that its layer may not
     pattern_breaks: tuple[CapabilityInfo, ...] = ()      # pattern checks of the style the code does not follow
+    skipped_languages: tuple[tuple[str, str, int], ...] = ()   # (display name, language, files) the build left out
 
 
 def _layer_rank(layer: str) -> int:
@@ -432,6 +434,19 @@ def _recommendations(view: Overview) -> list[str]:
     return lines
 
 
+_SKIPPED_FACT = re.compile(r"^\(skipped-language (\S+) :files (\d+) ")
+
+
+def skipped_languages(record: str, display: Mapping[str, str]) -> tuple[tuple[str, str, int], ...]:
+    """(display name, language, files) from the lines of .wingbox/graph-skipped.sexp."""
+    found = []
+    for line in record.splitlines():
+        match = _SKIPPED_FACT.match(line)
+        if match:
+            found.append((display.get(match.group(1), match.group(1)), match.group(1), int(match.group(2))))
+    return tuple(found)
+
+
 def render_report(view: Overview, generated: str, tool_version: str) -> str:
     """REPORT.md: what the code graph says about the project, for a person."""
     files = {module.id: module.file for module in view.modules}
@@ -454,6 +469,11 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         "",
         "## Key findings",
         "",
+    ]
+    lines += [
+        f"- Not in this graph: {_plural(files, f'{display} file')} (the {display} parser is not installed). "
+        f"Run `wingbox add {name}`, then `wingbox build`."
+        for display, name, files in view.skipped_languages
     ]
     lines += [
         f"- Not checked: part {_code(part)} - {reason}; {_plural(count, 'file')} without a boundary check."

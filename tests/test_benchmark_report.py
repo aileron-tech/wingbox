@@ -183,5 +183,27 @@ class BenchmarkReportTest(unittest.TestCase):
         self.assertEqual(module.ancestor_module_edges(data), {("src/user.rs", "src/a/mod.rs"), ("src/user.rs", "src/main.rs")})
 
 
+class BenchmarkInstallTest(unittest.TestCase):
+    def test_every_benchmark_installs_wingbox_with_all_language_parsers(self) -> None:
+        """/* REQ-BENCH-019: the parsers of C#, Java, Go, Ruby, PHP and Dart are not dependencies of the package, so every benchmark script installs the Wingbox under test (and the one it compares with) with the extra `all`: a release spec becomes wingbox[all]==X.Y.Z, a checkout or a file its path with [all]. */"""
+        scripts = sorted((Path(__file__).resolve().parents[1] / "benchmarks").glob("*/run.sh"))
+        installing = [path for path in scripts if "WINGBOX_SPEC" in path.read_text(encoding="utf-8")]
+        self.assertEqual(["graphify", "impact", "php", "tocs", "usages"], [path.parent.name for path in installing])
+        for path in installing:
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(benchmark=path.parent.name):
+                installs = [line for line in text.splitlines() if "uv pip install" in line and "$WINGBOX_" in line]
+                self.assertEqual([], [line for line in installs if "with_all" not in line])
+                self.assertTrue(re.search(r'uv pip install[^\n]*"\$\(with_all "\$WINGBOX_SPEC"\)"', text))
+        if sys.platform != "win32":
+            function = re.search(r"with_all\(\) \{.*?\n\}\n", installing[0].read_text(encoding="utf-8"), re.S)
+            assert function is not None
+            printed = subprocess.run(
+                ["sh", "-c", function.group(0) + 'with_all wingbox==1.2.3; echo; with_all /src/checkout; echo'],
+                capture_output=True, text=True, check=True,
+            ).stdout.split()
+            self.assertEqual(["wingbox[all]==1.2.3", "/src/checkout[all]"], printed)
+
+
 if __name__ == "__main__":
     unittest.main()

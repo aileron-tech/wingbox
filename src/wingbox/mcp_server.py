@@ -332,7 +332,7 @@ class Server:
             if isinstance(loaded, search.MapLoadErr):
                 return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the build tool.")
             self._cache_key, self._cache_graph = key, graph
-        return GraphReady(self._cache_graph, path, freshness.stale_line(fresh, project))
+        return GraphReady(self._cache_graph, path, freshness.notes(fresh, project))
 
 
 def _captured(action: Callable[[], Any]) -> tuple[Any, str, str]:
@@ -364,7 +364,9 @@ def _query(
         return ToolAnswer((ready.message,), is_error=True)
     _value, out, err = _captured(lambda: command(search, ready.graph, ready.path))
     text = (ready.warning + "\n" if ready.warning else "") + out + ("\n" + err if err.strip() else "")
-    return _answer(text if not capped else cap_answer(text.strip("\n"), show_all))
+    answer = _answer(text if not capped else cap_answer(text.strip("\n"), show_all))
+    # A note before the answer (a stale graph, a skipped language) must not hide that the answer is an error.
+    return ToolAnswer(answer.texts, answer.is_error or out.lstrip("\n").startswith("(error "))
 
 
 def _run_build(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
