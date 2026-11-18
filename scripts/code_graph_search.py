@@ -187,12 +187,29 @@ class CapabilityFact:
     suspect: bool
 
 
+@dataclass(frozen=True)
+class NameRoute:
+    """Names of the source file that the builder followed to the target of an import edge, and how they arrive.
+
+    way: use (an item of the module named in an import), reexport (an item a facade re-exports; through is
+    the facade as written), glob (a name used after a glob import; through is the module of that import),
+    member (a member an impl block of the target defines; through is the type as written), macro (an exported
+    macro). names holds a few of them, count their number.
+    """
+
+    way: str
+    through: str
+    names: tuple[str, ...]
+    count: int
+
+
 @dataclass
 class Edge:
     etype: str   # imports, calls-api, data-flow, refs, calls, registry-wires
     source: str
     target: str
     flags: list[str] = field(default_factory=list)
+    names: tuple[NameRoute, ...] = ()   # imports: the names followed to the target, by the way they arrive
 
 
 def parse_search_pattern(raw: str) -> SearchPatternResult:
@@ -349,6 +366,28 @@ def _end_of_quoted(text: str, start: int) -> int:
         else:
             j += 1
     return len(text) - 1
+
+
+_ROUTES_WITH_THROUGH = frozenset({"reexport", "glob", "member"})
+
+
+def parse_name_route(token: str) -> Optional[NameRoute]:
+    """A `(:use A B)` or `(:glob "super" A B C :of 5)` list of an import edge; None for any other token."""
+    parts = tokenize(token) if token.startswith("(:") and token.endswith(")") else []
+    if not parts:
+        return None
+    way, values = parts[0][1:], parts[1:]
+    through = values.pop(0) if way in _ROUTES_WITH_THROUGH and values else ""
+    count = len(values)
+    if len(values) >= 2 and values[-2] == ":of" and values[-1].isdigit():
+        count, values = int(values[-1]), values[:-2]
+    return NameRoute(way, through, tuple(values), count)
+
+
+def name_route_sexp(route: NameRoute) -> str:
+    head = f'(:{route.way} "{route.through}"' if route.way in _ROUTES_WITH_THROUGH else f"(:{route.way}"
+    more = f" :of {route.count}" if route.count > len(route.names) else ""
+    return f"{head} {' '.join(route.names)}{more})"
 
 
 def parse_sub_list(token: str) -> list[str]:
@@ -681,7 +720,9 @@ class CodeGraph:
                 source = _resolve(tokens[1])
                 target = _resolve(tokens[2])
                 flags = [t for t in tokens[3:] if t.startswith(":")]
-                edge = Edge(kind, source, target, flags)
+                routes = tuple(route for route in map(parse_name_route, tokens[3:]) if route is not None) \
+                    if kind == "imports" else ()
+                edge = Edge(kind, source, target, flags, routes)
                 self.all_edges.append(edge)
                 if kind == "data-flow" and ":pipeline" in flags:
                     # The next step of a pipeline consumes the output of this one; it is
@@ -1308,6 +1349,85 @@ def _impact_levels(g: CodeGraph, start: str, max_depth: int) -> list[list[tuple[
     return levels
 
 
+@dataclass(frozen=True)
+class ImpactRow:
+    """One dependent of the impact root and why it is on the list.
+
+    through is the module of the previous depth it is reached through (the root at depth 1), the first in
+    the order of the list; more is the number of other modules of that depth it also depends on. edge_type
+    and names are those of its edge to through.
+    """
+
+    module: str
+    edge_type: str
+    through: str
+    more: int
+    names: tuple[NameRoute, ...]
+
+
+def _impact_rows(g: CodeGraph, start: str, max_depth: int) -> list[list[ImpactRow]]:
+    """The levels of _impact_levels, each dependent with the module it is reached through and its edge to it."""
+    levels = _impact_levels(g, start, max_depth)
+    rows: list[list[ImpactRow]] = []
+    previous = [start]
+    for level in levels:
+        reached: dict[str, list[tuple[str, str]]] = {}
+        for through in previous:
+            for source, edge_type in _collect_rdep_mods(g, through).items():
+                reached.setdefault(source, []).append((through, edge_type))
+        level_rows = []
+        for module, _edge_type in level:
+            through, edge_type = reached[module][0]
+            names = next((edge.names for edge in g.edges_to.get(through, ())
+                          if edge.etype == "imports" and edge.source.split("::")[0] == module and edge.names), ())
+            level_rows.append(ImpactRow(module, edge_type, through, len(reached[module]) - 1, names if edge_type == "imports" else ()))
+        rows.append(level_rows)
+        previous = [module for module, _edge_type in level]
+    return rows
+
+
+_ROUTE_NAME_SEPARATOR = ", "
+
+
+def _route_text(route: NameRoute) -> str:
+    """One way names arrive, in plain words; "it" and "there" are the file the row depends on."""
+    shown = [f"{route.through}::{name}" for name in route.names] if route.way == "member" else list(route.names)
+    names = _ROUTE_NAME_SEPARATOR.join(shown)
+    if route.count > len(route.names):
+        names += f" and {route.count - len(route.names)} more"
+    if route.way == "use":
+        return f"imports {names} from it"
+    if route.way == "reexport":
+        return f"uses {names}, re-exported by {route.through}"
+    if route.way == "glob":
+        return f"uses {names} by name after `use {route.through}::*`"
+    if route.way == "member":
+        return f"uses {names}, defined in an impl block there"
+    if route.way == "macro":
+        return f"uses the macro {names}, exported at the crate root"
+    return f"uses {names}"
+
+
+def impact_reason(g: CodeGraph, row: ImpactRow, depth: int) -> str:
+    """Why a file is on the impact list, as one line of text: the relation of its edge and, below depth 1,
+    the file it is reached through."""
+    if row.names:
+        relation = "; ".join(_route_text(route) for route in row.names)
+    else:
+        relation = "imports it" if row.edge_type == "imports" else row.edge_type
+    if depth == 1:
+        return relation
+    others = f" (or {row.more} other {'file' if row.more == 1 else 'files'})" if row.more else ""
+    return f"through {_impact_file(g, row.through)}{others}: {relation}"
+
+
+def impact_fact(g: CodeGraph, root_id: str, row: ImpactRow, depth: int) -> str:
+    through = f" :through {row.through}" if depth > 1 else ""
+    more = f" :more {row.more}" if depth > 1 and row.more else ""
+    names = "".join(f" {name_route_sexp(route)}" for route in row.names)
+    return f"(impact {root_id} {row.module} :lang {g.module_lang(row.module)} :via {row.edge_type} :depth {depth}{through}{more}{names})"
+
+
 def _impact_file(g: CodeGraph, module_id: str) -> str:
     """File of a module relative to the graph root; the module ID when it is not on disk."""
     path = g.module_to_file(module_id)
@@ -1541,13 +1661,13 @@ def cmd_impact(
 
     root_id = matches[0]
     others = matches[1:]
-    levels = _impact_levels(g, root_id, max_depth)
+    levels = _impact_rows(g, root_id, max_depth)
     direct = len(levels[0]) if levels else 0
     total = sum(len(level) for level in levels)
     root_file = _impact_file(g, root_id)
     read_first = list(
         dict.fromkeys(
-            [root_file] + [_impact_file(g, module) for module, _edge_type in (levels[0] if levels else [])]
+            [root_file] + [_impact_file(g, row.module) for row in (levels[0] if levels else [])]
         )
     )
     read_first_count = len(read_first)
@@ -1555,7 +1675,7 @@ def cmd_impact(
         read_first = read_first[: _READ_FIRST_LIMIT + 1]
     # Nearest dependents first: the limit is spent on depth 1 before depth 2.
     budget = total if show_all else _ANSWER_FILE_LIMIT
-    shown_levels: list[list[tuple[str, str]]] = []
+    shown_levels: list[list[ImpactRow]] = []
     for level in levels:
         shown_levels.append(level[:budget])
         budget -= len(shown_levels[-1])
@@ -1566,8 +1686,8 @@ def cmd_impact(
             print(f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})")
         print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q(root_file)})")
         for depth, level in enumerate(shown_levels, start=1):
-            for module, edge_type in level:
-                print(f"(impact {root_id} {module} :lang {g.module_lang(module)} :via {edge_type} :depth {depth})")
+            for row in level:
+                print(impact_fact(g, root_id, row, depth))
         if hidden:
             print(f"(impact-more {root_id} :hidden {hidden} :rerun {_rerun(f'impact {target} {max_depth}')})")
         print(f"(impact-summary {root_id} :direct {direct} :total {total} :depth {max_depth})")
@@ -1592,7 +1712,7 @@ def cmd_impact(
         return
     for depth, level in enumerate(shown_levels, start=1):
         if level:
-            _print_impact_block(f"Depth {depth}", [(_impact_file(g, module), edge_type) for module, edge_type in level])
+            _print_impact_block(f"Depth {depth}", [(_impact_file(g, row.module), impact_reason(g, row, depth)) for row in level])
             print()
     if hidden:
         print(f"  ... {hidden} more {'file' if hidden == 1 else 'files'}: rerun with --all")

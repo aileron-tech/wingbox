@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-18 - `impact` says why each file is on the list
+
+### Changes
+- `scripts/code_graph_search.py`: every row of `impact` carries its reason. Depth 1: the relation of the edge (`imports it`, `imports A, B from it`, `uses A, re-exported by crate::m`, `uses A by name after `use super::*``, `uses T::new, defined in an impl block there`, `uses the macro m, exported at the crate root`). Depth 2 and deeper: `through <file> (or N other files): <the relation of that hop>`. The facts are the source (`ImpactRow`, `impact_fact`): `:through <module>`, `:more <count>` and the name lists of the edge; the text is a printer over them (`impact_reason`). The MCP tool shares the command (REQ-CS-076, REQ-CS-077).
+- `scripts/lang/rust/definers.py`, `scripts/build_code_graph.py`: the Rust resolver returns, with each module a file depends on, the names it followed there and the way they arrive (`ItemRoute`); an import edge of the graph records them as `(:use ..)`, `(:reexport "<facade>" ..)`, `(:glob "<module>" ..)`, `(:member "<type>" ..)`, `(:macro ..)`, three names at most and `:of <count>` (REQ-RUST-041). A printed name is always one the resolver followed for that edge.
+- REQ-CS-039 and REQ-CS-040 (the exact text and facts of `impact`) and two assertions on the text of a Rust `:item` edge in `tests/test_graph_update.py` follow the new format.
+
+### Numbers
+- The 100 benchmark questions, this branch against 68fde76: the set of files is the same in all 100 (text and facts). Output of `wingbox impact <file> 2 --all`: 3,189 to 4,326 characters on average (+35.6 %), median 688 to 1,320; with `--sexp` 4,386 to 5,223 (+19.1 %). Three quarters of the growth is the `through <file>:` part of the deeper rows.
+- `index.sexp`: byte-identical for FastAPI, chrome-devtools-mcp and immich (server); agent-browser 406,139 to 419,777 bytes, claudes-c-compiler 427,138 to 489,690 bytes (the name lists of the Rust edges). The edges themselves are the same. No cache schema changes: parse results are unchanged, and a builder change already invalidates the cache and the fragment store.
+
+### Motivation
+- Measured twice in the agent benchmark: the output listed the exact files, and the agent removed rows it could not verify (a file whose only line of interest is `use super::*`). The output gave a single word, "imports", for every row and no file through which a depth-2 row is reached.
+
 ## 2026-11-18 - Rust resolution audit against the compiler: type members, module layout, Cargo targets
 
 ### Changes

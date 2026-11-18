@@ -1165,10 +1165,10 @@ class _TracedLanguage:
 
     def resolve_named_imports(
         self, result: FileResult, results: Mapping[str, FileResult]
-    ) -> tuple[Mapping[str, frozenset[str]], int]:
+    ) -> tuple[Mapping[str, frozenset[str]], int, Mapping[str, tuple[tuple[str, str, tuple[str, ...]], ...]]]:
         # The resolver is this traced one: every module name asked, also those of the facades, is recorded.
         named = getattr(self._bound, "resolve_named_imports", None)
-        return named(result, results, self.resolve_import) if named is not None else ({}, 0)
+        return named(result, results, self.resolve_import) if named is not None else ({}, 0, {})
 
 
 class _TracedResults(Mapping[str, FileResult]):
@@ -1334,6 +1334,22 @@ def module_node(node_id: str, r: FileResult, root: str, purpose: str) -> dict:
     return node
 
 
+# An import edge records at most this many of the names followed to its target, and their number.
+_EDGE_NAME_LIMIT = 3
+# Ways a name arrives that an import of the module itself keeps (the others belong to item edges).
+_PLAIN_IMPORT_WAYS = frozenset({"use", "macro"})
+
+
+def _edge_names_sexp(names: Any) -> str:
+    """` (:use A B) (:glob "super" C :of 5)`: the names an import edge followed, one list per way they arrive."""
+    parts = []
+    for way, through, shown, count in names or ():
+        head = f'(:{way} "{through}"' if through else f"(:{way}"
+        more = f" :of {count}" if count > len(shown) else ""
+        parts.append(f" {head} {' '.join(shown)}{more})")
+    return "".join(parts)
+
+
 def _module_facts(
     node_id: str,
     r: FileResult,
@@ -1386,14 +1402,22 @@ def _module_facts(
             resolved_imports.setdefault(target_id, set()).add(relation["relation"])
     # Rust: the files that define names imported through a module facade (`pub use child::*`); the facade edge
     # stays. A file the module also imports directly keeps its plain edge.
+    followed_names: dict[str, list[list[Any]]] = {}
     if hasattr(bound_language, "resolve_named_imports"):
-        named, not_followed = bound_language.resolve_named_imports(r, id_to_result)
+        named, not_followed, routes = bound_language.resolve_named_imports(r, id_to_result)
         plain = set(resolved_imports)
         for target_id, relations in sorted(named.items()):
             if target_id != node_id and target_id not in plain:
                 resolved_imports.setdefault(target_id, set()).update(relations)
         if not_followed:
             node["unfollowed_names"] = not_followed   # counted in the build log, not written to the graph
+        # The names the resolver followed to each target, by the way they arrive: what `impact` shows as the
+        # reason of the edge. A file imported as a module keeps the names its imports name in it and its macros.
+        for target_id, target_routes in routes.items():
+            kept = [route for route in target_routes if target_id not in plain or route[0] in _PLAIN_IMPORT_WAYS]
+            if kept and target_id != node_id:
+                followed_names[target_id] = [
+                    [way, through, list(names[:_EDGE_NAME_LIMIT]), len(names)] for way, through, names in kept]
 
     local_entities = {entity["name"] for entity in r.entities}
     for relation in r.relations:
@@ -1448,6 +1472,8 @@ def _module_facts(
             and _imports_types_only(r, target_id, target_r, bound_language)
         ):
             edge["type_only"] = True
+        if target_id in followed_names:
+            edge["names"] = followed_names[target_id]
         edges.append(edge)
 
     # -- CALLS_API edges (implements/extends + entity :bases) --
@@ -3565,7 +3591,7 @@ def render_sexp(
                 f" :{relation}" for relation in sorted(edge.get("relations", []))
             )
             lsp = " :lsp" if edge.get("lsp_verified") else ""
-            lines.append(f"(imports {src} {tgt}{flags}{relation_flags}{lsp})")
+            lines.append(f"(imports {src} {tgt}{flags}{relation_flags}{lsp}{_edge_names_sexp(edge.get('names'))})")
         elif etype == "CALLS_API":
             lsp = " :lsp" if edge.get("lsp_verified") else ""
             lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
