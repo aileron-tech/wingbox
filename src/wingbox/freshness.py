@@ -29,6 +29,8 @@ Settings (environment):
   query commands.
 - WINGBOX_CHECK_INTERVAL (seconds, default 0): the least time between two
   checks for changes made outside Claude Code; 0 checks before every use.
+- WINGBOX_JOBS (a whole number, default every processor): the most worker
+  processes a build or a refresh starts (`portable.worker_count`).
 """
 from __future__ import annotations
 

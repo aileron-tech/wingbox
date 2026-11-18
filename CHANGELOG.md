@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- `WINGBOX_JOBS` sets the most worker processes a build or a background refresh starts (a whole
+  number from 1; default: one per processor). `WINGBOX_JOBS=1` parses in the one process, for a
+  laptop that has other work to do or a shared build machine.
+
 ## 0.10.2 - 2026-11-18
 
 ### Fixes

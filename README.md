@@ -855,6 +855,9 @@ are brought in:
   Python and TypeScript, or a change that reaches more than a quarter of the
   modules takes the incremental build instead. Several edits are brought in
   by one refresh, and never two run at once for one project.
+- A build and a refresh parse in as many worker processes as the machine has
+  processors. `WINGBOX_JOBS=2` (any whole number from 1) sets the most they
+  start, for a laptop that has other work to do or a shared build machine.
 - The search hook waits up to `WINGBOX_HOOK_WAIT` seconds (3) for the refresh;
   a longer one goes on in the background and publishes when it is done. While
   the graph misses known changes, after a failed refresh (not repeated until

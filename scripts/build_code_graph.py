@@ -3979,7 +3979,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
             if len(to_walk) <= _WALK_IN_PROCESS:
                 walked = map(_position_uses, to_walk)
             else:
-                pool = stack.enter_context(ProcessPoolExecutor(max_workers=min(os.cpu_count() or 4, len(to_walk))))
+                pool = stack.enter_context(ProcessPoolExecutor(max_workers=portable.worker_count(len(to_walk))))
                 walked = pool.map(_position_uses, to_walk, chunksize=16)
             for file_path, uses in walked:
                 entries_out[file_path] = ["", json.dumps([_compact_use(use) for use in uses], separators=(",", ":")),
@@ -4305,7 +4305,7 @@ def _run_build(options: BuilderOptions) -> int:
         # Import lookups and resolved uses of the walk cache may depend on tsconfig, package or Cargo
         # settings that are not part of its key: a full build starts it afresh.
         _remove_walk_cache(uses_cache_path(options.output_path))
-    graph_result = build_graph(all_results, root, exclusions, reused, jobs=os.cpu_count() or 1)
+    graph_result = build_graph(all_results, root, exclusions, reused, jobs=portable.worker_count())
     if isinstance(graph_result, Err):
         for collision in graph_result.error.collisions:
             paths = ", ".join(collision.paths)
@@ -4404,7 +4404,7 @@ def _run_build(options: BuilderOptions) -> int:
 def parse_files(to_parse: list[tuple[str, ...]]) -> list[FileResult]:
     """Parse files in worker processes (the start method of portable.start_method); in this process
     when a pool cannot start (a sandbox without semaphores, a system without processes)."""
-    workers = min(os.cpu_count() or 4, len(to_parse))
+    workers = portable.worker_count(len(to_parse))
     if workers > 1:
         try:
             with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context(portable.start_method())) as pool:
