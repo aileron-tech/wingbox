@@ -64,9 +64,12 @@ def download(url: str, target: str, size: int, timeout: Optional[float] = None) 
                 output.write(chunk)
         if received != size:
             raise FetchRefused(f"{url} gave {received} bytes, the pinned file has {size}")
-    except BaseException:
+    except BaseException as error:
         try:
             os.unlink(target)
         except OSError:
             pass
+        if isinstance(error, Exception) and not isinstance(error, OSError):
+            # A transfer that breaks off (http.client.IncompleteRead) is no OSError: say it as one.
+            raise FetchRefused(f"the download of {url} broke off: {error!r}") from error
         raise

@@ -133,7 +133,7 @@ class DownloadReachTest(unittest.TestCase):
             self.assertFalse((root / "no-parsers").exists())
 
     def test_the_download_takes_only_https_files_of_the_package_index(self) -> None:
-        """/* REQ-SEC-005: the download accepts only an https URL on files.pythonhosted.org and follows no redirect; any other URL is refused before a connection is opened; a body longer than the pinned size is refused and leaves no file. */"""
+        """/* REQ-SEC-005: the download accepts only an https URL on files.pythonhosted.org and follows no redirect; any other URL is refused before a connection is opened; a body longer than the pinned size, or a transfer that breaks off, is an OSError and leaves no file. */"""
         sys.path.insert(0, str(ROOT / "src"))
         from wingbox import fetch
 
@@ -164,6 +164,15 @@ class DownloadReachTest(unittest.TestCase):
             self.assertEqual(b"0123456789", Path(target).read_bytes())
             os.unlink(target)
             with mock.patch.object(fetch, "_open", return_value=io.BytesIO(b"0123456789 and more")):
+                with self.assertRaises(OSError):
+                    fetch.download(url, target, 10)
+            self.assertFalse(os.path.exists(target))
+
+            class Interrupted(io.BytesIO):
+                def read(self, size: int | None = -1) -> bytes:
+                    raise http.client.IncompleteRead(b"0123")
+
+            with mock.patch.object(fetch, "_open", return_value=Interrupted()):
                 with self.assertRaises(OSError):
                     fetch.download(url, target, 10)
             self.assertFalse(os.path.exists(target))

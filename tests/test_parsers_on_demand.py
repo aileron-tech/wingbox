@@ -114,7 +114,7 @@ class PerUserFolderTest(unittest.TestCase):
         home = os.path.join(os.path.expanduser("~"), ".wingbox", "parsers")
         self.assertEqual(home, ondemand.parsers_home({}))
         self.assertEqual(home, ondemand.parsers_home({"WINGBOX_PARSERS_DIR": ""}))
-        other = os.path.join(os.sep, "srv", "parsers")
+        other = os.path.abspath(os.path.join(os.sep, "srv", "parsers"))   # with the drive on Windows
         self.assertEqual(other, ondemand.parsers_home({"WINGBOX_PARSERS_DIR": other}))
         self.assertEqual("darwin-arm64", ondemand.platform_key("darwin", "arm64", True))
         self.assertEqual("darwin-x86_64", ondemand.platform_key("darwin", "x86_64", True))
