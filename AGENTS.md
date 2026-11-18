@@ -134,3 +134,59 @@ Follow these steps in order when the maintainer asks for a release.
   ```
 
   Read it back with the command from step 5 before deleting any temporary copy.
+
+## 5. Changing the MCP server
+
+The tool list of `wingbox mcp` (`TOOLS` in `src/wingbox/mcp_server.py`) is
+graded by MCP directories, and the grade is shown next to the listing. Glama
+grades four things: whether the tools can be told apart, whether their names
+follow one pattern, how many there are, and whether they cover the domain. With
+eighteen tools the grade was B (3.4 of 5, 2026-11-17); the list was then cut to
+eleven.
+
+Default: a change of the server keeps the tool list as it is. A new question
+becomes a parameter of the tool that already answers the nearest question. Add,
+rename or remove a tool only when the maintainer asks for it, in one release,
+with a line under "Changes" in the changelog that names the tools.
+
+Check every change of the server against this list before the pull request:
+
+1. Count: 3 to 15 tools.
+2. One job per tool. Two tools that differ only by direction or by kind are
+   one tool with a parameter (`dependencies` in and out, `calls` in, out and
+   to, `definitions` by kind). A wrapper around another tool is an option of
+   that tool (`module` takes a keyword).
+3. Names: one lowercase word, the noun of the answer (`impact`, `usages`,
+   `changes`); the two actions are `build` and `query`. No name shares its
+   first six letters with another.
+4. Description: one line of at most 400 characters. It says what the answer
+   contains, and a tool with a neighbour says for which question to take the
+   neighbour, by name ("for the places that use a name take usages").
+5. Parameters: every one has a description. A choice is an `enum` with a
+   default, and the server refuses any other value. An integer has a lower and
+   an upper bound.
+6. Annotations: a title of at most 40 characters; `readOnlyHint` is false only
+   for a tool that writes (today `build`); every tool is idempotent, not
+   destructive and not open-world.
+7. The answer is the output of the `wingbox` command behind the tool. An
+   `(error ...)` answer is a tool error. Answers stop at 200 lines unless the
+   call sets `all`.
+8. Standard output carries JSON-RPC messages only; logs go to standard error;
+   no network.
+9. The command line keeps its command names: a change of the tool list does
+   not rename a command.
+10. Documents that follow the list: the table in the README section "Use from
+    an MCP client" and the docstring of `mcp_server.py`. The manifest of the
+    Claude Desktop extension is built from the list (`tools/build_mcpb.py`).
+
+`tests/test_mcp_tools.py` checks points 1, 3, 4 and 5, `tests/test_mcp_server.py`
+points 6 to 8. Run them with the packaging tests:
+
+```bash
+python3 -m unittest tests.test_mcp_tools tests.test_mcp_server tests.test_mcpb tests.test_mcp_registry
+```
+
+After a release that changes the list or a description: publish to the MCP
+registry as section 3 says, and ask Glama to score the server again
+(https://glama.ai/mcp/servers/aileron-tech/wingbox/score); write the new grade
+into LOG.md.
