@@ -7,6 +7,13 @@ Reads only .rs and Cargo.toml files. Builds the module tree from crate roots
 trees and inline paths, and resolves each reference to the first-party file
 that defines the module reached by the path.
 
+Crates and files follow Cargo and the compiler: the library of a package is named by
+`[lib] name` (else the package name), a dependency declared with `package = ".."` by
+its key, `extern crate a as b;` binds b; binaries are `src/main.rs`, `src/bin/*.rs`
+and `src/bin/<name>/main.rs`; in a package of edition 2015 a `use` path and `::a`
+start at the crate root; `#[path]` and every `#[cfg_attr(.., path = "..")]` name the
+file of a module, `#[path = "dir"]` on an inline module the folder of its children.
+
 Output JSON: {"files": [...], "crates": {...}, "refs": [ {from, line, to,
 to_followed, category, text} ], "modules": {modpath: file}}
   to          = file of the module the path reaches (module semantics)
@@ -15,6 +22,14 @@ to_followed, category, text} ], "modules": {modpath: file}}
   category "glob-use": a `use m::*` (or `use super::*`) whose module body names an
                 item that m provides; to = m, to_followed = the file that defines it.
                 Found by scanning the identifiers of the module text, not by a parser.
+  category "type-member": a member named through a type path (`Type::member`, `Self::member`,
+                `<Type>::member`, `Type::<T>::member`) that an inherent impl block of the type
+                defines in another file than the one that names it; to = the file of the type,
+                to_followed = the file of the impl block (often the same: a type named through
+                an alias of a third module is reached only this way). The compiler finds such a member by
+                name among all inherent impl blocks of the type (rustc_hir_typeck, method/probe.rs:
+                assemble_inherent_impl_candidates_for_type). A member a trait impl gives and a
+                method called on a value (`value.method()`) are not counted: they need the type checker.
 """
 import json
 import os
@@ -143,6 +158,8 @@ def parse_cargo_targets(repo, rel_dir):
     lib_path = None
     lib_name = None
     bins = []
+    edition = None
+    renames = {}  # name in code -> package name, of dependencies declared with `package = ".."`
     for sec in sections:
         head = sec.split("]", 1)[0].strip()
         body = sec.split("]", 1)[1] if "]" in sec else ""
@@ -151,6 +168,14 @@ def parse_cargo_targets(repo, rel_dir):
             pkg_name = kv.get("name")
             if kv.get("autobins", "true").strip() == "false":
                 autobins = False
+            edition = kv.get("edition", "").strip() or None
+            if re.search(r"^\s*edition(?:\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true)", body, flags=re.M):
+                edition = workspace_edition(repo, rel_dir)
+        elif head.split(".")[-1] in ("dependencies", "dev-dependencies", "build-dependencies"):
+            for name, package in re.findall(r'^\s*([\w-]+)\s*=\s*\{[^}\n]*\bpackage\s*=\s*"([^"]+)"', body, flags=re.M):
+                renames[name.replace("-", "_")] = package
+        elif "dependencies." in head and kv.get("package"):
+            renames[head.split(".")[-1].replace("-", "_")] = kv["package"]
         elif head == "lib":
             lib_path = kv.get("path")
             lib_name = kv.get("name")
@@ -168,11 +193,14 @@ def parse_cargo_targets(repo, rel_dir):
             targets.append(("bin", (name or "").replace("-", "_"), j(p)))
             seen.add(j(p))
     if autobins or not bins:
-        for cand in [j("src/main.rs")] + sorted(
-            j("src/bin/" + f) for f in (os.listdir(os.path.join(repo, rel_dir, "src/bin")) if os.path.isdir(os.path.join(repo, rel_dir, "src/bin")) else []) if f.endswith(".rs")
-        ):
+        bin_dir = os.path.join(repo, rel_dir, "src/bin")
+        names = sorted(os.listdir(bin_dir)) if os.path.isdir(bin_dir) else []
+        found = [(pkg_name or "main", j("src/main.rs"))] + [(f[:-3], j("src/bin/" + f)) for f in names if f.endswith(".rs")]
+        # src/bin/<name>/main.rs is the binary <name> (Cargo: infer_subdirectory)
+        found += [(f, j("src/bin/" + f + "/main.rs")) for f in names if os.path.isfile(os.path.join(bin_dir, f, "main.rs"))]
+        for name, cand in found:
             if os.path.exists(os.path.join(repo, cand)) and cand not in seen:
-                targets.append(("bin", os.path.splitext(os.path.basename(cand))[0], cand))
+                targets.append(("bin", "main" if cand == j("src/main.rs") else name, cand))
     for kind, d in (("test", "tests"), ("example", "examples"), ("bench", "benches")):
         full = os.path.join(repo, rel_dir, d)
         if os.path.isdir(full):
@@ -183,7 +211,23 @@ def parse_cargo_targets(repo, rel_dir):
                     targets.append((kind, f, j(d + "/" + f + "/main.rs")))
     if os.path.exists(os.path.join(repo, rel_dir, "build.rs")):
         targets.append(("build", "build_script", j("build.rs")))
-    return [(k, n, p, pkg_name, crate_lib_name) for k, n, p in targets]
+    meta = dict(pkg=pkg_name, edition2015=edition in (None, "2015"), renames=renames)
+    return [(k, n, p, meta, crate_lib_name) for k, n, p in targets]
+
+
+def workspace_edition(repo, rel_dir):
+    """`[workspace.package] edition` of the nearest Cargo.toml at or above rel_dir that has a workspace table."""
+    cur = rel_dir
+    while True:
+        path = os.path.join(repo, cur, "Cargo.toml")
+        txt = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+        if re.search(r"^\s*\[workspace[\].]", txt, flags=re.M):
+            sec = re.search(r"^\s*\[workspace\.package\]([^\[]*)", txt, flags=re.M)
+            found = re.search(r'^\s*edition\s*=\s*"?(\d+)', sec.group(1), flags=re.M) if sec else None
+            return found.group(1) if found else None
+        if not cur:
+            return None
+        cur = os.path.dirname(cur)
 
 
 def find_packages(repo, files):
@@ -271,16 +315,47 @@ class Mod:
         self.private = set()  # items declared without `pub`: no re-export of another module carries them
         self.uses = []  # (segs, alias, glob, abs, pub, line)
         self.parent = None
+        self.type_aliases = {}  # name -> segments of the type `type Name = a::Type;` stands for
+        self.variants = {}  # enum name -> names of its variants
+        self.restricted = {}  # item -> path of the module it is visible in (`pub(super)`, `pub(in path)`)
 
 
 MOD_RE = re.compile(r"(?<![\w:])((?:pub\s*(?:\([^)]*\))?\s+)?)mod\s+(?:r#)?(\w+)\s*([;{])")
 ITEM_RE = re.compile(r"(?<![\w:])(fn|struct|enum|trait|type|const|static|union)\s+(?:r#)?(\w+)")
-PUB_BEFORE_RE = re.compile(r"(?<![\w])pub\s*(?:\([^)]*\))?\s*(?:(?:unsafe|const|async|default|extern)\s+)*$")
+PUB_BEFORE_RE = re.compile(r"(?<![\w])pub\s*(?:\(([^)]*)\))?\s*(?:(?:unsafe|const|async|default|extern)\s+)*$")
 IDENT_RE = re.compile(r"(?<![\w.])(?<!::)(?:r#)?([A-Za-z_]\w*)\b")
 RUST_KEYWORDS = frozenset("as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod "
                           "move mut pub ref return self Self static struct super trait true type union unsafe use where while".split())
 MACRO_RE = re.compile(r"macro_rules!\s*(\w+)")
 USE_RE = re.compile(r"(?<![\w:])((?:pub\s*(?:\([^)]*\))?\s+)?)use\s+")
+IMPL_RE = re.compile(r"(?<![\w:])impl(?![\w!])")
+PATH_TEXT = r"(?:r#)?\w+(?:\s*::\s*(?:r#)?\w+)*"
+TYPE_ALIAS_RE = re.compile(r"(?<![\w:])type\s+(?:r#)?(\w+)\s*(?:<[^=;]*>)?\s*=\s*(" + PATH_TEXT + r")")
+MEMBER_RE = re.compile(r"(?<![\w:])(?:fn|const|type)\s+(?:r#)?(\w+)")
+TURBOFISH_MEMBER_RE = re.compile(r"(?<![\w:])(" + PATH_TEXT + r")\s*::\s*<")
+QUALIFIED_MEMBER_RE = re.compile(r"(?<![\w>)\]])<\s*(" + PATH_TEXT + r")\s*(?:<[^<>;{}]*>)?\s*>\s*::\s*((?:r#)?\w+)")
+
+
+def path_segments(text):
+    return [x[2:] if x.startswith("r#") else x for x in re.findall(r"(?:r#)?\w+", text)]
+
+
+def skip_angles(text, pos):
+    """Position after the `<...>` that starts at pos (pos itself when there is none)."""
+    if text[pos:pos + 1] != "<":
+        return pos
+    depth = 0
+    for j in range(pos, len(text)):
+        ch = text[j]
+        if ch == "<":
+            depth += 1
+        elif ch == ">" and text[j - 1] != "-":
+            depth -= 1
+            if depth == 0:
+                return j + 1
+        elif ch in ";{":
+            break
+    return pos
 
 
 class Repo:
@@ -297,6 +372,10 @@ class Repo:
         self.crates = {}  # crate id -> dict(kind,name,root,lib_name)
         self.macro_export = {}  # (lib crate id, name) -> file
         self.unresolved_mods = []
+        self.impls = []  # dict(mod, file, type, trait, members, span): the impl blocks of every module
+        self.type_sites = {}  # (crate, module path, written path) -> (Mod, name) of the type, or None
+        self.extern_crates = {}  # (crate id, name) -> crate id the name stands for, or None
+        self.alternates = []  # (parent Mod, child Mod): the other files of a `#[cfg_attr(.., path = "..")]` module
 
     def load(self, f):
         if f not in self.text:
@@ -321,9 +400,10 @@ class Repo:
 
     def build(self):
         for pkg_dir in find_packages(self.root, self.all_files):
-            for kind, name, path, pkg, lib_name in parse_cargo_targets(self.root, pkg_dir):
+            for kind, name, path, meta, lib_name in parse_cargo_targets(self.root, pkg_dir):
                 cid = f"{pkg_dir or '.'}:{kind}:{name}"
-                self.crates[cid] = dict(kind=kind, name=name, root=path, pkg_dir=pkg_dir, lib_name=lib_name)
+                self.crates[cid] = dict(kind=kind, name=name, root=path, pkg_dir=pkg_dir, lib_name=lib_name, pkg=meta["pkg"],
+                                        edition2015=meta["edition2015"], renames=meta["renames"], extern_alias={})
         for cid, c in self.crates.items():
             root = c["root"]
             if root not in self.rs_files:
@@ -359,7 +439,10 @@ class Repo:
                 ob = mm.end() - 1
                 cb = match_brace(t, ob)
                 name = mm.group(2)
-                child = Mod(parent.path + (name,), f, top.crate, True, ob + 1, cb, d[ob] + 1, os.path.join(parent.child_dir, name))
+                attr = re.search(r'#\[path\s*=\s*"([^"]+)"\]\s*(?:#\[[^\]]*\]\s*)*$', self.raw[f][max(0, mm.start() - 300): mm.start()])
+                inline_dir = os.path.join(parent.child_dir, name) if not attr else os.path.normpath(
+                    os.path.join(os.path.dirname(f) if not parent.inline else parent.child_dir, attr.group(1)))
+                child = Mod(parent.path + (name,), f, top.crate, True, ob + 1, cb, d[ob] + 1, inline_dir)
                 child.parent = parent
                 parent.children[name] = child
                 parent.items.add(name)
@@ -380,9 +463,14 @@ class Repo:
             raw = self.raw[f]
             before = raw[max(0, mm.start() - 300): mm.start()]
             pm = re.search(r'#\[path\s*=\s*"([^"]+)"\]\s*(?:#\[[^\]]*\]\s*)*$', before)
+            attrs = re.search(r'((?:#\[[^\]]*\]\s*)+)$', before)
+            by_cfg = re.findall(r'#\[cfg_attr\([^\]]*?(?<![\w])path\s*=\s*"([^"]+)"', attrs.group(1)) if attrs and not pm else []
+            base = os.path.dirname(f) if not parent.inline else parent.child_dir
             if pm:
-                base = os.path.dirname(f) if not parent.inline else parent.child_dir
                 cands = [os.path.normpath(os.path.join(base, pm.group(1)))]
+            elif by_cfg:
+                cands = [c for c in (os.path.normpath(os.path.join(base, x)) for x in by_cfg) if c in self.rs_files]
+                pm = True
             else:
                 cands = [os.path.join(parent.child_dir, name + ".rs"), os.path.join(parent.child_dir, name, "mod.rs")]
             target = next((c for c in cands if c in self.rs_files), None)
@@ -400,14 +488,28 @@ class Repo:
             self.mods[(top.crate, child.path)] = child
             self.file_mods.setdefault(target, []).insert(0, child)
             self._scan_file(child)
+            for number, other in enumerate(cands[1:] if by_cfg else [], start=1):
+                # The file another cfg chooses for the same module: scanned, declared, reached by no path.
+                self.load(other)
+                twin = Mod(parent.path + (f"{name}#cfg{number}",), other, top.crate, False, 0, len(self.text[other]), 0, os.path.dirname(other))
+                twin.parent = parent
+                twin.decl = child.decl
+                self.mods[(top.crate, twin.path)] = twin
+                self.file_mods.setdefault(other, []).insert(0, twin)
+                self.alternates.append((parent, twin))
+                self._scan_file(twin)
         # items and uses
         self._owner = owner
         for im in ITEM_RE.finditer(t, top.body[0], top.body[1]):
             o = owner(im.start())
             if d[im.start()] == o.body_depth and im.group(2) not in KEYWORDS_NOT_NAMES:
                 o.items.add(im.group(2))
-                if not PUB_BEFORE_RE.search(t[max(0, im.start() - 60): im.start()]):
+                vis = PUB_BEFORE_RE.search(t[max(0, im.start() - 80): im.start()])
+                scope = (vis.group(1) or "").strip() if vis else ""
+                if not vis or scope == "self":
                     o.private.add(im.group(2))
+                elif scope == "super" or scope.startswith("in"):
+                    o.restricted[im.group(2)] = ["super"] if scope == "super" else path_segments(scope[2:])
         for im in MACRO_RE.finditer(t, top.body[0], top.body[1]):
             o = owner(im.start())
             pre = self.raw[f][max(0, im.start() - 200): im.start()]
@@ -436,6 +538,48 @@ class Repo:
             for segs, alias, glob, ab in parse_use_tree(body):
                 o.uses.append((segs, alias, glob, ab, is_pub, ln, um.start(), end))
         top.use_spans = getattr(top, "use_spans", [])
+        if top.path == ():
+            for em in re.finditer(r"(?<![\w:])extern\s+crate\s+(\w+)\s+as\s+(\w+)\s*;", t):
+                self.crates[top.crate]["extern_alias"][em.group(2)] = em.group(1)
+        for em in re.finditer(r"(?<![\w:])enum\s+(?:r#)?(\w+)[^{;]*\{", t[top.body[0]:top.body[1]]):
+            o = owner(top.body[0] + em.start())
+            open_pos = top.body[0] + em.end() - 1
+            if d[top.body[0] + em.start()] != o.body_depth:
+                continue
+            level, first, names = 0, True, set()
+            for tok in re.finditer(r"[{}()\[\],]|#\s*\[[^\]]*\]|[A-Za-z_]\w*", t[open_pos + 1:match_brace(t, open_pos)]):
+                x = tok.group(0)
+                if x in "{([":
+                    level += 1
+                elif x in "})]":
+                    level -= 1
+                elif x == ",":
+                    first = level == 0
+                elif first and level == 0 and not x.startswith("#"):
+                    names.add(x)
+                    first = False
+            o.variants[em.group(1)] = names
+        for am in TYPE_ALIAS_RE.finditer(t, top.body[0], top.body[1]):
+            o = owner(am.start())
+            if d[am.start()] == o.body_depth:
+                o.type_aliases[am.group(1)] = path_segments(am.group(2))
+        for im in IMPL_RE.finditer(t, top.body[0], top.body[1]):
+            o = owner(im.start())
+            open_pos = t.find("{", im.end())
+            if d[im.start()] != o.body_depth or open_pos < 0 or ";" in t[im.end():open_pos]:
+                continue
+            header = t[skip_angles(t, re.compile(r"\s*").match(t, im.end()).end()):open_pos]
+            header = re.split(r"(?<![\w])where(?![\w])", header)[0]
+            parts = re.split(r"(?<![\w])for(?![\w<])", header, maxsplit=1)
+            written = re.match(r"\s*(" + PATH_TEXT + r")\s*(?:<.*>)?\s*$", parts[-1], re.S)
+            if written is None:
+                continue  # impl for a reference, a tuple, a slice or dyn Trait: no type path
+            trait = re.match(r"\s*!?\s*(" + PATH_TEXT + r")", parts[0]) if len(parts) == 2 else None
+            close_pos = match_brace(t, open_pos)
+            members = {mm.group(1) for mm in MEMBER_RE.finditer(t, open_pos, close_pos) if d[mm.start()] == d[open_pos] + 1}
+            self.impls.append(dict(mod=o, file=f, type=path_segments(written.group(1)), members=members,
+                                   trait=path_segments(trait.group(1)) if trait else (["?"] if len(parts) == 2 else None),
+                                   span=(open_pos, close_pos)))
 
     # ------------------------------------------------------------ resolution
     def lib_crate_for(self, cid):
@@ -444,6 +588,26 @@ class Repo:
             if o["kind"] == "lib" and o["pkg_dir"] == c["pkg_dir"] and oid != cid:
                 return oid, o["lib_name"]
         return None, None
+
+    def extern_crate(self, cid, name):
+        """The crate that code of crate cid names `name`: what `extern crate .. as name;` of its root binds (the
+        crate itself for `self`), a dependency renamed with `package = ".."`, the library of its own package,
+        or the library of that name of another package of the tree."""
+        key = (cid, name)
+        if key not in self.extern_crates:
+            c = self.crates[cid]
+            bound = c["extern_alias"].get(name)
+            wanted = bound or name
+            libs = [(oid, o) for oid, o in self.crates.items() if o["kind"] == "lib" and oid != cid]
+            if bound == "self":
+                found = cid
+            elif wanted in c["renames"]:
+                found = next((oid for oid, o in libs if o["pkg"] == c["renames"][wanted]), None)
+            else:
+                found = next((oid for oid, o in libs if o["pkg_dir"] == c["pkg_dir"] and o["lib_name"] == wanted), None) \
+                    or next((oid for oid, o in libs if o["lib_name"] == wanted), None)
+            self.extern_crates[key] = found
+        return self.extern_crates[key]
 
     def module_aliases(self, m):
         """name -> Mod for `use` items in m that resolve to a module."""
@@ -465,11 +629,14 @@ class Repo:
         cid = m.crate
         s0 = segs[0]
         i = 0
-        lib_id, lib_name = self.lib_crate_for(cid)
+        other = None if s0 in ("crate", "super", "self") else self.extern_crate(cid, s0)
+        old_edition = self.crates[cid]["edition2015"]
         if leading_abs:
-            if lib_name and s0 == lib_name:
-                cur = self.mods.get((lib_id, ()))
+            if other:
+                cur = self.mods.get((other, ()))
                 i = 1
+            elif old_edition:
+                cur = self.mods[(cid, ())]  # edition 2015: `::a` is the crate root
             else:
                 return None
         elif s0 == "crate":
@@ -485,12 +652,14 @@ class Repo:
                 i += 1
         elif s0 in m.children:
             cur = m
-        elif lib_name and s0 == lib_name:
-            cur = self.mods.get((lib_id, ()))
+        elif other:
+            cur = self.mods.get((other, ()))
             i = 1
         elif allow_alias and s0 in self.module_aliases(m):
             cur = self.module_aliases(m)[s0]
             i = 1
+        elif old_edition and s0 in self.mods[(cid, ())].children:
+            cur = self.mods[(cid, ())]  # edition 2015: a `use` path starts at the crate root
         else:
             return None
         if cur is None:
@@ -510,7 +679,16 @@ class Repo:
             break
         return (cur, False, i)
 
-    def define_site(self, m, name, seen=None, reached=False):
+    def visible(self, m, name, origin):
+        """Whether item `name` of m, reached through a re-export, is visible in module origin: `pub(super)` and
+        `pub(in path)` items only inside that module (the compiler: resolve_glob_import, is_accessible_from)."""
+        scope = m.restricted.get(name)
+        if scope is None or origin is None:
+            return True
+        r = self.resolve(m, scope)
+        return not r or r[2] != len(scope) or self.is_within(origin, r[0])
+
+    def define_site(self, m, name, seen=None, reached=False, origin=None):
         """Follow pub use re-exports from module m for item `name`; return Mod defining it.
 
         m itself may define the item with any visibility; a module reached through a re-export provides only
@@ -520,7 +698,7 @@ class Repo:
         if key in seen:
             return None
         seen.add(key)
-        if name in m.items and not (reached and name in m.private):
+        if name in m.items and not (reached and (name in m.private or not self.visible(m, name, origin))):
             return m
         if m.path == ():
             mf = self.macro_export.get((m.crate, name))
@@ -532,9 +710,11 @@ class Repo:
             if glob:
                 r = self.resolve(m, segs, ab)
                 if r and r[2] == len(segs):
-                    d = self.define_site(r[0], name, seen, True)
+                    d = self.define_site(r[0], name, seen, True, origin)
                     if d:
                         return d
+                elif r and r[2] == len(segs) - 1 and name in r[0].variants.get(segs[-1], ()):
+                    return self.define_site(r[0], segs[-1], seen, True, origin) or r[0]  # `pub use kinds::Kind::*;`: a variant
                 continue
             if alias == name and segs:
                 r = self.resolve(m, segs, ab)
@@ -544,10 +724,104 @@ class Repo:
                 if k == len(segs):
                     return tgt
                 if k == len(segs) - 1:
-                    d = self.define_site(tgt, segs[-1], seen, True)
+                    d = self.define_site(tgt, segs[-1], seen, True, origin)
                     return d or tgt
                 return tgt
         return None
+
+    # ------------------------------------------------------------ members of a type
+    def item_site(self, m, name, seen=None, reached=False, origin=None):
+        """(Mod, name there) of the item `name` as module m provides it, followed through re-exports and renames.
+
+        The module the lookup starts in (reached=False) gives every item and every `use` it has; a module reached
+        from it gives its public ones, unless the first module lies inside it (a child sees what its ancestors hold)."""
+        seen = seen if seen is not None else set()
+        key = (m.crate, m.path, name)
+        if key in seen:
+            return None
+        seen.add(key)
+        if name in m.items and not (reached and (name in m.private or not self.visible(m, name, origin))):
+            return (m, name)
+        for segs, alias, glob, ab, is_pub, ln, s, e in m.uses:
+            if (reached and not is_pub) or not segs or not (glob or alias == name):
+                continue
+            r = self.resolve(m, segs, ab)
+            if not r:
+                continue
+            outside = reached or not self.is_within(m, r[0])
+            if glob:
+                site = self.item_site(r[0], name, seen, outside, origin) if r[2] == len(segs) else None
+                if site:
+                    return site
+            elif r[2] == len(segs) - 1:
+                return self.item_site(r[0], segs[-1], seen, outside, origin) or (r[0], segs[-1])
+            else:
+                return None
+        return None
+
+    def type_site(self, m, segs, followed=0):
+        """(Mod, name) of the type a path written in module m names; a type alias is followed to its type."""
+        key = (m.crate, m.path, tuple(segs))
+        if key in self.type_sites:
+            return self.type_sites[key]
+        if len(segs) == 1:
+            site = self.item_site(m, segs[0], None, False, m)
+        else:
+            r = self.resolve(m, segs)
+            site = self.item_site(r[0], segs[-1], None, not self.is_within(m, r[0]), m) if r and r[2] == len(segs) - 1 else None
+        if site and followed < 4 and site[1] in site[0].type_aliases:
+            site = self.type_site(site[0], site[0].type_aliases[site[1]], followed + 1) or site
+        self.type_sites[key] = site
+        return site
+
+    def member_refs(self):
+        """`Type::member`: the file of the inherent impl block that defines the member."""
+        index = {}  # (crate, module path, type name) -> member -> files of the impl blocks
+        for impl in self.impls:
+            site = self.type_site(impl["mod"], impl["type"]) if impl["trait"] is None else None
+            if site:
+                for member in impl["members"]:
+                    index.setdefault((site[0].crate, site[0].path, site[1]), {}).setdefault(member, set()).add(impl["file"])
+        refs = []
+        for f, mods in self.file_mods.items():
+            t = self.text[f]
+            for topm in (x for x in mods if not x.inline):
+                inl = [x for x in mods if x.inline and x.crate == topm.crate]
+                use_spans = [(s, e) for mm in [topm] + inl for (_, _, _, _, _, _, s, e) in mm.uses]
+                blocks = [impl for impl in self.impls if impl["file"] == f and impl["mod"].crate == topm.crate]
+
+                def owner(pos):
+                    best = topm
+                    for x in inl:
+                        if x.body[0] <= pos <= x.body[1] and (x.body[1] - x.body[0]) <= (best.body[1] - best.body[0]):
+                            best = x
+                    return best
+
+                found = []  # (position, type segments, member)
+                for pm in re.finditer(r"(?<![\w:])((?:r#)?\w+)((?:\s*::\s*(?:r#)?\w+)+)", t):
+                    segs = path_segments(pm.group(0))
+                    found.append((pm.start(), segs[:-1], segs[-1]))
+                for pm in TURBOFISH_MEMBER_RE.finditer(t):
+                    after = skip_angles(t, pm.end() - 1)
+                    mm = re.match(r"\s*::\s*((?:r#)?\w+)", t[after:after + 80]) if after > pm.end() - 1 else None
+                    if mm:
+                        found.append((pm.start(), path_segments(pm.group(1)), path_segments(mm.group(1))[0]))
+                for pm in QUALIFIED_MEMBER_RE.finditer(t):
+                    found.append((pm.start(), path_segments(pm.group(1)), path_segments(pm.group(2))[0]))
+                for pos, written, member in found:
+                    if any(s <= pos < e for s, e in use_spans):
+                        continue
+                    o = owner(pos)
+                    if written == ["Self"]:
+                        around = [impl for impl in blocks if impl["span"][0] <= pos <= impl["span"][1]]
+                        site = self.type_site(around[-1]["mod"], around[-1]["type"]) if around else None
+                    else:
+                        site = self.type_site(o, written)
+                    for defined in sorted(index.get((site[0].crate, site[0].path, site[1]), {}).get(member, ())) if site else ():
+                        if defined != f:
+                            refs.append(dict(frm=f, line=line_of(t, pos), to=site[0].file, to_followed=defined, category="type-member",
+                                             text="::".join(written) + "::" + member, crate=o.crate))
+        return refs
 
     def is_within(self, m, ancestor):
         while m is not None:
@@ -586,6 +860,7 @@ class Repo:
                         variants.add((open_pos + 1 + tok.start()))
                         start = False
             names = set()
+            explicit = {alias for segs, alias, glob, ab, is_pub, ln, s, e in m.uses if alias and not glob}
             for im in IDENT_RE.finditer(t, m.body[0], m.body[1]):
                 pos = im.start()
                 if any(s <= pos < e for s, e in spans) or any(a <= pos <= b for a, b in inner) or pos in variants:
@@ -593,15 +868,15 @@ class Repo:
                 if re.match(r"\s*:(?!:)", t[im.end():im.end() + 8]):
                     continue  # a field, a parameter or a binding with its type: a local name
                 name = im.group(1)
-                if name not in RUST_KEYWORDS and name not in m.items:
-                    names.add(name)
+                if name not in RUST_KEYWORDS and name not in m.items and name not in explicit:
+                    names.add(name)  # a name the module defines or imports by name is not taken from a glob
             for segs, ab, ln in globs:
                 r = self.resolve(m, segs, ab)
                 if not r or r[2] != len(segs):
                     continue
                 source = r[0]
                 for name in sorted(names):
-                    d = self.define_site(source, name, None, not self.is_within(m, source))
+                    d = self.define_site(source, name, None, not self.is_within(m, source), m)
                     if d is None:
                         continue
                     defined = self.file_of(d)
@@ -628,7 +903,7 @@ class Repo:
             if tgt.path == () and (tgt.crate, item) in self.macro_export:
                 to = followed = self.macro_export[(tgt.crate, item)]
             else:
-                d = self.define_site(tgt, item)
+                d = self.define_site(tgt, item, None, False, m)
                 if d is not None:
                     followed = self.file_of(d)
         return to, followed, k
@@ -638,7 +913,7 @@ class Repo:
         seen_mods = set()
         for (cid, path), m in self.mods.items():
             # mod declarations
-            for name, ch in m.children.items():
+            for name, ch in list(m.children.items()) + [(twin.path[-1].split("#")[0], twin) for parent, twin in self.alternates if parent is m]:
                 if not ch.inline:
                     refs.append(dict(frm=m.file, line=ch.decl[1], to=ch.file, to_followed=ch.file, category="mod-decl", text=f"mod {name};", crate=cid))
             for segs, alias, glob, ab, is_pub, ln, s, e in m.uses:
@@ -673,8 +948,7 @@ class Repo:
                     pre = t[max(0, pm.start() - 12): pm.start()]
                     if re.search(r"\(\s*in\s+$", pre):
                         continue  # pub(in path) visibility
-                    lib_id, lib_name = self.lib_crate_for(o.crate)
-                    if s0 in ("crate", "super", "self") or (lib_name and s0 == lib_name):
+                    if s0 in ("crate", "super", "self") or self.extern_crate(o.crate, s0):
                         cat = "inline-path"
                     elif s0 in o.children or s0 in self.module_aliases(o):
                         cat = "inline-alias-path"
@@ -683,7 +957,17 @@ class Repo:
                     r = self.target_of(o, segs, False, False)
                     if r:
                         refs.append(dict(frm=f, line=line_of(t, pm.start()), to=r[0], to_followed=r[1], category=cat, text="::".join(segs), crate=o.crate))
+                for pm in re.finditer(r"(?<![\w:>)\]])::\s*((?:r#)?\w+(?:\s*::\s*(?:r#)?\w+)+)", t):
+                    if any(s <= pm.start() < e for s, e in use_spans):
+                        continue
+                    segs = path_segments(pm.group(1))
+                    o = owner(pm.start())
+                    r = self.target_of(o, segs, True, False)  # `::name::item`: a crate, or the crate root in edition 2015
+                    if r:
+                        refs.append(dict(frm=f, line=line_of(t, pm.start()), to=r[0], to_followed=r[1], category="inline-path",
+                                         text="::" + "::".join(segs), crate=o.crate))
         refs.extend(self.glob_uses())
+        refs.extend(self.member_refs())
         # dedupe identical refs (same file reached via several crates)
         uniq = {}
         for r in refs:

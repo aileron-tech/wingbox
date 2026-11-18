@@ -151,9 +151,10 @@ def drawn_from(work: str, repo: str, language: str, required: set[tuple[str, str
     question set stays the one drawn before the reference also counted modules loaded by a literal name
     (`importlib.import_module("a.b")`, added 2026-11-17). Those edges are in the gold of every question."""
     if language == "rust":
-        # The question set was drawn from the modules the paths reach, before the reference followed items.
+        # The question set was drawn from the modules the paths reach, before the reference followed items
+        # (through re-exports and glob imports on 2026-11-17, to the members of a type on 2026-11-18).
         data = json.load(open(os.path.join(work, "out", repo + ".rust_refs.json")))
-        return {(ref["frm"], ref["to"]) for ref in data["refs"] if ref.get("category") != "glob-use"}
+        return {(ref["frm"], ref["to"]) for ref in data["refs"] if ref.get("category") not in ("glob-use", "type-member")}
     if language != "python":
         return required
     data = json.load(open(os.path.join(work, "out", repo + ".ref.json")))
