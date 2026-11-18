@@ -1,5 +1,20 @@
 # Completion Log
 
+## 2026-11-18 - `wingbox update` replaces its own running wingbox.exe on Windows
+
+### Changes
+- `src/wingbox/update.py`: `running_launchers(argv0, windows)` names the wingbox.exe the command was started through, and the file it points at when it is a link (pipx on a Windows account that may create links); `upgrade_past_launcher` renames each to `wingbox.exe.<pid>.old` for the time of the installer's upgrade, hands the old file to `start_removal` (a process without a window that deletes it once it is free) when a new launcher is in place, and renames it back when there is none. `Environment.upgrade` carries it into `update()`; `src/wingbox/cli.py` wires it.
+- `close_archive_handles()`: Python runs the launcher as a zip archive, first on sys.path, and importlib.metadata (asked for the installed version) keeps that archive open in a cache; `importlib.invalidate_caches()` and a collection close it. Without this the rename itself failed on windows-latest with WinError 32 (run 44262394368), which is also why the installers reported os error 32 and not access denied.
+- `tests/test_update.py`: REQ-UPDATE-013 to REQ-UPDATE-019; REQ-UPDATE-018 starts Python the way a launcher does, with the launcher file as the archive.
+- `tools/check_update.py` and a step in `.github/workflows/tests.yml`: the checkout built as 98.0.0 and 99.0.0, installed with uv pip, `uv tool`, pip and pipx, and each one updated through its own `wingbox` program; the skill must be refreshed, the program must answer 99.0.0, a second update must pass, nothing may be left beside the program.
+- `README.md` (Update), `CHANGELOG.md` (0.9.2).
+
+### Motivation
+- Issue #48, report of 2026-11-18 on 0.9.1 with Windows 11: Windows does not allow overwriting or deleting a running program. `uv pip` failed to remove `Scripts\wingbox.exe` (os error 32) and the version stayed; `uv tool upgrade` upgraded the package, failed to copy the new launcher over `bin\wingbox.exe`, and the refresh of skills and hooks was skipped.
+- The check was pushed first, without the fix (run 44261657441): green on Linux and macOS, and on windows-latest all four installers failed, uv pip and `uv tool` with the two errors of the report, pip and pipx in the same place (`Check the permissions.`, pipx's upgrade command failed).
+- With the fix (run 44264429813) the nine cells are green: on windows-latest uv pip, `uv tool`, pip and pipx each update 98.0.0 to 99.0.0 through their own wingbox.exe, refresh the skill and leave nothing beside the program. pipx there links the program into its bin folder, which is why the link and its target are both renamed.
+- `README.md` has a Thanks section and the changelog a line for the reporter, at the maintainer's word.
+
 ## 2026-11-17 - Version 0.9.1: Homebrew installs, and a Python reference that counts modules loaded by name
 
 ### Changes

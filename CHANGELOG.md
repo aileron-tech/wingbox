@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.2 - 2026-11-18
+
+### Fixes
+
+- On Windows `wingbox update` replaces the `wingbox.exe` it runs from. Windows lets nobody
+  overwrite or delete a running program, so in a `uv venv` the upgrade failed with
+  `failed to remove file ...\Scripts\wingbox.exe (os error 32)` and the version stayed, and with
+  `uv tool` the package was upgraded while the command reported a failure
+  (`failed to copy file ... to ...\bin\wingbox.exe`) and skipped the refresh of skills and hooks.
+  An install made with pip or pipx failed in the same place.
+  For the time of the upgrade the launcher is now renamed, the installer writes the new one in its
+  place, and the old file is removed when the command has ended; when there is nothing to upgrade
+  it is renamed back. CI installs the checkout with uv pip, `uv tool`, pip and pipx on Windows,
+  macOS and Linux and updates each one through its own `wingbox` program.
+
+Thanks to @just4just2, who tested 0.9.1 on Windows 11 in live sessions and reported this with the
+exact errors ([#48](https://github.com/aileron-tech/wingbox/issues/48)).
+
 ## 0.9.1 - 2026-11-17
 
 ### Fixes

@@ -802,6 +802,12 @@ cannot update itself; the command says so and prints what to run instead. Wingbo
 itself opens no network connection: only the installer reaches the package
 index, and only when you run `wingbox update`.
 
+On Windows the `wingbox` program is `wingbox.exe`, which runs for as long as
+the command does, and Windows lets nobody overwrite a running program. For the
+time of the upgrade `wingbox update` renames the `wingbox.exe` it was started
+through, so the installer can write the new one in its place, and the old file
+is removed when the command has ended.
+
 It also looks for files that versions before 0.4.1 wrote outside `.wingbox/`
 (`.code_graph.sexp`, `.code_graph.uses.sexp`, `.code_graph.uses-cache.json`,
 `.code_graph_cache.json`, `wingbox-out/`), in the current folder and its
@@ -1455,6 +1461,15 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 - [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md)
 - [Roadmap](https://github.com/aileron-tech/wingbox/blob/main/ROADMAP.md)
 - [Completion log](https://github.com/aileron-tech/wingbox/blob/main/LOG.md)
+
+## Thanks
+
+- [just4just2](https://github.com/just4just2) asked for native Windows support
+  and has tested each release since on Windows 11, in live Claude Code sessions
+  ([issue #48](https://github.com/aileron-tech/wingbox/issues/48)): the hooks
+  without Git Bash, the console window of the background refresh, a
+  `wingbox update` that replaces its own `wingbox.exe`. Every Windows fix from
+  0.7.0 to 0.9.2 started with one of those reports.
 
 ## License
 

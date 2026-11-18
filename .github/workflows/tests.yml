@@ -59,3 +59,8 @@ jobs:
           Get-Command uvx, wingbox | Format-Table Name, CommandType, Source -AutoSize
           python tools/check_hooks.py --source "$env:GITHUB_WORKSPACE"
           exit $LASTEXITCODE
+      - name: wingbox update through each installer
+        # The checkout installed four ways (uv pip, uv tool, pip, pipx) and updated by running its own wingbox
+        # program, which on Windows is a running wingbox.exe the installer has to replace (tools/check_update.py).
+        shell: bash
+        run: uv run --no-project --python "${{ matrix.python }}" python tools/check_update.py

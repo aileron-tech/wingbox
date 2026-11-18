@@ -12,6 +12,14 @@ when asked; that installer reaches the package index.
   `uv venv`) `uv pip install --python <this interpreter>` when uv is on PATH, else a message saying what to
   run.
 
+On Windows the `wingbox` program is wingbox.exe, a launcher that keeps running
+until Python ends, and Windows lets nobody overwrite or delete a running
+program. For the time of the upgrade `wingbox update` closes its own handle on
+the launcher it was started through and renames it (and the file it links to,
+when pipx made it a link), so the installer can put the new one in its place; the old
+file is removed when the command has ended, and renamed back when the installer
+wrote no new launcher (nothing to upgrade, or the installer failed).
+
 A Docker image, a Homebrew install (`brew upgrade wingbox`) and an editable or
 local install cannot update themselves: the command says so and prints what to
 run instead. After an upgrade the new
@@ -99,6 +107,15 @@ Runner = Callable[[tuple[str, ...]], Ran]
 
 
 @dataclass(frozen=True)
+class Upgraded:
+    ran: Ran
+    notes: tuple[Fact, ...] = ()  # what the adapter has to tell about the launcher it moved
+
+
+Upgrader = Callable[[tuple[str, ...]], Upgraded]
+
+
+@dataclass(frozen=True)
 class Environment:
     origin: Origin
     python: str  # interpreter of this installation
@@ -109,6 +126,7 @@ class Environment:
     new_version: Callable[[], str]  # version installed after an upgrade, read by a new process
     refresh: Callable[[Installed], list[Fact]]  # `wingbox install` of the new version for one record entry
     has_pip: bool = True  # pip can be imported in this environment (an environment made by `uv venv` has none)
+    upgrade: Optional[Upgrader] = None  # runs the upgrade command; None: `run` as it is
 
 
 def has_pip() -> bool:
@@ -246,9 +264,10 @@ def update(options: Options, env: Environment) -> list[Fact]:
         return facts + [make_fact("update-would-run", " ".join(method.upgrade))] + [
             _refresh_target(entry) for entry in env.installed if entry.scope == "global"
         ]
-    ran = env.run(method.upgrade)
-    if ran.status != 0:
-        return facts + [_failed(method.upgrade, ran)]
+    upgraded = env.upgrade(method.upgrade) if env.upgrade is not None else Upgraded(env.run(method.upgrade))
+    facts.extend(upgraded.notes)
+    if upgraded.ran.status != 0:
+        return facts + [_failed(method.upgrade, upgraded.ran)]
     facts.append(make_fact("update-to", env.new_version()))
     for entry in env.installed:
         if entry.scope == "global":
@@ -329,6 +348,115 @@ def run_installer(command: tuple[str, ...]) -> Ran:
     except OSError as error:
         return Ran(126, f"{command[0]}: {error}")
     return Ran(completed.returncode, (completed.stdout or "") + (completed.stderr or ""))
+
+
+LAUNCHER = "wingbox.exe"
+# Removes the old launcher once the process that runs it has ended (until then Windows refuses).
+_REMOVE_WHEN_FREE = (
+    "import os, sys, time\n"
+    "deadline = time.monotonic() + 600\n"
+    "while time.monotonic() < deadline:\n"
+    "    try:\n"
+    "        os.remove(sys.argv[1])\n"
+    "        break\n"
+    "    except FileNotFoundError:\n"
+    "        break\n"
+    "    except OSError:\n"
+    "        time.sleep(0.5)\n"
+)
+
+
+# The removal outlives this process: its handle is kept until then instead of being dropped while it runs.
+_REMOVALS: list["subprocess.Popen"] = []
+
+
+def running_launchers(argv0: str, windows: bool) -> tuple[str, ...]:
+    """The wingbox.exe this process was started through, on Windows: its path, and the file it points at when
+    it is a link (pipx links the program into its bin folder where Windows allows links, and the running
+    program is then the file inside the environment). Empty elsewhere and for `python -m wingbox.cli`.
+
+    A console-script launcher (pip, pipx, uv) runs Python with its own path as the script, and the script
+    drops the `.exe` ending from sys.argv[0]."""
+    if not windows:
+        return ()
+    path = argv0 if argv0.lower().endswith(".exe") else argv0 + ".exe"
+    if os.path.basename(path).lower() != LAUNCHER or not os.path.isfile(path):
+        return ()
+    path = os.path.abspath(path)
+    return (path, os.path.realpath(path)) if os.path.islink(path) else (path,)
+
+
+def close_archive_handles() -> None:
+    """Close the files importlib.metadata keeps open.
+
+    Python runs the launcher as a zip archive, so it is the first entry of sys.path, and importlib.metadata
+    (asked for the installed version) keeps every archive of sys.path open in a cache. Windows renames no
+    file that is open this way. Dropping the caches and collecting what they held closes the file."""
+    import gc
+    import importlib
+
+    importlib.invalidate_caches()
+    gc.collect()
+
+
+def detached_options() -> dict:
+    """Options for a child that outlives this process, without a console window (scripts/portable.py).
+    Read before the upgrade: afterwards the package files on disk belong to the new version."""
+    from wingbox import freshness
+
+    return freshness.portable().detached_process_options()
+
+
+def start_removal(python: str, path: str, detached: dict) -> Optional[str]:
+    """Start a process without a window that removes path once it is free; the error text when it cannot start."""
+    try:
+        process = subprocess.Popen(
+            [python, "-I", "-c", _REMOVE_WHEN_FREE, path], cwd=os.path.dirname(python) or None,
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            **detached,
+        )
+    except OSError as error:
+        return str(error)
+    _REMOVALS.append(process)
+    return None
+
+
+def upgrade_past_launcher(
+    command: tuple[str, ...], launchers: tuple[str, ...], run: Runner,
+    remove_later: Callable[[str], Optional[str]],
+) -> Upgraded:
+    """Run the upgrade with the running launcher renamed, so the installer can write the new one in its place.
+
+    Windows refuses to overwrite or delete a running program and allows renaming it, once this process holds
+    the file open no more (close_archive_handles). After the run, for each renamed file: a new one in its
+    place means the old file goes (remove_later removes it when this command has ended); none in its place
+    (nothing to upgrade, or the installer failed) means the old one is renamed back."""
+    if not launchers:
+        return Upgraded(run(command))
+    close_archive_handles()
+    moved: list[tuple[str, str]] = []
+    notes: list[Fact] = []
+    for path in launchers:
+        aside = f"{path}.{os.getpid()}.old"
+        try:
+            os.rename(path, aside)
+        except OSError as error:
+            # The installer runs as before and reports what it could not replace.
+            notes.append(make_fact("update-launcher-in-place", path, reason=str(error)))
+        else:
+            moved.append((path, aside))
+    ran = run(command)
+    for path, aside in moved:
+        if os.path.lexists(path):
+            failure = remove_later(aside)
+            if failure is not None:
+                notes.append(make_fact("update-left", aside, reason=failure))
+            continue
+        try:
+            os.rename(aside, path)
+        except OSError as error:
+            ran = Ran(ran.status or 1, f"{ran.output}\n{path} is now {aside}: could not rename it back: {error}")
+    return Upgraded(ran, tuple(notes))
 
 
 def read_new_version(python: str) -> str:
