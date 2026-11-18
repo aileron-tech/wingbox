@@ -276,11 +276,9 @@ def prepare_wingbox_directory(root: str) -> None:
     folder = wingbox_directory(root)
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, ".gitignore")
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            current: Optional[str] = handle.read()
-    except FileNotFoundError:
-        current = None
+    # Two processes may prepare the folder at once (two MCP servers started together): portable.read_text
+    # waits a moment on Windows while the other one is replacing the file.
+    current = portable.read_text(path)
     if current is None or (current.startswith(GITIGNORE_MARK) and current != GITIGNORE_TEXT):
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.

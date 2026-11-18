@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.2 - 2026-11-18
+
+### Fixes
+
+- `wingbox impact` does about half the work per call: the graph file is read with one pattern instead
+  of character by character, the layer guess is cached, and the project folder is resolved once.
+  Output is unchanged. Thanks to @just4just2 for the profile
+  ([#106](https://github.com/aileron-tech/wingbox/issues/106)).
+- In Claude Code's Code Mode the search hook no longer adds a context block for every search a script
+  makes, and it never holds a tool call up: it stops itself after 5 seconds.
+- On Windows, two `wingbox mcp --build-missing` servers started at the same moment (Claude Desktop
+  starts its server twice) could leave one of them stopped by `PermissionError` on
+  `.wingbox/.gitignore` while the other was replacing that file. The file is now read again after a
+  moment.
+
 ## 0.10.1 - 2026-11-18
 
 ### Fixes

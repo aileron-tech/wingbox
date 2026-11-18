@@ -120,6 +120,22 @@ def replace(source: str, target: str) -> None:
             time.sleep(_REPLACE_PAUSE)
 
 
+def read_text(path: str) -> Optional[str]:
+    """The text of a file, None when it does not exist; retried a moment while Windows reports the file
+    in use by another process (one that is replacing it)."""
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except FileNotFoundError:
+            return None
+        except PermissionError:
+            if not WINDOWS or attempt == _REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(_REPLACE_PAUSE)
+    return None
+
+
 def fsync_directory(directory: str) -> None:
     """Make a rename in directory durable where the system allows opening a folder (not on Windows)."""
     if WINDOWS:
