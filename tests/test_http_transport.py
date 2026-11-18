@@ -1,3 +1,4 @@
+import ast
 import contextlib
 import http.client
 import importlib
@@ -437,6 +438,31 @@ class PackagingTest(unittest.TestCase):
                     offenders.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()}")
         self.assertEqual([], offenders)
         self.assertFalse((SOURCE / "wingbox_http").exists())
+
+    def test_the_core_loads_the_adapter_only_for_http(self) -> None:
+        """/* REQ-HTTP-022: the core package never imports wingbox_http at start: its name is used in one place, `_http_main` of the MCP server, which only `main` calls and only for `--http`; no other file of the core mentions the package. */"""
+        mentions = [
+            str(path.relative_to(ROOT))
+            for folder in ("src", "scripts")
+            for path in sorted((ROOT / folder).rglob("*.py"))
+            if "wingbox_http" in path.read_text(encoding="utf-8")
+        ]
+        self.assertEqual(["src/wingbox/mcp_server.py"], [mention.replace(os.sep, "/") for mention in mentions])
+        tree = ast.parse((SOURCE / "wingbox" / "mcp_server.py").read_text(encoding="utf-8"))
+        users, callers = set(), set()
+        for function in [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]:
+            for node in ast.walk(function):
+                if isinstance(node, ast.Name) and node.id == "HTTP_PACKAGE":
+                    users.add(function.name)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_http_main":
+                    callers.add(function.name)
+        self.assertEqual(({"_http_main"}, {"main"}), (users, callers))
+        self.assertNotIn("wingbox_http", {alias.name for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names})
+        errors = io.StringIO()
+        with mock.patch.object(importlib, "import_module") as loader, contextlib.redirect_stderr(errors), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(2, mcp_server.main(["--no-such-option"], os.getcwd()))
+            self.assertEqual(0, mcp_server.main(["--help"], os.getcwd()))
+        loader.assert_not_called()
 
     def test_the_versions_move_together(self) -> None:
         """/* REQ-HTTP-021: wingbox-http has the version of wingbox, requires exactly that version of it, and the `http` extra of wingbox pins exactly that version of wingbox-http. */"""

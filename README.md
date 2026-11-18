@@ -107,6 +107,9 @@ Wingbox is safe to run on code that must not leave the company:
   which runs your package installer (pipx, uv or pip), and `wingbox add <language>`,
   which downloads the pinned parser of that language from the Python Package Index
   and checks its sha256. Nothing is downloaded on its own.
+  Wingbox listens on no port either. Serving the MCP server to another machine is a
+  separate package, `wingbox-http`, that you install and start yourself; it only
+  answers the requests that reach it and opens no connection of its own.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
