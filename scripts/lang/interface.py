@@ -15,6 +15,7 @@ class EntityPayload(EntityPayloadRequired, total=False):
     decorators: list[str]
     bases: list[str]
     private: bool  # Rust: an item without `pub`, which no re-export of another module carries
+    visible_in: str  # Rust: "super" for `pub(super)`, the path of `pub(in path)`: where a re-export carries the item
 
 
 class ImportedNamePayload(TypedDict):
@@ -59,6 +60,20 @@ class UsePayload(UsePayloadRequired, total=False):
     module: str
     member: str
     kind: str
+class TypeMembersPayload(TypedDict, total=False):
+    """Rust: the members an `impl` block gives a type, or the type an alias stands for.
+
+    type: the type as written (Store, model::Store). members: the names the block defines
+    (functions, constants, types). trait: the trait of `impl Trait for Type`, as written.
+    alias: the name of `type Alias = Type;` (then there are no members).
+    """
+
+    type: list[str]
+    members: list[str]
+    trait: list[str]
+    alias: str
+
+
 class ModuleLoadPayload(TypedDict):
     """A module name with one variable part: ``{}`` marks the variable."""
 
@@ -95,6 +110,7 @@ class Entity:
     decorators: list[str]
     bases: list[str]
     private: bool = False
+    visible_in: str = ""
 
     def to_dict(self) -> EntityPayload:
         result: EntityPayload = {
@@ -110,6 +126,8 @@ class Entity:
             result["bases"] = self.bases
         if self.private:
             result["private"] = True
+        if self.visible_in:
+            result["visible_in"] = self.visible_in
         return result
 
 
@@ -157,6 +175,8 @@ class FileResult:
     # Python: module names filled at run time and calls dispatched through a registry
     module_loads: list[ModuleLoadPayload] = field(default_factory=list)
     registry_calls: list[RegistryCallPayload] = field(default_factory=list)
+    # Rust: impl blocks and type aliases, to find the file that defines `Type::member`
+    type_members: list[TypeMembersPayload] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

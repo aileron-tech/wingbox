@@ -142,6 +142,8 @@ def _path_segments(node: Node) -> list[Segment] | None:
     if node.type == "generic_type":
         inner = node.child_by_field_name("type")
         return _path_segments(inner) if inner is not None else None
+    if node.type == "bracketed_type" and node.named_child_count == 1:
+        return _path_segments(node.named_children[0])  # <Type>::member; <Type as Trait>::member has no plain head
     if node.type in _PATH_NODES:
         name = node.child_by_field_name("name")
         prefix = node.child_by_field_name("path")

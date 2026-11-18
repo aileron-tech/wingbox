@@ -7,7 +7,7 @@ import tree_sitter_rust as _tsr
 from tree_sitter import Language as _RustTreeSitterLanguage
 from tree_sitter import Node, Parser as _RustParser
 
-from ..interface import Entity, FileResult, ImportedName, UsePayload
+from ..interface import Entity, FileResult, ImportedName, TypeMembersPayload, UsePayload
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from .symbols import use_bindings_and_sites
@@ -193,13 +193,19 @@ def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
             return
         if node.type in ("scoped_identifier", "scoped_type_identifier"):
             segments: list[str] = []
-            for segment in _node_text(node).split("::"):
+            written = _node_text(node).strip()
+            # `::name::item` starts at a crate (edition 2015: at the crate root); the resolver reads the marker.
+            absolute = written.startswith("::")
+            for segment in written.removeprefix("::").split("::"):
                 segment = segment.strip()
                 if not _PATH_SEGMENT.match(segment):
                     break
                 segments.append(segment)
             path: str | None = None
-            if len(segments) >= 2 and segments[0] in _LOCAL_ROOTS:
+            if absolute:
+                if len(segments) >= 2 and segments[0] not in _STANDARD_ROOTS:
+                    path = "::" + "::".join(segments)
+            elif len(segments) >= 2 and segments[0] in _LOCAL_ROOTS:
                 path = _path_seen_from_file("::".join(segments), inline_depth)
             elif len(segments) >= 2 and segments[0] in local_modules:
                 path = "::".join((local_modules[segments[0]], *segments[1:]))
@@ -218,6 +224,64 @@ def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
 
     _visit(root, 0)
     return paths
+
+
+def _written_path(node: Node | None) -> list[str]:
+    """A type or a trait written as a path, without its generic arguments; [] for any other type."""
+    if node is None:
+        return []
+    if node.type == "generic_type":
+        return _written_path(node.child_by_field_name("type"))
+    if node.type not in ("type_identifier", "scoped_type_identifier", "identifier", "scoped_identifier"):
+        return []
+    segments = [segment.strip() for segment in _node_text(node).split("::")]
+    return segments if all(_PATH_SEGMENT.match(segment) for segment in segments) else []
+
+
+_MEMBER_NODES = ("function_item", "function_signature_item", "const_item", "type_item")
+
+
+def _type_members(container: Node) -> list[TypeMembersPayload]:
+    """The impl blocks and type aliases of a file, those of its inline modules included."""
+    found: list[TypeMembersPayload] = []
+    for node in container.named_children:
+        if node.type == "impl_item":
+            written = _written_path(node.child_by_field_name("type"))
+            body = node.child_by_field_name("body")
+            members = [_node_text(child.child_by_field_name("name")) for child in (body.named_children if body is not None else ())
+                       if child.type in _MEMBER_NODES]
+            if written and members:
+                entry: TypeMembersPayload = {"type": written, "members": sorted(set(filter(None, members)))}
+                trait = _written_path(node.child_by_field_name("trait"))
+                if node.child_by_field_name("trait") is not None:
+                    entry["trait"] = trait
+                found.append(entry)
+        elif node.type == "type_item":
+            written = _written_path(node.child_by_field_name("type"))
+            name = _node_text(node.child_by_field_name("name"))
+            if written and name:
+                found.append({"type": written, "alias": name})
+        elif node.type == "mod_item" and node.child_by_field_name("body") is not None:
+            found.extend(_type_members(node.child_by_field_name("body")))
+    return found
+
+
+def _declared_modules(container: Node, prefix: tuple[str, ...]) -> list[str]:
+    """`mod name;` declarations as paths from the file's module: self::name, and self::outer::name for a
+    declaration inside the inline module outer (its file lies in the folder outer/)."""
+    declared: list[str] = []
+    for node in container.named_children:
+        if node.type != "mod_item":
+            continue
+        name = _node_text(node.child_by_field_name("name"))
+        body = node.child_by_field_name("body")
+        if not name:
+            continue
+        if body is None:
+            declared.append("::".join((*prefix, name)))
+        else:
+            declared.extend(_declared_modules(body, (*prefix, name)))
+    return declared
 
 
 def _imported_name(rust_use: RustUse) -> ImportedName | None:
@@ -306,6 +370,7 @@ def _entity_from_item(node: Node, decorators: list[str]) -> Entity | None:
                 and _node_text(child.child_by_field_name("name"))
             ]
 
+    visibility = "".join(_node_text(next((child for child in node.children if child.type == "visibility_modifier"), None)).split())
     return Entity(
         name=name,
         kind=kind,
@@ -313,7 +378,8 @@ def _entity_from_item(node: Node, decorators: list[str]) -> Entity | None:
         methods=methods,
         decorators=decorators,
         bases=[],
-        private=not any(child.type == "visibility_modifier" for child in node.children),
+        private=visibility in ("", "pub(self)"),
+        visible_in="super" if visibility == "pub(super)" else visibility[len("pub(in"):-1] if visibility.startswith("pub(in") else "",
     )
 
 
@@ -380,12 +446,8 @@ def parse_rust_treesitter(
         if implemented_trait and implemented_trait not in implements:
             implements.append(implemented_trait)
 
-    for node in root.named_children:
-        if node.type != "mod_item" or node.child_by_field_name("body") is not None:
-            continue
-        module_name = _node_text(node.child_by_field_name("name"))
-        module_import = f"self::{module_name}"
-        if module_name and module_import not in imports:
+    for module_import in _declared_modules(root, ("self",)):
+        if module_import not in imports:
             imports.append(module_import)
 
     entity_payloads = [entity.to_dict() for entity in entities]
@@ -408,4 +470,5 @@ def parse_rust_treesitter(
         exported_names=[entity.name for entity in entities],
         bindings=bindings,
         uses=use_sites,
+        type_members=_type_members(root),
     )

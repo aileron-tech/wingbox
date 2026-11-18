@@ -28,7 +28,9 @@ or `rb`.
 (`pub use child::*`, `pub use child::Name`); the edge goes to the file that
 defines the item, next to the plain edge to the facade, and `impact` follows it.
 With `:candidate` the file imports the facade with a glob (`use m::*`) and its
-body names the item.
+body names the item. A member named through a type path (`Type::member`,
+`Self::member`) gives the same edge to the file whose inherent `impl` block of
+the type defines the member.
 
 Modules loaded at run time (Python):
 
