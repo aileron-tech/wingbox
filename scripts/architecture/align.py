@@ -25,7 +25,6 @@ from .words import normalise
 
 MIN_LAYER_SHARE = 0.05
 MIN_FOLDER_FILES = 2
-REVIEW_MIN_BROKEN = 3
 
 
 @dataclass(frozen=True)
@@ -54,15 +53,6 @@ class Learned:
     part: str
     folder: str
     layer: str
-    why: str
-
-
-@dataclass(frozen=True)
-class Review:
-    part: str
-    folder: str
-    current: str
-    proposed: str
     why: str
 
 

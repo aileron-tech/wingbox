@@ -44,7 +44,6 @@ from .plan import (
 )
 from .words import DEFAULT_SETTINGS, MatchSettings
 
-CONFIG_DIRECTORY = ".wingbox"
 CONFIG_FILE = ".wingbox/config.yaml"
 
 
@@ -354,7 +353,7 @@ def render_config(
             for folder in part.layers:
                 by_layer.setdefault(folder.layer, []).append(folder)
             for layer, folders in by_layer.items():
-                notes = [f"{f.folder}: {f.match} of {f.via}" for f in folders if f.match in ("spelling", "synonym")]
+                notes = [f"{f.folder}: {f.match} of {f.via}" for f in folders if f.match == "spelling"]
                 notes += [
                     f"{f.folder}: learned by wingbox align ({f.via[len('align: '):]})" if f.via.startswith("align: ")
                     else f"{f.folder}: learned by agent: {f.via[len('agent: '):]}" if f.via.startswith("agent: ")

@@ -2,5 +2,3 @@
 * text=auto eol=lf
 *.png binary
 *.gz binary
-*.npy binary
-*.i8 binary

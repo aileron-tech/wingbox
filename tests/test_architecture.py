@@ -22,12 +22,11 @@ def _reader(texts: dict[str, str]):
     return lambda path: texts.get(path)
 
 
-def _layer_role(word: str, style_id: str, synonyms: bool = True):
+def _layer_role(word: str, style_id: str):
     style = LIBRARY.style(style_id)
     from scripts.architecture.detect import layer_dictionary
 
-    settings = words.MatchSettings() if synonyms else words.DEFAULT_SETTINGS
-    match = words.match_name(word, layer_dictionary(style), settings)
+    match = words.match_name(word, layer_dictionary(style), words.DEFAULT_SETTINGS)
     return (match.role, match.step) if match else None
 
 
@@ -54,9 +53,6 @@ class WordMatchingTest(unittest.TestCase):
         self.assertEqual("application", _layer_role("interactor", "onion-clean")[0])
         self.assertEqual("interface", _layer_role("presenter", "onion-clean")[0])
         self.assertEqual("ui", _layer_role("viewmodel", "layered")[0])
-        # Names in no dictionary, matched by the built-in word vectors.
-        self.assertEqual(("domain", "synonym"), _layer_role("schema", "nestjs"))
-        self.assertEqual(("ui", "synonym"), _layer_role("shared-components", "route-tree"))
 
     def test_unrelated_words_stay_unmatched(self) -> None:
         """/* REQ-ARCH-004: words with no architecture meaning match no layer of any style. */"""
@@ -65,18 +61,11 @@ class WordMatchingTest(unittest.TestCase):
                 if style.layers:
                     self.assertIsNone(_layer_role(word, style.id), (word, style.id))
 
-    def test_synonyms_are_off_unless_asked_for(self) -> None:
-        """/* REQ-ARCH-022: by default a folder name matches only exactly or as a spelling variant; the word-vector step runs only with --synonyms (it did not beat the dictionaries on the held-out half of benchmarks/architecture). */"""
-        self.assertFalse(words.DEFAULT_SETTINGS.synonyms)
-        self.assertIsNone(_layer_role("schema", "nestjs", synonyms=False))
-        self.assertEqual(("domain", "synonym"), _layer_role("schema", "nestjs", synonyms=True))
-
     def test_matching_is_deterministic(self) -> None:
         """/* REQ-ARCH-005: matching the same names twice gives the same roles, steps and similarities. */"""
         names = ("datastore", "persistence", "usecases", "banana", "controlers", "handlers")
         first = [_layer_role(name, "layered") for name in names]
         words._match_cached.cache_clear()
-        words.name_vector.cache_clear()
         self.assertEqual(first, [_layer_role(name, "layered") for name in names])
 
 

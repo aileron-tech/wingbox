@@ -69,7 +69,7 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
 (arch-pattern <part> <pattern>)
 (capability <mod> <capability> :line <n> :evidence "<source line>" [:suspect])
 (capability-known <part> <mod> <capability> "<baseline file>")
-(layer <mod> <layer> :part <part> :style <style> :rule "<rule>" :match exact|spelling|synonym|config|file|declared|test|none)
+(layer <mod> <layer> :part <part> :style <style> :rule "<rule>" :match exact|spelling|config|file|declared|test|none)
 ```
 
 - `<part>` is a folder relative to the repository root, `"."` for the root.
@@ -90,7 +90,7 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
 
 ```scheme
 (arch-part <part> :level <c4 level> :kind "<kind>" :files <n> :style <style> :state <state> :origin <origin> [:score 0.81 :coverage 0.47] [:name "<style (author)>"] [:source "<citation>"])
-(arch-evidence <part> <style> "<folder/ or file pattern>" :files <n> :group <group> :match exact|spelling|synonym|file [:via "<word>"])
+(arch-evidence <part> <style> "<folder/ or file pattern>" :files <n> :group <group> :match exact|spelling|file [:via "<word>"])
 (arch-candidate <part> <style> :score 0.34 :coverage 0.20 :status candidate|below :source "<citation>")
 (arch-overlay <part> cqrs :score 0.89 :coverage 0.12)
 (arch-layer <part> <layer> "<folder>" :files <n> :match <step> [:via "<word>"])

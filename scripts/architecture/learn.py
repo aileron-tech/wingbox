@@ -102,7 +102,7 @@ def derive(
     for style in library.styles:
         if style.id == base.id:
             continue
-        match = match_name(folder, layer_dictionary(style, synonyms=False), DEFAULT_SETTINGS)
+        match = match_name(folder, layer_dictionary(style), DEFAULT_SETTINGS)
         if match is not None and match.role == "domain" and match.via in library.cqrs_words()[0]:
             continue   # commands/, queries/ are CQRS words: not domain without the CQRS overlay
         if match is not None and match.role in layers:

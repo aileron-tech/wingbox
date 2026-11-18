@@ -2,14 +2,12 @@
 
     python3 -I benchmarks/architecture/evaluate.py [--trees benchmarks/architecture/trees]
 
-1. Role mapping on labels.tsv: three variants on the same rows -
-   dictionaries (exact normalised names), + Levenshtein (spelling), + word vectors
-   (synonyms). The synonym threshold and margin are chosen on the `tune` half
-   only (grid search, best accuracy, ties to the stricter setting); every number
+1. Role mapping on labels.tsv: two variants on the same rows -
+   dictionaries (exact normalised names), + Levenshtein (spelling). Every number
    reported for comparison is from the `test` half.
 2. Style detection on the path lists in trees/ (one gzip file per repository,
    one path per line, from the GitHub tree API) against expected_styles.tsv,
-   for the three variants.
+   for the two variants.
 
 Writes results/roles.tsv, results/summary.txt, results/detection.tsv and
 prints the summary. Deterministic: no randomness, no network.
@@ -31,9 +29,8 @@ from architecture.detect import judge, layer_dictionary, split_parts  # noqa: E4
 from architecture.library import load_library  # noqa: E402
 
 VARIANTS = {
-    "dictionaries": words.MatchSettings(spelling=False, synonyms=False),
-    "+levenshtein": words.MatchSettings(spelling=True, synonyms=False),
-    "+vectors": words.MatchSettings(spelling=True, synonyms=True),
+    "dictionaries": words.MatchSettings(spelling=False),
+    "+levenshtein": words.MatchSettings(spelling=True),
 }
 
 
@@ -56,7 +53,7 @@ def predict(row: dict[str, str], settings: words.MatchSettings) -> tuple[str, st
     library = load_library()
     style = library.style(row["style"])
     assert style is not None, row
-    match = words.match_name(row["folder"], layer_dictionary(style, synonyms=settings.synonyms), settings)
+    match = words.match_name(row["folder"], layer_dictionary(style), settings)
     return (match.role, match.step) if match else ("none", "none")
 
 
@@ -78,20 +75,6 @@ def score(rows: list[dict[str, str]], settings: words.MatchSettings) -> dict[str
     }
 
 
-def tune(rows: list[dict[str, str]]) -> words.MatchSettings:
-    """Threshold and margin with the best accuracy on the tune half; ties go to the stricter setting."""
-    best: tuple[float, float, float] | None = None
-    for threshold in [round(0.40 + 0.01 * i, 2) for i in range(56)]:
-        for margin in (0.0, 0.02, 0.04, 0.06, 0.08, 0.10):
-            settings = words.MatchSettings(threshold=threshold, margin=margin)
-            accuracy = score(rows, settings)["accuracy"]
-            key = (accuracy, threshold, margin)
-            if best is None or key > best:
-                best = key
-    assert best is not None
-    return words.MatchSettings(threshold=best[1], margin=best[2])
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trees", help="folder of repository path lists for the detection check")
@@ -99,15 +82,11 @@ def main() -> int:
     rows = read_labels(os.path.join(HERE, "labels.tsv"))
     tune_rows = [row for row in rows if row["half"] == "tune"]
     test_rows = [row for row in rows if row["half"] == "test"]
-    chosen = tune(tune_rows)
-    variants = dict(VARIANTS)
-    variants["+vectors"] = chosen
+    variants = VARIANTS
     results = os.path.join(HERE, "results")
     os.makedirs(results, exist_ok=True)
     lines = [
         f"labelled folders: {len(rows)} ({len(tune_rows)} tune, {len(test_rows)} test)",
-        f"chosen on the tune half: threshold {chosen.threshold:.2f}, margin {chosen.margin:.2f}",
-        f"shipped in scripts/architecture/words.py: threshold {words.SYNONYM_THRESHOLD:.2f}, margin {words.SYNONYM_MARGIN:.2f}",
         "",
         "test half                accuracy  unmatched  wrong  missed",
     ]
@@ -116,7 +95,7 @@ def main() -> int:
         lines.append(
             f"  {name:<22} {result['accuracy']:8.1%} {result['unmatched']:10.1%} {result['wrong']:6.1%} {result['missed']:7.1%}"
         )
-    lines += ["", "test half by style (dictionaries / +levenshtein / +vectors accuracy)"]
+    lines += ["", "test half by style (dictionaries / +levenshtein accuracy)"]
     by_style: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in test_rows:
         by_style[row["style"]].append(row)
@@ -131,17 +110,11 @@ def main() -> int:
                 "\t".join(row[key] for key in ("repository", "part", "style", "folder", "role", "half"))
                 + "\t" + "\t".join(role for role, _ in predictions) + f"\t{predictions[-1][1]}\n"
             )
-    lines += ["", "wrong matches of +vectors on the test half (folder: predicted, expected, step)"]
+    lines += ["", "wrong matches of +levenshtein on the test half (folder: predicted, expected, step)"]
     for row in test_rows:
-        role, step = predict(row, chosen)
+        role, step = predict(row, VARIANTS["+levenshtein"])
         if role != row["role"] and role != "none":
             lines.append(f"  {row['repository']} {row['folder']}: {role}, expected {row['role']} ({step})")
-    lines += ["", "synonym matches of +vectors on the test half (folder -> role via word, right or wrong)"]
-    for row in test_rows:
-        role, step = predict(row, chosen)
-        if step == "synonym":
-            mark = "right" if role == row["role"] else "WRONG"
-            lines.append(f"  {row['folder']} -> {role} ({mark}, expected {row['role']})")
     if args.trees:
         lines += ["", *detection(args.trees, variants)]
     text = "\n".join(lines) + "\n"

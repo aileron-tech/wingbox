@@ -1493,7 +1493,7 @@ class ModuleLabel:
     part: str
     style: str
     rule: str
-    match: str   # exact | spelling | synonym | config | file | declared | test | role | package | none
+    match: str   # exact | spelling | config | file | declared | test | role | package | none
     root: bool = False   # a composition root: wires the layers, may import every one
 
 
@@ -1635,11 +1635,6 @@ def module_dependencies(g: CodeGraph, module_id: str) -> dict[str, str]:
 def module_dependents(g: CodeGraph, module_id: str) -> dict[str, str]:
     """Modules that depend on module_id: module -> edge type."""
     return _collect_rdep_mods(g, module_id)
-
-
-def impact_levels(g: CodeGraph, module_id: str, max_depth: int) -> list[list[tuple[str, str]]]:
-    """Dependents of module_id grouped by shortest hop distance."""
-    return _impact_levels(g, module_id, max_depth)
 
 
 # By default an answer names at most this many dependent files; --all prints every one.

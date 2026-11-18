@@ -56,16 +56,6 @@ def tokenize_pascal(content: str) -> list[PascalToken]:
     line = 1
     length = len(content)
 
-    def consume_comment(end_marker: str, start: int) -> int:
-        nonlocal line
-        end = content.find(end_marker, start)
-        if end < 0:
-            line += content[start:].count("\n")
-            return length
-        finish = end + len(end_marker)
-        line += content[start:finish].count("\n")
-        return finish
-
     while index < length:
         char = content[index]
         if char.isspace():

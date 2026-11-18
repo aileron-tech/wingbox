@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from .library import Library, Style
-from .words import DEFAULT_SETTINGS, DETECTION_SETTINGS, Dictionary, MatchSettings, WordMatch, make_dictionary, match_name, normalise
+from .words import DEFAULT_SETTINGS, Dictionary, MatchSettings, WordMatch, make_dictionary, match_name, normalise
 
 SOURCE_EXTENSIONS = frozenset({
     ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rb", ".go", ".rs", ".cs", ".java", ".kt",
@@ -49,7 +49,7 @@ class Evidence:
     group: str
     folder: str        # folder name as found ("routes/"), or the file pattern
     files: int
-    match: str         # exact | spelling | synonym | file
+    match: str         # exact | spelling | file
     via: str           # the dictionary word that matched
 
 
@@ -183,28 +183,20 @@ def split_parts(paths: tuple[str, ...], library: Library, roots: Optional[tuple[
 # ---------------------------------------------------------------------------
 
 
-def group_dictionary(style: Style, settings: MatchSettings = DEFAULT_SETTINGS) -> Dictionary:
-    return _group_dictionaries(style, settings.synonyms)
+_DICTIONARIES: dict[tuple[str, str], Dictionary] = {}
 
 
-_DICTIONARIES: dict[tuple[str, bool, str], Dictionary] = {}
-
-
-def _group_dictionaries(style: Style, synonyms: bool) -> Dictionary:
-    key = (style.id, synonyms, "groups")
+def _group_dictionaries(style: Style) -> Dictionary:
+    key = (style.id, "groups")
     if key not in _DICTIONARIES:
-        _DICTIONARIES[key] = make_dictionary(
-            ((name, group.id) for group in style.groups for name in group.names), use_vectors=synonyms
-        )
+        _DICTIONARIES[key] = make_dictionary((name, group.id) for group in style.groups for name in group.names)
     return _DICTIONARIES[key]
 
 
-def layer_dictionary(style: Style, synonyms: bool = True) -> Dictionary:
-    key = (style.id, synonyms, "layers")
+def layer_dictionary(style: Style) -> Dictionary:
+    key = (style.id, "layers")
     if key not in _DICTIONARIES:
-        _DICTIONARIES[key] = make_dictionary(
-            ((name, layer.id) for layer in style.layers for name in layer.folders), use_vectors=synonyms
-        )
+        _DICTIONARIES[key] = make_dictionary((name, layer.id) for layer in style.layers for name in layer.folders)
     return _DICTIONARIES[key]
 
 
@@ -229,11 +221,11 @@ def _siblings_ok(style: Style, files: tuple[str, ...], matches: dict[str, WordMa
     return any(all(group in roles for group in required) for roles in children.values())
 
 
-def score_style(style: Style, files: tuple[str, ...], settings: MatchSettings = DETECTION_SETTINGS) -> StyleScore:
+def score_style(style: Style, files: tuple[str, ...], settings: MatchSettings = DEFAULT_SETTINGS) -> StyleScore:
     """Score of one style for the judged files of a part (index.toml, style [detect])."""
     if not files:
         return StyleScore(style.id, 0.0, 0.0, (), (), "files")
-    dictionary = _group_dictionaries(style, settings.synonyms)
+    dictionary = _group_dictionaries(style)
     matches = _segment_matches(files, dictionary, settings)
     total = sum(group.weight for group in style.groups) or 1.0
     got = 0.0
@@ -285,7 +277,7 @@ def score_style(style: Style, files: tuple[str, ...], settings: MatchSettings = 
     )
 
 
-def judge(part: Part, library: Library, settings: MatchSettings = DETECTION_SETTINGS) -> Judgement:
+def judge(part: Part, library: Library, settings: MatchSettings = DEFAULT_SETTINGS) -> Judgement:
     """Decide the style of a part (index.toml [decision])."""
     index = library.index
     if len(part.judged) < index.min_source_files:

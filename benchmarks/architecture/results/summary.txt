@@ -1,41 +1,25 @@
 labelled folders: 476 (236 tune, 240 test)
-chosen on the tune half: threshold 0.74, margin 0.10
-shipped in scripts/architecture/words.py: threshold 0.74, margin 0.10
 
 test half                accuracy  unmatched  wrong  missed
   dictionaries              76.2%      77.5%   1.2%   22.5%
   +levenshtein              76.2%      77.5%   1.2%   22.5%
-  +vectors                  75.4%      75.0%   2.9%   21.7%
 
-test half by style (dictionaries / +levenshtein / +vectors accuracy)
-  feature-sliced      7 rows  100% / 100% / 100%
-  hexagonal           7 rows  100% / 100% / 100%
-  layered            63 rows  79% / 79% / 75%
-  mvc                54 rows  83% / 83% / 83%
-  nestjs              8 rows  62% / 62% / 75%
-  onion-clean        65 rows  62% / 62% / 60%
-  route-tree         36 rows  81% / 81% / 83%
+test half by style (dictionaries / +levenshtein accuracy)
+  feature-sliced      7 rows  100% / 100%
+  hexagonal           7 rows  100% / 100%
+  layered            63 rows  79% / 79%
+  mvc                54 rows  83% / 83%
+  nestjs              8 rows  62% / 62%
+  onion-clean        65 rows  62% / 62%
+  route-tree         36 rows  81% / 81%
 
-wrong matches of +vectors on the test half (folder: predicted, expected, step)
+wrong matches of +levenshtein on the test half (folder: predicted, expected, step)
   evrone/go-clean-template webapi: interface, expected infrastructure (exact)
-  ardalis/CleanArchitecture Projects: infrastructure, expected none (synonym)
   immich-app/immich commands: domain, expected none (exact)
   archestra-ai/archestra hooks: ui, expected api (exact)
-  archestra-ai/archestra app-templates: ui, expected none (synonym)
-  fastapi/fastapi response_model: ui, expected none (synonym)
-  fastapi/fastapi sql_databases: infra, expected none (synonym)
-
-synonym matches of +vectors on the test half (folder -> role via word, right or wrong)
-  Projects -> infrastructure (WRONG, expected none)
-  schema -> domain (right, expected domain)
-  shared-components -> ui (right, expected ui)
-  app-templates -> ui (WRONG, expected none)
-  response_model -> ui (WRONG, expected none)
-  sql_databases -> infra (WRONG, expected none)
 
 style detection (expected style per part; undetermined counts as right when expected is none)
   parts: 33
   dictionaries           31 / 33 right
   +levenshtein           31 / 33 right
-  +vectors               30 / 33 right
   per part: results/detection.tsv

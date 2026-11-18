@@ -529,13 +529,6 @@ def _part_directive_imports(directives: list[DartDirective]) -> list[str]:
     ]
 
 
-def _has_macro_parts(directives: list[DartDirective]) -> bool:
-    return any(
-        directive.kind == "part" and directive.is_codegen
-        for directive in directives
-    )
-
-
 def parse_dart_treesitter(
     path: str,
     content: str,

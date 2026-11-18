@@ -358,7 +358,7 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
         for node_id, result in context.id_to_result.items()
     }
     graph = builder.assemble_graph(context, new_list, fragments)
-    built = builder.project_architecture(root, exclusions, False, new_list, graph.nodes)
+    built = builder.project_architecture(root, exclusions, new_list, graph.nodes)
     if isinstance(built, builder.Err):
         return NotApplicable(built.error)
     content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list), built.value[0])

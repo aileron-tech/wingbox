@@ -1,34 +1,34 @@
-repository	part	expected	dictionaries	+levenshtein	+vectors
-KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	feature-sliced	feature-sliced	feature-sliced
-archestra-ai/archestra	platform/backend	layered	layered	layered	layered
-archestra-ai/archestra	platform/frontend	route-tree	route-tree	route-tree	route-tree
-archestra-ai/archestra	platform/shared	none	undetermined	undetermined	undetermined
-archestra-ai/archestra	platform	none	undetermined	undetermined	undetermined
-archestra-ai/archestra	ai-labs	none	undetermined	undetermined	undetermined
-archestra-ai/archestra	platform/archestra-cli	none	undetermined	undetermined	undetermined
-ardalis/CleanArchitecture	.	onion-clean	onion-clean	onion-clean	onion-clean
-dream-num/univer	packages/sheets-ui	microkernel	microkernel	microkernel	microkernel
-dream-num/univer	packages/sheets	microkernel	microkernel	microkernel	microkernel
-dream-num/univer	packages/engine-formula	microkernel	microkernel	microkernel	microkernel
-dream-num/univer	packages/docs-ui	microkernel	microkernel	microkernel	microkernel
-dream-num/univer	packages/ui	microkernel	microkernel	microkernel	microkernel
-dream-num/univer	packages/sheets-formula-ui	microkernel	microkernel	microkernel	microkernel
-dream-num/univer	packages/core	none	undetermined	undetermined	undetermined
-dream-num/univer	packages/design	none	undetermined	undetermined	undetermined
-evrone/go-clean-template	.	onion-clean	onion-clean	onion-clean	onion-clean
-fastapi/fastapi	.	none	undetermined	undetermined	undetermined
-gothinkster/django-realworld-example-app	.	mvc	mvc	mvc	mvc
-gothinkster/laravel-realworld-example-app	.	mvc	undetermined	undetermined	undetermined
-immich-app/immich	server	nestjs	nestjs	nestjs	nestjs
-immich-app/immich	web	route-tree	route-tree	route-tree	undetermined
-immich-app/immich	machine-learning	none	undetermined	undetermined	undetermined
-jasontaylordev/CleanArchitecture	.	onion-clean	onion-clean	onion-clean	onion-clean
-jasontaylordev/CleanArchitecture	src/Web/ClientApp	none	undetermined	undetermined	undetermined
-jasontaylordev/CleanArchitecture	src/Web/ClientApp-React	none	undetermined	undetermined	undetermined
-karpathy/nanoGPT	.	none	undetermined	undetermined	undetermined
-kgrzybek/modular-monolith-with-ddd	src	onion-clean	onion-clean	onion-clean	onion-clean
-mastodon/mastodon	.	mvc	mvc	mvc	mvc
-spring-projects/spring-petclinic	.	none	undetermined	undetermined	undetermined
-thombergs/buckpal	.	hexagonal	hexagonal	hexagonal	hexagonal
-tyshgc/feature-sliced-design-example	.	feature-sliced	undetermined	undetermined	undetermined
-vercel/commerce	.	route-tree	route-tree	route-tree	route-tree
+repository	part	expected	dictionaries	+levenshtein
+KinjiKawaguchi/feature-sliced-design-example	.	feature-sliced	feature-sliced	feature-sliced
+archestra-ai/archestra	platform/backend	layered	layered	layered
+archestra-ai/archestra	platform/frontend	route-tree	route-tree	route-tree
+archestra-ai/archestra	platform/shared	none	undetermined	undetermined
+archestra-ai/archestra	platform	none	undetermined	undetermined
+archestra-ai/archestra	ai-labs	none	undetermined	undetermined
+archestra-ai/archestra	platform/archestra-cli	none	undetermined	undetermined
+ardalis/CleanArchitecture	.	onion-clean	onion-clean	onion-clean
+dream-num/univer	packages/sheets-ui	microkernel	microkernel	microkernel
+dream-num/univer	packages/sheets	microkernel	microkernel	microkernel
+dream-num/univer	packages/engine-formula	microkernel	microkernel	microkernel
+dream-num/univer	packages/docs-ui	microkernel	microkernel	microkernel
+dream-num/univer	packages/ui	microkernel	microkernel	microkernel
+dream-num/univer	packages/sheets-formula-ui	microkernel	microkernel	microkernel
+dream-num/univer	packages/core	none	undetermined	undetermined
+dream-num/univer	packages/design	none	undetermined	undetermined
+evrone/go-clean-template	.	onion-clean	onion-clean	onion-clean
+fastapi/fastapi	.	none	undetermined	undetermined
+gothinkster/django-realworld-example-app	.	mvc	mvc	mvc
+gothinkster/laravel-realworld-example-app	.	mvc	undetermined	undetermined
+immich-app/immich	server	nestjs	nestjs	nestjs
+immich-app/immich	web	route-tree	route-tree	route-tree
+immich-app/immich	machine-learning	none	undetermined	undetermined
+jasontaylordev/CleanArchitecture	.	onion-clean	onion-clean	onion-clean
+jasontaylordev/CleanArchitecture	src/Web/ClientApp	none	undetermined	undetermined
+jasontaylordev/CleanArchitecture	src/Web/ClientApp-React	none	undetermined	undetermined
+karpathy/nanoGPT	.	none	undetermined	undetermined
+kgrzybek/modular-monolith-with-ddd	src	onion-clean	onion-clean	onion-clean
+mastodon/mastodon	.	mvc	mvc	mvc
+spring-projects/spring-petclinic	.	none	undetermined	undetermined
+thombergs/buckpal	.	hexagonal	hexagonal	hexagonal
+tyshgc/feature-sliced-design-example	.	feature-sliced	undetermined	undetermined
+vercel/commerce	.	route-tree	route-tree	route-tree
