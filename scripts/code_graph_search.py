@@ -1637,11 +1637,6 @@ def module_dependents(g: CodeGraph, module_id: str) -> dict[str, str]:
     return _collect_rdep_mods(g, module_id)
 
 
-def impact_levels(g: CodeGraph, module_id: str, max_depth: int) -> list[list[tuple[str, str]]]:
-    """Dependents of module_id grouped by shortest hop distance."""
-    return _impact_levels(g, module_id, max_depth)
-
-
 # By default an answer names at most this many dependent files; --all prints every one.
 _ANSWER_FILE_LIMIT = 200
 _READ_FIRST_LIMIT = 10

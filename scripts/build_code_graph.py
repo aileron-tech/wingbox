@@ -2438,57 +2438,6 @@ class LspClient:
         )
         return result if isinstance(result, list) else []
 
-    def prepare_call_hierarchy(
-        self,
-        uri: str,
-        line: int,
-        character: int,
-        timeout: float = LSP_REQUEST_TIMEOUT,
-    ) -> list[dict]:
-        """
-        Prepare call hierarchy at position. Returns list of CallHierarchyItem.
-        Line and character are 0-based (LSP convention).
-        """
-        result = self._request(
-            "textDocument/prepareCallHierarchy",
-            {
-                "textDocument": {"uri": uri},
-                "position": {"line": line, "character": character},
-            },
-            timeout=timeout,
-        )
-        return result if isinstance(result, list) else []
-
-    def outgoing_calls(
-        self,
-        item: dict,
-        timeout: float = LSP_REQUEST_TIMEOUT,
-    ) -> list[dict]:
-        """Get outgoing calls from a CallHierarchyItem."""
-        result = self._request(
-            "callHierarchy/outgoingCalls",
-            {
-                "item": item,
-            },
-            timeout=timeout,
-        )
-        return result if isinstance(result, list) else []
-
-    def incoming_calls(
-        self,
-        item: dict,
-        timeout: float = LSP_REQUEST_TIMEOUT,
-    ) -> list[dict]:
-        """Get incoming calls to a CallHierarchyItem."""
-        result = self._request(
-            "callHierarchy/incomingCalls",
-            {
-                "item": item,
-            },
-            timeout=timeout,
-        )
-        return result if isinstance(result, list) else []
-
     def references(
         self,
         uri: str,
@@ -3881,10 +3830,9 @@ class _LazyBoundLanguages(dict):
     """Bound languages created on first need: a query whose imports are all in the walk cache never
     reads tsconfig files, packages or ignore rules."""
 
-    def __init__(self, root: str, path_to_id: Mapping[str, str], results: Sequence[FileResult]) -> None:
+    def __init__(self, root: str, path_to_id: Mapping[str, str]) -> None:
         super().__init__()
         self._root, self._path_to_id = root, path_to_id
-        self._languages = {result.language for result in results}
 
     def __missing__(self, name: str) -> BoundLanguage:
         git_ignore_result = load_git_ignored_paths(self._root, frozenset(SKIP_DIRS))
@@ -4000,7 +3948,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
     sorted_nodes, path_to_sid = _path_ids(
         [{"id": node_id, "repo": result.repo} for node_id, result in id_to_result.items()])
     if to_resolve:
-        bound = _LazyBoundLanguages(root, path_to_id, results)
+        bound = _LazyBoundLanguages(root, path_to_id)
 
         def resolve_import(language: str, spec: str, source: str) -> Optional[str]:
             key = f"{language}\0{spec}\0{source}"

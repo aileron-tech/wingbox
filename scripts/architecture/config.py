@@ -44,7 +44,6 @@ from .plan import (
 )
 from .words import DEFAULT_SETTINGS, MatchSettings
 
-CONFIG_DIRECTORY = ".wingbox"
 CONFIG_FILE = ".wingbox/config.yaml"
 
 
