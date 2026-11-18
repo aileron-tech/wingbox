@@ -23,6 +23,12 @@ marks the edited file.
 
 The graph is read as text with regular expressions, not with the query
 engine, so that a graph of 8,000 files is answered in a fraction of a second.
+
+A tool call made from a script (Claude Code Code Mode) gets no context: a
+script may make hundreds of calls and each context block is put into the
+model's context beside the script's result. And the hook ends itself, silently
+and with exit code 0, when it has not answered within BUDGET_SECONDS: Claude
+Code refuses a call made from code when a matching hook does not finish.
 """
 from __future__ import annotations
 
@@ -31,6 +37,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Optional, Union
@@ -55,6 +62,13 @@ NO_GRAPH_HINT = ("no Wingbox graph here yet: run `wingbox build` in this reposit
                  "then impact / usages / layers answer from it")
 
 CONTEXT_LIMIT = 1500
+# Observed on Claude Code 2.1.327 with Code Mode, 2026-11-18 (not documented): a tool call made from a script
+# has a tool_use_id that starts with "repl_"; a call the model makes itself has "toolu_...". An absent id or
+# any other form is treated as a call the model made itself.
+CODE_CALL_ID_PREFIX = "repl_"
+# Claude Code gives the hook 10 s (install.HOOK_TIMEOUT_SECONDS). A hook that has not finished by then lets a
+# direct call run, but refuses a call made from code; so the hook stops itself well before that.
+BUDGET_SECONDS = 5.0
 _SHOWN_MODULES = 6
 _SHOWN_DEFINITIONS = 6
 _RANKED_CANDIDATES = 40  # best name matches whose dependents are counted to order the answer
@@ -485,7 +499,15 @@ def no_graph_context(payload: object, start: str) -> str:
     return f"(wingbox-no-graph :root {atom(Path(root).as_posix())} :hint {atom(NO_GRAPH_HINT)})"
 
 
+def is_call_from_code(payload: object) -> bool:
+    """True for a tool call that a script made (Code Mode), judged by the form of its tool_use_id."""
+    call_id = payload.get("tool_use_id") if isinstance(payload, dict) else None
+    return isinstance(call_id, str) and call_id.startswith(CODE_CALL_ID_PREFIX)
+
+
 def context_for(payload: object, cwd: str) -> str:
+    if is_call_from_code(payload):
+        return ""
     query, start = read_query(payload, cwd)
     if query is None:
         return ""
@@ -560,11 +582,17 @@ def main(args: list[str]) -> int:
         print("usage: wingbox hook pre-search|dirty|session-start|git  (reads the Claude Code hook input on stdin)",
               file=sys.stderr)
         return 0
+    # Out of time: end the process at once, with nothing printed and exit code 0 (the tool call then runs).
+    out_of_time = threading.Timer(BUDGET_SECONDS, os._exit, args=(0,))
+    out_of_time.daemon = True
+    out_of_time.start()
     try:
         output = run_pre_search(sys.stdin.read(), os.getcwd())
     except Exception as error:  # the hook must never block or break the tool call
         print(f"[wingbox] hook pre-search: {type(error).__name__}: {error}", file=sys.stderr)
         return 0
+    finally:
+        out_of_time.cancel()   # an answer that is ready is printed whole
     if output:
         sys.stdout.write(output + "\n")
     return 0

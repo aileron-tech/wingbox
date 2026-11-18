@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-18 - Search hook: no context for calls made from a script, and a time budget of its own
+
+### Changes
+- `src/wingbox/hook.py`: `is_call_from_code` (a tool_use_id that starts with `repl_`, as observed on Claude Code 2.1.327 with Code Mode; an absent id or any other form is a direct call). For such a call `context_for` returns nothing and does no graph work (no search for the graph, no freshness check or refresh, no read). `main` starts a timer of `BUDGET_SECONDS` (5 s, half of the 10 s Claude Code gives the hook) that ends the process with exit code 0 and nothing printed; it is cancelled before an answer is printed, so an answer is never cut.
+- Tests `tests/test_hook_code_calls.py`, REQ-INSTALL-040..043: no context and zero graph work for a call from code (calls counted); context kept for `toolu_...`, an absent id, an unknown form, a non-text id; a stuck hook ends with exit code 0 and empty stdout; a ready answer of 5,000 characters is printed whole.
+
+### Motivation
+- Measured in three Code Mode sessions (Claude Code 2.1.327, claude-opus-5-5, a graph of 707 files): hooks run for every tool call a script makes (60 Grep calls: 60 PreToolUse and 60 PostToolUse runs); each context block is delivered to the model beside the script's result, at most 50 per run of code, 23,272 characters for the 60 calls; and a hook that does not finish within its timeout refuses the call ("the hook did not finish, so this call was not run"), which does not happen to a direct call. The answer once per script (from the code of the REPL call) comes with the batch `impact` in 0.11.0.
 ## 2026-11-18 - `impact` does less work per call (issue #106)
 
 ### Changes
