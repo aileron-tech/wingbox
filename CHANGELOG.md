@@ -15,6 +15,9 @@
   it is renamed back. CI installs the checkout with uv pip, `uv tool`, pip and pipx on Windows,
   macOS and Linux and updates each one through its own `wingbox` program.
 
+Thanks to @just4just2, who tested 0.9.1 on Windows 11 in live sessions and reported this with the
+exact errors ([#48](https://github.com/aileron-tech/wingbox/issues/48)).
+
 ## 0.9.1 - 2026-11-17
 
 ### Fixes

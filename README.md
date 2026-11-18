@@ -1462,6 +1462,15 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 - [Roadmap](https://github.com/aileron-tech/wingbox/blob/main/ROADMAP.md)
 - [Completion log](https://github.com/aileron-tech/wingbox/blob/main/LOG.md)
 
+## Thanks
+
+- [just4just2](https://github.com/just4just2) asked for native Windows support
+  and has tested each release since on Windows 11, in live Claude Code sessions
+  ([issue #48](https://github.com/aileron-tech/wingbox/issues/48)): the hooks
+  without Git Bash, the console window of the background refresh, a
+  `wingbox update` that replaces its own `wingbox.exe`. Every Windows fix from
+  0.7.0 to 0.9.2 started with one of those reports.
+
 ## License
 
 MIT
