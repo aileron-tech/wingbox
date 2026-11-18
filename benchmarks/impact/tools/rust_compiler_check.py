@@ -37,6 +37,13 @@ classified by how it is written:
     attribute         a name inside an attribute (`#[derive(Local)]`)
     visibility        the path of `pub(in path)`, `pub(super)`
     module-unresolved a module followed by a name that did not resolve (code of an inactive cfg)
+Decision of 2026-11-18 on `use crate::name;` where name is a `#[macro_export]` macro: the path names the crate
+root and the macro. The reference requires the file that defines the macro and accepts the crate root file
+without requiring it (an exported macro lives at the crate root whatever the root file contains). This check
+reports such a name as a `module` edge to the root file, so it is listed under
+compiler_counted_missing_in_reference: 18 pairs on claudes-c-compiler (`use crate::emit;` and
+`use crate::delegate_to_impl;`, all to src/lib.rs), 0 on agent-browser. No reference list depends on them.
+
 A symbol two crates of one package define under the same name (a helper each integration test declares) has
 no single definition; a name that resolves to it in a file that does not define it is counted as ambiguous.
 """
