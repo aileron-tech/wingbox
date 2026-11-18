@@ -100,6 +100,20 @@ class ImpactWorkTest(unittest.TestCase):
         self.assertEqual("through src/billing/invoice.ts (or 1 other file): imports it", row(after, "src/api/handler.ts"))
         self.assertLessEqual(resolved.call_count, len(fresh.nodes) + 1, f"{resolved.call_count} link resolutions for {len(fresh.nodes)} files")
 
+    def test_a_graph_made_in_memory_and_moved_gives_the_file_of_its_folder(self) -> None:
+        """/* REQ-CS-083: a graph object that was not read from a file names files too, and when its project folder
+        is set to another one the file of a module is worked out for that folder, not remembered from the first. */"""
+        graph = code_graph_search.CodeGraph()
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            for folder in (first, second):
+                (Path(folder) / "src").mkdir()
+            (Path(first) / "src" / "util.ts").write_text("export const a = 1;\n", encoding="utf-8")
+            (Path(second) / "src" / "util.py").write_text("a = 1\n", encoding="utf-8")
+            graph._root = first
+            self.assertEqual("src/util.ts", code_graph_search._impact_file(graph, "src/util"))
+            graph._root = second
+            self.assertEqual("src/util.py", code_graph_search._impact_file(graph, "src/util"))
+
 
 if __name__ == "__main__":
     unittest.main()

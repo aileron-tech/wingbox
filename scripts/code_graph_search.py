@@ -551,6 +551,7 @@ class CodeGraph:
         self._use_pairs: Optional[dict[str, set[str]]] = None
         self._uses_file_read = False
         self._map_path = ""
+        self._module_files: dict[tuple[str, str], str] = {}  # (root, module) -> file, worked out once
         self.pmap: dict[str, str] = {}
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self.arch_parts: dict[str, dict[str, str]] = {}   # part -> keyword values of its arch-part fact
@@ -1467,7 +1468,8 @@ def impact_fact(g: CodeGraph, root_id: str, row: ImpactRow, depth: int) -> str:
 
 def _impact_file(g: CodeGraph, module_id: str) -> str:
     """File of a module relative to the graph root; the module ID when it is not on disk."""
-    known = g._module_files.get(module_id)
+    key = (g._root or "", module_id)
+    known = g._module_files.get(key)
     if known is not None:
         return known
     path = g.module_to_file(module_id)
@@ -1475,7 +1477,7 @@ def _impact_file(g: CodeGraph, module_id: str) -> str:
         relative = portable.relative_posix(path, g._root)
         if relative is not None:
             path = relative
-    g._module_files[module_id] = path
+    g._module_files[key] = path
     return path
 
 
