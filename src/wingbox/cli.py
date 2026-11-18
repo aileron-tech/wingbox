@@ -47,6 +47,7 @@
     wingbox hook git                        The PostToolUse hook on Bash: after git switch, checkout, pull,
                                             merge, rebase, reset or stash pop, refreshes in the background
     wingbox mcp [--root DIR]                Run the MCP server on stdio for an MCP client (default: current directory)
+    wingbox mcp --http [--host A] [--port N]  The same server over HTTP, for an agent on another machine (pip install "wingbox[http]")
     wingbox --version
 
 Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared

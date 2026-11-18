@@ -40,6 +40,7 @@ this file applies to you.
   carries `/* REQ-<PREFIX>-<n>: <behaviour> */`; take the next free number of
   the prefix (`CS` search commands, `CLI` the `wingbox` command, `INSTALL`
   install, uninstall and the search hook, `UPDATE`, `MCP` the MCP server,
+  `HTTP` its HTTP transport in `packages/wingbox-http`,
   `PLUGIN` the plugins and their tools, `OUT` the report and the map page,
   `BENCH` the benchmarks, `SEC` the local-only guarantees, `DARTACC` and
   `DARTLAYER` the Dart acceptance harness and the Flutter purpose and layer

@@ -1109,8 +1109,9 @@ source files it analyzes.
 
 `wingbox mcp` runs Wingbox as an MCP (Model Context Protocol) server: the
 client starts the command, sends JSON-RPC requests on its standard input and
-reads the answers on its standard output. The transport is stdio only: no
-port, no network. Logs go to standard error. Every tool carries MCP
+reads the answers on its standard output. This command uses stdio only: no
+port, no network. To call the server from another machine, see
+[Over HTTP, from another machine](#over-http-from-another-machine). Logs go to standard error. Every tool carries MCP
 annotations: a title, and read-only for every tool except `build`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
@@ -1191,6 +1192,56 @@ prints the first):
 
 Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 (`"command": "uvx", "args": ["wingbox", "mcp", ...]`).
+
+### Over HTTP, from another machine
+
+When the repository and its graph live on a build server, a dev container or
+a remote workstation and the agent runs somewhere else, serve the same tools
+over the Streamable HTTP transport of MCP:
+
+```bash
+pip install "wingbox[http]"          # or: pipx inject wingbox wingbox-http
+
+export WINGBOX_HTTP_TOKEN="$(openssl rand -hex 32)"
+wingbox mcp --http --root /path/to/project --host 0.0.0.0 --port 8765 \
+  --tls-cert fullchain.pem --tls-key privkey.pem
+```
+
+Then, where the agent runs:
+
+```bash
+# Claude Code
+claude mcp add --transport http wingbox https://host.example:8765/mcp \
+  --header "Authorization: Bearer $WINGBOX_HTTP_TOKEN"
+
+# Codex
+codex mcp add wingbox --url https://host.example:8765/mcp --bearer-token-env-var WINGBOX_HTTP_TOKEN
+```
+
+The transport is a package of its own,
+[`wingbox-http`](https://github.com/aileron-tech/wingbox/tree/main/packages/wingbox-http):
+`wingbox` itself holds no listening code, and `wingbox mcp --http` without the
+package only says how to install it. The package uses the Python standard
+library, listens and answers, and opens no connection of its own.
+
+- Without `--host` the server listens on `127.0.0.1` only and asks for no
+  token: use that with an SSH tunnel or a reverse proxy that checks who calls.
+- Any other address is refused without a token of at least 32 characters, from
+  `WINGBOX_HTTP_TOKEN` or `--token-file FILE`. Clients send it as
+  `Authorization: Bearer <token>`; it is never read from the command line and
+  never logged.
+- `--tls-cert` and `--tls-key` serve HTTPS. Without them the token travels
+  unencrypted: keep the port inside a private network or behind a TLS proxy.
+- A browser request from a foreign origin is answered 403 (`--allow-origin`
+  adds one). `GET` and `DELETE` are answered 405: the server keeps no session
+  and opens no stream of its own.
+- A call that runs longer than a second, such as `build` on a large
+  repository, is answered as an event stream with a keep-alive line every ten
+  seconds, so an idle timeout on the way does not cut it.
+
+Whoever holds the token can read the code graph of the repository and start a
+`build`, which writes `.wingbox/` there; no tool runs a command, reads outside
+the repository or deletes anything.
 
 ## Common code searches
 

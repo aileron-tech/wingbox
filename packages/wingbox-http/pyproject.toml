@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wingbox-http"
+version = "0.12.0"
+description = "Streamable HTTP transport for the Wingbox MCP server: call the code graph of a repository from another machine."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Aileron Technologies" }]
+keywords = ["mcp", "mcp-server", "streamable-http", "code-graph", "impact-analysis", "wingbox"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+# The version follows wingbox, and each release requires exactly its own wingbox (REQ-HTTP-021).
+dependencies = ["wingbox==0.12.0"]
+
+[project.urls]
+Homepage = "https://wingbox.dev"
+Repository = "https://github.com/aileron-tech/wingbox"
+Documentation = "https://github.com/aileron-tech/wingbox#over-http-from-another-machine"
+Issues = "https://github.com/aileron-tech/wingbox/issues"
+
+[project.scripts]
+wingbox-http = "wingbox_http:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wingbox_http"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml"]
