@@ -305,14 +305,42 @@ def _print_invalid_pattern(raw: str, error: str) -> None:
 # S-expression line parser
 # ---------------------------------------------------------------------------
 
+# One token of a fact line that holds no backslash: a quoted value (to its closing quote, or to the end of the
+# line), a list with no quote and no list inside, a bare word, or a bracket that opens anything else.
+_TOKEN = re.compile(r'"([^"]*)(?:"|$)|(\([^()"]*\))|([^ ()"][^ )]*)|(\()')
+
+
+def _fact_body(line: str) -> Optional[str]:
+    """What stands between the outer brackets of a fact line; None for a comment, an empty line, anything else."""
+    line = line.strip()
+    if not line or line.startswith(";") or not line.startswith("(") or not line.endswith(")"):
+        return None
+    return line[1:-1]
+
+
 def tokenize(line: str) -> list[str]:
     """Tokenize a single-line S-expression into a flat list of tokens."""
-    line = line.strip()
-    if not line or line.startswith(";"):
+    inner = _fact_body(line)
+    if inner is None:
         return []
-    if not line.startswith("(") or not line.endswith(")"):
-        return []
-    inner = line[1:-1]
+    if "\\" in inner:
+        return _tokens_one_by_one(inner)
+    tokens: list[str] = []
+    for match in _TOKEN.finditer(inner):
+        kind = match.lastindex
+        if kind == 4:   # a list holding a quote or another list, or one that never closes
+            return _tokens_one_by_one(inner)
+        tokens.append(match.group(kind) if kind else "")
+    return tokens
+
+
+def tokenize_reference(line: str) -> list[str]:
+    """The tokens of a line read one character at a time: what `tokenize` must return for every line."""
+    inner = _fact_body(line)
+    return [] if inner is None else _tokens_one_by_one(inner)
+
+
+def _tokens_one_by_one(inner: str) -> list[str]:
     tokens: list[str] = []
     i = 0
     while i < len(inner):
@@ -562,6 +590,7 @@ class CodeGraph:
         self._use_pairs = None
         self._uses_file_read = False
         self._map_path = path
+        self._module_files = {}
         self.pmap = {}
         self.package_layers = {}
         self.arch_parts = {}
@@ -1181,6 +1210,14 @@ _PURPOSE_TO_LAYER: dict[str, str] = {
 }
 
 
+def _within(word: str, keyword: str, threshold: int) -> int:
+    """The edit distance of two words, or threshold + 1 when their lengths alone put it above the threshold."""
+    if abs(len(word) - len(keyword)) > threshold:
+        return threshold + 1
+    return _levenshtein(word, keyword)
+
+
+@functools.lru_cache(maxsize=None)
 def _classify_layer_by_purpose(purpose: str) -> str:
     """Classify layer from the module's purpose string using fuzzy matching.
 
@@ -1213,7 +1250,7 @@ def _classify_layer_by_purpose(purpose: str) -> str:
             for pw in purpose_words:
                 if len(pw) < 4:
                     continue
-                dist = _levenshtein(pw, kw)
+                dist = _within(pw, kw, threshold)
                 if dist <= threshold and dist < best_dist:
                     best_dist = dist
                     best_layer = layer
@@ -1430,11 +1467,15 @@ def impact_fact(g: CodeGraph, root_id: str, row: ImpactRow, depth: int) -> str:
 
 def _impact_file(g: CodeGraph, module_id: str) -> str:
     """File of a module relative to the graph root; the module ID when it is not on disk."""
+    known = g._module_files.get(module_id)
+    if known is not None:
+        return known
     path = g.module_to_file(module_id)
     if g._root and os.path.isabs(path):
         relative = portable.relative_posix(path, g._root)
         if relative is not None:
-            return relative
+            path = relative
+    g._module_files[module_id] = path
     return path
 
 

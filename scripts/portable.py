@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import multiprocessing
 import ntpath
+import functools
 import os
 import posixpath
 import re
@@ -193,11 +194,22 @@ def local_path(text: str, windows: bool = WINDOWS) -> str:
     return text
 
 
+@functools.lru_cache(maxsize=16)
+def _resolved_root(root: str) -> str:
+    """The project folder with its links resolved: asked once per file of a graph, worked out once."""
+    return os.path.realpath(local_path(root))
+
+
+def forget_resolved_roots() -> None:
+    """Drop the remembered folders (a test that moves a link, a server that runs for days)."""
+    _resolved_root.cache_clear()
+
+
 def relative_posix(path: str, root: str) -> Optional[str]:
     """path relative to root written with /, "" for root itself, None outside root (a parent, a sibling, another
     drive). Links are resolved first; on Windows the comparison ignores case, as the file system does."""
     try:
-        relative = os.path.relpath(os.path.realpath(local_path(path)), os.path.realpath(local_path(root)))
+        relative = os.path.relpath(os.path.realpath(local_path(path)), _resolved_root(root))
     except ValueError:   # another drive on Windows
         return None
     if relative == os.pardir or relative.startswith(os.pardir + os.sep) or os.path.isabs(relative):
