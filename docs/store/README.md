@@ -36,7 +36,7 @@ directory (claude.ai, Cowork, Claude Code) and in the OpenAI plugin directory
 
 Long description:
 
-> Give your coding agent a map of your codebase. Half the cost, no missed files.
+> Give your coding agent a map of your codebase. 2-4x cheaper, no missed files.
 > Wingbox builds a graph of the repository you work in and answers from it before the agent reads source
 > files: what a change will break, two hops away and across packages (blast
 > radius); who uses a file, function or type; where a feature is implemented;

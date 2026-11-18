@@ -26,7 +26,7 @@ REPO = Path(__file__).resolve().parents[1]
 ICON = REPO / "plugins" / "wingbox" / "assets" / "icon.png"
 FIXED_TIME = (2026, 1, 1, 0, 0, 0)  # same bytes for the same files
 MANIFEST_VERSION = "0.4"           # the first version with the `uv` server type
-SLOGAN = "Give your coding agent a map of your codebase. Half the cost, no missed files."
+SLOGAN = "Give your coding agent a map of your codebase. 2-4x cheaper, no missed files."
 SHORT_DESCRIPTION = "A map of your codebase for coding agents: what a change touches, where a symbol is used."
 LONG_DESCRIPTION = f"""{SLOGAN}
 

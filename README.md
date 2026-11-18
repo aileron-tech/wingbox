@@ -4,10 +4,10 @@
 
 ![Wingbox: the code graph of a repository drawn as the structure of an aircraft wing, with the blast radius of one change highlighted](https://raw.githubusercontent.com/aileron-tech/wingbox/main/docs/assets/wingbox-social-preview.png)
 
-> **Give your coding agent a map of your codebase. Half the cost, no missed files.**
+> **Give your coding agent a map of your codebase. 2-4x cheaper, no missed files.**
 >
 > Your agent sees every file a change touches before it edits, so it no longer
-> forgets a fix. Half the cost of its own search: [benchmarks](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md).
+> forgets a fix. 2-4x cheaper per answer than its own search or another code-graph tool: [benchmarks](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md).
 >
 > Wingbox builds a local **code graph** (a code knowledge graph made by static
 > parsing, with no model) of your repository so that AI coding
