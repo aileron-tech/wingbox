@@ -12,6 +12,8 @@
 ### Motivation
 - Issue #48, report of 2026-11-18 on 0.9.1 with Windows 11: Windows does not allow overwriting or deleting a running program. `uv pip` failed to remove `Scripts\wingbox.exe` (os error 32) and the version stayed; `uv tool upgrade` upgraded the package, failed to copy the new launcher over `bin\wingbox.exe`, and the refresh of skills and hooks was skipped.
 - The check was pushed first, without the fix (run 44261657441): green on Linux and macOS, and on windows-latest all four installers failed, uv pip and `uv tool` with the two errors of the report, pip and pipx in the same place (`Check the permissions.`, pipx's upgrade command failed).
+- With the fix (run 44264429813) the nine cells are green: on windows-latest uv pip, `uv tool`, pip and pipx each update 98.0.0 to 99.0.0 through their own wingbox.exe, refresh the skill and leave nothing beside the program. pipx there links the program into its bin folder, which is why the link and its target are both renamed.
+- `README.md` has a Thanks section and the changelog a line for the reporter, at the maintainer's word.
 
 ## 2026-11-17 - Version 0.9.1: Homebrew installs, and a Python reference that counts modules loaded by name
 
