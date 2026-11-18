@@ -1605,7 +1605,7 @@ def _update_command(rest: list[str]) -> int:
         installed = []
     python = sys.executable
     package_parent = os.path.dirname(_PACKAGE_DIR)
-    launcher = update.running_launcher(sys.argv[0], os.name == "nt")
+    launchers = update.running_launchers(sys.argv[0], os.name == "nt")
     detached = update.detached_options()
     environment = update.Environment(
         origin=_package_origin(),
@@ -1618,7 +1618,7 @@ def _update_command(rest: list[str]) -> int:
         refresh=lambda entry: update.refresh_installed(python, package_parent, entry),
         has_pip=update.has_pip(),
         upgrade=lambda command: update.upgrade_past_launcher(
-            command, launcher, update.run_installer, lambda path: update.start_removal(python, path, detached)
+            command, launchers, update.run_installer, lambda path: update.start_removal(python, path, detached)
         ),
     )
     facts = update.update(options, environment)

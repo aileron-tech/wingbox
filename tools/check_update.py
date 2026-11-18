@@ -138,7 +138,8 @@ def check(case: Case, skill: Path, env: dict[str, str], cwd: Path) -> None:
     skill.write_text(OUTDATED, encoding="utf-8")
     first = run([str(case.program), "update", "--sexp"], env, cwd)
     if first.returncode != 0:
-        raise Failed(f"wingbox update exited with {first.returncode}:\n{first.stdout}{first.stderr}")
+        kind = f"a link to {os.path.realpath(case.program)}" if case.program.is_symlink() else "a file"
+        raise Failed(f"wingbox update exited with {first.returncode} ({case.program} is {kind}):\n{first.stdout}{first.stderr}")
     method = f'(update-method "{case.name}")' if " " in case.name else f"(update-method {case.name})"
     for expected in (method, f"(update-to {NEW})", "(update-refreshed "):
         if expected not in first.stdout:

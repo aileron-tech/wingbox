@@ -343,19 +343,26 @@ class NoPipTest(unittest.TestCase):
 
 class RunningLauncherTest(unittest.TestCase):
     def test_the_launcher_is_named_only_on_windows_and_only_for_wingbox_exe(self) -> None:
-        """/* REQ-UPDATE-013: on Windows `wingbox update` must name the wingbox.exe it was started through from sys.argv[0], which a console-script launcher sets to its own path with or without the `.exe` ending; started as `python -m wingbox.cli`, through a file of another name, through a path that does not exist, or on another system it names none. */"""
+        """/* REQ-UPDATE-013: on Windows `wingbox update` must name the wingbox.exe it was started through from sys.argv[0], which a console-script launcher sets to its own path with or without the `.exe` ending, and when that file is a link (pipx links the program into its bin folder) also the file it points at; started as `python -m wingbox.cli`, through a file of another name, through a path that does not exist, or on another system it names none. */"""
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp).resolve()
             (folder / "wingbox.exe").write_bytes(b"launcher")
             (folder / "other.exe").write_bytes(b"launcher")
             (folder / "cli.py").write_text("", encoding="utf-8")
-            expected = str(folder / "wingbox.exe")
-            self.assertEqual(expected, update.running_launcher(str(folder / "wingbox"), True))
-            self.assertEqual(expected, update.running_launcher(str(folder / "wingbox.exe"), True))
-            self.assertIsNone(update.running_launcher(str(folder / "wingbox"), False))
-            self.assertIsNone(update.running_launcher(str(folder / "cli.py"), True))
-            self.assertIsNone(update.running_launcher(str(folder / "other"), True))
-            self.assertIsNone(update.running_launcher(str(folder / "missing" / "wingbox"), True))
+            expected = (str(folder / "wingbox.exe"),)
+            self.assertEqual(expected, update.running_launchers(str(folder / "wingbox"), True))
+            self.assertEqual(expected, update.running_launchers(str(folder / "wingbox.exe"), True))
+            self.assertEqual((), update.running_launchers(str(folder / "wingbox"), False))
+            self.assertEqual((), update.running_launchers(str(folder / "cli.py"), True))
+            self.assertEqual((), update.running_launchers(str(folder / "other"), True))
+            self.assertEqual((), update.running_launchers(str(folder / "missing" / "wingbox"), True))
+            link = folder / "bin" / "wingbox.exe"
+            link.parent.mkdir()
+            try:
+                link.symlink_to(folder / "wingbox.exe")
+            except OSError as error:
+                self.skipTest(f"this account may not create links: {error}")
+            self.assertEqual((str(link), str(folder / "wingbox.exe")), update.running_launchers(str(link.with_suffix("")), True))
 
 
 class UpgradePastLauncherTest(unittest.TestCase):
@@ -382,7 +389,7 @@ class UpgradePastLauncherTest(unittest.TestCase):
             self.launcher.write_bytes(b"new launcher")
             return update.Ran(0, "upgraded")
 
-        upgraded = update.upgrade_past_launcher(("uv", "tool", "upgrade", "wingbox"), str(self.launcher), installer, self.remove_later)
+        upgraded = update.upgrade_past_launcher(("uv", "tool", "upgrade", "wingbox"), (str(self.launcher),), installer, self.remove_later)
         self.assertEqual([False], seen)
         self.assertEqual(update.Upgraded(update.Ran(0, "upgraded")), upgraded)
         self.assertEqual(b"new launcher", self.launcher.read_bytes())
@@ -395,14 +402,41 @@ class UpgradePastLauncherTest(unittest.TestCase):
         for status in (0, 1):
             with self.subTest(status=status):
                 upgraded = update.upgrade_past_launcher(
-                    ("pipx", "upgrade", "wingbox"), str(self.launcher), lambda command: update.Ran(status, "said"), self.remove_later)
+                    ("pipx", "upgrade", "wingbox"), (str(self.launcher),), lambda command: update.Ran(status, "said"), self.remove_later)
                 self.assertEqual(update.Upgraded(update.Ran(status, "said")), upgraded)
                 self.assertEqual(b"old launcher", self.launcher.read_bytes())
                 self.assertEqual([], self.others())
                 self.assertEqual([], self.removed_later)
-        ran = update.upgrade_past_launcher(("pipx", "upgrade", "wingbox"), None, lambda command: update.Ran(0, "said"), self.remove_later)
+        ran = update.upgrade_past_launcher(("pipx", "upgrade", "wingbox"), (), lambda command: update.Ran(0, "said"), self.remove_later)
         self.assertEqual(update.Upgraded(update.Ran(0, "said")), ran)
         self.assertEqual(b"old launcher", self.launcher.read_bytes())
+
+    def test_a_linked_launcher_and_the_file_it_points_at_are_both_replaced(self) -> None:
+        """/* REQ-UPDATE-019: when the wingbox.exe on PATH is a link to the launcher inside the environment (pipx, where Windows allows links), both paths must be free while the installer runs: the installer writes the new launcher and the new link, both old files are handed to the removal, and when the installer writes neither, both are renamed back and the link still leads to the launcher. */"""
+        link = self.folder / "bin" / "wingbox.exe"
+        link.parent.mkdir()
+        try:
+            link.symlink_to(self.launcher)
+        except OSError as error:
+            self.skipTest(f"this account may not create links: {error}")
+        both = (str(link), str(self.launcher))
+        seen: list[bool] = []
+
+        def installer(command: tuple[str, ...]) -> update.Ran:
+            seen.extend([os.path.lexists(link), os.path.lexists(self.launcher)])
+            self.launcher.write_bytes(b"new launcher")
+            link.symlink_to(self.launcher)
+            return update.Ran(0, "upgraded")
+
+        untouched = update.upgrade_past_launcher(("pipx", "upgrade", "wingbox"), both, lambda command: update.Ran(0, "nothing to upgrade"), self.remove_later)
+        self.assertEqual(update.Upgraded(update.Ran(0, "nothing to upgrade")), untouched)
+        self.assertEqual([], self.removed_later)
+        self.assertEqual(b"old launcher", link.read_bytes())
+        upgraded = update.upgrade_past_launcher(("pipx", "upgrade", "wingbox"), both, installer, self.remove_later)
+        self.assertEqual(update.Upgraded(update.Ran(0, "upgraded")), upgraded)
+        self.assertEqual([False, False], seen)
+        self.assertEqual(b"new launcher", link.read_bytes())
+        self.assertEqual(sorted([str(link.parent), str(self.folder)]), sorted(os.path.dirname(path) for path in self.removed_later))
 
     def test_what_the_launcher_step_reports_is_part_of_the_answer(self) -> None:
         """/* REQ-UPDATE-016: `wingbox update` must print what the launcher step reports: `(update-left <file> :reason ...)` when the removal of the old launcher could not be started, after which the upgrade still counts as done and the installs are refreshed. */"""
@@ -416,7 +450,7 @@ class UpgradePastLauncherTest(unittest.TestCase):
         stubs.add("pipx", PIPX_LIST)
         env = environment([entry], refreshed, prefix=stubs.pipx_env)
         env = update.Environment(**{**env.__dict__, "upgrade": lambda command: update.upgrade_past_launcher(
-            command, str(self.launcher), installer, lambda path: "no interpreter")})
+            command, (str(self.launcher),), installer, lambda path: "no interpreter")})
         result = update.update(update.Options(False, False, False), env)
         self.assertEqual(0, update.exit_status(result), result)
         heads = [fact.head for fact in result]
@@ -453,7 +487,8 @@ try:
     importlib.metadata.version("wingbox")   # `wingbox update` reads the installed version this way
 except importlib.metadata.PackageNotFoundError:
     pass
-launcher = update.running_launcher(sys.argv[0], True)
+launchers = update.running_launchers(sys.argv[0], True)
+[launcher] = launchers
 
 def installer(command):
     with open(launcher, "wb") as out:
@@ -461,7 +496,7 @@ def installer(command):
     return update.Ran(0, "upgraded")
 
 detached = update.detached_options()
-upgraded = update.upgrade_past_launcher(("installer", "upgrade"), launcher, installer,
+upgraded = update.upgrade_past_launcher(("installer", "upgrade"), launchers, installer,
                                         lambda path: update.start_removal(sys.executable, path, detached))
 print(json.dumps({{"launcher": launcher, "status": upgraded.ran.status, "notes": [fact.head for fact in upgraded.notes]}}))
 """

@@ -15,7 +15,8 @@ when asked; that installer reaches the package index.
 On Windows the `wingbox` program is wingbox.exe, a launcher that keeps running
 until Python ends, and Windows lets nobody overwrite or delete a running
 program. For the time of the upgrade `wingbox update` closes its own handle on
-the launcher it was started through and renames it, so the installer can put the new one in its place; the old
+the launcher it was started through and renames it (and the file it links to,
+when pipx made it a link), so the installer can put the new one in its place; the old
 file is removed when the command has ended, and renamed back when the installer
 wrote no new launcher (nothing to upgrade, or the installer failed).
 
@@ -369,17 +370,20 @@ _REMOVE_WHEN_FREE = (
 _REMOVALS: list["subprocess.Popen"] = []
 
 
-def running_launcher(argv0: str, windows: bool) -> Optional[str]:
-    """The wingbox.exe this process was started through, on Windows; None elsewhere and for `python -m wingbox.cli`.
+def running_launchers(argv0: str, windows: bool) -> tuple[str, ...]:
+    """The wingbox.exe this process was started through, on Windows: its path, and the file it points at when
+    it is a link (pipx links the program into its bin folder where Windows allows links, and the running
+    program is then the file inside the environment). Empty elsewhere and for `python -m wingbox.cli`.
 
     A console-script launcher (pip, pipx, uv) runs Python with its own path as the script, and the script
     drops the `.exe` ending from sys.argv[0]."""
     if not windows:
-        return None
+        return ()
     path = argv0 if argv0.lower().endswith(".exe") else argv0 + ".exe"
     if os.path.basename(path).lower() != LAUNCHER or not os.path.isfile(path):
-        return None
-    return os.path.abspath(path)
+        return ()
+    path = os.path.abspath(path)
+    return (path, os.path.realpath(path)) if os.path.islink(path) else (path,)
 
 
 def close_archive_handles() -> None:
@@ -418,33 +422,41 @@ def start_removal(python: str, path: str, detached: dict) -> Optional[str]:
 
 
 def upgrade_past_launcher(
-    command: tuple[str, ...], launcher: Optional[str], run: Runner,
+    command: tuple[str, ...], launchers: tuple[str, ...], run: Runner,
     remove_later: Callable[[str], Optional[str]],
 ) -> Upgraded:
     """Run the upgrade with the running launcher renamed, so the installer can write the new one in its place.
 
     Windows refuses to overwrite or delete a running program and allows renaming it, once this process holds
-    the file open no more (close_archive_handles). After the run: a new
-    launcher in place means the old file goes (remove_later removes it when this command has ended); no
-    launcher in place (nothing to upgrade, or the installer failed) means the old one is renamed back."""
-    if launcher is None:
+    the file open no more (close_archive_handles). After the run, for each renamed file: a new one in its
+    place means the old file goes (remove_later removes it when this command has ended); none in its place
+    (nothing to upgrade, or the installer failed) means the old one is renamed back."""
+    if not launchers:
         return Upgraded(run(command))
-    aside = f"{launcher}.{os.getpid()}.old"
     close_archive_handles()
-    try:
-        os.rename(launcher, aside)
-    except OSError as error:
-        # The installer runs as before and reports what it could not replace.
-        return Upgraded(run(command), (make_fact("update-launcher-in-place", launcher, reason=str(error)),))
+    moved: list[tuple[str, str]] = []
+    notes: list[Fact] = []
+    for path in launchers:
+        aside = f"{path}.{os.getpid()}.old"
+        try:
+            os.rename(path, aside)
+        except OSError as error:
+            # The installer runs as before and reports what it could not replace.
+            notes.append(make_fact("update-launcher-in-place", path, reason=str(error)))
+        else:
+            moved.append((path, aside))
     ran = run(command)
-    if os.path.exists(launcher):
-        failure = remove_later(aside)
-        return Upgraded(ran, () if failure is None else (make_fact("update-left", aside, reason=failure),))
-    try:
-        os.rename(aside, launcher)
-    except OSError as error:
-        return Upgraded(Ran(ran.status or 1, f"{ran.output}\n{launcher} is now {aside}: could not rename it back: {error}"))
-    return Upgraded(ran)
+    for path, aside in moved:
+        if os.path.lexists(path):
+            failure = remove_later(aside)
+            if failure is not None:
+                notes.append(make_fact("update-left", aside, reason=failure))
+            continue
+        try:
+            os.rename(aside, path)
+        except OSError as error:
+            ran = Ran(ran.status or 1, f"{ran.output}\n{path} is now {aside}: could not rename it back: {error}")
+    return Upgraded(ran, tuple(notes))
 
 
 def read_new_version(python: str) -> str:
