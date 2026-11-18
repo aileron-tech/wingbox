@@ -104,6 +104,50 @@ class PortableTest(unittest.TestCase):
             with open(path, encoding="utf-8") as handle:
                 self.assertEqual(builder.GITIGNORE_TEXT, handle.read())
 
+    def test_the_worker_count_follows_the_jobs_setting(self) -> None:
+        """/* REQ-PORT-015: portable.worker_count is WINGBOX_JOBS when that is a whole number of at least 1, every processor otherwise (unset, empty, zero, negative, not a number), and never more than the number of tasks */"""
+        with mock.patch.object(portable.os, "cpu_count", return_value=8):
+            for value, expected in (("1", 1), ("3", 3), ("12", 12), ("", 8), ("0", 8), ("-2", 8), ("many", 8), ("1.5", 8)):
+                with mock.patch.dict(os.environ, {portable.JOBS_VARIABLE: value}):
+                    self.assertEqual(expected, portable.worker_count(), value)
+            with mock.patch.dict(os.environ):
+                os.environ.pop(portable.JOBS_VARIABLE, None)
+                self.assertEqual(8, portable.worker_count())
+                self.assertEqual(5, portable.worker_count(5))
+                self.assertEqual(1, portable.worker_count(0))
+            with mock.patch.dict(os.environ, {portable.JOBS_VARIABLE: "2"}):
+                self.assertEqual(2, portable.worker_count(40))
+                self.assertEqual(1, portable.worker_count(1))
+        with mock.patch.object(portable.os, "cpu_count", return_value=None), mock.patch.dict(os.environ):
+            os.environ.pop(portable.JOBS_VARIABLE, None)
+            self.assertEqual(1, portable.worker_count())
+
+    def test_one_job_parses_in_this_process(self) -> None:
+        """/* REQ-PORT-016: with WINGBOX_JOBS=1 the builder parses its files without starting a pool of worker processes */"""
+        sys.path.insert(0, str(REPO))
+        from scripts import build_code_graph as builder
+
+        with tempfile.TemporaryDirectory() as directory:
+            items = []
+            for name in ("a.py", "b.py", "c.py"):
+                path = os.path.join(directory, name)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write("X = 1\n")
+                items.append((path, "python", "repo"))
+            with mock.patch.dict(os.environ, {builder.portable.JOBS_VARIABLE: "1"}), mock.patch.object(builder, "ProcessPoolExecutor") as pool:
+                results = builder.parse_files(items)
+            pool.assert_not_called()
+            self.assertEqual(sorted(path for path, _, _ in items), sorted(result.path for result in results))
+
+    def test_no_code_reads_the_processor_count_but_the_helper(self) -> None:
+        """/* REQ-PORT-017: the processor count is read in one place, portable.worker_count, so WINGBOX_JOBS limits every pool: the build, the incremental build, the use positions and the background refresh */"""
+        readers = []
+        for folder in ("scripts", "src"):
+            for path in sorted((REPO / folder).rglob("*.py")):
+                if "cpu_count" in path.read_text(encoding="utf-8"):
+                    readers.append(path.relative_to(REPO).as_posix())
+        self.assertEqual(["scripts/portable.py"], readers)
+
 
 if __name__ == "__main__":
     unittest.main()

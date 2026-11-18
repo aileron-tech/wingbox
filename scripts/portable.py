@@ -136,6 +136,21 @@ def read_text(path: str) -> Optional[str]:
     return None
 
 
+JOBS_VARIABLE = "WINGBOX_JOBS"
+
+
+def worker_count(tasks: Optional[int] = None) -> int:
+    """How many worker processes a build or a refresh may start: WINGBOX_JOBS when it is a whole number of at
+    least 1, else every processor of the machine; never more than `tasks` when that is given."""
+    available = os.cpu_count() or 1
+    try:
+        limit = int(os.environ.get(JOBS_VARIABLE, ""))
+    except ValueError:
+        limit = available
+    count = limit if limit >= 1 else available
+    return count if tasks is None else max(1, min(count, tasks))
+
+
 def fsync_directory(directory: str) -> None:
     """Make a rename in directory durable where the system allows opening a folder (not on Windows)."""
     if WINDOWS:

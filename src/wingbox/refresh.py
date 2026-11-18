@@ -67,7 +67,7 @@ def refresh(root: str) -> int:
     if state.readable and os.path.isfile(freshness.snapshot_path(root)) and changed:
         update = cli.load_script("graph_update")
         try:
-            updated = update.update_graph(root, changed, fragments_path(root), jobs=os.cpu_count() or 1)
+            updated = update.update_graph(root, changed, fragments_path(root), jobs=cli.load_script("portable").worker_count())
         except Exception as error:  # a failing patch falls back to the build, which reports for itself
             print(f"[wingbox] refresh: partial update failed: {type(error).__name__}: {error}", file=sys.stderr)
             updated = update.UpdateFailed(str(error))
