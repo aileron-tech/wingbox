@@ -1,0 +1,554 @@
+# S-expression Output Notation
+
+Every output line is a self-contained fact. Each fact that references a module
+carries a compact `:lang` value such as `py`, `ts`, `rs`, `php`, `blade`,
+or `rb`.
+
+**Module ID**: relative path from workspace root, no extension, no `/index`. Example: `drive/modules/drive_db/api/drive_db_api.ts` -> `drive/modules/drive_db/api/drive_db_api`. A Blade template drops `.blade.php` (`resources/views/layouts/app.blade.php` -> `resources/views/layouts/app`).
+
+## Raw Graph Facts (in .wingbox/index.sexp)
+
+```scheme
+(node <id> <lang> "<purpose>" :naming <convention> :pkg <repo>)
+(fn <mod> <name> <line> :eid <uuid>)
+(cls <mod> <name> <line> :eid <uuid> (:bases A) (:deco D) (:methods m1 m2))
+(mod <mod> <name> <line> :eid <uuid> (:methods m1 m2))
+(ifc <mod> <name> <line> :eid <uuid> (:methods m1 m2))
+(typ <mod> <name> <line> :eid <uuid>)
+(enm <mod> <name> <line> :eid <uuid>)
+(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:lsp])
+(calls-api <src> <tgt> :via-ifc [:lsp])
+(data-flow <src> <tgt> [:validated] [:pipeline])
+(registry-wires <src> <tgt> [:config <path>])
+(refs <src> <tgt>::<Entity> [:callback] [:lsp])
+(calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
+```
+
+Modules loaded at run time (Python):
+
+- `importlib.import_module("<name>")`, `import_module(".<name>", __package__)`
+  and `__import__("<name>")` with a literal name are `imports`.
+- `registry-wires`: `<src>` loads `<tgt>` by a name it does not spell. The
+  module name is a literal package path and one variable
+  (`f".plugins.{name}"`, `"app.plugins." + name`); the variable is filled with
+  the strings of the JSON, YAML and TOML files in the folder of `<src>`, and
+  each string that names a module of that package is a wire. `:config` is the
+  file that names it.
+- `calls ... :registry`: inside a loop, `<src>::<fn>` calls a method on an
+  object that a module with wires returns for the loop variable
+  (`cls = registry.get(name); obj = cls(); obj.run(x)`); the call goes to each
+  wired module that defines the method. Found from the syntax tree, not by a
+  language server.
+- `data-flow ... :pipeline`: such a call replaces one of its own arguments
+  (`data = stage.process(data, config)`), so each module passes its output to
+  the next one of the same configuration list, in the order of the list.
+  `deps`, `rdeps` and `impact` do not follow it: the next step depends on the
+  previous one through the loop, not the other way round.
+
+Architecture of the parts (written by `wingbox build`; see `wingbox init` below):
+
+```scheme
+(arch-part <part> :style <style> :state <state> :origin detected|config|declared :level system|container|component :kind "<kind>" :files <n> [:source "<citation>"] [:declared "<file>"])
+(arch-deny <part> <from-layer> <to-layer> "<reason>")
+(arch-known <part> <src> <tgt> "<baseline file>")
+(arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix "<text>"])
+(arch-pattern <part> <pattern>)
+(capability <mod> <capability> :line <n> :evidence "<source line>" [:suspect])
+(capability-known <part> <mod> <capability> "<baseline file>")
+(layer <mod> <layer> :part <part> :style <style> :rule "<rule>" :match exact|spelling|synonym|config|file|declared|test|none)
+```
+
+- `<part>` is a folder relative to the repository root, `"."` for the root.
+- `:state`: `determined`, `undetermined` (candidates too close, or too weak),
+  `none` (no layer style), `not-judged` (fewer than 12 source files),
+  `declared` (the part's own rules were read), `declared-unread`, `configured`
+  (from `.wingbox/config.yaml`).
+- `arch-deny`: a boundary rule of the part's style, or, for declared layers,
+  "a layer may not import a higher one". Rules apply between two modules of
+  the same part only.
+- `arch-known`: a pair the project already lists in its own baseline of
+  known exceptions (for example `layers.known-upward-imports.json`).
+- `layer`: `:rule` says what set the layer (`folder routes/ -> api`,
+  `file *.tsx -> ui`, `route file page.* in src/app/`, `<file>: layer core`,
+  `test file`); `:match` says how the folder name matched the style's word.
+
+## init Output
+
+```scheme
+(arch-part <part> :level <c4 level> :kind "<kind>" :files <n> :style <style> :state <state> :origin <origin> [:score 0.81 :coverage 0.47] [:name "<style (author)>"] [:source "<citation>"])
+(arch-evidence <part> <style> "<folder/ or file pattern>" :files <n> :group <group> :match exact|spelling|synonym|file [:via "<word>"])
+(arch-candidate <part> <style> :score 0.34 :coverage 0.20 :status candidate|below :source "<citation>")
+(arch-overlay <part> cqrs :score 0.89 :coverage 0.12)
+(arch-layer <part> <layer> "<folder>" :files <n> :match <step> [:via "<word>"])
+(arch-declared <part> "<file>" :read yes :layers 22)
+(arch-declared <part> "<file>" :read no :reason "<why>")
+(arch-baseline <part> "<file>" :entries 112)
+(arch-target <part> <layer> "<folder>" [:block <id>] :present "<real folder>" | :proposed :source "<citation>")
+(arch-not-judged <part> :files <n> :kind "<kind>")
+(arch-config-written ".wingbox/config.yaml")
+(arch-config-kept ".wingbox/config.yaml" :reason "<why>")
+```
+
+The text that `wingbox init` prints for people is a printer over these facts.
+`arch-evidence` lists the folders (or file patterns) of each detection group of
+the best style with the number of source files below them; `arch-candidate`
+lists the other styles that scored: `:status candidate` passed the thresholds
+(score 0.6, coverage 0.25), `:status below` did not or lost to a style that
+wins over it. `arch-layer` is the folder -> layer mapping
+written to `.wingbox/config.yaml` (`routing-root` for a route-tree frontend).
+`arch-target` is the full layout of the part's style: one folder per layer,
+further folders (use cases, ports) and the domain building blocks (`:block`
+entities, value-objects, aggregates, domain-events, domain-services,
+repository-interfaces, specifications; Evans 2003, Vernon 2013). `:present`
+gives the folder the part already has, `:proposed` marks a folder that would be
+new, at the path the style gives. `init` creates no folder.
+
+## init in an empty folder
+
+```scheme
+(init-languages "typescript javascript python ...")
+(init-choice <n> <style> :language <lang> :from siblings|home|library [:note "same as packages/a"] :name "<style name>" :source "<citation>")
+(init-needs "--language <lang> --style STYLE --yes")
+(init-new-project :language <lang> :style <style> :from "<--style|siblings|home|library>" :config ".wingbox/config.yaml")
+(init-scaffold "<folder>")
+```
+
+Without a terminal `init` prints the choices and exits with 2; `--language`,
+`--style` and `--yes` make it non-interactive. Choices are ordered by
+precedence: siblings (the style of the parts in the same language of the
+repository's `.wingbox/config.yaml`), then the `$HOME/.wingbox/config.yaml`
+favourite (`defaults: {typescript: onion-clean}`), then the library. A style
+file in `$HOME/.wingbox/styles/` replaces the built-in one of the same name.
+`--scaffold` creates the empty folders of the target layout, no file.
+
+## Advice (init, analyze, impact, REPORT.md)
+
+```scheme
+(advice <part> :id <12 hex> :kind move|fix-violation|missing-folder :target "<path>" :style <style> :rule "<rule>" :reason "<what to do>" :evidence "<why>")
+(advice-none <part> :reason "<why there is no advice>")
+```
+
+- `move`: a file that dependents of its own part import against the rules
+  (at least 2, and at least half of its dependents); `:reason` names the
+  nearest layer they may all import, `:evidence` the counts by layer.
+- `fix-violation`: a violation (both layers set by rules) with the fix the
+  style prescribes; a pair the project already lists in its own baseline is
+  not repeated.
+- `missing-folder`: a proposed folder of the target layout.
+- `:id` is stable: a hash of part, kind, target and rule. A part whose style
+  is not determined gets `advice-none`. `analyze` and `impact` print the
+  advice that concerns the module; graph facts `(arch-rank <part> <layer>
+  <rank>)`, `(arch-target ...)` and `:fix` on `arch-deny` feed it.
+
+## Decisions store (.wingbox/decisions.sexp) and `wingbox advice`
+
+```scheme
+(advice-given <id> :part <part> :kind <kind> :target "<path>" :rule "<rule>" [:layer <layer> :destination "<folder>"] :at <date> :graph <hash>)
+(advice-outcome <id> :followed :at <date>)
+(advice-outcome <id> :done-differently :actual "<path or what changed>" :at <date>)
+(build-run :graph <hash> :at <date>)
+(advice-outcome <id> :ignored :runs <n> :at <date>)
+(advice-outcome <id> :accepted :by user :at <date>)
+(advice-outcome <id> :rejected :by user :reason "<why>" :at <date>)
+(learned-layer <part> "<folder>" <layer> :from <id> :at <date>)
+(learned-removed <part> "<folder>" :by config :at <date>)
+```
+
+Only changes of state are logged: one `build-run` per build, new advice,
+outcomes, and `:ignored` once, in the build where an open item reaches 3
+builds (it is hidden from then on; an accepted item never is). With a
+`.wingbox/config.yaml`, the config states the layers: learned folders apply
+only without one, and a learned folder the config does not list is recorded
+as `learned-removed`. An append-only log, written by `wingbox build` and by `wingbox advice
+accept|reject`; commit it to share it. A label that rests on a learned layer
+says so: `(layer <mod> service ... :rule "folder core/ -> service (learned
+from <id>)" :match learned :learned-from <id>)`. `wingbox advice --sexp`
+prints the open `(advice ...)` items (rejected ones and those ignored for 3
+builds are left out) and `(advice-none ...)`; `--learned` prints the
+`learned-layer` facts.
+
+## align Output
+
+```scheme
+(align-part <part> :style <style> [:from <current style>] :placed <n> :files <n> :following <n> :dependencies <n> :present "<layers>" :missing "<layers>")
+(align-gap <part> :kind unplaced-folder|missing-layer|rule :target "<folder, layer or from -> to>" :count <n> [:example "<a -> b>"])
+(align-none <part> :reason "<why>")
+(align-style <part> :style <closest style> :score <s> :coverage <c> :runner-up <style> :runner-up-score <s>)
+(align-placed <part> :layer <layer> :folders "<folders>" :by style)
+(align-learned <part> :folder "<folder>" :layer <layer> :by suffix|name|imports :why "<evidence>")
+(align-learned-none <part> :reason "declared rules: nothing is guessed, the baseline comes from them")
+(align-config-written ".wingbox/config.yaml")
+(align-baseline ".wingbox/baseline.sexp" :entries <n>)
+```
+
+`.wingbox/baseline.sexp` holds `(baseline <part> <src> <tgt> :rule "<from -> to>"
+:from align|"<project baseline file>")` and `(baseline-capability <part> <module>
+<capability> :line <n> :from align)`; the build reads it and the pairs become
+`violation-known`, the capabilities `capability-violation-known`.
+
+## compare Output
+
+```scheme
+(compare-part <part> :language <lang> :style <style> :layers "<layers>")
+(compare-diff <lang> :kind missing-layer|folder-meaning|style :detail "<what differs>")
+(advice <part> :id <id> :kind deviates :target <part> :style <style> :rule "majority <style>" :reason "..." :evidence "...")
+```
+
+## learn Output
+
+```scheme
+(learn-mode agent|human :because "--agent|CLAUDECODE=1|GEMINI_CLI=1|stdin or stdout is not a terminal|terminal")
+(learn-part <part> :style <closest> :score <s> :runner-up <style> :runner-up-score <s>)
+(learn-layer <part> <layer> :means "<placement text or note>")
+(learn-placed <part> <layer> "<folders>")
+(learn-known <part> "<folder>" <layer> :because "<from learned.sexp>")
+(learn-folder <part> "<folder>" :files "<2-3 files>" :imports "<layer count ...>" :imported-by "<layer count ...>" :guess <layer>|- [:weak "<how the style matched it>"] [:breaks <n>])
+(learn-more <part> :folders <n>)
+(learn-nothing <part> :reason "...")
+(learn-question "...") (learn-rule "...") (learn-answer-format "...") (learn-apply "...")
+```
+
+The answer (one per line): `(style <part> <style>)` at most once per part,
+`(layer <part> <folder> <layer> :because "<files read>")` (a folder is a name
+below the source root, `commands`, or a nested path, `lib/hooks`: a path
+decides for the files below it before any name rule), `(unknown <part>
+<folder> :because "...")`. `wingbox learn --apply` rejects the whole answer
+with `(learn-error "...")` lines when any line is invalid; otherwise it prints
+`(learn-learned ...)`, `(learn-kept ...)` for folders the config already
+states, `(learn-result :build ok :violations <n>)` and `(learn-saved ...)`.
+Besides the folders the style does not place, the task lists nested folders
+whose files take part in rule breaks or rest on a guess (`:breaks`), at the
+deepest folder that holds them, most breaks first, 25 per part
+(`learn-more` counts the rest). The rebuild after `--apply` prints nothing
+unless `--verbose`. `.wingbox/learned.sexp` keeps each accepted answer: `(learned-answer <part>
+:at <date> :mode agent|human [:agent "<name>"] :style <style> :score <s>)`
+followed by `(learned-entry <part> "<folder>" <layer>|unknown :because "..."
+:files <n>)`; a folder learned before is not asked again unless `--again` or
+its files more than doubled.
+
+## place Output
+
+```scheme
+(place <part> :layer <layer> :folder "<folder>" :present|:new|:not-stated :style <style>|declared :rule "<placement or declared layer>" :may-import "<layers>|not stated" [:where "<the style's words>"] :examples "<2-3 files>")
+(place-none <part> :reason "<why>")
+```
+
+The request is matched word by word against the `[[placement]]` texts and the
+layer words of the part's style (name, folder words, file patterns); `:new`
+marks a folder of the target layout that does not exist yet; `:examples` are
+real files of the folder. In a part with declared rules the folder whose words
+match the request is named with the project's own layer of its files.
+
+## Use File (.wingbox/index.uses.sexp, next to the graph)
+
+What only `entity`, `usages` and `entity --positions` read; module IDs are the
+short IDs of the graph whose digest the header carries (a file that does not
+match the graph is ignored with a warning).
+
+```scheme
+(code-graph-uses :schema 1 :key <inputs> :positions no|yes :graph <digest>)
+(var <mod> <Name> <line>)                                 ; module-level variable (Python)
+(use <mod> <tgt>::<Entity>)                               ; :positions no
+(use <mod> <tgt>::<Entity> <line>:<col>[<kind>] ...)      ; :positions yes
+(use <mod> <tgt>::<Class>.<method> <line>:<col>c ...)
+(unresolved <mod> :method-calls <count>)
+(unresolved-call <mod> <method> <line>:<col> ...)
+```
+
+`wingbox build` writes the file without positions: one `use` line per file and
+definition in another file it uses, from the uses that can name another file
+(import and export statements, qualified paths, names a glob import may
+provide). That keeps the build as fast as without the use index. The first
+query that needs positions has the builder fill them in from the build cache
+and rewrite the file with positions: every use, also inside its own file. A
+build without changed files keeps the file as it is, positions included.
+
+`.wingbox/index.uses-cache.json`, next to it, keeps per file the content hash,
+the full use walk and the resolved uses, with a digest of the surface of the
+repository (every path, and the definitions and bindings of the files with a
+use index) and the import lookups. Filling positions walks again only the
+files whose content changed, and while the surface is the same resolves only
+those; a changed surface (a definition, an import or a file added or removed)
+resolves every file again. A change in tsconfig, package or Cargo settings
+alone is not part of the surface: rebuild with `--full` after one.
+
+The letter after a position is the kind of use: `i` import, `r` re-export, `c`
+call, `t` type, `e` extends or implements, none for any other reference.
+`unresolved-call` keeps the sites of unresolved method calls whose method name
+some class of the repository defines (the others are only counted).
+
+`use` lists every place where `<mod>` names `<Entity>` defined in `<tgt>`: an
+import, a name, a qualified path, a type, a re-export; line and column are
+1-based. One line per file and definition. A method call `recv.m()` is a use of
+`<Class>.<method>` only when the receiver's class is in sight: `self` or `this`
+in the class, a parameter or variable annotated with the class, a variable
+built by its constructor; the method may come from a base class. Any other
+method call is not guessed: `unresolved` counts them per module.
+## boundary Output
+
+```scheme
+(boundary <mod> :lang py :file <path> :purpose "<desc>")
+(cls <mod> <Name> <line> :lang py (:bases A) (:deco D) (:methods m1 m2))
+(boundary-dep <mod> <dep> :lang ts :file <path> :relation imports)
+(boundary-rdep <mod> <rdep> :lang py :file <path> :relation imports)
+(boundary-summary <mod> :total 10 :deps 7 :rdeps 2)
+```
+
+## analyze Output
+
+```scheme
+(analyze <mod> :lang py "<purpose>" :file <path>)
+(cls <mod> <Name> <line> :lang py (:bases A) (:deco D) (:methods m1 m2))
+(analyze-import <mod> <tgt> :lang ts :file <path>)
+(analyze-dataflow <mod> <tgt> :lang py :validated)
+(refs <src> <tgt>::<Entity>)
+(analyze-dependent <mod> <src> :lang tsx :via imports refs :file <path>)
+(analyze-more <mod> :dependents 298 :rerun "analyze <mod> --all")
+(dep <root> <tgt> :lang py :via imports :depth 1)
+(key-entity <mod> <Name> :lang py :kind cls :line 32 :refs 7 :modules 4)
+(key-entity-ref <Name> <ref-mod> :lang ts)
+(key-entity-more <mod> <Name> :modules 185 :rerun "analyze <mod> --all")
+(boundary-file <mod> <file-path>)
+(layer <mod> <dep-name> :layer domain :style layered :rule "folder models/ -> domain")
+(analyze-summary <mod> :entities 31 :imports 1 :dataflows 0 :refs 1 :dependents 50 :boundary-files 2)
+```
+
+Paths are relative to the repository root. Each dependent file is named once, on
+its `analyze-dependent` line; `boundary-file` names the module and the files it
+imports. The counts in `key-entity` and `analyze-summary` are always complete.
+Without `--all` the answer names at most 200 dependents and 20 modules per key
+entity; an `analyze-more` or `key-entity-more` line gives the number left out.
+
+## entity Output
+
+```scheme
+(entity-def cls <mod> <Name> <line> :lang py :file <path>)
+(entity-def ifc <mod> <Name> <line> :lang ts :file <path>)
+(refs <src-mod> <tgt-mod>::<Name>)
+(refs <src-mod> <tgt-mod>::<Name> :reexport)                  ; from the use file
+(use <src-mod> <line> <col> <tgt-mod>::<Name> :file <path>)   ; with --positions
+```
+
+`entity <Name> --positions` adds one `use` line per place that names the
+definition, as an editor's find usages lists them, sorted by file, line and
+column; `:file` is relative to the repository root.
+
+Each `refs` line names a module that uses `<Name>` defined in `<tgt-mod>`: by an
+import, a qualified path (`m.Name`, `m::Name`), a glob import or a re-export
+(`__init__.py`, `pub use`). `:reexport` marks a module that reaches the
+definition only through a re-export and does not import `<tgt-mod>` itself;
+these lines come from the use file, so module-level commands (`impact`,
+`deps`, `rdeps`, `analyze`) never see them and keep following imports. A
+TypeScript `const` or a Rust `const` or `static` is an `fn` entity; a Python
+module-level variable is a `var` definition of the use file.
+
+## usages Output
+
+```scheme
+(usages-target <mod>::<Name> :kind cls :file <path> :line <n>)
+(usage <src-mod> <line> <col> :kind call :file <path>)
+(usage <src-mod> <line> <col> :kind unresolved-call :file <path>)
+(usage-file <src-mod> :kind reference :file <path>)    ; a language without use positions
+(usages-more <mod>::<Name> :hidden 12 :rerun "usages <symbol> --all")
+(usages-summary <mod>::<Name> :uses 7 :files 2 :unresolved 0)
+(usages-ambiguous <Name> :definitions 2)
+(usages-candidate <mod>::<Name> :kind cls :file <path> :line <n>)
+```
+
+`usages` without `--sexp` prints the same facts as text: the target, the
+counts, then each file with its `line:col` and kind. Kinds: `import`,
+`re-export`, `call`, `type`, `extends` (extends or implements), `reference`,
+`unresolved-call`. Uses are sorted by file, line and column; at most 200 unless
+`--all`. A bare name with several definitions answers with the candidates.
+
+## deps / rdeps Output
+
+```scheme
+(deps-root <mod> :lang py)
+(dep <root> <tgt> :lang ts :via imports :depth 1)
+(dep <root> <tgt> :lang py :via data-flow :depth 2 :cycle)
+(rdeps-root <mod> :lang ts)
+(rdep <root> <src> :lang tsx :via imports :depth 1)
+```
+
+## flow Output
+
+```scheme
+(flow <src>::<fn> <tgt>::<fn> :lang py :via calls :depth 0)
+(flow <src>::<fn> <tgt> :lang ts :via imports :depth 1 :module-level)
+```
+
+## boundaries Output
+
+```scheme
+(violation <src> <tgt> :src-layer domain :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "domain -> api" [:known "<baseline file>"] :src-file <path> :tgt-file <path> "<reason>")
+(violation-type-only <src> <tgt> :src-layer domain :tgt-layer infra :via imports :lang ts :part <part> :style layered :rule "domain -> infra" :src-file <path> :tgt-file <path> "<reason>")
+(violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "infra -> api" :src-file <path> :tgt-file <path> "<reason>")
+(violation-known <src> <tgt> ... :known "<baseline file>" "<reason>")
+(boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587)
+(boundaries-ok :checked 3587)
+(boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files [:files (<rule file> ...)] :files-in-part <n>)
+(boundaries-partial :checked <n> :not-checked <m>)
+```
+
+`boundaries-ok` is printed only when every part with files was checked against
+rules that were read or determined. A part whose declared rules were not read,
+whose style is undetermined, that has no layer style or too few files to judge
+is listed first as `boundaries-not-checked`, and `boundaries-partial` replaces
+`boundaries-ok` (it follows `boundaries-summary` when there are violations).
+Exit status: 2 when a part's declared rules were not read (that part was not
+checked), else 1 when a violation, a capability violation or a pattern break
+was found, else 0.
+
+`violation`: both layers come from rules. `violation-known`: the same, but the
+pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`
+written by `wingbox align --learn`); it is not counted as a violation. `violation-type-only`:
+a TypeScript import of types or interfaces only (`import type`, or every imported
+name is a type or an interface of the target); the compiler erases it, so it is
+not counted as a violation, but a change of the type still reaches the importer.
+`violation-candidate`: a layer is only guessed from the role of a file.
+
+What a layer may do (capability rules) follows, when a file breaks one:
+
+```scheme
+(capability-violation <file> :capability sql :layer service :allowed (infra) :line 42 :evidence "<source line>" :part <part> :style layered [:pattern domain-imports-orm] [:fix "<the style's fix>"])
+(capability-violation <file> :capability framework :layer domain :forbidden (domain) :line 3 :evidence "..." ...)
+(capability-violation-known <file> ... :known .wingbox/baseline.sexp ...)
+(capability-candidate <file> :capability sql ... :evidence "QUERY = \"SELECT ...\"" ...)
+(pattern-violation <file> :pattern controller-skips-service :target <repository file> :part <part> :style <style> "<reason>")
+(pattern-violation <file> :pattern service-builds-http-response :line 12 :evidence "return JSONResponse(...)" ...)
+(capability-summary :violations 3 :known 0 :candidates 1 :patterns 2 :checked 707)
+```
+
+Capabilities (`scripts/architecture/capabilities.py`), found by syntax in
+Python, TypeScript and JavaScript, PHP, Ruby, Java and Kotlin, C# and Go:
+`sql` (a string literal that starts a SQL statement passed to a query call,
+query-builder and ORM queries such as `session.query`, `prisma.<model>.findMany`,
+`DB::select`, `find_by_sql`, `createQuery`, `FromSqlRaw`, `db.Query`),
+`db-client` (driver and ORM imports), `http-client`, `framework` (web
+framework imports), `http-response`, `env`, `filesystem`, `process`. Each
+style states `allowed_in` or `forbidden_in` layers per capability (its
+`[capabilities]` table); `capabilities:` of a part in `.wingbox/config.yaml`
+replaces a rule. One line per file and capability, at the first line that
+shows it. `capability-candidate`: a SQL literal no query call on the line (or
+the call opened just above) receives, or a layer guessed from the role of the
+file. A composition root, tests and files in no layer are not judged; a part
+with declared rules has no capability rules. Pattern checks of the style:
+`controller-skips-service` (a controller imports a repository and the style
+has a service layer), `service-builds-http-response`, `domain-imports-orm`
+(set on the db-client violation of a domain file).
+
+## impact Output (`--sexp`)
+
+```scheme
+(impact-root <mod> :lang ts :file <path>)
+(impact <root> <src> :lang ts :via imports :depth 1)
+(impact-more <root> :hidden 549 :rerun "impact <file> 2 --all")
+(impact-summary <root> :direct 650 :total 749 :depth 2)
+(read-first <path>)
+(read-first-more :hidden 640)
+```
+
+The counts are complete. Without `--all` at most 200 dependents are listed,
+nearest first, and `read-first` names the file and its first 10 direct dependents.
+
+## invariants Output
+
+```scheme
+(invariant-violation <mod> :expected snake_case :actual PascalCase :lang py :pkg <repo>)
+(invariants-summary :violations 12 :checked 3587)
+(invariants-ok :checked 3587)
+```
+
+## layers Output
+
+```scheme
+(layer-group api :count 144)
+(layer-member api <mod> :lang ts :part <part> :style layered :rule "folder routes/ -> api" :match exact)
+```
+
+## find_function / find_type Output
+
+```scheme
+(fn-def <mod>::<name> :line 42 :lang ts :file <path> :kind function)
+(fn-def <mod>::<cls>.<method> :line 42 :lang py :file <path> :kind method)
+(type-def cls <mod>::<Name> :line 10 :lang ts :file <path> (:bases A) (:methods m1 m2))
+(type-def ifc <mod>::<Name> :line 10 :lang ts :file <path>)
+```
+
+## find_callers / find_calls Output
+
+```scheme
+(callers-target <mod>::<fn> :line 42 :lang ts :file <path>)
+(caller <src>::<fn> -> <tgt>::<fn> :lang ts :file <path> :lines L1 L2 :lsp)
+(caller-module <src> -> <tgt> :via imports :depth 1 :lang ts :file <path>)
+(calls-source <mod>::<fn> :line 42 :lang ts :file <path>)
+(calls-target <src>::<fn> -> <tgt>::<fn> :lang ts :file <path>)
+(calls-module <src> -> <tgt> :via imports :depth 1 :lang ts :file <path>)
+```
+
+## find_callchain Output
+
+```scheme
+(callchain-step 0 <mod>::<fn> :lang ts :file <path>)
+(callchain-step 1 <mod>::<fn> :lang py :file <path>)
+(callchain-summary :length 3 :hops 2)
+(callchain-module-step 0 <mod> :lang ts :file <path>)
+(callchain-module-summary :length 2 :hops 1)
+(callchain-none "srcFn" -> "tgtFn" :max-depth 5)
+```
+
+## grep_functions Output
+
+```scheme
+(grep-fn <mod>::<fn> :line 55 :lang ts :file <path> :match "matched line text")
+(grep-functions-summary :matches 12 :pattern "pattern")
+(grep-functions-empty "pattern")
+```
+
+## diff_functions Output
+
+```scheme
+(diff-fn <mod>::<name> :kind fn :line 42 :lang ts :file <path>)
+(diff-functions-summary :changed 5 :files 3 :ref "HEAD")
+(diff-file <path> :hunks 2)
+(diff-functions-no-match :files 3 :ref "HEAD")
+(diff-functions-empty "HEAD")
+```
+
+## query / repl Output
+
+```scheme
+(result <module-or-path>)
+(result-empty)
+(result-count 42)
+```
+
+## :lang Values
+
+| Value | Language | Naming | Example |
+|---|---|---|---|
+| `py` | Python | snake_case fns, PascalCase classes | `drive_path_to_entry`, `DrivePath` |
+| `ts` | TypeScript | camelCase fns, PascalCase classes | `calculateTotal`, `OperativesService` |
+| `tsx` | TSX/React | PascalCase components, camelCase hooks | `FileBrowser`, `useQuery` |
+| `rs` | Rust | snake_case modules and functions | `drive_path`, `DrivePath` |
+| `cs` | C# | PascalCase types | `DriveController` |
+| `java` | Java | PascalCase types | `DriveService` |
+| `go` | Go | PascalCase exports, camelCase locals | `DrivePath`, `loadPath` |
+| `rb` | Ruby/Rails | snake_case files, CamelCase constants | `order_payment`, `OrderPayment` |
+| `php` | PHP/Laravel | PascalCase classes, camelCase methods | `App\Models\User`, `loadUser` |
+| `blade` | Blade templates | kebab-case files, dot-separated view references | `users.show`, `components.alert` |
+
+## Architecture Layers
+
+| Layer | Path patterns | Role |
+|---|---|---|
+| `domain` | `/domain/`, `/entities/`, `_schema` | Pure business logic |
+| `api` | `/api/`, `/routes/`, `/controllers/` | HTTP/RPC handlers |
+| `service` | `/services/`, `/application/` | Business orchestration |
+| `infra` | `/repositories/`, `/db/`, `/infra/` | Database, storage, messaging |
+| `shared` | `/commons/`, `/utils/`, `/types/` | Cross-cutting utilities |
+| `test` | `/tests/`, `.test.`, `.spec.` | Test files |
+| `ui` | `/components/`, `/pages/`, `/hooks/` | Frontend UI |
+| `config` | `/config/`, `/env/` | Configuration |
+| `other` | (no match) | Unclassified |

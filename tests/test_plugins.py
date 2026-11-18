@@ -263,6 +263,110 @@ class PluginFolderTest(unittest.TestCase):
         self.assertTrue((PLUGIN / "LICENSE").is_file())
 
 
+SKILL_BUNDLE = REPO / "plugins" / "wingbox-skill"
+DIRECTORY_SUFFIXES = {".md", ".txt", ".json", ".yaml", ".yml", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"}
+
+
+class SkillBundleTest(unittest.TestCase):
+    """plugins/wingbox-skill: the skill alone, for the Claude plugin directory."""
+
+    def test_the_bundle_holds_only_what_the_directory_takes(self) -> None:
+        """/* REQ-PLUGIN-018: plugins/wingbox-skill must be a plugin named wingbox at the version of the full plugin, with the same short description, and hold only what the Claude plugin directory takes from an organization it has not verified: no hooks and no mcpServers in the manifest, no hooks.json, no .mcp.json or other MCP configuration, no evals, no file that starts with `#!`, and no file that is not Markdown, text, JSON, YAML or an image (the LICENSE aside); the folder has a README of at least 40 words, an icon and the LICENSE, and neither marketplace file lists it. */"""
+        manifest = load(SKILL_BUNDLE / ".claude-plugin" / "plugin.json")
+        full = load(CLAUDE_MANIFEST)
+        self.assertEqual(manifest["name"], "wingbox")
+        self.assertEqual(manifest["version"], full["version"])
+        self.assertEqual(manifest["version"], PLUGIN_VERSION)
+        self.assertEqual(manifest["description"], full["description"])
+        for key in ("hooks", "mcpServers", "commands", "agents", "lspServers", "outputStyles"):
+            self.assertNotIn(key, manifest)
+        self.assertNotIn("uvx", json.dumps(manifest))
+        files = sorted(p for p in SKILL_BUNDLE.rglob("*") if p.is_file())
+        names = [p.relative_to(SKILL_BUNDLE).as_posix() for p in files]
+        self.assertFalse([name for name in names if name.endswith(("hooks.json", "mcp.json")) or name.startswith("evals/")], names)
+        self.assertFalse([p for p in SKILL_BUNDLE.rglob("*") if p.is_symlink()])
+        for path, name in zip(files, names):
+            if name != "LICENSE":
+                self.assertIn(path.suffix.lower(), DIRECTORY_SUFFIXES, name)
+            self.assertFalse(path.read_bytes().startswith(b"#!"), name)
+        self.assertEqual([name for name in names if name.startswith(".claude-plugin/")], [".claude-plugin/plugin.json"])
+        self.assertTrue((SKILL_BUNDLE / manifest["icon"]).is_file())
+        words = re.sub(r"```.*?```", "", (SKILL_BUNDLE / "README.md").read_text(encoding="utf-8"), flags=re.S).split()
+        self.assertGreaterEqual(len(words), 40)
+        for marketplace in (REPO / ".claude-plugin" / "marketplace.json", REPO / ".agents" / "plugins" / "marketplace.json"):
+            self.assertNotIn("wingbox-skill", marketplace.read_text(encoding="utf-8"), marketplace)
+
+    def test_one_sync_keeps_both_folders_current(self) -> None:
+        """/* REQ-PLUGIN-019: the skill of plugins/wingbox-skill must be byte for byte SKILL.md and references/ of the repository and its LICENSE the repository's; after SKILL.md or the release changes, `tools/sync_plugin.py --check` must exit 1 and name the stale files of both plugin folders, and one run of `tools/sync_plugin.py` must bring both to the same version and skill. */"""
+        skill = SKILL_BUNDLE / "skills" / "wingbox"
+        copied = sorted(p.relative_to(skill).as_posix() for p in skill.rglob("*") if p.is_file())
+        self.assertEqual(copied, sorted(SKILL_SOURCES))
+        for name in SKILL_SOURCES:
+            self.assertEqual((skill / name).read_bytes(), (REPO / name).read_bytes(), name)
+        self.assertEqual((SKILL_BUNDLE / "LICENSE").read_bytes(), (REPO / "LICENSE").read_bytes())
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "repo"
+            for name in ("SKILL.md", "LICENSE", "pyproject.toml"):
+                (copy / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPO / name, copy / name)
+            for folder in ("references", "plugins", "tools"):
+                shutil.copytree(REPO / folder, copy / folder)
+            (copy / "SKILL.md").write_text((REPO / "SKILL.md").read_text(encoding="utf-8") + "\nNew line.\n", encoding="utf-8")
+            script = str(copy / "tools" / "sync_plugin.py")
+            env = dict(os.environ, WINGBOX_RELEASE="9.8.7 " + "f" * 40)
+            check = subprocess.run([sys.executable, script, "--check"], capture_output=True, text=True, env=env)
+            self.assertEqual(check.returncode, 1)
+            for stale in ("plugins/wingbox/skills/wingbox/SKILL.md", "plugins/wingbox-skill/skills/wingbox/SKILL.md",
+                          "plugins/wingbox/.claude-plugin/plugin.json", "plugins/wingbox-skill/.claude-plugin/plugin.json"):
+                self.assertIn(stale, check.stdout)
+            subprocess.run([sys.executable, script], check=True, capture_output=True, env=env)
+            self.assertEqual(subprocess.run([sys.executable, script, "--check"], capture_output=True, env=env).returncode, 0)
+            for folder in ("wingbox", "wingbox-skill"):
+                plugin = copy / "plugins" / folder
+                self.assertTrue((plugin / "skills" / "wingbox" / "SKILL.md").read_text(encoding="utf-8").endswith("New line.\n"), folder)
+                self.assertEqual(load(plugin / ".claude-plugin" / "plugin.json")["version"], "9.8.7", folder)
+            self.assertNotIn("f" * 40, (copy / "plugins" / "wingbox-skill" / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+
+    def test_the_bundle_leaves_out_what_the_directory_refuses(self) -> None:
+        """/* REQ-PLUGIN-020: a file of references/ that the plugin directory refuses (a script, any file that starts with `#!`, a suffix outside Markdown, text, JSON, YAML and images) must be copied into the full plugin and left out of plugins/wingbox-skill by `tools/sync_plugin.py`, and `--check` must pass with it left out. */"""
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "repo"
+            for name in ("SKILL.md", "LICENSE", "pyproject.toml"):
+                (copy / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(REPO / name, copy / name)
+            for folder in ("references", "plugins", "tools"):
+                shutil.copytree(REPO / folder, copy / folder)
+            (copy / "references" / "helper.sh").write_text("echo hello\n", encoding="utf-8")
+            (copy / "references" / "runs.md").write_text("#!/bin/sh\necho hello\n", encoding="utf-8")
+            (copy / "references" / "notes.txt").write_text("plain notes\n", encoding="utf-8")
+            script = str(copy / "tools" / "sync_plugin.py")
+            env = dict(os.environ, WINGBOX_RELEASE=f"{PLUGIN_VERSION} {_sync.latest_release(REPO)[1]}")
+            subprocess.run([sys.executable, script], check=True, capture_output=True, env=env)
+            self.assertEqual(subprocess.run([sys.executable, script, "--check"], capture_output=True, env=env).returncode, 0)
+            full = copy / "plugins" / "wingbox" / "skills" / "wingbox" / "references"
+            alone = copy / "plugins" / "wingbox-skill" / "skills" / "wingbox" / "references"
+            for name in ("helper.sh", "runs.md", "notes.txt"):
+                self.assertTrue((full / name).is_file(), name)
+            self.assertTrue((alone / "notes.txt").is_file())
+            self.assertFalse((alone / "helper.sh").exists())
+            self.assertFalse((alone / "runs.md").exists())
+
+    def test_the_skill_says_what_to_do_without_the_program(self) -> None:
+        """/* REQ-PLUGIN-021: SKILL.md must say what to do when the `wingbox` program is missing and the skill has no scripts (a skill installed from a plugin directory): tell the user, install it with `pipx install wingbox` or `uv tool install wingbox`, naming the package only (no index address, no git source), then build the graph with `wingbox build .`, which writes only `.wingbox/`, and leave `wingbox install` to the user. */"""
+        text = (REPO / "SKILL.md").read_text(encoding="utf-8")
+        start = text.index("When the command is missing")
+        section = text[start:text.index("\n| Command | Purpose |", start)]
+        self.assertIn("Tell the user", section)
+        commands = re.search(r"```bash\n(.*?)```", section, flags=re.S)
+        assert commands is not None
+        self.assertEqual(commands.group(1).splitlines(), ["pipx install wingbox", "uv tool install wingbox"])
+        self.assertIn("wingbox build .", section)
+        self.assertIn("writes only the\n`.wingbox/` folder", section)
+        self.assertIn("Leave `wingbox install` to the user", section)
+        for refused in ("--index-url", "--extra-index-url", "git+", "curl ", "| sh"):
+            self.assertNotIn(refused, section)
+
+
 class PurposeTest(unittest.TestCase):
     """The plugin is found by its purpose: code graphs of large repositories and monorepos."""
 
