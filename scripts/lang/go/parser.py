@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 import tree_sitter_go as _tsg
 from tree_sitter import Language as _TreeSitterLanguage
 from tree_sitter import Node, Parser
@@ -10,6 +8,7 @@ from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
+from .validation import validation_evidence
 
 
 _GO_LANGUAGE = _TreeSitterLanguage(_tsg.language())
@@ -162,6 +161,7 @@ def parse_go_treesitter(
         if alias != "_"
     ]
     entity_payloads = [entity.to_dict() for entity in entities]
+    validation = validation_evidence(root, content, import_specs)
     return FileResult(
         path=path,
         language="go",
@@ -176,11 +176,9 @@ def parse_go_treesitter(
         extends=[],
         purpose=infer_purpose(path, content, "go", entity_payloads),
         naming_convention=detect_naming(path),
-        has_validation=bool(re.search(
-            r"go-playground/validator|validate:\"|binding:\"",
-            content,
-        )),
+        has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[entity.name for entity in entities],
+        validation_evidence=validation,
     )

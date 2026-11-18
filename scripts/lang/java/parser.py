@@ -11,6 +11,7 @@ from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
 from ..source import detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
+from .validation import validation_evidence
 
 
 _JAVA_LANGUAGE = _TreeSitterLanguage(_tsj.language())
@@ -223,6 +224,20 @@ def parse_java_treesitter(
     bases = unique_strings(
         base for entity in entities for base in entity.bases
     )
+    validation = validation_evidence(
+        root,
+        content,
+        {
+            java_import.target.rsplit(".", 1)[-1]: java_import.target
+            for java_import in java_imports
+            if not java_import.is_static and not java_import.is_wildcard
+        },
+        [
+            java_import.target.removesuffix(".*")
+            for java_import in java_imports
+            if java_import.is_wildcard and not java_import.is_static
+        ],
+    )
     return FileResult(
         path=path,
         language="java",
@@ -235,11 +250,9 @@ def parse_java_treesitter(
         extends=bases,
         purpose=infer_purpose(path, content, "java", entity_payloads),
         naming_convention=detect_naming(path),
-        has_validation=bool(re.search(
-            r"@(Valid|Validated|NotNull|NotBlank|Size|Pattern)\b|javax\.validation|jakarta\.validation",
-            content,
-        )),
+        has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[entity.name for entity in entities],
+        validation_evidence=validation,
     )

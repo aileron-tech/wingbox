@@ -177,6 +177,9 @@ class FileResult:
     registry_calls: list[RegistryCallPayload] = field(default_factory=list)
     # Rust: impl blocks and type aliases, to find the file that defines `Type::member`
     type_members: list[TypeMembersPayload] = field(default_factory=list)
+    # What in the syntax tree makes the file a validation module ("base pydantic.BaseModel"); "" when
+    # nothing does. has_validation is true exactly when this is set.
+    validation_evidence: str = ""
 
 
 @dataclass(frozen=True)

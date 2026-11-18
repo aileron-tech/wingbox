@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- A `data-flow` fact no longer carries `:validated` on the strength of a text match in the imported
+  file. The mark is now `:validation-module :evidence "<kind> <name>"`. It is written only when the
+  syntax tree of the imported file defines a validator, and it names what was found: a pydantic model,
+  validator decorator or schema call, an attrs field with a validator, a call of zod, joi, yup or ajv,
+  a Go struct tag `validate` or `binding`, a Bean Validation annotation, a DataAnnotations attribute or
+  a FluentValidation validator, a Laravel form request, `Validator::make` or Livewire's `Validate`
+  attribute, an ActiveModel `validates` declaration, a Dart `validator:` argument. A comment, a string,
+  an unused import, `TypedDict`, `NamedTuple` and dataclasses give no mark. The mark describes the
+  imported file; it does not say that the importer calls the validator. A graph built by an older
+  version is read without its `:validated` marks; the next `wingbox build` parses every file again
+  ([#121](https://github.com/aileron-tech/wingbox/issues/121)).
+- `wingbox analyze` and the MCP tool `analyze` printed `:validated` on every `analyze-dataflow` line.
+  They now print the marks of the stored fact and nothing else
+  ([#122](https://github.com/aileron-tech/wingbox/issues/122)).
+
 ## 0.11.0 - 2026-11-18
 
 ### Changes
