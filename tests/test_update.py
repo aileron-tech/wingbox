@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -338,3 +339,105 @@ class NoPipTest(unittest.TestCase):
                                    capture_output=True, text=True, check=True)
             self.assertEqual("False", probe.stdout.strip())
         self.assertIsInstance(update.has_pip(), bool)
+
+
+class RunningLauncherTest(unittest.TestCase):
+    def test_the_launcher_is_named_only_on_windows_and_only_for_wingbox_exe(self) -> None:
+        """/* REQ-UPDATE-013: on Windows `wingbox update` must name the wingbox.exe it was started through from sys.argv[0], which a console-script launcher sets to its own path with or without the `.exe` ending; started as `python -m wingbox.cli`, through a file of another name, through a path that does not exist, or on another system it names none. */"""
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp).resolve()
+            (folder / "wingbox.exe").write_bytes(b"launcher")
+            (folder / "other.exe").write_bytes(b"launcher")
+            (folder / "cli.py").write_text("", encoding="utf-8")
+            expected = str(folder / "wingbox.exe")
+            self.assertEqual(expected, update.running_launcher(str(folder / "wingbox"), True))
+            self.assertEqual(expected, update.running_launcher(str(folder / "wingbox.exe"), True))
+            self.assertIsNone(update.running_launcher(str(folder / "wingbox"), False))
+            self.assertIsNone(update.running_launcher(str(folder / "cli.py"), True))
+            self.assertIsNone(update.running_launcher(str(folder / "other"), True))
+            self.assertIsNone(update.running_launcher(str(folder / "missing" / "wingbox"), True))
+
+
+class UpgradePastLauncherTest(unittest.TestCase):
+    def setUp(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.folder = Path(tmp.name).resolve()
+        self.launcher = self.folder / "wingbox.exe"
+        self.launcher.write_bytes(b"old launcher")
+        self.removed_later: list[str] = []
+
+    def remove_later(self, path: str) -> None:
+        self.removed_later.append(path)
+
+    def others(self) -> list[str]:
+        return sorted(path.name for path in self.folder.iterdir() if path != self.launcher)
+
+    def test_the_installer_finds_the_launcher_path_free_and_the_old_file_goes(self) -> None:
+        """/* REQ-UPDATE-014: while the installer's upgrade runs, the path of the running wingbox.exe must be free (the launcher is renamed beside itself, which Windows allows for a running program), so the installer writes the new launcher there; the old file is then handed to the removal that runs once the command has ended, and the upgrade's own result is returned unchanged. */"""
+        seen: list[bool] = []
+
+        def installer(command: tuple[str, ...]) -> update.Ran:
+            seen.append(self.launcher.exists())
+            self.launcher.write_bytes(b"new launcher")
+            return update.Ran(0, "upgraded")
+
+        upgraded = update.upgrade_past_launcher(("uv", "tool", "upgrade", "wingbox"), str(self.launcher), installer, self.remove_later)
+        self.assertEqual([False], seen)
+        self.assertEqual(update.Upgraded(update.Ran(0, "upgraded")), upgraded)
+        self.assertEqual(b"new launcher", self.launcher.read_bytes())
+        [aside] = self.removed_later
+        self.assertEqual(self.folder, Path(aside).parent)
+        self.assertEqual(b"old launcher", Path(aside).read_bytes())
+
+    def test_without_a_new_launcher_the_old_one_is_back(self) -> None:
+        """/* REQ-UPDATE-015: when the installer wrote no new launcher (nothing to upgrade, or the upgrade failed), `wingbox update` must rename the old wingbox.exe back, leave no other file beside it, start no removal and return the installer's result; without a launcher to move (another system, `python -m wingbox.cli`) the installer runs as it is. */"""
+        for status in (0, 1):
+            with self.subTest(status=status):
+                upgraded = update.upgrade_past_launcher(
+                    ("pipx", "upgrade", "wingbox"), str(self.launcher), lambda command: update.Ran(status, "said"), self.remove_later)
+                self.assertEqual(update.Upgraded(update.Ran(status, "said")), upgraded)
+                self.assertEqual(b"old launcher", self.launcher.read_bytes())
+                self.assertEqual([], self.others())
+                self.assertEqual([], self.removed_later)
+        ran = update.upgrade_past_launcher(("pipx", "upgrade", "wingbox"), None, lambda command: update.Ran(0, "said"), self.remove_later)
+        self.assertEqual(update.Upgraded(update.Ran(0, "said")), ran)
+        self.assertEqual(b"old launcher", self.launcher.read_bytes())
+
+    def test_what_the_launcher_step_reports_is_part_of_the_answer(self) -> None:
+        """/* REQ-UPDATE-016: `wingbox update` must print what the launcher step reports: `(update-left <file> :reason ...)` when the removal of the old launcher could not be started, after which the upgrade still counts as done and the installs are refreshed. */"""
+        def installer(command: tuple[str, ...]) -> update.Ran:
+            self.launcher.write_bytes(b"new launcher")
+            return update.Ran(0, "upgraded")
+
+        refreshed: list[install.Installed] = []
+        entry = install.Installed("global", "/home/dev", ("claude-code",))
+        stubs = StubInstallers(self)
+        stubs.add("pipx", PIPX_LIST)
+        env = environment([entry], refreshed, prefix=stubs.pipx_env)
+        env = update.Environment(**{**env.__dict__, "upgrade": lambda command: update.upgrade_past_launcher(
+            command, str(self.launcher), installer, lambda path: "no interpreter")})
+        result = update.update(update.Options(False, False, False), env)
+        self.assertEqual(0, update.exit_status(result), result)
+        heads = [fact.head for fact in result]
+        self.assertEqual(["update-from", "update-method", "update-left", "update-to", "update-refreshed"], heads)
+        self.assertEqual("no interpreter", result[2].get("reason"))
+        self.assertEqual([entry], refreshed)
+
+    def test_the_old_launcher_is_removed_once_it_is_free(self) -> None:
+        """/* REQ-UPDATE-017: the removal started by `wingbox update` must delete the old launcher once no process holds it: on Windows the file stays while a handle on it is open and is gone soon after the handle is closed; elsewhere it is gone at once. */"""
+        old = self.folder / "wingbox.exe.1.old"
+        old.write_bytes(b"old launcher")
+        handle = open(old, "rb") if os.name == "nt" else None
+        try:
+            self.assertIsNone(update.start_removal(sys.executable, str(old), update.detached_options()))
+            if handle is not None:
+                time.sleep(2)
+                self.assertTrue(old.exists())
+        finally:
+            if handle is not None:
+                handle.close()
+        deadline = time.monotonic() + 30
+        while old.exists() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        self.assertFalse(old.exists())

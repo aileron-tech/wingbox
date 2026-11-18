@@ -802,6 +802,12 @@ cannot update itself; the command says so and prints what to run instead. Wingbo
 itself opens no network connection: only the installer reaches the package
 index, and only when you run `wingbox update`.
 
+On Windows the `wingbox` program is `wingbox.exe`, which runs for as long as
+the command does, and Windows lets nobody overwrite a running program. For the
+time of the upgrade `wingbox update` renames the `wingbox.exe` it was started
+through, so the installer can write the new one in its place, and the old file
+is removed when the command has ended.
+
 It also looks for files that versions before 0.4.1 wrote outside `.wingbox/`
 (`.code_graph.sexp`, `.code_graph.uses.sexp`, `.code_graph.uses-cache.json`,
 `.code_graph_cache.json`, `wingbox-out/`), in the current folder and its

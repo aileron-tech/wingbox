@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-18 - `wingbox update` replaces its own running wingbox.exe on Windows
+
+### Changes
+- `src/wingbox/update.py`: `running_launcher(argv0, windows)` names the wingbox.exe the command was started through; `upgrade_past_launcher` renames it to `wingbox.exe.<pid>.old` for the time of the installer's upgrade, hands the old file to `start_removal` (a process without a window that deletes it once it is free) when a new launcher is in place, and renames it back when there is none. `Environment.upgrade` carries it into `update()`; `src/wingbox/cli.py` wires it.
+- `tests/test_update.py`: REQ-UPDATE-013 to REQ-UPDATE-017.
+- `tools/check_update.py` and a step in `.github/workflows/tests.yml`: the checkout built as 98.0.0 and 99.0.0, installed with uv pip, `uv tool`, pip and pipx, and each one updated through its own `wingbox` program; the skill must be refreshed, the program must answer 99.0.0, a second update must pass, nothing may be left beside the program.
+- `README.md` (Update), `CHANGELOG.md` (0.9.2).
+
+### Motivation
+- Issue #48, report of 2026-11-18 on 0.9.1 with Windows 11: Windows does not allow overwriting or deleting a running program. `uv pip` failed to remove `Scripts\wingbox.exe` (os error 32) and the version stayed; `uv tool upgrade` upgraded the package, failed to copy the new launcher over `bin\wingbox.exe`, and the refresh of skills and hooks was skipped.
+- The check was pushed first, without the fix (run 44261657441): green on Linux and macOS, and on windows-latest all four installers failed, uv pip and `uv tool` with the two errors of the report, pip and pipx in the same place (`Check the permissions.`, pipx's upgrade command failed).
+
 ## 2026-11-17 - Version 0.9.1: Homebrew installs, and a Python reference that counts modules loaded by name
 
 ### Changes
