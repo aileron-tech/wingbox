@@ -33,7 +33,7 @@ def _load_go_modules(
         if is_excluded_path(discovery_exclusions, manifest_path):
             continue
         try:
-            with open(manifest_path, "r", encoding="utf-8") as manifest:
+            with open(manifest_path, "r", encoding="utf-8-sig") as manifest:
                 content = manifest.read()
         except OSError as error:
             print(

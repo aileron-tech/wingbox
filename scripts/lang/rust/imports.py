@@ -103,7 +103,7 @@ def _scan_sources(
         if not path.endswith(".rs"):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as source:
+            with open(path, "r", encoding="utf-8-sig") as source:
                 text = source.read()
         except (OSError, UnicodeDecodeError) as error:
             print(f"[code-graph] Cannot read Rust macros from {path}: {error}", file=sys.stderr)

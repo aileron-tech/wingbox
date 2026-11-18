@@ -79,7 +79,7 @@ def _load_dart_packages(
         if is_excluded_path(discovery_exclusions, pubspec_path):
             continue
         try:
-            with open(pubspec_path, "r", encoding="utf-8") as pubspec:
+            with open(pubspec_path, "r", encoding="utf-8-sig") as pubspec:
                 content = pubspec.read()
         except OSError as error:
             print(

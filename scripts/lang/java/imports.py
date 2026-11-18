@@ -27,7 +27,7 @@ class BoundJavaLanguage:
             if not path.endswith(".java"):
                 continue
             try:
-                with open(path, "r", encoding="utf-8", errors="replace") as source:
+                with open(path, "r", encoding="utf-8-sig", errors="replace") as source:
                     content = source.read()
             except OSError as error:
                 print(

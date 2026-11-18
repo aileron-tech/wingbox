@@ -253,6 +253,11 @@ refresh.*
 """
 
 
+# Source files are read as UTF-8 with an optional byte order mark: Visual Studio and some Windows editors
+# write one, Python's own tokenizer accepts it, and left in the text it makes ast.parse fail (issue #105).
+SOURCE_ENCODING = "utf-8-sig"
+
+
 def wingbox_directory(root: str) -> str:
     return os.path.join(root, WINGBOX_DIRECTORY)
 
@@ -385,7 +390,7 @@ def parse_file(args: tuple[str, ...]) -> FileResult:
     """Parse one file: (path, language, repository name[, scan root])."""
     path, language_name, repo, *rest = args
     mtime = os.path.getmtime(path)
-    with open(path, "r", encoding="utf-8", errors="replace") as source_file:
+    with open(path, "r", encoding=SOURCE_ENCODING, errors="replace") as source_file:
         content = source_file.read()
     with scan_root(rest[0] if rest else ""):
         return language_for_name(language_name).parse(path, content, repo, mtime)
@@ -2972,7 +2977,7 @@ def analyze_project_lsp(
         file_contents: dict[str, str] = {}
         for r in project.files:
             try:
-                with open(r.path, "r", encoding="utf-8", errors="replace") as f:
+                with open(r.path, "r", encoding=SOURCE_ENCODING, errors="replace") as f:
                     content = f.read()
                 file_contents[r.path] = content
                 uri = path_to_uri(r.path)
@@ -3789,7 +3794,7 @@ def _position_parser(language: str) -> Callable[[str, str], list]:
 def _position_uses(item: tuple[str, str]) -> tuple[str, list]:
     """Worker: every use site of one file (path, result language)."""
     path, language = item
-    with open(path, "r", encoding="utf-8", errors="replace") as source_file:
+    with open(path, "r", encoding=SOURCE_ENCODING, errors="replace") as source_file:
         content = source_file.read()
     return path, _position_parser(language)(path, content)
 
@@ -4483,7 +4488,7 @@ def _node_capabilities(root: str, nodes: Sequence[dict], hashes: Mapping[str, st
             rows = entry[1]
         else:
             try:
-                with open(os.path.join(root, relative), "r", encoding="utf-8", errors="replace") as handle:
+                with open(os.path.join(root, relative), "r", encoding=SOURCE_ENCODING, errors="replace") as handle:
                     text = handle.read()
             except OSError:
                 continue
