@@ -14,8 +14,8 @@ when asked; that installer reaches the package index.
 
 On Windows the `wingbox` program is wingbox.exe, a launcher that keeps running
 until Python ends, and Windows lets nobody overwrite or delete a running
-program. For the time of the upgrade `wingbox update` renames the launcher it
-was started through, so the installer can put the new one in its place; the old
+program. For the time of the upgrade `wingbox update` closes its own handle on
+the launcher it was started through and renames it, so the installer can put the new one in its place; the old
 file is removed when the command has ended, and renamed back when the installer
 wrote no new launcher (nothing to upgrade, or the installer failed).
 
@@ -382,6 +382,19 @@ def running_launcher(argv0: str, windows: bool) -> Optional[str]:
     return os.path.abspath(path)
 
 
+def close_archive_handles() -> None:
+    """Close the files importlib.metadata keeps open.
+
+    Python runs the launcher as a zip archive, so it is the first entry of sys.path, and importlib.metadata
+    (asked for the installed version) keeps every archive of sys.path open in a cache. Windows renames no
+    file that is open this way. Dropping the caches and collecting what they held closes the file."""
+    import gc
+    import importlib
+
+    importlib.invalidate_caches()
+    gc.collect()
+
+
 def detached_options() -> dict:
     """Options for a child that outlives this process, without a console window (scripts/portable.py).
     Read before the upgrade: afterwards the package files on disk belong to the new version."""
@@ -410,12 +423,14 @@ def upgrade_past_launcher(
 ) -> Upgraded:
     """Run the upgrade with the running launcher renamed, so the installer can write the new one in its place.
 
-    Windows refuses to overwrite or delete a running program and allows renaming it. After the run: a new
+    Windows refuses to overwrite or delete a running program and allows renaming it, once this process holds
+    the file open no more (close_archive_handles). After the run: a new
     launcher in place means the old file goes (remove_later removes it when this command has ended); no
     launcher in place (nothing to upgrade, or the installer failed) means the old one is renamed back."""
     if launcher is None:
         return Upgraded(run(command))
     aside = f"{launcher}.{os.getpid()}.old"
+    close_archive_handles()
     try:
         os.rename(launcher, aside)
     except OSError as error:

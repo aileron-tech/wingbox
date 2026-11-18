@@ -441,3 +441,49 @@ class UpgradePastLauncherTest(unittest.TestCase):
         while old.exists() and time.monotonic() < deadline:
             time.sleep(0.2)
         self.assertFalse(old.exists())
+
+
+# What a console-script launcher makes Python run: the launcher file itself, as a zip archive with __main__.py.
+LAUNCHED = """
+import importlib.metadata, json, sys
+sys.path.insert(1, {src!r})
+from wingbox import update
+
+try:
+    importlib.metadata.version("wingbox")   # `wingbox update` reads the installed version this way
+except importlib.metadata.PackageNotFoundError:
+    pass
+launcher = update.running_launcher(sys.argv[0], True)
+
+def installer(command):
+    with open(launcher, "wb") as out:
+        out.write(b"new launcher")
+    return update.Ran(0, "upgraded")
+
+detached = update.detached_options()
+upgraded = update.upgrade_past_launcher(("installer", "upgrade"), launcher, installer,
+                                        lambda path: update.start_removal(sys.executable, path, detached))
+print(json.dumps({{"launcher": launcher, "status": upgraded.ran.status, "notes": [fact.head for fact in upgraded.notes]}}))
+"""
+
+
+class LauncherArchiveTest(unittest.TestCase):
+    def test_the_launcher_python_runs_as_an_archive_is_renamed_and_replaced(self) -> None:
+        """/* REQ-UPDATE-018: started the way a launcher starts Python (the launcher file itself run as a zip archive, first on sys.path) and after the installed version was read through importlib.metadata, which keeps that archive open, `wingbox update` must still rename the launcher: the installer writes the new one in its place, nothing is reported about the launcher, and the old file is gone soon after the command has ended. On Windows an open file cannot be renamed, so the handle has to be closed first. */"""
+        import json
+        import zipfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp).resolve()
+            launcher = folder / "wingbox.exe"
+            with zipfile.ZipFile(launcher, "w") as archive:
+                archive.writestr("__main__.py", LAUNCHED.format(src=str(REPO / "src")))
+            done = subprocess.run([sys.executable, str(launcher)], capture_output=True, text=True, timeout=120, check=False)
+            self.assertEqual(0, done.returncode, done.stderr)
+            answer = json.loads(done.stdout.strip().splitlines()[-1])
+            self.assertEqual({"launcher": str(launcher), "status": 0, "notes": []}, answer)
+            self.assertEqual(b"new launcher", launcher.read_bytes())
+            deadline = time.monotonic() + 30
+            while len(list(folder.iterdir())) > 1 and time.monotonic() < deadline:
+                time.sleep(0.2)
+            self.assertEqual(["wingbox.exe"], [path.name for path in folder.iterdir()])
