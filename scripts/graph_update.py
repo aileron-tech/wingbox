@@ -16,7 +16,8 @@ update_graph(root, changed) then:
    path), that looked up a provider name the change added or removed, or whose
    unresolved calls name a method the change added or removed;
 4. keeps the stored facts of every other module, assembles the graph exactly as
-   a build does, and publishes the cache, the graph, the use file and the store.
+   a build does, and publishes the cache, the graph, the use file, the layer
+   guesses of its purposes and the store.
 
 The result is the graph a build of the same tree publishes, byte for byte. It
 does not apply (NotApplicable, the caller runs an incremental build) when the
@@ -367,6 +368,7 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     _write_cache(root, fingerprint, new_list)
     builder._atomic_write_text(output_path, content)
     builder._atomic_write_text(builder.uses_path(output_path), uses)
+    builder.publish_layer_guesses(root, graph.nodes)
     unchanged = {node_id: stored[node_id].line for node_id in context.id_to_result if node_id not in redo}
     builder.write_fragments(fragments_path, new_key, fragments, root, exclusions, unchanged)
     return Updated(
