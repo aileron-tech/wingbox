@@ -1,5 +1,18 @@
 # Completion Log
 
+## 2026-11-18 - Size audit of what the package ships
+
+### Changes
+- Every file of the wheel and of the sdist was listed with its size and with what reads it (imports from the `wingbox` entry point, `python -m wingbox.refresh`, the hooks, the MCP server, `wingbox install` copying `wingbox/_skill`, the map template and its d3 build, the style library). After the word-vector table (entry below) two kinds of things were changed, one commit each.
+- Code nothing calls (one occurrence in the repository each, its definition): `LspClient.prepare_call_hierarchy`, `outgoing_calls`, `incoming_calls` (the LSP pass sends these requests through the pipelined path), the `_languages` set of `_LazyBoundLanguages` and its `results` argument, `impact_levels` in `scripts/code_graph_search.py`, `Review` and `REVIEW_MIN_BROKEN` in `architecture/align.py`, `CONFIG_DIRECTORY` in `architecture/config.py`, `_has_macro_parts` in the Dart parser, `consume_comment` in the Pascal tokenizer.
+- An asset that could be smaller with the same content: `plugins/wingbox/assets/icon.png` and its copy in `plugins/wingbox-skill` hold the same scanlines at the highest deflate level, 67,176 -> 59,362 bytes (identical after inflating; identical bitmap after conversion).
+- Kept, with the reason: `assets/d3.min.js` (280,622 bytes; the map page uses force, selection, zoom, drag, polygon, ease and min/max of it; a smaller build would change every `map.html`, so it is a decision, not a cleanup); the README as the long description (81,641 bytes of `METADATA`); `scripts/architecture/styles/infra.toml` (15,351 bytes; no code opens it yet, it holds the rules of the planned infrastructure style); `scripts/git_descendants.py` (4,035 bytes; no command reaches it, `SKILL.md` lists it as a bundled script); functions only the tests call (`detect_source_language`, `write_sexp`, `tokenize_reference`, `forget_resolved_roots`, `hook_group`, `dirty_group`, two properties of the loaded graph); the `*_use_positions` functions (reached by name through `getattr`); fields of the style records that the TOML files fill and no code reads yet; the refusals of `--output` and `install --project`, which tests require.
+- Sizes, `main` at 0.10.2 -> this branch: wheel 3,559,698 -> 597,908 bytes (117 -> 114 files, 5,238,260 -> 1,970,880 unpacked); sdist 3,547,014 -> 583,288 bytes; installed `wingbox` with its metadata, without dependencies, 5,239,013 -> 1,971,634 bytes; desktop extension bundle 66,235 -> 60,554 bytes; `plugins/wingbox` 146,364 -> 138,521 bytes, `plugins/wingbox-skill` 132,936 -> 125,093 bytes. The dependencies are unchanged: 15,239,644 bytes installed (CPython 3.12, macOS x86-64), of which `tree_sitter_c_sharp` 5,328,611.
+- Checked with the final wheel in a clean environment against the wheel of 0.10.2: `wingbox init` on 9 folders (two real repositories, the layered fixture of the tests, the same with a `webhooks` folder, five path lists of `benchmarks/architecture/trees` as empty files), 135 output files byte-identical; `wingbox build` on four of them, `index.sexp` and `boundaries all` byte-identical. `--version`, `init`, `build`, `impact`, `install --dry-run`, the four hooks and the MCP server answer from that wheel.
+
+### Motivation
+- The maintainer asked to remove everything the installed program does not use and to make the distribution as small as it can be without removing a feature, a language, the offline map or the README on the package page.
+
 ## 2026-11-18 - The built-in word-vector table and `--synonyms` are removed
 
 ### Changes
