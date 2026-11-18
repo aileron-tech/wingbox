@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-18 - `impact` does less work per call (issue #106)
+
+### Changes
+- `scripts/code_graph_search.py`: `tokenize` reads a graph line with one pattern (quoted value, list without a quote or a list inside, bare word) and hands a line to the character-by-character reader only when it holds a backslash or a list that the pattern does not cover; that reader stays as `tokenize_reference`, the reference the test compares with. `_classify_layer_by_purpose` is cached and `_within` skips the letter-by-letter comparison of two words whose lengths already differ by more than the allowed distance. `_impact_file` works out the file of a module once per loaded graph.
+- `scripts/portable.py`: `relative_posix` resolves the links of the project folder once (`_resolved_root`, 16 entries; `forget_resolved_roots` drops them).
+- Tests `tests/test_issue_106_impact_speed.py`, REQ-CS-078..082: same tokens as the reference reader on the lines of two built graphs and 20,000 generated lines; fewer than 1 graph line in 10 takes the slow reader; the cached guess equals the full comparison and compares nothing the second time; words of too different length are not compared; one `impact` call resolves at most one path per file plus the folder, text unchanged.
+- Checked on two repositories with the graph of 0.10.0, old scripts against these, 12 modules each, text and `--sexp`: 48 of 48 answers byte-identical. Work of one call, counted by the profiler: immich (707 files) 2,351,264 -> 1,353,050 function calls, 22,300 -> 1,835 lines read one character at a time, 1,502 -> 708 link resolutions; FastAPI (1,227 files) 1,670,505 -> 748,001 function calls, 20,679 -> 199 lines. Wall clock of the 24 calls: 25.2 s -> 22.2 s and 22.8 s -> 20.6 s (one machine, one run).
+
+### Motivation
+- Issue #106: a reader measured about 6 s per `impact` call on a repository of 400 Python files with 0.9.2 and traced it to repeated fuzzy matching; his two changes go in as he described them, and the reader of the graph file, the largest share on the repositories measured here, goes with them. What is left of a call is starting Python, importing the modules and reading the graph.
+
 ## 2026-11-18 - Version 0.10.0: release branch, benchmarks measured again on claude-opus-5-5
 
 ### Changes
