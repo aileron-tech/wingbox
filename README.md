@@ -246,17 +246,17 @@ a fixed seed in five public repositories (TypeScript, Rust, Python):
 
 | Setup | Complete answers | Tokens per answer | Cost per answer |
 |---|---|---|---|
-| With Wingbox | 54 of 55 | 29,482 | 0.030 USD |
-| Built-in search only | 39 of 55 | 48,545 | 0.063 USD |
+| With Wingbox | 55 of 55 | 67,579 | 0.110 USD |
+| Built-in search only | 48 of 55 | 98,800 | 0.179 USD |
 
-  Tokens -39 % (95 % interval -50 % to -26 %), cost -52 % (-60 % to -44 %).
-  The sessions ran with Wingbox 0.10.0 (2026-11-18).
-  The saving is large on the two Rust repositories (-67 % and -59 % tokens),
-  smaller on chrome-devtools-mcp (-23 %) and absent on immich and FastAPI.
+  Cost -38 % (95 % interval -49 % to -25 %), tokens -32 % (-47 % to -12 %),
+  on `claude-opus-5-5` with Wingbox 0.10.0 (2026-11-18). Tokens fall on the
+  two Rust repositories (agent-browser -67 %, claudes-c-compiler -32 %) and
+  are higher on the other three (chrome-devtools-mcp +13 %, immich +26 %,
+  FastAPI +43 %).
 - Checked against every import statement of seven corpora (3,795 dependencies
-  in the largest), the graph has no wrong dependency and four missing: an
-  import of a vendored bundle, which Wingbox leaves out of the graph, and
-  three Rust uses of an enum that a macro generates.
+  in the largest), the graph has no wrong dependency and one missing: an
+  import of a vendored bundle, which Wingbox leaves out of the graph.
 
 The reference lists come from resolvers that share no code with Wingbox. The
 scripts, the lists and every result file are in
@@ -283,9 +283,9 @@ no model inside any of the tools):
 |---|---|---|---|---|
 | Exact list of dependent files, five questions | 5 of 5 | 1 of 5 | 1 of 5 | 1 of 5 |
 | File dependencies of FastAPI against its 1,802 import pairs, wrong / missing | 0 / 0 | 19 / 17 | 106 / 25 | 22 / 118 |
-| Tokens a coding agent spends per answer (built-in search alone: 55,971) | 25,283 | 150,504 | 99,247 | 73,905 |
-| Cost per answer in that test, USD (built-in search alone: 0.078) | 0.024 | 0.117 | 0.081 | 0.065 |
-| Answer quality in that test, F1 (built-in search alone: 0.888) | 1.000 | 0.870 | 0.888 | 0.874 |
+| Tokens a coding agent spends per answer (built-in search alone: 254,967) | 66,628 | 314,516 | 297,215 | 362,509 |
+| Cost per answer in that test, USD (built-in search alone: 0.357) | 0.121 | 0.395 | 0.354 | 0.402 |
+| Answer quality in that test, F1 (built-in search alone: 0.989) | 1.000 | 0.984 | 0.984 | 0.984 |
 
 Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
 Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).

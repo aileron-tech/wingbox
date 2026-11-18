@@ -29,32 +29,19 @@
  {
   "corpus": "agent-browser, Rust sources",
   "language": "Rust",
-  "pairs": 452,
-  "edges": 449,
+  "pairs": 456,
+  "edges": 456,
   "wrong": 0,
-  "missing": 3,
+  "missing": 0,
   "accepted_extra": 0,
   "wrong_edges": [],
-  "missing_edges": [
-   [
-    "cli/src/flags.rs",
-    "cli/src/session_settings/spec.rs"
-   ],
-   [
-    "cli/src/main.rs",
-    "cli/src/session_settings/spec.rs"
-   ],
-   [
-    "cli/src/mcp.rs",
-    "cli/src/session_settings/spec.rs"
-   ]
-  ]
+  "missing_edges": []
  },
  {
   "corpus": "claudes-c-compiler",
   "language": "Rust",
-  "pairs": 2037,
-  "edges": 2037,
+  "pairs": 2084,
+  "edges": 2084,
   "wrong": 0,
   "missing": 0,
   "accepted_extra": 0,

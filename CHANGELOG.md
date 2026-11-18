@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.10.0 - 2026-11-17
+## 0.10.0 - 2026-11-18
 
 The answers of `wingbox impact` for Rust change: a file that uses an item through a module facade now
 depends on the file that defines the item.
@@ -35,6 +35,15 @@ depends on the file that defines the item.
   2015 (no `edition` key) a `use` path and `::name` start at the crate root.
 - The cache format changes (Rust items record whether they are private; Rust files record their
   `impl` blocks and type aliases): the first build after the upgrade parses every file again.
+- `wingbox impact` says why each file is on the list: the import, or the items the file uses (for Rust
+  with their names and how they arrive: a `use`, a facade re-export, a glob import, a member of a type,
+  a macro), and below depth 1 the file it is reached through; the `--sexp` facts carry `:through`,
+  `:more` and the name lists, and the MCP tool prints the same. The list of files is unchanged.
+- The `wingbox` skill now installs the program by itself when it is missing: a skill that came from a
+  plugin directory tells you, runs `pipx install wingbox` or `uv tool install wingbox`, and builds the
+  map. `plugins/wingbox-skill` is the skill alone, the form the Claude plugin directory accepts from any
+  organization (it takes hooks and a local MCP server only from organizations it has verified); the
+  full plugin in `plugins/wingbox` is unchanged.
 
 ### Fixes
 
@@ -46,6 +55,23 @@ depends on the file that defines the item.
   (`pub use self::inner as api;`) are followed; a `#[macro_export]` macro of another workspace crate
   resolves to the file that defines it. An item declared `pub(super)` or `pub(in path)` is carried by
   a glob re-export only into that scope, and `pub(self)` is private.
+
+### Benchmarks
+
+- The Rust reference of the benchmarks (`tools/rust_resolve.py`, no Wingbox code) counts, besides the
+  module a path reaches, the file that defines a named item (through `pub use` re-exports), the items a
+  module names after a glob import, and a member named through a type (`Type::member`) to the file whose
+  `impl` block defines it. A file that uses an item depends on the file that defines it; the earlier
+  reference stopped at the module facade. `tools/rust_compiler_check.py` checks the reference against
+  rust-analyzer: every required pair the compiler can see is confirmed on both Rust repositories.
+  Against this reference the graph has 0 wrong and 0 missing Rust edges (456 and 2,084), and
+  `wingbox impact` is complete on 100 of 100 questions. The 100 questions stay the same draw.
+- The agent tests ask a question that states, for each language, what the reference counts; before,
+  its Rust clause named only a `mod`, a `use` or a path of the module, and agents left out the files
+  that use an item through a re-export. They run on `claude-opus-5-5`. Impact test, 55 questions:
+  complete answers 55 of 55 with Wingbox against 48 of 55 with the agent's own search, cost per answer
+  -38 % (0.110 against 0.179 USD), tokens -32 %. Comparison test: Wingbox F1 1.000 in 15 of 15 trials,
+  at 0.121 USD per trial against 0.354 to 0.402 for the other setups.
 
 ## 0.9.2 - 2026-11-18
 

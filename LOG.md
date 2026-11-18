@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-18 - Version 0.10.0: release branch, benchmarks measured again on claude-opus-5-5
+
+### Changes
+- Branch `release-0-10-0`: the Rust item edges (the 2026-11-17 entry below), the Rust resolution audit (type members, module layout, Cargo targets; entry above) and the benchmark proposal, rebased on 0.9.2. Version 0.10.0 in `pyproject.toml`, `server.json` and `WINGBOX_VERSION`; the plugin manifests stay at 0.9.2 until they are pinned to the release.
+- Free checks at this branch: edge test Rust rows agent-browser 456 required / 456 graph / 0 wrong / 0 missing and claudes-c-compiler 2,084 / 2,084 / 0 / 0; `wingbox impact` complete on 100 of 100; the 100 questions and the agent subset are the same draw; of the 100 reference lists only agent-browser-19 (11 -> 19, `impl Running` in `seed.rs`) and claudes-c-compiler-17 (3 -> 4) change; the five comparison lists do not.
+- Agent tests (`benchmarks/impact/impact100.py`, `benchmarks/graphify/tools/agent_test.py`, `oi_agent_test.py`): the question states, for each language, what the reference counts (the old Rust clause named only a `mod`, a `use` or a path of the module, and agents on Opus left out files that use an item through a re-export or a glob import, quoting that text); the model is `claude-opus-5-5`. All arms ran on 2026-11-18 with the new text; the search-alone, Graphify, CodeGraph and OntoIndex arms ran before the type-member fix and are scored on the current lists (same question text, same tools); the Wingbox arms ran a third time with the release build, whose `impact` output says why each file is on the list (the second run, before that output, had 54 of 55: on agent-browser-14 the agent left out `flow/replay.rs` and `flow/send.rs`, which `wingbox impact` printed; the new output names them `uses HarEntry by name after \`use super::*\``). Impact: 55 of 55 complete with Wingbox, 48 of 55 with search alone, cost -38 % (-49 % to -25 %), tokens -32 % (-47 % to -12 %). Comparison: Wingbox F1 1.000, 15 of 15 perfect, 0.121 USD per trial; search alone 0.989, Graphify 0.984, CodeGraph 0.984, OntoIndex 0.984.
+- Results: `benchmarks/impact/results` (`agent.json`, `agent_answers.json`, `command.json`, `edges.json`, two reference lists, `command.ontoindex.json` rows of the two changed lists, `<repo>.rust_compiler_check.json` from the audit), `benchmarks/graphify/results` (`agent_summary*.json`, versions); `context_ratio.json` and the comparison `command_check.json` and `*.formula.json` (the `impact` answers are longer now that each row carries its reason: mean 797 -> 1,081 tokens over the 100 answers); both READMEs generated; the README tables and the sentences that describe a measurement follow the new numbers; slogans and titles are left as they are.
+
+### Motivation
+- The maintainer: release 0.10.0 with the Rust fix, measure the headline agent numbers on Opus with a question that states what the reference counts, and publish only what the numbers say.
 ## 2026-11-18 - `impact` says why each file is on the list
 
 ### Changes

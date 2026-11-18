@@ -1,0 +1,376 @@
+{
+ "projects": [
+  "cli"
+ ],
+ "tool": {
+  "name": "rust-analyzer",
+  "version": "1.100.0 (0ef1bc386 2026-11-09)"
+ },
+ "method": "rust-analyzer scip, build scripts replaced by a no-op command, procedural macros off, all features and default features",
+ "files_read_by_the_compiler": 121,
+ "rs_files": 122,
+ "files_not_read": [
+  "cli/src/native/cdp/windows_process.rs"
+ ],
+ "compiler_edges": 589,
+ "compiler_counted": 452,
+ "compiler_accepted_only": 118,
+ "compiler_outside": 19,
+ "compiler_outside_by_kind": {
+  "visibility": 10,
+  "method-or-field": 8,
+  "module-unresolved": 1
+ },
+ "names_between_files_by_kind": {
+  "visibility": 163,
+  "module-ancestor": 860,
+  "module": 1371,
+  "path-item": 1105,
+  "use-item": 441,
+  "name": 4897,
+  "method-or-field": 5093,
+  "assoc-via-type": 2390,
+  "type-member": 939,
+  "mod-decl": 105,
+  "module-unresolved": 4,
+  "trait-member": 122
+ },
+ "names_with_an_ambiguous_definition": 0,
+ "module_files_found_by_the_layout_rule": 0,
+ "reference_required": 456,
+ "reference_confirmed": 453,
+ "reference_not_confirmed": [],
+ "reference_not_checked": [
+  {
+   "from": "cli/src/native/cdp/chrome.rs",
+   "to": "cli/src/native/cdp/windows_process.rs",
+   "references": [
+    {
+     "line": 2,
+     "category": "use",
+     "text": "super::windows_process::Child"
+    },
+    {
+     "line": 1978,
+     "category": "glob-use",
+     "text": "super::* Child"
+    },
+    {
+     "line": 983,
+     "category": "type-member",
+     "text": "Child::spawn"
+    },
+    {
+     "line": 2117,
+     "category": "type-member",
+     "text": "Child::spawn"
+    }
+   ]
+  },
+  {
+   "from": "cli/src/native/cdp/mod.rs",
+   "to": "cli/src/native/cdp/windows_process.rs",
+   "references": [
+    {
+     "line": 8,
+     "category": "mod-decl",
+     "text": "mod windows_process;"
+    }
+   ]
+  },
+  {
+   "from": "cli/src/native/cdp/windows_process.rs",
+   "to": "cli/src/test_utils.rs",
+   "references": [
+    {
+     "line": 336,
+     "category": "use",
+     "text": "crate::test_utils::EnvGuard"
+    },
+    {
+     "line": 458,
+     "category": "type-member",
+     "text": "EnvGuard::new"
+    },
+    {
+     "line": 490,
+     "category": "type-member",
+     "text": "EnvGuard::new"
+    }
+   ]
+  }
+ ],
+ "compiler_counted_missing_in_reference": [],
+ "compiler_outside_edges": [
+  {
+   "from": "cli/src/ca_bundle.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 1
+   },
+   "examples": {
+    "visibility": {
+     "line": 80,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/doctor/helpers.rs",
+   "to": "cli/src/doctor/mod.rs",
+   "kinds": {
+    "visibility": 9
+   },
+   "examples": {
+    "visibility": {
+     "line": 10,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 doctor/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/actions.rs",
+   "to": "cli/src/session_settings/plan.rs",
+   "kinds": {
+    "method-or-field": 50
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 3215,
+     "column": 37,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 session_settings/plan/impl#[Running]plan()."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/browser.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 3
+   },
+   "examples": {
+    "visibility": {
+     "line": 181,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/cdp/client.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 2
+   },
+   "examples": {
+    "visibility": {
+     "line": 1043,
+     "column": 9,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/cdp/obscura.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 1
+   },
+   "examples": {
+    "visibility": {
+     "line": 24,
+     "column": 9,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/daemon.rs",
+   "to": "cli/src/native/browser.rs",
+   "kinds": {
+    "method-or-field": 1
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 538,
+     "column": 28,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/browser/impl#[BrowserManager]has_process_exited()."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/e2e_tests.rs",
+   "to": "cli/src/native/cdp/client.rs",
+   "kinds": {
+    "method-or-field": 14
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 709,
+     "column": 10,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/cdp/client/impl#[CdpClient]send_command_no_params()."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/e2e_tests.rs",
+   "to": "cli/src/native/element.rs",
+   "kinds": {
+    "method-or-field": 12
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 3289,
+     "column": 27,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/element/impl#[RefMap]get()."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/e2e_tests.rs",
+   "to": "cli/src/native/flow/recorder.rs",
+   "kinds": {
+    "method-or-field": 4
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 16391,
+     "column": 24,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/flow/recorder/impl#[FlowRecorder]active()."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/e2e_tests.rs",
+   "to": "cli/src/native/webmcp.rs",
+   "kinds": {
+    "method-or-field": 16
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 361,
+     "column": 22,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/webmcp/RuntimeState#invocations."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/flow/hosts.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 1
+   },
+   "examples": {
+    "visibility": {
+     "line": 18,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/flow/outcome.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 6
+   },
+   "examples": {
+    "visibility": {
+     "line": 165,
+     "column": 9,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/flow/recorder.rs",
+   "to": "cli/src/native/flow/model.rs",
+   "kinds": {
+    "method-or-field": 1
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 222,
+     "column": 25,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/flow/model/Flow#origin."
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/flow/send.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 2
+   },
+   "examples": {
+    "visibility": {
+     "line": 7,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/stream/discovery.rs",
+   "to": "cli/src/native/stream/mod.rs",
+   "kinds": {
+    "visibility": 1
+   },
+   "examples": {
+    "visibility": {
+     "line": 7,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/stream/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/native/stream/http.rs",
+   "to": "cli/src/connection.rs",
+   "kinds": {
+    "module-unresolved": 1
+   },
+   "examples": {
+    "module-unresolved": {
+     "line": 9,
+     "column": 12,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 connection/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/session_settings/mod.rs",
+   "to": "cli/src/main.rs",
+   "kinds": {
+    "visibility": 1
+   },
+   "examples": {
+    "visibility": {
+     "line": 56,
+     "column": 5,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 crate/"
+    }
+   }
+  },
+  {
+   "from": "cli/src/session_settings/tests.rs",
+   "to": "cli/src/native/cdp/chrome.rs",
+   "kinds": {
+    "method-or-field": 38
+   },
+   "examples": {
+    "method-or-field": {
+     "line": 448,
+     "column": 15,
+     "symbol": "rust-analyzer cargo agent-browser 0.43.0 native/cdp/chrome/LaunchOptions#headless."
+    }
+   }
+  }
+ ],
+ "graph_edges": 456,
+ "compiler_counted_missing_in_graph": [],
+ "graph_not_confirmed": [],
+ "graph_not_checked": []
+}
