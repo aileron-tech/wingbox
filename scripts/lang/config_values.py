@@ -44,7 +44,7 @@ def read_config_values(directory: str) -> tuple[ConfigValues, ...]:
         if os.path.getsize(path) > MAX_CONFIG_BYTES:
             continue
         try:
-            with open(path, encoding="utf-8") as handle:
+            with open(path, encoding="utf-8-sig") as handle:
                 text = handle.read()
             values = config_names(name, text)
         except (OSError, UnicodeDecodeError, ValueError) as error:

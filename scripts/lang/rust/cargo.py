@@ -126,9 +126,10 @@ def load_rust_packages(root: str, discovery_exclusions: DiscoveryExclusions) -> 
         if is_excluded_path(discovery_exclusions, manifest_path):
             continue
         try:
-            with open(manifest_path, "rb") as manifest_file:
-                manifests[os.path.normpath(dirpath)] = tomllib.load(manifest_file)
-        except (OSError, tomllib.TOMLDecodeError) as error:
+            # utf-8-sig: a manifest saved with a byte order mark is the same manifest (tomllib refuses the mark).
+            with open(manifest_path, "r", encoding="utf-8-sig") as manifest_file:
+                manifests[os.path.normpath(dirpath)] = tomllib.loads(manifest_file.read())
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
             print(f"[code-graph] Cannot read Rust package identity from {manifest_path}: {error}", file=sys.stderr)
 
     packages: list[RustPackage] = []
