@@ -1,0 +1,26 @@
+# The Wingbox pull request check on Wingbox's own pull requests: one comment with the modules that use
+# what a pull request changes and are not part of it, the tests that use it, and the review plan.
+# The released action and the released wingbox from PyPI check the code of the pull request; nothing of the
+# pull request is run.
+name: wingbox
+
+on: pull_request
+
+permissions:
+  contents: read
+  pull-requests: write   # the comment
+
+# A new push to a pull request replaces the run in progress.
+concurrency:
+  group: wingbox-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the base commit is checked out next to the head
+      - uses: aileron-tech/wingbox-action@v1
