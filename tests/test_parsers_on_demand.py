@@ -208,7 +208,7 @@ class PerUserFolderTest(unittest.TestCase):
 
 class PinnedCatalogTest(unittest.TestCase):
     def test_the_package_pins_only_the_built_in_parsers_and_the_catalog_agrees_with_the_extras(self) -> None:
-        """/* REQ-DEPS-012: the package depends on tree-sitter, the TypeScript and Rust grammars and PyYAML only; every on-demand language has a pip extra and `all` has them all, with exact pins; the catalog `wingbox add` downloads from (assets/parsers.json) names the same package and version as the extra, the language adapter and the requirements file, and for each wheel a file name, an https URL on files.pythonhosted.org and a sha256. */"""
+        """/* REQ-DEPS-012: the package depends on tree-sitter, the TypeScript and Rust grammars and PyYAML only; every on-demand language has a pip extra and `all` has them all and nothing else, with exact pins; the one other extra is `http`, the transport package; the catalog `wingbox add` downloads from (assets/parsers.json) names the same package and version as the extra, the language adapter and the requirements file, and for each wheel a file name, an https URL on files.pythonhosted.org and a sha256. */"""
         project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         self.assertEqual(
             ["PyYAML", "tree-sitter", "tree-sitter-rust", "tree-sitter-typescript"],
@@ -216,7 +216,10 @@ class PinnedCatalogTest(unittest.TestCase):
         )
         self.assertTrue(all("==" in requirement for requirement in project["dependencies"]))
         extras = project["optional-dependencies"]
-        self.assertEqual(sorted(ON_DEMAND + ("all",)), sorted(extras))
+        # `http` is the one extra that is not a parser: the HTTP transport of the MCP server, a distribution
+        # of its own (REQ-HTTP-021). `all` means all parsers and does not install it.
+        self.assertEqual(sorted(ON_DEMAND + ("all", "http")), sorted(extras))
+        self.assertEqual(len(ON_DEMAND), len(extras["all"]))
         catalog = json.loads(CATALOG.read_text(encoding="utf-8"))
         self.assertEqual(sorted(ON_DEMAND), sorted(catalog["languages"]))
         adapters = {language.name: language for language in LANGUAGES}

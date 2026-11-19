@@ -15,6 +15,43 @@
 - `tests/test_mcp_tools.py` (REQ-MCP-021..030) and `tests/test_mcp_server.py`: pass.
 - The Windows cells of the first CI run failed on REQ-MCP-027 (`changes`): `(diff-functions-no-match :files 1)`. `cmd_diff_functions` compared the path git prints (`shop/pricing.py`) with the graph's path (`shop\pricing.py`); the diff path is now normalized to the system's separator before the comparison. A defect of the command on Windows since it exists; no test ran it there before.
 
+## 2026-11-18 - Streamable HTTP transport for the MCP server, as the package wingbox-http
+
+### Why
+- The owner asked for the MCP server to be reachable from another machine: stdio needs the client and the repository on one host. His two decisions: access for Claude Code and Codex with a secret token in the Authorization header (not OAuth), and the transport as a separate package so that the core keeps its promise of holding no listening code.
+
+### Changes
+- New distribution `packages/wingbox-http` (module `wingbox_http`, console script `wingbox-http`, standard library only, requires exactly its own version of `wingbox`):
+  - `transport.py`, pure: `admit` (path `/mcp`, Origin, token, method, Content-Type, Accept) and `decide` (size, one JSON object, `MCP-Protocol-Version`, and for revision 2026-07-28 the `Mcp-Method` and `Mcp-Name` headers against the body) return `Refuse(status, headers, body)` or `Forward(line, method, modern)`; `reply_status` maps the server's reply to 202, 200, 400 or 404.
+  - `settings.py`: arguments, `WINGBOX_HTTP_TOKEN` and `--token-file` into `Settings` or `Problem`; a non-loopback address without a token is a `Problem`.
+  - `listener.py`: `ThreadingHTTPServer`, optional TLS (handshake in the connection's thread), one worker thread for the calls, and the event-stream answer with keep-alive comments for a `tools/call` slower than one second.
+  - `__init__.py`: `main(args, cwd, env)` builds `mcp_server.Server` and passes `mcp_server.handle_line` to the listener; `run()` is the console script and turns SIGTERM into a clean stop.
+- `src/wingbox/mcp_server.py`: `wingbox mcp --http ...` loads `wingbox_http` by name and hands over the remaining arguments; without the package it prints the install command and exits 2. No network module is imported by the core.
+- `pyproject.toml`: the extra `http = ["wingbox-http==<version>"]`.
+- README section "Over HTTP, from another machine", the package README, the changelog entry, the `HTTP` test prefix in AGENTS.md.
+
+### Protocol choices
+- Read from the specification pages of 2025-11-25 and 2026-07-28: one endpoint, POST; a notification is answered 202; the server may answer a request with JSON or an event stream; GET and DELETE may be answered 405 when no server stream and no session exist; an invalid Origin is 403; an unsupported `MCP-Protocol-Version` is 400; under 2026-07-28 a header that differs from the body is 400 with -32020 and an unknown method is 404.
+- Not implemented, by design: sessions (`Mcp-Session-Id`), resumable streams (`Last-Event-ID`), the GET stream, OAuth. The token is a shared secret; the specification's authorization chapter describes OAuth and says nothing of a static token, which is the owner's choice for agents that send a fixed header.
+
+### Verification
+- `python -m unittest tests.test_http_transport`: 23 tests (REQ-HTTP-001..022, REQ-SEC-010), among them a real listener on a loopback port with the real server (initialize, 202 for the notification, tools/list, build, impact, 401 without the token, 404 for an unknown method under 2026-07-28), the event stream of a slow call, one call at a time, 411 and 413 before the body is read, and HTTPS with a certificate made by openssl.
+- `tests.test_local_only`, `tests.test_mcp_server`, `tests.test_english_only`, `tests.test_mcp_registry`: pass; REQ-SEC-001 is unchanged and still scans `src/` and `scripts/`.
+- Run for real in a clean environment (wheel of the package built with `uv build packages/wingbox-http`, installed beside the core): `wingbox mcp --http --host 0.0.0.0` without a token refuses to start; with a token file, curl got 401 without the token, 405 for GET, 403 for a foreign Origin, the `initialize` result, the `build` answer as an event stream, and `impact` over HTTPS with `--cacert`. Claude Code, with the server added by `--transport http` and the Authorization header, called `impact` and reported the 14 direct dependents the tool printed.
+
+## 2026-11-19 - Python: imports of a package kept under `src/` are resolved
+
+### Why
+- Found while using Wingbox to pick the tests of a change in this repository: `wingbox impact src/wingbox/mcp_server.py` named no test and `wingbox usages TOOLS_BY_NAME` found 1 use in 1 file, although two test files use it. A test that called a renamed MCP tool was therefore missed before a push and failed in CI. Cause: an absolute import was looked up from the root of the repository, from the folder of the importing file and from its parent folders that hold the first segment of the name; a file in `tests/` that imports `wingbox` never looked into `src/`.
+
+### Changes
+- `scripts/lang/python/imports.py`, `_candidate_bases`: after the existing folders, the folder `src` of every parent folder of the importing file, nearest first. Resolution still needs the file to exist in the graph, so a name that no `src/` holds stays unresolved.
+- `tests/test_python_src_layout.py` (REQ-PY-012..014): the tests of a src-layout project are dependents of the modules they import and appear in `impact` and `usages`; two parts of a monorepo with a package of the same name each reach their own `src/`; a package at the root still wins and an unknown name is no dependency.
+
+### Result
+- This repository, before and after: `usages TOOLS_BY_NAME` 1 use in 1 file -> 7 uses in 3 files (`tests/test_freshness.py`, `tests/test_skipped_language_notice.py`); `impact src/wingbox/mcp_server.py 1` 1 direct dependent -> 4.
+- Not changed: the Python reference of the benchmarks (`benchmarks/*/tools/py_edges.py`) resolves an absolute name from the folder of the file and from the repository roots only. On a benchmark repository with a src layout Wingbox now reports dependencies the reference does not count; the reference needs the same rule before those benchmarks are run again, and no published figure changes until then.
+
 ## 2026-11-19 - Release 0.12.2
 
 ### Changes

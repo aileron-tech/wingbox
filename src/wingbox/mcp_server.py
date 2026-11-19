@@ -2,6 +2,8 @@
 
 Serves the code graph of one repository to an MCP client over stdio:
 newline-delimited JSON-RPC 2.0 on stdin and stdout, logs on stderr, no network.
+`wingbox mcp --http` hands over to the separate package wingbox-http, which
+serves the same `handle_line` over the Streamable HTTP transport.
 
 Protocol revisions:
 - 2026-07-28 (current): stateless; every request carries its protocol version
@@ -29,6 +31,7 @@ and then say that the first build is still running.
 """
 from __future__ import annotations
 
+import importlib
 import io
 import json
 import os
@@ -66,11 +69,17 @@ MAX_DEPTH = 50
 FIRST_BUILD_WAIT_SECONDS = 45   # below the usual 60 s tool-call limit of MCP clients
 
 USAGE = """usage: wingbox mcp [--root DIR] [--build-missing]
+       wingbox mcp --http [--root DIR] [--host ADDRESS] [--port N] ...
 
 Run the Wingbox MCP server on stdio for the repository at DIR (default: the
 current directory). With --build-missing it builds the code graph of DIR in the
 background when there is none. An MCP client starts this command; see the README
-section "Use from an MCP client"."""
+section "Use from an MCP client".
+
+With --http the server is reached over HTTP instead, from this or another
+machine. That transport is the separate package wingbox-http
+(pip install "wingbox[http]"); `wingbox mcp --http --help` lists its options."""
+HTTP_PACKAGE = "wingbox_http"
 
 
 # ---------------------------------------------------------------------------
@@ -828,7 +837,23 @@ def parse_root(args: list[str], cwd: str) -> tuple[Optional[str], Optional[str]]
     return os.path.realpath(root), None
 
 
+def _http_main(args: list[str], cwd: str) -> int:
+    """Hand over to the HTTP transport, which is a distribution of its own: this package listens on no port."""
+    try:
+        transport = importlib.import_module(HTTP_PACKAGE)
+    except ImportError:
+        print(
+            '[wingbox] ERROR: the HTTP transport is a separate package. Install it with: pip install "wingbox[http]" '
+            '(pipx: pipx inject wingbox wingbox-http)',
+            file=sys.stderr,
+        )
+        return 2
+    return transport.main(args, cwd)
+
+
 def main(args: list[str], cwd: str) -> int:
+    if "--http" in args:
+        return _http_main([argument for argument in args if argument != "--http"], cwd)
     if any(argument in ("-h", "--help") for argument in args):
         print(USAGE)
         return 0
