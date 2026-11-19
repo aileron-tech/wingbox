@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-19 - AGENTS.md: what follows every release
+
+### Why
+- The maintainer asked for the steps after each release to be written down as a pipeline with a checklist: update the site, check the README, update the GitHub description, update the description where the MCP server is listed when needed, and everything to check right after a release, for GitHub Actions and GitLab too. Until now these steps lived in the heads of the sessions that release.
+
+### Changes
+- `AGENTS.md`, new section 6 "After every release": 6.1 the release exists everywhere (PyPI for both distributions, the GitHub release and its assets, the workflows, the MCP registry, the plugin pin, the Homebrew tap, a clean install), each with its command and the expected answer; 6.2 the descriptions (README, GitHub "About", the PyPI text, plugin and store texts); 6.3 the places that list the MCP server, with where each takes its text from; 6.4 the pull request check in GitHub Actions and GitLab CI (default version, live reruns, Marketplace, our own workflow); 6.5 the sites; 6.6 the report. Section 3 ends with a pointer to it.
+
+### Verification
+- Every command of 6.1 was run against release 0.12.2 on 2026-11-19: the registry query with `version=latest` answered 0.12.2 `active`; `gh release view` listed `wingbox-0.12.2.mcpb` and `wingbox.mcpb`; `gh repo view --json description,homepageUrl,repositoryTopics` answered the description, `https://wingbox.dev` and 20 topics; `scripts/bump_version.py` and the two GitLab templates exist at `v1.4.0` of the action.
+- `python -m unittest tests.test_english_only`: pass.
+
 ## 2026-11-19 - The Wingbox pull request check on this repository's own pull requests
 
 ### Changes

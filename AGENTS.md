@@ -128,6 +128,8 @@ Follow these steps in order when the maintainer asks for a release.
 
    then run `wingbox build .` and `wingbox impact <file>` in a small project.
 
+A release is not finished here: go on with section 6, "After every release".
+
 ## 4. Upload token
 
 - The upload token is scoped to the PyPI project `wingbox` and is kept only in
@@ -200,3 +202,120 @@ After a release that changes the list or a description: publish to the MCP
 registry as section 3 says, and ask Glama to score the server again
 (https://glama.ai/mcp/servers/aileron-tech/wingbox/score); write the new grade
 into LOG.md.
+
+## 6. After every release
+
+Default: a release is finished only when every place that describes Wingbox
+says what the release says. Run this section in the same working session as
+the release, top to bottom. Each item ends in a check; write the command and
+what it answered into the `LOG.md` entry of the release. Skip an item only
+when the release did not change what the item describes, and write
+"not applicable" with the reason. A check that fails is fixed or reported to
+the maintainer, never left for the next release.
+
+### 6.1 The release exists everywhere
+
+| Check | Command | Expected |
+|---|---|---|
+| PyPI, both distributions | `uvx --refresh --from "wingbox[http]==X.Y.Z" wingbox --version` and `... wingbox mcp --http --help` | X.Y.Z; the options of the HTTP transport |
+| GitHub release | `gh release view vX.Y.Z --json tagName,assets` | the tag, the notes, the assets `wingbox-X.Y.Z.mcpb` and `wingbox.mcpb` |
+| Claude Desktop extension link | `curl -sIL https://github.com/aileron-tech/wingbox/releases/latest/download/wingbox.mcpb` | 200 |
+| GitHub Actions on `main` | `gh run list --branch main --limit 10` | `tests`, `docs` and `wingbox` green on the release commit; `publish-mcp` succeeded for the release |
+| MCP registry | `curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.aileron-tech/wingbox&version=latest"` | version X.Y.Z, status `active` |
+| Plugin pin | `python3 tools/sync_plugin.py`, then `python -m unittest tests.test_plugins` | no change left; the manifest pins the commit of the tag |
+| Homebrew tap | `gh run list -R aileron-tech/homebrew-wingbox --limit 3` and the formula file | the bump ran; the formula names X.Y.Z |
+| Clean install | section 3, step 6 | `wingbox build .` and `wingbox impact <file>` answer in a small project |
+
+A macOS job that ends "cancelled" with no steps never got a runner:
+`gh run rerun <run id> --failed` restarts only that job. A red job is read
+(`gh run view <run id> --log-failed`) before anything is rerun.
+
+### 6.2 The descriptions
+
+Read the changelog entry of the release, then check each text against it.
+The slogan and the headlines are the maintainer's: they change only on the
+maintainer's word; everything else follows the release.
+
+- `README.md`: the first screen (what Wingbox is, the install command, the
+  languages, the assistants), the tables of commands and of MCP tools, every
+  command and option the release added, renamed or removed. Checks:
+  `python -m unittest tests.test_readme_numbers tests.test_english_only`, and
+  each command the README shows for the changed feature run once as written.
+- GitHub "About" of the repository: description, website and topics.
+  `gh repo view aileron-tech/wingbox --json description,homepageUrl,repositoryTopics`;
+  change with `gh repo edit --description "..."` and `--add-topic`. The
+  description names the languages, the assistants and "no model, nothing
+  leaves your machine"; a release that adds a language or an assistant adds
+  it here.
+- `pyproject.toml` `description` and `keywords` (the text PyPI shows) and the
+  same lines of `packages/wingbox-http/pyproject.toml`: PyPI keeps the text
+  of a version for good, so a correction goes into the next release.
+- The plugin manifests and store texts: `plugins/wingbox/`, `docs/store/`
+  (`python3 tools/sync_plugin.py` copies what is generated; read what is
+  written by hand).
+
+### 6.3 Where the MCP server is listed
+
+Update a listing when the release changed what it shows: the description, the
+tool list, the install command or the transport. For each place: what it
+takes its text from, and how to check it.
+
+| Place | Text comes from | After a release |
+|---|---|---|
+| Official MCP registry, `io.github.aileron-tech/wingbox` | `server.json` (description, version, package, transport) | Published by the workflow `publish-mcp` on the GitHub release; check as in 6.1. A new description is an edit of `server.json` before the release. |
+| Glama, `glama.ai/mcp/servers/aileron-tech/wingbox` | The repository (`glama.json`, README, the running server's tool list) | When tools or descriptions changed: ask for a new score on its score page and write the grade into `LOG.md` (section 5). |
+| `punkpeye/awesome-mcp-servers` | Our line in its README (through our pull request) | When the one-line description changed: update the line in the open pull request, or open one for the merged line. |
+| `mcpservers.org` | The submission form | Submit again when the description or the install command changed. |
+| Best MCP, `bestmcp.it/code-analysis/wingbox` | Its own crawl of the registry and the repository; the claimed listing is edited in the submitter dashboard | Read the page; correct the description, the install command and the categories there when they differ. |
+| Claude Desktop extension | The manifest inside `wingbox.mcpb` (`tools/build_mcpb.py`) | Built for every release; `python -m unittest tests.test_mcpb`. |
+
+A new directory is added to this table in the same change that submits the
+server to it.
+
+### 6.4 The pull request check: GitHub Actions and GitLab CI
+
+The check lives in `aileron-tech/wingbox-action` and installs Wingbox from
+PyPI, so a Wingbox release is followed there:
+
+1. Run `python3 scripts/bump_version.py X.Y.Z` in that repository: it sets the
+   default of the `version` input in `action.yml`, the version its README
+   names, and `WINGBOX_VERSION` in every template under `gitlab/`. Run its
+   tests; pull request; release the action (a patch version when only the
+   default moved) and move the tag `v1` to it.
+2. GitHub: rerun the action on the example pull request the site links. The
+   comment is updated in place, its review plan says `:wingbox "X.Y.Z"`, and
+   the result and the counts are the ones expected for that change.
+3. GitLab: run the pipeline of the test project with the released template
+   (`include` of the tag). The job succeeds, the note on the merge request is
+   updated in place, and `wingbox-out/` holds the report, the plan and the
+   evidence record.
+4. The Marketplace page of the action shows the new version, and the workflow
+   `.github/workflows/wingbox.yml` of this repository (the check on our own
+   pull requests) ran green on a pull request opened after the release.
+5. A new input, output or variable of the action is in its README tables, in
+   both GitLab templates and on the site page (6.5). A path that only unit
+   tests cover is said to be so and is not written on the site before a real
+   pipeline ran it.
+
+### 6.5 The sites
+
+- `wingbox.dev` (repository `aileron-tech/wingbox-site`): the install lines,
+  the list of commands and MCP tools on the home page, the page
+  `/pull-request-check` (inputs, outputs, `WINGBOX_VERSION`), the benchmark
+  pages when a result file changed (`tools/import_benchmark.py`,
+  `import_comparison.py`, `import_projects.py`, `import_usages.py` copy the
+  results of this repository). A number is on the site only when it is in a
+  published result file of this repository, and a new or changed benchmark
+  number is shown to the maintainer before it is published. Deploy, then
+  check the live pages: the new text is there (`curl -s <page> | grep`), and
+  the changed block has no horizontal overflow at 1440 and 390 px.
+- The company page for Wingbox: the version-independent summary still fits
+  the release.
+- Wait until 6.1 is green before a site or a listing names the release.
+
+### 6.6 Report
+
+The `LOG.md` entry of the release lists 6.1 to 6.5 with the evidence of each
+item, or "not applicable" and the reason. Announcements are the maintainer's
+decision: prepare the checked headlines (what a user can now do, in the
+user's words, each one verified by a command) and hand them over.
