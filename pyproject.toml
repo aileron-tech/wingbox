@@ -73,7 +73,7 @@ php = ["tree-sitter-php==0.24.1"]
 dart = ["tree-sitter-dart==0.1.0"]
 # The Streamable HTTP transport of the MCP server (`wingbox mcp --http`) is its own distribution,
 # packages/wingbox-http: this package holds no listening code. Same version as wingbox (REQ-HTTP-021).
-http = ["wingbox-http==0.12.0"]
+http = ["wingbox-http==0.12.1"]
 all = [
     "tree-sitter-c-sharp==0.23.5",
     "tree-sitter-java==0.23.5",
