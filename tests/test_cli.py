@@ -100,7 +100,7 @@ class ClosedPipeTest(unittest.TestCase):
 
         class _Script:
             @staticmethod
-            def main(_arguments: list[str]) -> int:
+            def main(_arguments: list[str], graph_stale: object = None) -> int:
                 raise BrokenPipeError()
 
         original = wingbox_cli.load_script
@@ -436,7 +436,7 @@ class WingboxDecisionsTest(unittest.TestCase):
 
 class WingboxOutputTest(unittest.TestCase):
     def test_outputs_for_people_are_text_and_init_sexp_is_summarised(self) -> None:
-        """/* REQ-CLI-024: init --sexp summarises the target and the missing folders per part (details with --details); align and place print text unless --sexp; place calls an existing empty folder present; advice prints one line for the parts without advice; outside git the build says plainly once that .gitignore rules are not applied. */"""
+        """/* REQ-CLI-024: init --sexp summarises the target and the missing folders per part (details with --details); align and place print text with --human; place calls an existing empty folder present; advice prints one line for the parts without advice; outside git the build says plainly once that .gitignore rules are not applied. */"""
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name).resolve()
@@ -455,8 +455,8 @@ class WingboxOutputTest(unittest.TestCase):
         cwd = os.getcwd()
         os.chdir(root)
         try:
-            align_text = _run(["align"])[1]
-            place_text = _run(["place", "a helper used by several layers"])[1]
+            align_text = _run(["align", "--human"])[1]
+            place_text = _run(["place", "a helper used by several layers", "--human"])[1]
         finally:
             os.chdir(cwd)
         self.assertFalse(align_text.startswith("("), align_text)

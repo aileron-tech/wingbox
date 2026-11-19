@@ -64,9 +64,9 @@ def _run(files: dict[str, str], argv: list[str], cargo: bool = False) -> str:
 
 class UsagesCommandTests(unittest.TestCase):
     def test_text_lists_every_use_by_file_with_position_and_kind(self) -> None:
-        """/* REQ-CS-062: `usages <file>::<Name>` prints every use of the definition, through re-exports and aliases, grouped by file, each with line:column and its kind (re-export, import, extends, type, call). */"""
+        """/* REQ-CS-062: `usages <file>::<Name> --human` prints every use of the definition, through re-exports and aliases, grouped by file, each with line:column and its kind (re-export, import, extends, type, call). */"""
         self.assertEqual(
-            _run(PYTHON, ["usages", "app/models.py::Invoice"]),
+            _run(PYTHON, ["usages", "app/models.py::Invoice", "--human"]),
             textwrap.dedent(
                 """\
                 Usages of Invoice (class, app/models.py:1)
@@ -96,18 +96,18 @@ class UsagesCommandTests(unittest.TestCase):
 
     def test_a_bare_name_with_several_definitions_lists_the_candidates(self) -> None:
         """/* REQ-CS-064: `usages <Name>` answers for the only definition of Name; with several it lists each candidate as <file>::<Name> to ask again, and lists no uses. */"""
-        output = _run(PYTHON, ["usages", "Invoice"])
+        output = _run(PYTHON, ["usages", "Invoice", "--human"])
         self.assertIn("2 definitions of Invoice", output)
         self.assertIn("app/models.py::Invoice", output)
         self.assertIn("legacy/models.py::Invoice", output)
         self.assertNotIn("import", output)
         sexp = _run(PYTHON, ["usages", "Invoice", "--sexp"])
         self.assertIn("(usages-candidate app/models::Invoice :kind cls :file app/models.py :line 1)", sexp)
-        self.assertIn("app/__init__.py\n  1:21   re-export\n", _run(PYTHON, ["usages", "app/models::Invoice"]))
+        self.assertIn("app/__init__.py\n  1:21   re-export\n", _run(PYTHON, ["usages", "app/models::Invoice", "--human"]))
 
     def test_method_usages_mark_calls_whose_receiver_type_is_not_in_sight(self) -> None:
         """/* REQ-CS-065: `usages <file>::<Class>.<method>` lists the calls that resolve to the method and, marked unresolved, the calls of a method of that name whose receiver type is not in sight. */"""
-        output = _run(PYTHON, ["usages", "app/models.py::Invoice.total"])
+        output = _run(PYTHON, ["usages", "app/models.py::Invoice.total", "--human"])
         self.assertIn("app/billing.py\n  9:16   call\n", output)
         self.assertIn("app/other.py\n  2:14   unresolved-call\n", output)
         self.assertIn("1 use in 1 file; 1 unresolved call", output)
@@ -122,7 +122,7 @@ class UsagesCommandTests(unittest.TestCase):
                 "export class Big extends Store implements Saver {}\n"
                 "export const s: Store = new Store();\n"
             ),
-        }, ["usages", "src/model.ts::Store"])
+        }, ["usages", "src/model.ts::Store", "--human"])
         self.assertIn("src/index.ts\n  1:10   re-export\n", ts)
         self.assertIn("src/app.ts\n  1:10   import\n  2:26   extends\n  3:17   type\n  3:29   call\n", ts)
         rust = _run({
@@ -135,14 +135,14 @@ class UsagesCommandTests(unittest.TestCase):
                 "impl Lens for Wide {}\n"
                 "fn go(c: &Camera) { c.take(); let d = Camera; d.take(); }\n"
             ),
-        }, ["usages", "src/shot.rs::Camera"], cargo=True)
+        }, ["usages", "src/shot.rs::Camera", "--human"], cargo=True)
         self.assertIn("src/lib.rs\n  3:15   re-export\n", rust)
         self.assertIn("src/run.rs\n  1:12   import\n  5:11   type\n  5:39   reference\n", rust)
         lens = _run({
             "src/lib.rs": "pub mod shot;\npub mod run;\n",
             "src/shot.rs": "pub trait Lens {}\n",
             "src/run.rs": "use crate::shot::Lens;\nstruct Wide;\nimpl Lens for Wide {}\n",
-        }, ["usages", "src/shot.rs::Lens"], cargo=True)
+        }, ["usages", "src/shot.rs::Lens", "--human"], cargo=True)
         self.assertIn("src/run.rs\n  1:18   import\n  3:6   extends\n", lens)
 
     def test_a_file_that_re_exports_the_name_leads_to_its_definition(self) -> None:
@@ -156,7 +156,7 @@ class UsagesCommandTests(unittest.TestCase):
             "src/index.ts": "export { Store } from './model';\n",
             "src/app.ts": "import { Store } from './index';\nexport const s = new Store();\n",
         }
-        self.assertIn("Usages of Store (class, src/model.ts:1)", _run(ts_files, ["usages", "src/index.ts::Store"]))
+        self.assertIn("Usages of Store (class, src/model.ts:1)", _run(ts_files, ["usages", "src/index.ts::Store", "--human"]))
 
     def test_typescript_block_scoped_names_shadow_only_their_block(self) -> None:
         """/* REQ-TS-SYM-004: a TypeScript `const` or `let` in a block shadows an imported name only inside that block; the same name elsewhere in the function is a use. A `var` shadows it in the whole function. */"""
@@ -176,7 +176,7 @@ class UsagesCommandTests(unittest.TestCase):
                 "  return limit;\n"
                 "}\n"
             ),
-        }, ["usages", "src/a.ts::limit"])
+        }, ["usages", "src/a.ts::limit", "--human"])
         self.assertIn("src/b.ts\n  1:10   import\n  7:10   reference\n", output)
         self.assertNotIn("5:12", output)
         self.assertNotIn("11:10", output)
@@ -196,7 +196,7 @@ class UsagesCommandTests(unittest.TestCase):
             self.assertIn(":positions no", built)
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                search.main(["usages", "app/models.py::Invoice", "--map", str(root / ".wingbox/index.sexp"),
+                search.main(["usages", "app/models.py::Invoice", "--human", "--map", str(root / ".wingbox/index.sexp"),
                              "--root", str(root)])
             self.assertIn("8:11   call", output.getvalue())
             uses = (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8")
@@ -231,7 +231,7 @@ class UsagesCommandTests(unittest.TestCase):
             self.assertEqual((1, len(PYTHON) - 1), (second.value.walked, second.value.reused))
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                search.main(["usages", "app/models.py::Invoice", "--map", str(map_path), "--root", str(root)])
+                search.main(["usages", "app/models.py::Invoice", "--human", "--map", str(map_path), "--root", str(root)])
             self.assertIn("app/other.py\n  4:24   import\n  5:9   call\n", output.getvalue())
             self.assertIn("app/billing.py\n  1:17   import\n", output.getvalue())
 
@@ -264,7 +264,7 @@ class UsagesCommandTests(unittest.TestCase):
             self.assertEqual(incremental, (root / ".wingbox/index.uses.sexp").read_text(encoding="utf-8"))
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                search.main(["usages", "app/models.py::Invoice", "--map", str(map_path), "--root", str(root)])
+                search.main(["usages", "app/models.py::Invoice", "--human", "--map", str(map_path), "--root", str(root)])
             self.assertIn("  9:13   call\n", output.getvalue())
             self.assertIn("app/__init__.py\n  1:21   re-export\n", output.getvalue())
 
@@ -311,15 +311,15 @@ class UsagesCommandTests(unittest.TestCase):
             self.assertLess(answers["Invoice"][1], answers[None][1])
 
     def test_the_answer_stops_at_200_uses_unless_all(self) -> None:
-        """/* REQ-CS-067: `usages` lists at most 200 uses and says how many it left out; --all lists every one. */"""
+        """/* REQ-CS-067: the text of `usages --human` lists at most 200 uses and says how many it left out; --all lists every one. The default form has no such limit (REQ-CS-117). */"""
         files = {"lib/core.py": "def f(): ...\n", "lib/__init__.py": ""}
         for index in range(30):
             files[f"lib/user{index:02d}.py"] = "from lib.core import f\n" + "f()\n" * 9
-        limited = _run(files, ["usages", "lib/core.py::f"])
+        limited = _run(files, ["usages", "lib/core.py::f", "--human"])
         self.assertIn("300 uses in 30 files", limited)
         self.assertIn("... 100 more uses: rerun with --all", limited)
         self.assertEqual(200, limited.count("   call\n") + limited.count("   import\n"))
-        everything = _run(files, ["usages", "lib/core.py::f", "--all"])
+        everything = _run(files, ["usages", "lib/core.py::f", "--human", "--all"])
         self.assertEqual(300, everything.count("   call\n") + everything.count("   import\n"))
 
 

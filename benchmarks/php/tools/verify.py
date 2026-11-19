@@ -41,6 +41,13 @@ def module_id(path: str) -> str:
     return path
 
 
+def text_form(help_text: str) -> list[str]:
+    """The option that asks the Wingbox under test for the text for people, which this benchmark reads and
+    measures: `--human` when S-expressions are its default (its help then names `--human|--json`), nothing for
+    an earlier release, whose default is that text."""
+    return ["--human"] if "--human|--json" in help_text else []
+
+
 def wingbox_files(text: str) -> set[str]:
     """The files named under the Depth sections of `wingbox impact` output."""
     files: set[str] = set()
@@ -96,9 +103,10 @@ def run_command(work: str, question: dict) -> dict:
     if not os.path.exists(binary):
         raise SystemExit(f"no wingbox at {binary}; set WINGBOX_BIN or run run.sh first")
     directory = os.path.join(work, "bench", "wb", question["corpus"])
+    text_option = text_form(subprocess.run([binary, "help"], capture_output=True, text=True, timeout=600).stdout)
     try:
         done = subprocess.run(
-            [binary, "impact", question["file"], "2", "--all"],
+            [binary, "impact", question["file"], "2", "--all", *text_option],
             cwd=directory,
             capture_output=True,
             text=True,

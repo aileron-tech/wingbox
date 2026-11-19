@@ -1,8 +1,38 @@
 # S-expression Output Notation
 
-Every output line is a self-contained fact. Each fact that references a module
-carries a compact `:lang` value such as `py`, `ts`, `rs`, `php`, `blade`,
-or `rb`.
+Every output line is a self-contained fact, except the answers of `impact` and
+`usages`, which are one form over several lines. Each fact that references a
+module carries a compact `:lang` value such as `py`, `ts`, `rs`, `php`,
+`blade`, or `rb`.
+
+## Forms of an answer
+
+The query commands and `advice`, `align`, `place`, `compare` print
+S-expressions by default, complete. One option chooses another form; two of
+them at once are an invalid argument:
+
+- `--human`: the text for people. `impact`, `usages`, `advice`, `align`,
+  `place` and `compare` print readable text; the other query commands print
+  their fact lines. Long lists stop at a limit unless `--all`.
+- `--json`: one JSON object on one line. `impact` and `usages` have their own
+  keys (see their sections). Every other command prints `{"facts": [...]}`,
+  one object per fact line in the same order:
+  `(dep a b :lang rs :via imports :depth 2 :cycle)` is
+  `{"fact": "dep", "args": ["a", "b"], "lang": "rs", "via": "imports", "depth": 2, "cycle": true}`.
+  Atoms outside keywords are `args`; a keyword takes the value after it, or is
+  `true`; `:suggestions`, `:others` and the `:via` of `analyze-dependent` are
+  always lists; a list `(:methods a b)` is `"methods": ["a", "b"]`; the name
+  lists of an import (`(:use A B :of 9)`) are collected under `names` as
+  `{"way": "use", "through": "", "names": ["A", "B"], "of": 9}`; unquoted
+  digits are numbers; a comment line is `{"note": "..."}`.
+- `--sexp`: what versions up to 0.13 printed with it, byte for byte, for a
+  script written for them: the flat facts of `impact` and `usages` (see
+  "Flat facts" in their sections), the facts of `advice`, `align`, `place` and
+  `compare`, and the fact lines of the other query commands with their list
+  limits.
+
+`init`, `learn`, `install`, `uninstall` and `update` talk to a person: they
+print text and print their facts with `--sexp`.
 
 **Module ID**: relative path from workspace root, no extension, no `/index`. Example: `drive/modules/drive_db/api/drive_db_api.ts` -> `drive/modules/drive_db/api/drive_db_api`. A Blade template drops `.blade.php` (`resources/views/layouts/app.blade.php` -> `resources/views/layouts/app`).
 
@@ -224,7 +254,7 @@ only without one, and a learned folder the config does not list is recorded
 as `learned-removed`. An append-only log, written by `wingbox build` and by `wingbox advice
 accept|reject`; commit it to share it. A label that rests on a learned layer
 says so: `(layer <mod> service ... :rule "folder core/ -> service (learned
-from <id>)" :match learned :learned-from <id>)`. `wingbox advice --sexp`
+from <id>)" :match learned :learned-from <id>)`. `wingbox advice`
 prints the open `(advice ...)` items (rejected ones and those ignored for 3
 builds are left out) and `(advice-none ...)`; `--learned` prints the
 `learned-layer` facts. A build whose graph equals the one of the build before
@@ -387,9 +417,10 @@ no other; two facts of one pair with different marks give two lines.
 
 Paths are relative to the repository root. Each dependent file is named once, on
 its `analyze-dependent` line; `boundary-file` names the module and the files it
-imports. The counts in `key-entity` and `analyze-summary` are always complete.
-Without `--all` the answer names at most 200 dependents and 20 modules per key
-entity; an `analyze-more` or `key-entity-more` line gives the number left out.
+imports. The answer is complete. With `--human` (or `--sexp`) it names at most
+200 dependents and 20 modules per key entity unless `--all`, and an
+`analyze-more` or `key-entity-more` line gives the number left out; the counts
+in `key-entity` and `analyze-summary` are always complete.
 
 ## entity Output
 
@@ -417,6 +448,34 @@ module-level variable is a `var` definition of the use file.
 ## usages Output
 
 ```scheme
+(usages <Name> cls :at <path>:<line> :uses 7 :files 2
+ (<path> import 1:17 2:24 extends 4:13 call 8:11)
+ (<path> unresolved-call 2:14)
+ (<path> reference))                    ; a language without use positions
+(usages <Name>.<method> method :at <path>:<line> :uses 1 :files 1 :unresolved 1 ...)
+(usages-ambiguous <Name> :definitions 2
+ (<path>::<Name> cls <line>)
+ (<path>::<Name> fn <line>))
+```
+
+One form per answer. The head names the symbol, the kind of its definition and
+where it is defined; each file is named once and its uses are grouped by kind,
+each kind followed by its `line:col` positions. Kinds: `import`, `re-export`,
+`call`, `type`, `extends` (extends or implements), `reference`,
+`unresolved-call`. `:unresolved` is said only when it is not 0. A bare name
+with several definitions answers with the candidates, each written as it can
+be asked. The form is complete.
+
+`usages --json` prints `{"usages": {"symbol", "kind", "file", "line", "uses",
+"files", "unresolved", "rows"}}` with one row `{"file", "line", "column",
+"kind"}` per use; an ambiguous name has `"error": "ambiguous"` and
+`"candidates"`, an unknown one `"error": "no-match"`. `usages --human` prints
+the same answer as text (the target, the counts, then each file with its
+`line:col` and kind), at most 200 uses unless `--all`.
+
+### Flat facts (`usages --sexp`)
+
+```scheme
 (usages-target <mod>::<Name> :kind cls :file <path> :line <n>)
 (usage <src-mod> <line> <col> :kind call :file <path>)
 (usage <src-mod> <line> <col> :kind unresolved-call :file <path>)
@@ -427,11 +486,9 @@ module-level variable is a `var` definition of the use file.
 (usages-candidate <mod>::<Name> :kind cls :file <path> :line <n>)
 ```
 
-`usages` without `--sexp` prints the same facts as text: the target, the
-counts, then each file with its `line:col` and kind. Kinds: `import`,
-`re-export`, `call`, `type`, `extends` (extends or implements), `reference`,
-`unresolved-call`. Uses are sorted by file, line and column; at most 200 unless
-`--all`. A bare name with several definitions answers with the candidates.
+What versions up to 0.13 printed with `--sexp`, kept as it was: one fact per
+line, module IDs, uses sorted by file, line and column, at most 200 unless
+`--all`.
 
 ## deps / rdeps Output
 
@@ -530,7 +587,62 @@ with declared rules has no capability rules. Pattern checks of the style:
 has a service layer), `service-builds-http-response`, `domain-imports-orm`
 (set on the db-client violation of a domain file).
 
-## impact Output (`--sexp`)
+## impact Output
+
+```scheme
+(graph :built 2026-01-31T09:15:00Z :files 359 :stale 0)   ; only when several files are asked
+(impact <file> :direct 2 :total 12
+ (1 <file> (:use A B C :of 9)
+    <file>)
+ (2
+  (:through <file>
+   <file> (:use A)
+   <file> :more 1
+   <file> (:glob "super" HarEntry))
+  (:through <file>
+   <file> :via calls-api))
+ (read-first <file> <file> <file>))
+(error no-match <file> :suggestions <file> <file>)        ; in place of the answer of a file not in the graph
+```
+
+One `impact` form per asked file, in the order asked; `wingbox impact a.rs b.rs
+2` asks for several (a last argument that is a number is the depth). Paths are
+files relative to the repository root. `:direct` and `:total` are the counts of
+depth 1 and of all depths. Rows are grouped by depth and, below depth 1, by the
+file of the previous depth they are reached through, named once per group. A
+bare path is a plain import; a path is followed by `:via <relation>` when the
+relation is not an import, by `:more N` when it depends on N other files of
+the previous depth as well, and by the name lists of its edge. `read-first`
+names the file and its direct dependents. The form is complete: nothing is cut.
+The `(advice ...)` facts that concern a file follow its form.
+
+`graph` says when the graph file was written (UTC), how many files it holds
+and how many changed files it is known to miss: 0 after the refresh that every
+query starts, the number of changed files with `WINGBOX_AUTO_REFRESH=0`, and
+`unknown` when nothing checked it (a graph given with `--map`). The exit
+status is 1 when a file is not in the graph.
+
+`impact --json` prints the same answer as one object: `{"graph": {"built",
+"files", "stale"}, "impact": [{"file", "direct", "total", "rows", "read_first",
+"advice"}]}`, each row `{"file", "depth", "via", "through", "more", "reasons"}`
+and each reason `{"way", "through", "names", "of"}`; a file that is not in the
+graph is `{"file", "error", "suggestions"}`. `impact --human` prints the text
+for people, which lists at most 200 dependents (nearest first) and the first
+10 read-first files unless `--all`.
+
+Each row says why the file is on the list. Below depth 1, `:through` is the
+file of the previous depth it is reached through (the first in the order of
+the list) and `:more` the number of other files of that depth it also depends
+on; `:via` and the name lists are those of its edge to that file (to the asked
+file at depth 1). The name lists are the ones of the
+import edge (see `imports` above): the names the builder followed, never a
+text search. The text form prints the same as one line per file:
+`imports it`, `imports A, B from it`, `uses A, re-exported by crate::m`,
+`uses A by name after `use super::*``, `uses T::new, defined in an impl block
+there`, `uses the macro m, exported at the crate root`, and below depth 1
+`through <file> (or 2 other files): ...`.
+
+### Flat facts (`impact --sexp`)
 
 ```scheme
 (impact-root <mod> :lang ts :file <path>)
@@ -543,20 +655,12 @@ has a service layer), `service-builds-http-response`, `domain-imports-orm`
 (read-first-more :hidden 640)
 ```
 
-The counts are complete. Without `--all` at most 200 dependents are listed,
-nearest first, and `read-first` names the file and its first 10 direct dependents.
-
-Each `impact` fact says why the file is on the list. Below depth 1,
-`:through` is the module of the previous depth it is reached through (the
-first in the order of the list) and `:more` the number of other modules of
-that depth it also depends on; `:via` and the name lists are those of its edge
-to `:through` (to the root at depth 1). The name lists are the ones of the
-import edge (see `imports` above): the names the builder followed, never a
-text search. The text form prints the same as one line per file:
-`imports it`, `imports A, B from it`, `uses A, re-exported by crate::m`,
-`uses A by name after `use super::*``, `uses T::new, defined in an impl block
-there`, `uses the macro m, exported at the crate root`, and below depth 1
-`through <file> (or 2 other files): ...`.
+What versions up to 0.13 printed with `--sexp`, kept as it was for the scripts
+that read it (the pull request check calls `impact <file> <hops> --sexp
+--all`): one fact per line with module IDs. The counts are complete; without
+`--all` at most 200 dependents are listed, nearest first, and `read-first`
+names the file and its first 10 direct dependents. A file that is not in the
+graph gives its `(error no-match ...)` line and exit status 0.
 
 ## invariants Output
 

@@ -441,10 +441,11 @@ class CodeGraphImpactTest(unittest.TestCase):
         self.assertIsInstance(load_result, code_graph_search.MapLoadOk)
         return graph, str(root)
 
-    def _impact(self, graph: CodeGraphContract, *args: object, **kwargs: object) -> str:
+    def _impact(self, graph: CodeGraphContract, target: str, depth: int, sexp: bool = False) -> str:
+        """The text for people of one file, or with sexp the flat facts of --sexp."""
         output = io.StringIO()
         with redirect_stdout(output):
-            code_graph_search.cmd_impact(graph, *args, **kwargs)
+            code_graph_search.cmd_impact(graph, [target], depth, "flat" if sexp else "human")
         return output.getvalue()
 
     def test_impact_accepts_file_paths_with_extension(self) -> None:
@@ -534,7 +535,7 @@ class CodeGraphImpactTest(unittest.TestCase):
         )
 
     def test_impact_cli_parses_depth_and_sexp_flag(self) -> None:
-        """/* REQ-CS-043: the impact command must accept [depth] and --sexp in any order and reject a bad depth. */"""
+        """/* REQ-CS-043: the impact command must accept [depth] after the files and --sexp anywhere, and reject a depth outside its range; since REQ-CS-108 a last argument that is not a number is one more file. */"""
         _graph, root = self._load_graph()
         base = ["--map", str(Path(root) / ".wingbox/index.sexp"), "--root", root]
 
@@ -546,9 +547,15 @@ class CodeGraphImpactTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            status = code_graph_search.main(base + ["impact", "app/core/util.py", "many"])
+            status = code_graph_search.main(base + ["impact", "app/core/util.py", "-1"])
         self.assertEqual(2, status)
         self.assertIn("(error invalid-argument", output.getvalue())
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            status = code_graph_search.main(base + ["impact", "app/core/util.py", "many"])
+        self.assertEqual(1, status)
+        self.assertIn("(error no-match many", output.getvalue())
 
 
 if __name__ == "__main__":

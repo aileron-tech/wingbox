@@ -165,22 +165,22 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | Command | Purpose | Example |
 |---|---|---|
 | `search "<pattern>" [--lines]` | Safe literal/`.*` search on graph; `--lines`: the facts as stored, with the source lines of `imports` and `refs` and the `built-from` fact | `search "operative.*service"` |
-| `analyze <id> [--all]` | Full module analysis (PRIMARY command); names at most 200 dependents unless `--all`; ends with the `(advice ...)` that concerns the module | `analyze drive/modules/drive/drive_schema` |
+| `analyze <id>` | Full module analysis (PRIMARY command); ends with the `(advice ...)` that concerns the module | `analyze drive/modules/drive/drive_schema` |
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
 | `boundary <id> --files-only` | File paths only (compact) | `boundary operatives.service --files-only` |
 | `entity <Name> [--positions]` | Find definitions + the modules that use them; `--positions`: every use with line and column | `entity DrivePath --positions` |
-| `usages <symbol> [--sexp] [--all]` | Every use of one symbol (`Name`, `<file>::Name`, `<file>::Class.method`) through re-exports and aliases, by file, `line:col` and kind (import, re-export, call, type, extends, reference; `unresolved-call` for a method call whose receiver type is not in sight); at most 200 unless `--all`; a name defined in several files lists the candidates | `usages src/billing/invoice.ts::Invoice` |
+| `usages <symbol>` | Every use of one symbol (`Name`, `<file>::Name`, `<file>::Class.method`) through re-exports and aliases, by file, `line:col` and kind (import, re-export, call, type, extends, reference; `unresolved-call` for a method call whose receiver type is not in sight); a name defined in several files lists the candidates | `usages src/billing/invoice.ts::Invoice` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
-| `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; lists at most 200 unless `--all`, counts are always complete; ends with the advice that concerns the file | `impact src/billing/invoice.service.ts --sexp` |
+| `impact <file\|id> [<file\|id> ...] [depth]` | Blast radius of each file asked, one answer per file in the order given: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; a last argument that is a number is the depth; with several files the answer opens with `(graph :built ... :files N :stale N)`; a file that is not in the graph gives `(error no-match ...)` in its place and exit status 1; ends with the advice that concerns the file | `impact src/billing/invoice.service.ts src/billing/tax.ts 2` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id> [--lines]` | Single module with edges; `--lines`: each `imports` and `refs` fact names the line of the statement it is read from (`:line 7`, `:lines 3 9`), in the file of its source module | `module operatives.controller --lines` |
 | `wingbox init [PATH] [--force] [--sexp]` | Split the repository into parts, judge the architecture style of each (with score, evidence and sources) and write `.wingbox/config.yaml` (kept unless `--force`) and `.wingbox/assistant-setup.md` (the lines a team may add by hand to AGENTS.md, CLAUDE.md and .claude/settings.json; Wingbox writes nothing outside `.wingbox/`); `--synonyms` also maps folder names through the built-in word vectors; in an empty folder `--language L --style S --yes [--scaffold]` starts a new project (without them it prints the choices and exits 2) | `wingbox init --sexp` |
-| `wingbox advice [--sexp] [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; a recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) is never hidden by inaction and is rejected only with `--reason`; record a decision in `.wingbox/decisions.sexp` | `wingbox advice --sexp` |
-| `wingbox align [PART] [--to STYLE] [--learn] [--sexp]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported; a baseline entry may state `:owner "<who>" :reason "<why>" :expires YYYY-MM-DD` (written by the person who accepts the break, never by you on your own), and past that day the break is a violation again | `wingbox align --sexp` |
-| `wingbox place "<what>" [--part PART] [--sexp]` | Layer and folder for new code by the placement rules of the part's style (`:new` when the folder does not exist yet) and what it may import | `wingbox place "repository for invoices" --sexp` |
-| `wingbox compare [--sexp]` | Parts of a monorepo per language: style, layers, differences (missing layers, a folder name meaning another layer, a style unlike the majority) and advice for the part that deviates | `wingbox compare --sexp` |
+| `wingbox advice [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; a recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) is never hidden by inaction and is rejected only with `--reason`; record a decision in `.wingbox/decisions.sexp` | `wingbox advice` |
+| `wingbox align [PART] [--to STYLE] [--learn]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported; a baseline entry may state `:owner "<who>" :reason "<why>" :expires YYYY-MM-DD` (written by the person who accepts the break, never by you on your own), and past that day the break is a violation again | `wingbox align` |
+| `wingbox place "<what>" [--part PART]` | Layer and folder for new code by the placement rules of the part's style (`:new` when the folder does not exist yet) and what it may import | `wingbox place "repository for invoices"` |
+| `wingbox compare` | Parts of a monorepo per language: style, layers, differences (missing layers, a folder name meaning another layer, a style unlike the majority) and advice for the part that deviates | `wingbox compare` |
 | `wingbox learn --agent [PART] [--sexp]` / `wingbox learn --apply [FILE]` | `/wingbox learn`: run `wingbox learn --agent`, read the files it names, answer only in its format (`(layer <part> <folder> <layer> :because "...")`, `(unknown ...)`, at most one `(style ...)`), pipe the answer to `wingbox learn --apply`, show the result; on errors fix the named lines and send the whole answer again. When the code does not decide a folder, ask the user in the chat and answer with `:because "operator: <their words>"`; never guess. To change `.wingbox/config.yaml`, follow the instructions at its top | `wingbox learn --agent` |
 | `boundaries [id\|all]` | Check the boundary rules of each part's style (or of rules the part declares); each line names `:part`, `:style` and `:rule`; type-only imports and guessed layers are reported apart; then what files do that their layer may not (`capability-violation`: SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the domain, with `:line` and `:evidence`) and the style's pattern checks (`pattern-violation`). `boundaries-ok` only when every part was checked; a part whose declared rules were not read, or without a determined style, is `boundaries-not-checked` with `boundaries-partial` instead of ok. Exit status: 2 not checked (declared rules not read), 1 violations, 0 otherwise - never report a pass on exit 2. For a gate add `--strict`: the last line is `(boundaries-result :status pass\|fail\|incomplete\|error :checked N :not-checked N :violations N :known N [:reason R])`, each checked part has a `(boundaries-checked :part P :style S :modules N)` fact, and the exit status is 0 pass, 1 violation, 2 incomplete (any part not checked, or no file checked), 3 error (no graph or a graph that cannot be read) | `boundaries all`, `boundaries all --strict` |
 | `invariants [id\|all]` | Check naming convention violations | `invariants all` |
@@ -196,9 +196,29 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `repl` | Interactive Scheme REPL | `repl` |
 | `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`graph`, `impact`, `modules`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`, `changes`, `facts`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
 
-`impact` accepts an ordinary file path. Without `--sexp` it prints readable text
-for people; agents pass `--sexp` to get the same facts in the compact
-S-expression form, which is the format every other command uses.
+`impact` accepts ordinary file paths, several in one call.
+
+Every command of this table and `advice`, `align`, `place` and `compare` print
+S-expressions by default: the compact form to read, complete. `--human` prints
+the text for people, whose long lists stop at a limit unless `--all`; `--json`
+prints the same answer as one JSON object.
+
+`wingbox init` and `wingbox learn` print text (facts with `--sexp`). The commands
+that took `--sexp` up to 0.13 still take it and print the flat facts of that version.
+
+### Use from code
+
+A script gets everything about several files in one call and reads it as JSON:
+
+```python
+answer = json.loads(subprocess.run(["wingbox", "impact", *files, "2", "--json"], capture_output=True, text=True).stdout)
+dependents = {a["file"]: [row["file"] for row in a.get("rows", [])] for a in answer["impact"]}
+```
+
+`answer["graph"]["stale"]` is 0 when the graph is up to date. Each row carries
+the reason it is listed: `depth`, `via` (the relation), `through` (the file it
+is reached through) and `reasons` (the names it takes). A file that is not in
+the graph has `error` in place of `rows`.
 
 ## Quick Reference: rg Queries
 
@@ -231,7 +251,7 @@ These one-liners are useful for quick checks. For structured output and full ana
 
 ## Output Notation
 
-All output is S-expression facts, one per line. See [references/sexp-notation.md](references/sexp-notation.md) for the full format.
+The default output is S-expressions: fact lines, and for `impact` and `usages` one compact form per answer. See [references/sexp-notation.md](references/sexp-notation.md) for the full format.
 
 Key patterns:
 ```scheme
@@ -239,6 +259,8 @@ Key patterns:
 (boundary-dep <mod> <dep> :lang ts :file <path> :relation imports)
 (boundary-rdep <mod> <rdep> :lang tsx :file <path> :relation imports)
 (boundary-summary <mod> :total 10 :deps 7 :rdeps 2)
+(impact <file> :direct 2 :total 3 (1 <file> <file> (:use Name)) (2 (:through <file> <file> :more 1)) (read-first <file> ...))
+(usages <Name> cls :at <file>:<line> :uses 7 :files 2 (<file> import 1:17 call 8:11) ...)
 (entity-def cls <mod> <Name> <line> :lang py :file <path>)
 (violation <src> <tgt> :src-layer domain :tgt-layer api :via imports :lang ts "<reason>")
 (result <module-or-path>)

@@ -6,7 +6,17 @@ Reads ``.wingbox/index.sexp`` and provides structured queries: module views,
 dependency trees, reverse dependency analysis, entity lookups, data flow
 tracing, and boundary discovery for minimal context loading.
 
-Output is S-expression facts (one per line, greppable).
+Output is S-expressions by default (the form agents read): fact lines, one per
+line and greppable, or for ``impact`` and ``usages`` one compact form per
+answer. The default form is complete. Every command takes one form option:
+
+    --human   the text for people (``impact`` and ``usages``; the fact lines of the
+              other commands), with its list limits; ``--all`` lifts them
+    --json    the same answer as one JSON object, complete
+    --sexp    what versions up to 0.13 printed with it: for ``impact`` and
+              ``usages`` one flat fact per line with module IDs and the list
+              limits (``--all`` lifts them); scripts written for those versions
+              read these lines
 
 Usage::
 
@@ -19,9 +29,13 @@ Usage::
                                                 their lines and the built-from fact)
     code_graph_search.py deps <id> [depth]      Outgoing dependency tree (default depth 2)
     code_graph_search.py rdeps <id> [depth]     Reverse dependency tree (default depth 2)
-    code_graph_search.py impact <file|id> [depth] [--sexp]  Blast radius of a change: dependents by depth and files to read first
-    code_graph_search.py usages <symbol> [--sexp] [--all]
-                                                Every use of one symbol (Name, <file>::Name,
+    code_graph_search.py impact <file|id> [<file|id> ...] [depth]
+                                                Blast radius of a change: dependents by depth, each with
+                                                the reason it is listed, and the files to read first;
+                                                one answer per file, in the order given, after a
+                                                (graph :built .. :files .. :stale ..) fact when several
+                                                files are asked
+    code_graph_search.py usages <symbol>        Every use of one symbol (Name, <file>::Name,
                                                 <file>::Class.method) by file, line:column and kind
     code_graph_search.py entity <name> [--positions]
                                                 Find entity: definition + the modules that use it;
@@ -71,13 +85,16 @@ and backslash escapes. Other regex operators are rejected.
 from __future__ import annotations
 
 import collections
+import contextlib
 import datetime
 import functools
 import hashlib
+import io
 import os
 import re
 import sys
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Optional
 
@@ -90,6 +107,7 @@ if __package__:
     from .architecture.plan import PartPlan, layer_folders
     from .architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from .architecture.words import levenshtein as _levenshtein
+    from . import fact_json, impact_forms, usages_forms
     from . import layer_guess as _layer_guess
     from . import portable
 else:
@@ -102,8 +120,11 @@ else:
     from architecture.plan import PartPlan, layer_folders
     from architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from architecture.words import levenshtein as _levenshtein
+    import fact_json
+    import impact_forms
     import layer_guess as _layer_guess
     import portable
+    import usages_forms
 
 MAP_SCHEMA_VERSION = 1
 MAX_SEARCH_PATTERN_LENGTH = 256
@@ -472,14 +493,15 @@ def _sexp_list(tag: str, items: list[str]) -> str:
 # No-match error helper
 # ---------------------------------------------------------------------------
 
+def _no_match_fact(pattern: str, suggestions: Sequence[str]) -> str:
+    if suggestions:
+        return f"(error no-match {_q(pattern)} :suggestions {' '.join(suggestions)})"
+    return f"(error no-match {_q(pattern)})"
+
+
 def _print_no_match(g: CodeGraph, pattern: str) -> None:
     """Print a structured no-match error with fuzzy suggestions."""
-    suggestions = CodeGraph._suggest_similar(pattern, g.nodes)
-    if suggestions:
-        sug_str = " ".join(suggestions)
-        print(f"(error no-match {_q(pattern)} :suggestions {sug_str})")
-    else:
-        print(f"(error no-match {_q(pattern)})")
+    print(_no_match_fact(pattern, CodeGraph._suggest_similar(pattern, g.nodes)))
 
 
 # ---------------------------------------------------------------------------
@@ -1647,21 +1669,14 @@ def module_dependents(g: CodeGraph, module_id: str) -> dict[str, str]:
     return _collect_rdep_mods(g, module_id)
 
 
-# By default an answer names at most this many dependent files; --all prints every one.
-_ANSWER_FILE_LIMIT = 200
-_READ_FIRST_LIMIT = 10
+# The text for people and the flat facts name at most this many dependent files; --all prints every one.
+_ANSWER_FILE_LIMIT = impact_forms.ANSWER_FILE_LIMIT
+_READ_FIRST_LIMIT = impact_forms.READ_FIRST_LIMIT
 _KEY_ENTITY_REF_LIMIT = 20
 
 
 def _rerun(command: str) -> str:
     return '"' + command.replace('"', '\\"') + ' --all"'
-
-
-def _print_impact_block(title: str, rows: list[tuple[str, str]]) -> None:
-    width = max(len(name) for name, _detail in rows)
-    print(title)
-    for name, detail in rows:
-        print(f"  {name:<{width}}   {detail}" if detail else f"  {name}")
 
 
 _FOLDER_MODULE_FILES = ("/index", "/__init__", "/mod")
@@ -1692,21 +1707,64 @@ def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]
     return g.resolve_module(pattern)
 
 
-def cmd_impact(
-    g: CodeGraph, target: str, max_depth: int = 2, sexp: bool = False, show_all: bool = False
-) -> None:
-    """Show what depends on a file or module: the blast radius of changing it.
+def impact_answer(g: CodeGraph, target: str, max_depth: int, advice: Optional[Sequence] = None) -> impact_forms.ImpactAnswer:
+    """What depends on a file or module, complete: every dependent by depth with the reason it is listed, the
+    files to read first and the advice that concerns the file; or that the file is not in the graph.
 
-    Prints readable text for people by default. With sexp=True it prints the
-    same facts in the compact S-expression form used by agents. The counts are
-    always complete; the lists stop at the file limit unless show_all is set.
-    """
+    advice is every advice item of the graph when the caller already has them (several files in one call)."""
+    pattern = _target_to_module_pattern(target, g._root)
+    matches = _impact_target_modules(g, target, pattern)
+    if not matches:
+        suggestions = CodeGraph._suggest_similar(pattern, g.nodes)
+        return impact_forms.ImpactMissing(target, tuple(_impact_file(g, module) for module in suggestions), _no_match_fact(pattern, suggestions))
+    root_id, others = matches[0], matches[1:]
+    root_file = _impact_file(g, root_id)
+    levels = tuple(
+        tuple(
+            impact_forms.ImpactLine(
+                _impact_file(g, row.module),
+                row.edge_type,
+                _impact_file(g, row.through) if depth > 1 else "",
+                row.more if depth > 1 else 0,
+                tuple(name_route_sexp(route) for route in row.names),
+                impact_reason(g, row, depth),
+            )
+            for row in level
+        )
+        for depth, level in enumerate(_impact_rows(g, root_id, max_depth), start=1)
+    )
+    read_first = tuple(dict.fromkeys([root_file] + [line.file for line in (levels[0] if levels else ())]))
+    related = module_advice(g, root_id) if advice is None else [item for item in advice if root_id in item.modules]
+    said = tuple(impact_forms.Advice(advice_sexp(item), f"  {item.reason} [{item.style}: {item.rule}]") for item in related)
+    if not others:
+        return impact_forms.ImpactFound(root_file, max_depth, levels, read_first, advice=said)
+    return impact_forms.ImpactFound(
+        root_file, max_depth, levels, read_first,
+        f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})",
+        f"Note: {len(matches)} modules match {pattern}; showing {root_id}. Others: {', '.join(others)}",
+        said,
+    )
+
+
+def graph_header(g: CodeGraph, stale: Optional[int]) -> impact_forms.GraphHeader:
+    """When the graph file was written, how many files it holds and how many changed files it is known to miss
+    (None: nothing checked it)."""
+    try:
+        written = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(os.path.getmtime(g._map_path)))
+    except OSError:
+        written = "unknown"
+    return impact_forms.GraphHeader(written, len(g.nodes), stale)
+
+
+def _print_impact_flat(g: CodeGraph, target: str, max_depth: int, show_all: bool) -> None:
+    """The flat facts of one file as versions up to 0.13 printed them with --sexp: `impact-root`, one
+    `(impact <root> <dependent> ...)` line per dependent with module IDs, `impact-summary`, `read-first`.
+    The counts are complete; the lists stop at the file limit unless show_all."""
     pattern = _target_to_module_pattern(target, g._root)
     matches = _impact_target_modules(g, target, pattern)
     if not matches:
         _print_no_match(g, pattern)
         return
-
     root_id = matches[0]
     others = matches[1:]
     levels = _impact_rows(g, root_id, max_depth)
@@ -1728,53 +1786,66 @@ def cmd_impact(
         shown_levels.append(level[:budget])
         budget -= len(shown_levels[-1])
     hidden = total - sum(len(level) for level in shown_levels)
-
-    if sexp:
-        if others:
-            print(f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})")
-        print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q(root_file)})")
-        for depth, level in enumerate(shown_levels, start=1):
-            for row in level:
-                print(impact_fact(g, root_id, row, depth))
-        if hidden:
-            print(f"(impact-more {root_id} :hidden {hidden} :rerun {_rerun(f'impact {target} {max_depth}')})")
-        print(f"(impact-summary {root_id} :direct {direct} :total {total} :depth {max_depth})")
-        for path in read_first:
-            print(f"(read-first {_q(path)})")
-        if read_first_count > len(read_first):
-            print(f"(read-first-more :hidden {read_first_count - len(read_first)})")
-        for item in module_advice(g, root_id):
-            print(advice_sexp(item))
-        return
-
     if others:
-        print(f"Note: {len(matches)} modules match {pattern}; showing {root_id}. Others: {', '.join(others)}")
-        print()
-    hops = "hop" if max_depth == 1 else "hops"
-    print(f"Impact of changing {root_file}")
-    print(f"  {'direct dependents':<20}{direct}")
-    print(f"  {f'within {max_depth} {hops}':<20}{total}")
-    print()
-    if not levels:
-        print("No other module depends on it.")
-        return
+        print(f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})")
+    print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q(root_file)})")
     for depth, level in enumerate(shown_levels, start=1):
-        if level:
-            _print_impact_block(f"Depth {depth}", [(_impact_file(g, row.module), impact_reason(g, row, depth)) for row in level])
-            print()
+        for row in level:
+            print(impact_fact(g, root_id, row, depth))
     if hidden:
-        print(f"  ... {hidden} more {'file' if hidden == 1 else 'files'}: rerun with --all")
-        print()
-    files = "file" if read_first_count == 1 else "files"
-    _print_impact_block(f"Read first ({read_first_count} {files})", [(path, "") for path in read_first])
+        print(f"(impact-more {root_id} :hidden {hidden} :rerun {_rerun(f'impact {target} {max_depth}')})")
+    print(f"(impact-summary {root_id} :direct {direct} :total {total} :depth {max_depth})")
+    for path in read_first:
+        print(f"(read-first {_q(path)})")
     if read_first_count > len(read_first):
-        print(f"  ... {read_first_count - len(read_first)} more: the other files of Depth 1")
-    related = module_advice(g, root_id)
-    if related:
-        print()
-        print("Advice")
-        for item in related:
-            print(f"  {item.reason} [{item.style}: {item.rule}]")
+        print(f"(read-first-more :hidden {read_first_count - len(read_first)})")
+    for item in module_advice(g, root_id):
+        print(advice_sexp(item))
+
+
+def impact_document(g: CodeGraph, targets: Sequence[str], max_depth: int = 2, stale: Optional[int] = None) -> tuple[int, dict]:
+    """(exit status, the JSON document) of `impact` for the files asked."""
+    answers = _impact_answers(g, targets, max_depth)
+    return _impact_status(answers), impact_forms.impact_json(answers, graph_header(g, stale))
+
+
+def _impact_answers(g: CodeGraph, targets: Sequence[str], max_depth: int) -> list[impact_forms.ImpactAnswer]:
+    # The advice of the graph is worked out once for a call with several files.
+    advice = advice_items(g)[0] if len(targets) > 1 else None
+    return [impact_answer(g, target, max_depth, advice) for target in targets]
+
+
+def _impact_status(answers: Sequence[impact_forms.ImpactAnswer]) -> int:
+    return 1 if any(isinstance(answer, impact_forms.ImpactMissing) for answer in answers) else 0
+
+
+def cmd_impact(
+    g: CodeGraph, targets: Sequence[str], max_depth: int = 2, form: str = "sexp", show_all: bool = False,
+    stale: Optional[int] = None,
+) -> int:
+    """Print what depends on each file or module: the blast radius of changing it, one answer per target.
+
+    form is "sexp" (the compact form agents read, complete; several files open with the graph fact), "json"
+    (the same content), "human" (text, whose lists stop at the file limit unless show_all) or "flat" (the
+    facts of versions up to 0.13, with the same limit). Returns 1 when a target is not in the graph, but for
+    "flat", which answers 0 as those versions did.
+    """
+    if isinstance(targets, str):
+        targets = [targets]
+    if form == "flat":
+        for target in targets:
+            _print_impact_flat(g, target, max_depth, show_all)
+        return 0
+    if form == "json":
+        status, document = impact_document(g, targets, max_depth, stale)
+        print(fact_json.render(document))
+        return status
+    answers = _impact_answers(g, targets, max_depth)
+    if form == "human":
+        sys.stdout.write(impact_forms.impact_text(answers, show_all))
+    else:
+        sys.stdout.write(impact_forms.impact_sexp(answers, graph_header(g, stale) if len(answers) > 1 else None))
+    return _impact_status(answers)
 
 
 def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
@@ -1833,7 +1904,7 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
 
 _KIND_WORDS = {"cls": "class", "fn": "function", "ifc": "interface", "typ": "type", "enm": "enum", "mod": "module",
                "var": "variable"}
-_USAGES_LIMIT = 200
+_USAGES_LIMIT = usages_forms.USAGES_LIMIT
 
 
 @dataclass(frozen=True)
@@ -1892,34 +1963,48 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
     return sorted(found, key=lambda usage: (usage.file, usage.line, usage.column, usage.kind)), unresolved
 
 
-def _plural(count: int, word: str) -> str:
-    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
+    """Every place that uses one symbol, complete; the candidates when a bare name has several definitions.
 
-
-def cmd_usages(g: CodeGraph, target: str, sexp: bool = False, show_all: bool = False) -> None:
-    """Every place that uses one symbol, grouped by file, with line:column and the kind of use.
-
-    target is Name, <file or module>::Name, or either with Class.method. A bare
-    name defined in several files lists the candidates instead of mixing them.
+    target is Name, <file or module>::Name, or either with Class.method.
     """
+    symbol, definitions = _usages_definitions(g, target)
+    if not definitions:
+        suggestions = CodeGraph._suggest_similar(target, g.nodes)
+        return usages_forms.UsagesMissing(target, _no_match_fact(target, suggestions), tuple(suggestions))
+    if len(definitions) > 1:
+        rows = sorted((_impact_file(g, d.module), d) for d in definitions)
+        return usages_forms.UsagesAmbiguous(symbol, tuple(
+            usages_forms.Candidate(file_path, d.kind, _KIND_WORDS.get(d.kind, d.kind), d.line) for file_path, d in rows
+        ))
+    definition = definitions[0]
+    usages, unresolved = _usages_of(g, definition, symbol)
+    method = "." in symbol
+    return usages_forms.UsagesFound(
+        symbol,
+        "method" if method else definition.kind,
+        f"method of {symbol.split('.', 1)[0]}" if method else _KIND_WORDS.get(definition.kind, definition.kind),
+        _impact_file(g, definition.module),
+        definition.line,
+        tuple(usages_forms.Site(usage.file, usage.line, usage.column, usage.kind) for usage in usages),
+        unresolved,
+    )
+
+
+def _print_usages_flat(g: CodeGraph, target: str, show_all: bool) -> None:
+    """The flat facts of one symbol as versions up to 0.13 printed them with --sexp: `usages-target`, one
+    `usage` (or `usage-file`) line per use with the module ID, `usages-summary`; at most 200 uses unless
+    show_all."""
     symbol, definitions = _usages_definitions(g, target)
     if not definitions:
         _print_no_match(g, target)
         return
     if len(definitions) > 1:
         rows = sorted((_impact_file(g, d.module), d) for d in definitions)
-        if sexp:
-            print(f"(usages-ambiguous {symbol} :definitions {len(rows)})")
-            for file_path, d in rows:
-                print(f"(usages-candidate {d.module}::{symbol} :kind {d.kind} :file {_q(file_path)} :line {d.line})")
-            return
-        print(f"{len(rows)} definitions of {symbol}; ask for one of them:")
-        width = max(len(file_path) + len(symbol) + 2 for file_path, _d in rows)
+        print(f"(usages-ambiguous {symbol} :definitions {len(rows)})")
         for file_path, d in rows:
-            name = f"{file_path}::{symbol}"
-            print(f"  {name:<{width}}   {_KIND_WORDS.get(d.kind, d.kind)}, line {d.line}")
+            print(f"(usages-candidate {d.module}::{symbol} :kind {d.kind} :file {_q(file_path)} :line {d.line})")
         return
-
     definition = definitions[0]
     usages, unresolved = _usages_of(g, definition, symbol)
     target_id = f"{definition.module}::{symbol}"
@@ -1928,40 +2013,32 @@ def cmd_usages(g: CodeGraph, target: str, sexp: bool = False, show_all: bool = F
     hidden = len(usages) - len(shown)
     resolved_count = len(usages) - unresolved
     files = len({usage.file for usage in usages if usage.kind != "unresolved-call"})
-    if sexp:
-        print(f"(usages-target {target_id} :kind {definition.kind} :file {_q(definition_file)} :line {definition.line})")
-        for usage in shown:
-            if usage.line:
-                print(f"(usage {usage.module} {usage.line} {usage.column} :kind {usage.kind} :file {_q(usage.file)})")
-            else:
-                print(f"(usage-file {usage.module} :kind {usage.kind} :file {_q(usage.file)})")
-        if hidden:
-            print(f"(usages-more {target_id} :hidden {hidden} :rerun {_rerun(f'usages {target}')})")
-        print(f"(usages-summary {target_id} :uses {resolved_count} :files {files} :unresolved {unresolved})")
-        return
-
-    if "." in symbol:
-        what = f"method of {symbol.split('.', 1)[0]}"
-    else:
-        what = _KIND_WORDS.get(definition.kind, definition.kind)
-    print(f"Usages of {symbol} ({what}, {definition_file}:{definition.line})")
-    summary = f"{_plural(resolved_count, 'use')} in {_plural(files, 'file')}"
-    if unresolved:
-        summary += f"; {_plural(unresolved, 'unresolved call')} (receiver type not in sight)"
-    print(f"  {summary}")
-    if not usages:
-        return
-    print()
-    current = ""
+    print(f"(usages-target {target_id} :kind {definition.kind} :file {_q(definition_file)} :line {definition.line})")
     for usage in shown:
-        if usage.file != current:
-            current = usage.file
-            print(current)
-        where = f"{usage.line}:{usage.column}" if usage.line else "-"
-        detail = usage.kind if usage.line else "reference (no use positions for this language)"
-        print(f"  {where}   {detail}")
+        if usage.line:
+            print(f"(usage {usage.module} {usage.line} {usage.column} :kind {usage.kind} :file {_q(usage.file)})")
+        else:
+            print(f"(usage-file {usage.module} :kind {usage.kind} :file {_q(usage.file)})")
     if hidden:
-        print(f"  ... {hidden} more {'use' if hidden == 1 else 'uses'}: rerun with --all")
+        print(f"(usages-more {target_id} :hidden {hidden} :rerun {_rerun(f'usages {target}')})")
+    print(f"(usages-summary {target_id} :uses {resolved_count} :files {files} :unresolved {unresolved})")
+
+
+def cmd_usages(g: CodeGraph, target: str, form: str = "sexp", show_all: bool = False) -> None:
+    """Print every place that uses one symbol, by file, with line:column and the kind of use.
+
+    form is "sexp" (the compact form agents read, complete), "json" (the same content), "human" (text, at
+    most 200 uses unless show_all) or "flat" (the facts of versions up to 0.13, with the same limit). A bare
+    name defined in several files lists the candidates instead of mixing them.
+    """
+    if form == "flat":
+        _print_usages_flat(g, target, show_all)
+    elif form == "json":
+        print(fact_json.render(usages_forms.usages_json(usages_answer(g, target))))
+    elif form == "human":
+        sys.stdout.write(usages_forms.usages_text(usages_answer(g, target), show_all))
+    else:
+        sys.stdout.write(usages_forms.usages_sexp(usages_answer(g, target)))
 
 
 def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> None:
@@ -4017,17 +4094,22 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         if isinstance(pattern_result, SearchPatternErr):
             return f"invalid pattern {args[1]}: {pattern_result.error}"
 
+    if args[0] in ("usages", "impact"):
+        unknown = [argument for argument in args[1:] if argument.startswith("--")]
+        if unknown:
+            return f"unknown option {unknown[0]}: {args[0]} takes --human, --json, --sexp and --all"
+
     if args[0] == "usages":
-        if not [argument for argument in args[1:] if argument != "--sexp"]:
+        if len(args) < 2:
             return "usages requires a symbol: Name, <file>::Name or <file>::Class.method"
         return None
 
     if args[0] == "impact":
-        positional = [argument for argument in args[1:] if argument != "--sexp"]
-        if not positional:
+        targets, depth = impact_arguments(args[1:])
+        if not targets:
             return "impact requires a file path or module ID"
-        if len(positional) >= 2:
-            _impact_depth, impact_depth_error = _parse_depth(positional[1])
+        if depth is not None:
+            _impact_depth, impact_depth_error = _parse_depth(depth)
             return impact_depth_error
         return None
 
@@ -4045,6 +4127,31 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
     return None
 
 
+_WHOLE_NUMBER = re.compile(r"-?\d+\Z")
+DEFAULT_IMPACT_DEPTH = 2
+# The option that names a form of the answer, and the form; without one the form is "sexp".
+ANSWER_FORMS = {"--human": "human", "--json": "json", "--sexp": "flat"}
+# The forms whose lists stop at their limits unless --all: what people read, and what 0.13 printed.
+LIMITED_FORMS = frozenset({"human", "flat"})
+
+
+def impact_arguments(positional: Sequence[str]) -> tuple[list[str], Optional[str]]:
+    """The files asked and the depth as written: of several arguments a last whole number is the depth."""
+    if len(positional) >= 2 and _WHOLE_NUMBER.match(positional[-1]):
+        return list(positional[:-1]), positional[-1]
+    return list(positional), None
+
+
+def answer_form(args: Sequence[str]) -> tuple[str, list[str], Optional[str]]:
+    """(form, the other arguments, error): "sexp" unless --human, --json or --sexp is given; two of them at
+    once are an error."""
+    asked = list(dict.fromkeys(argument for argument in args if argument in ANSWER_FORMS))
+    rest = [argument for argument in args if argument not in ANSWER_FORMS]
+    if len(asked) > 1:
+        return "sexp", rest, f"{' and '.join(asked)} are two forms of one answer: give one"
+    return (ANSWER_FORMS[asked[0]] if asked else "sexp"), rest, None
+
+
 def _load_focus(args: list[str]) -> Optional[str]:
     """The one name a command asks about, when it reads nothing else of the graph: usages, and
     entity with a literal name (a pattern may match any name, so it reads everything)."""
@@ -4057,39 +4164,79 @@ def _load_focus(args: list[str]) -> Optional[str]:
     return name or None
 
 
-def main(args: Optional[list[str]] = None) -> int:
+def main(args: Optional[list[str]] = None, graph_stale: Optional[int] = None) -> int:
+    """Run one query command. graph_stale is the number of changed files the graph is known to miss, when the
+    caller checked (the `wingbox` command does); `impact` reports it."""
     raw_args = list(sys.argv[1:] if args is None else args)
+    form, raw_args, form_error = answer_form(raw_args)
+    words, _map, _root, path_error = _extract_query_paths(raw_args)
+    # The help text and the interactive prompt are not answers: they are printed as they are.
+    no_answer = form_error is None and path_error is None and words[:1] in ([], ["-h"], ["--help"], ["help"], ["repl"])
+    if form != "json" or no_answer:
+        status, _document = _answer(raw_args, form, form_error, graph_stale)
+        return status
+    # JSON: one document. `impact` and `usages` build theirs; the fact lines of any other answer become objects.
+    lines = io.StringIO()
+    with contextlib.redirect_stdout(lines):
+        status, document = _answer(raw_args, form, form_error, graph_stale)
+    print(fact_json.render(document if document is not None else {"facts": fact_json.facts_json(lines.getvalue())}))
+    return status
+
+
+def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_stale: Optional[int]) -> tuple[int, Optional[dict]]:
+    """Run a command in the form asked: (exit status, the JSON document of a command that builds its own).
+    Everything else is printed as it is found."""
     # boundaries --strict: every way out prints a boundaries-result line; a check that could not run exits 3.
     strict = _is_strict_boundaries(raw_args)
     if strict:
         raw_args = [argument for argument in raw_args if argument != "--strict"]
     args, explicit_map, explicit_root, option_error = _extract_query_paths(raw_args)
+    option_error = option_error or form_error
     if option_error is not None:
         print(f"(error invalid-argument {_q(option_error)})")
-        return _strict_error("invalid-argument") if strict else 2
+        return (_strict_error("invalid-argument") if strict else 2), None
     if not args or args[0] in ("-h", "--help", "help"):
         print(__doc__)
-        return 0
-    show_all = "--all" in args
+        return 0, None
+    # The lists of the text for people and of the flat facts stop at their limits unless --all; the default
+    # form and JSON are complete.
+    show_all = "--all" in args or form not in LIMITED_FORMS
     args = [argument for argument in args if argument != "--all"]
 
     command_error = _validate_cli_command(args)
     if command_error is not None:
         print(f"(error invalid-argument {_q(command_error)})")
-        return 2
+        return 2, None
 
     if strict and not explicit_map:
         found, searched = _search_sexp_file(explicit_root)
         if found is None:
             _print_no_project(searched)
-            return _strict_error("no-graph")
+            return _strict_error("no-graph"), None
     sexp_path = explicit_map or find_sexp_file(explicit_root)
     g = CodeGraph()
     load_result = g.load(sexp_path, explicit_root, focus=_load_focus(args))
     if isinstance(load_result, MapLoadErr):
         print(f"(error invalid-map {_q(load_result.error)})")
-        return _strict_error("invalid-graph") if strict else 1
+        return (_strict_error("invalid-graph") if strict else 1), None
 
+    cmd = args[0]
+    if cmd == "impact" and len(args) >= 2:
+        targets, depth = impact_arguments(args[1:])
+        max_depth = DEFAULT_IMPACT_DEPTH if depth is None else int(depth)
+        if form == "json":
+            return impact_document(g, targets, max_depth, graph_stale)
+        return cmd_impact(g, targets, max_depth, form, show_all, graph_stale), None
+    if cmd == "usages" and len(args) >= 2:
+        if form == "json":
+            return 0, usages_forms.usages_json(usages_answer(g, args[1]))
+        cmd_usages(g, args[1], form, show_all)
+        return 0, None
+    return _run_fact_command(g, args, sexp_path, show_all, strict), None
+
+
+def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: bool, strict: bool) -> int:
+    """Run a command whose answer is a list of fact lines; they are printed as they are found."""
     cmd = args[0]
     if cmd == "analyze" and len(args) >= 2:
         cmd_analyze(g, args[1], show_all=show_all)
@@ -4111,13 +4258,6 @@ def main(args: Optional[list[str]] = None) -> int:
     elif cmd == "rdeps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
         cmd_rdeps(g, args[1], depth)
-    elif cmd == "impact" and len(args) >= 2:
-        impact_args = [argument for argument in args[1:] if argument != "--sexp"]
-        impact_depth = int(impact_args[1]) if len(impact_args) >= 2 else 2
-        cmd_impact(g, impact_args[0], impact_depth, sexp="--sexp" in args, show_all=show_all)
-    elif cmd == "usages" and len(args) >= 2:
-        usages_args = [argument for argument in args[1:] if argument != "--sexp"]
-        cmd_usages(g, usages_args[0], sexp="--sexp" in args, show_all=show_all)
     elif cmd == "entity" and len(args) >= 2:
         entity_args = [argument for argument in args[1:] if argument != "--positions"]
         cmd_entity(g, entity_args[0], positions="--positions" in args)

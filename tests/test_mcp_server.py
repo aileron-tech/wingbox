@@ -165,7 +165,9 @@ class McpProtocolTest(unittest.TestCase):
             self.assertEqual("object", tool["inputSchema"]["type"], tool["name"])
             self.assertFalse(tool["inputSchema"].get("additionalProperties", True), tool["name"])
         impact = next(tool for tool in tools if tool["name"] == "impact")
-        self.assertEqual(["target"], impact["inputSchema"]["required"])
+        self.assertNotIn("required", impact["inputSchema"])   # target or targets: the tool says which is missing
+        self.assertEqual("array", impact["inputSchema"]["properties"]["targets"]["type"])
+        self.assertEqual("string", impact["inputSchema"]["properties"]["target"]["type"])
         self.assertEqual(2, impact["inputSchema"]["properties"]["depth"]["default"])
         self.assertIn("all", impact["inputSchema"]["properties"])
 
@@ -190,7 +192,7 @@ class McpProtocolTest(unittest.TestCase):
             self.assertRegex(tool["name"], r"^[A-Za-z0-9_-]+$")
 
     def test_build_then_impact_return_text_and_s_expressions(self) -> None:
-        """/* REQ-MCP-004: the `graph` tool must build the code graph of --root, and `impact` must then return the text answer of `wingbox impact` only, as one text item. */"""
+        """/* REQ-MCP-004: the `graph` tool must build the code graph of --root, and `impact` must then return the answer of `wingbox impact` (its default S-expression form, REQ-MCP-033) only, as one text item. */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,
@@ -208,9 +210,9 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse(impact["isError"], impact)
         texts = _texts(session.reply(3))
         self.assertEqual(len(texts), 1)
-        self.assertIn("Impact of changing shop/pricing.py", texts[0])
+        self.assertTrue(texts[0].startswith("(impact shop/pricing.py :direct "), texts[0])
         self.assertIn("shop/checkout.py", texts[0])
-        self.assertNotIn("(impact ", texts[0])
+        self.assertNotIn("Impact of changing", texts[0])
         deps = session.reply(4)["result"]
         self.assertFalse(deps["isError"], deps)
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])

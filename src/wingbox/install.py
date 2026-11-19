@@ -79,6 +79,7 @@ When the project has a Wingbox code graph (`.wingbox/index.sexp` in the project 
 - Prefer Wingbox to `grep`, `rg`, `find` and opening files for research, search and reading code: ask the graph first (`wingbox quick "<keyword>"`, `wingbox analyze <module>`, `wingbox usages <symbol>`), then read only the files and lines it names. A text search is the fallback when the keyword is not a symbol (a string key, a message text, an error code) or the graph is older than the files in question.
 - Before changing a file, run `wingbox impact <file>` to see what depends on it.
 - Tests follow the impact: the dependents that `wingbox impact` names decide which tests to write and run, not the edited file alone. To validate tests, show for every changed function (`wingbox diff_functions <ref>`) a test that reaches it (`wingbox usages <function>` lists a test file). This proves that a test reaches the code, not that its assertions are strong: still read them.
+- From a script, `wingbox impact <file> [<file> ...] 2 --json` answers for several files in one call: read `["impact"][i]["rows"]`. Each row carries the reason it is listed.
 - For an overview, use the wingbox skill (`/wingbox`): it builds the graph when it is missing or stale.
 {END_MARKER}
 """

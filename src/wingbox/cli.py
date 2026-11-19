@@ -5,15 +5,14 @@
                                             print the candidates and write .wingbox/config.yaml (kept if present
                                             unless --force) and .wingbox/assistant-setup.md (lines a team may
                                             add by hand); then wingbox learn settles the open points
-    wingbox advice [--sexp] [--learned]     The open recommendations (or what was learned from past ones);
+    wingbox advice [--learned]              The open recommendations (or what was learned from past ones);
     wingbox advice accept|reject <id> [--reason TEXT]   record the decision in .wingbox/decisions.sexp
-    wingbox align [PART] [--to STYLE] [--learn] [--sexp]
+    wingbox align [PART] [--to STYLE] [--learn]
                                             Architecture gaps of each part against its style (or another one);
                                             --learn writes learned folders to .wingbox/config.yaml and the rest
                                             to .wingbox/baseline.sexp
-    wingbox place "<what>" [--part PART] [--sexp]
-                                            The layer and folder for new code, by the placement rules of the style
-    wingbox compare [--sexp]                The parts of a monorepo side by side per language: styles, layers,
+    wingbox place "<what>" [--part PART]    The layer and folder for new code, by the placement rules of the style
+    wingbox compare                         The parts of a monorepo side by side per language: styles, layers,
                                             differences, and advice for a part that deviates from the majority
     wingbox learn [PART] [--agent|--human] [--sexp] [--again] [--yes]
                                             A coding agent gets a task: read the folders the style cannot place and
@@ -22,7 +21,9 @@
     wingbox build [PATH] [build options]    Build the code graph of a project (default: current directory)
                                             into PATH/.wingbox/: index.sexp, REPORT.md and map.html
     wingbox open [PATH]                     Open .wingbox/map.html of the project in the browser
-    wingbox <command> [arguments]           Query the code graph: impact, quick, analyze, search, ...
+    wingbox <command> [arguments] [--human|--json]
+                                            Query the code graph: impact, usages, quick, analyze, search, ...
+                                            `wingbox impact a.py b.py 2` answers for several files at once
     wingbox infra [arguments]               Build the infrastructure topology (Kustomize, Helm, Terraform)
     wingbox install [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run] [--sexp]
                                             Set up your assistants in your own settings: the skill, an
@@ -55,6 +56,16 @@ project's .wingbox/ and your own settings in the home folder.
 scripts/code_graph_search.py, so the options and the output are the ones
 documented for those scripts. Relative values of --root and --map are resolved
 against the current directory.
+
+The commands that answer a question (the query commands, advice, align, place
+and compare) print S-expressions by default: the compact form agents read,
+never cut. --human prints the text for people (its long lists stop at a limit
+unless --all) and --json prints the same answer as one JSON object for code.
+--sexp is still taken by the commands that had it and prints what version 0.13
+printed with it (for impact and usages: one flat fact per line), so a script
+written for that version reads what it read. The commands that set something
+up for a person (init, learn, install, uninstall, update, build, open) print
+text and keep their own options.
 
 Everything Wingbox writes into a project lives in .wingbox/, which also marks
 the project: a command finds the nearest folder at or above the current one
@@ -292,7 +303,7 @@ def record_decisions(root: str, graph_path: str, advice: tuple) -> list | str:
 
 
 def _advice_command(args: list[str], cwd: str) -> int:
-    """`wingbox advice [--sexp] [--learned]`, `wingbox advice accept|reject <id> [--reason TEXT]`."""
+    """`wingbox advice [--learned] [--human]`, `wingbox advice accept|reject <id> [--reason TEXT]`."""
     load_script("architecture")
     from architecture.advice import to_sexp
     from architecture.decisions import needs_reason, read_store, user_outcome, visible
@@ -324,7 +335,7 @@ def _advice_command(args: list[str], cwd: str) -> int:
             return 1
         print(line)
         return 0
-    sexp = "--sexp" in args
+    sexp = "--human" not in args
     if "--learned" in args:
         for item in store.learned:
             fact = f"(learned-layer {q(item.part)} {q(item.folder)} {item.layer} :from {item.source})"
@@ -384,7 +395,7 @@ def _atom(text: str) -> str:
 
 
 def _align_command(args: list[str], cwd: str) -> int:
-    """`wingbox align [PART] [--to STYLE] [--learn] [--sexp]`: gaps, migration view, learning."""
+    """`wingbox align [PART] [--to STYLE] [--learn] [--human]`: gaps, migration view, learning."""
     import dataclasses
 
     load_script("architecture")
@@ -398,8 +409,9 @@ def _align_command(args: list[str], cwd: str) -> int:
     from architecture.sexp import q
     from architecture.words import normalise
 
-    sexp, learn = "--sexp" in args, "--learn" in args
-    if learn and "--to" not in args and not sexp:
+    sexp, learn = "--human" not in args, "--learn" in args
+    # Facts asked for by name (--sexp, --json) are never the questionnaire.
+    if learn and "--to" not in args and "--sexp" not in args and "--json" not in args:
         from architecture import agent_learn
 
         if agent_learn.learn_mode(tuple(args), os.environ, sys.stdin.isatty(), sys.stdout.isatty()).mode == "human":
@@ -647,7 +659,7 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
 
 
 def _place_command(args: list[str], cwd: str) -> int:
-    """`wingbox place "<what>" [--part PART] [--sexp]`: the layer and folder for new code."""
+    """`wingbox place "<what>" [--part PART] [--human]`: the layer and folder for new code."""
     builder = load_script("build_code_graph")
     from architecture.detect import is_source, is_test_file
     from architecture.library import load_library
@@ -656,11 +668,11 @@ def _place_command(args: list[str], cwd: str) -> int:
     from architecture.sexp import q
     from architecture.target import target_layout
 
-    sexp = "--sexp" in args
+    sexp = "--human" not in args
     part_name = args[args.index("--part") + 1] if "--part" in args and args.index("--part") + 1 < len(args) else ""
     words = [a for i, a in enumerate(args) if not a.startswith("--") and (i == 0 or args[i - 1] != "--part")]
     if not words:
-        print('[wingbox] ERROR: wingbox place "<what you add>" [--part PART] [--sexp]', file=sys.stderr)
+        print('[wingbox] ERROR: wingbox place "<what you add>" [--part PART] [--human|--json]', file=sys.stderr)
         return 2
     request = " ".join(words)
     root = _find_root(cwd) or cwd
@@ -749,7 +761,7 @@ def _say(fact: str, sexp: bool) -> int:
 
 
 def _compare_command(args: list[str], cwd: str) -> int:
-    """`wingbox compare [--sexp]`: the parts of a monorepo side by side, per language."""
+    """`wingbox compare [--human]`: the parts of a monorepo side by side, per language."""
     builder = load_script("build_code_graph")
     from architecture.advice import to_sexp
     from architecture.compare import compare
@@ -772,7 +784,7 @@ def _compare_command(args: list[str], cwd: str) -> int:
         folder = os.path.join(root, part.path)
         languages[part.path] = language_of(tuple(os.listdir(folder))) if os.path.isdir(folder) else None
     parts, differences, advice = compare(plan.value.parts, {k: v for k, v in languages.items() if v})
-    sexp = "--sexp" in args
+    sexp = "--human" not in args
     for item in parts:
         line = f"(compare-part {q(item.part)} :language {item.language} :style {item.style} :layers {q(' '.join(item.layers))})"
         print(line if sexp else f"{item.part:<30} {item.language:<11} {item.style:<15} {' '.join(item.layers)}")
@@ -1752,14 +1764,16 @@ def _run(argv: Optional[list[str]] = None) -> int:
         # They read the graph like the query commands: bring it up to date first, or say it is stale.
         _refresh_before_query([command, *rest], cwd)
         load_script("architecture")
+        if command in _ANSWER_COMMANDS:
+            return _answer_command(command, rest, cwd)
         return _ARCHITECTURE_COMMANDS[command](rest, cwd)
     if command == "infra":
         sys.argv = ["wingbox infra"] + absolutize_path_options(rest, cwd)
         load_script("build_infra_topology").main()
         return 0
     query = absolutize_path_options(args, cwd)
-    _refresh_before_query(query, cwd)
-    return int(load_script("code_graph_search").main(query))
+    stale = _refresh_before_query(query, cwd)
+    return int(load_script("code_graph_search").main(query, graph_stale=stale))
 
 
 _ARCHITECTURE_COMMANDS = {
@@ -1771,21 +1785,51 @@ _ARCHITECTURE_COMMANDS = {
 }
 
 
-def _refresh_before_query(args: list[str], cwd: str) -> None:
-    """Bring the graph a query reads up to date (WINGBOX_AUTO_REFRESH=0: only say it is stale)."""
+# The architecture commands that answer a question: S-expressions by default, --human, --json.
+_ANSWER_COMMANDS = frozenset({"advice", "align", "compare", "place"})
+_FORM_OPTIONS = ("--human", "--json", "--sexp")
+
+
+def _answer_command(command: str, rest: list[str], cwd: str) -> int:
+    """Run an architecture command that answers a question in the form asked: its facts (also with --sexp, as
+    version 0.13 printed them), the text for people (--human) or the facts as one JSON object (--json)."""
+    import contextlib
+    import io
+
+    asked = [option for option in _FORM_OPTIONS if option in rest]
+    if len(asked) > 1:
+        print(f"[wingbox] ERROR: {' and '.join(asked)} are two forms of one answer: give one", file=sys.stderr)
+        return 2
+    if asked != ["--json"]:
+        return _ARCHITECTURE_COMMANDS[command](rest, cwd)
+    fact_json = load_script("fact_json")
+    lines = io.StringIO()
+    with contextlib.redirect_stdout(lines):
+        status = _ARCHITECTURE_COMMANDS[command](rest, cwd)
+    print(fact_json.render({"facts": fact_json.facts_json(lines.getvalue())}))
+    return status
+
+
+def _refresh_before_query(args: list[str], cwd: str) -> Optional[int]:
+    """Bring the graph a query reads up to date (WINGBOX_AUTO_REFRESH=0: only say it is stale).
+
+    Returns how many changed files the graph is known to miss (0 when it is up to date), or None when that
+    was not checked: a graph given with --map, no project, or a graph that was not built from this folder."""
     if "--map" in args or args[0] in ("-h", "--help", "help"):
-        return
+        return None
     from wingbox import freshness
 
     start = args[args.index("--root") + 1] if "--root" in args[:-1] else cwd
     root = freshness.find_project(start)
     if root is None:
-        return  # the query says there is no .wingbox/ and where it looked
-    line = freshness.stale_line(freshness.ensure_graph_fresh(root, freshness.refresh_wait()), root)
+        return None  # the query says there is no .wingbox/ and where it looked
+    result = freshness.ensure_graph_fresh(root, freshness.refresh_wait())
+    line = freshness.stale_line(result, root)
     if line:
         print(f"[wingbox] WARNING: {line}", file=sys.stderr)
     for skipped in freshness.skipped_languages_line(root).splitlines():
         print(f"[wingbox] NOTE: {skipped}", file=sys.stderr)
+    return freshness.known_stale(result)
 
 
 if __name__ == "__main__":

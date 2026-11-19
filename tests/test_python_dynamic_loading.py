@@ -200,7 +200,7 @@ class DynamicLoadingTest(unittest.TestCase):
 
         output = io.StringIO()
         with redirect_stdout(output):
-            code_graph_search.cmd_impact(graph, "shop/plugins/discount", 1, sexp=True)
+            code_graph_search.cmd_impact(graph, ["shop/plugins/discount"], 1, "flat")
         text = output.getvalue()
         self.assertIn("(impact shop/plugins/discount shop/loader :lang py :via registry-wires :depth 1)", text)
         self.assertIn("(impact shop/plugins/discount shop/checkout :lang py :via calls :depth 1)", text)
