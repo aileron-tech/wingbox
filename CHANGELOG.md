@@ -22,6 +22,18 @@
   changes what the HTTP transport exposes**: whoever holds its token can now read the text of the
   source files that are in the graph, not only the graph.
 - The description of every MCP tool says what each of its parameters means.
+- Releases carry two more files on the GitHub release, next to the Claude Desktop extension:
+  `SHA256SUMS`, one line per file of the release in the form `shasum -a 256 -c` reads, and
+  `wingbox-X.Y.Z.cdx.json`, a CycloneDX 1.5 SBOM that names the package, the SHA-256 of each of its
+  built files and every dependency with its pinned version. `tools/release_files.py` writes both.
+- A release can be rebuilt from its tag and compared with what PyPI serves: two builds of the same
+  tree give the same bytes, and a test builds twice on every push to keep it so. Checked for 0.14.0:
+  a clone of the tag, built with `uv build`, gives the two files of PyPI byte for byte.
+  [docs/assurance/release-integrity.md](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/release-integrity.md)
+  has the commands, what the checksum file and the SBOM show and what they do not, and the next
+  step that is not in use yet: publishing to PyPI through trusted publishing.
+- Every action the workflows of the repository use is named at a full commit, with its release tag
+  as a comment, and a test fails on a `uses:` line that names a tag or a branch.
 
 ## 0.14.0 - 2026-11-19
 
