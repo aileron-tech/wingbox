@@ -200,8 +200,10 @@ graded by MCP directories, and the grade is shown next to the listing. Glama
 grades four things: whether the tools can be told apart, whether their names
 follow one pattern, how many there are, and whether they cover the domain. With
 eighteen tools the grade was B (3.4 of 5, 2026-11-17); eleven one-word names
-got A (4.0, then 4.6 with rewritten descriptions, 2026-11-19); the list is now
-thirteen verb_noun tools.
+got A (4.0, then 4.6 with rewritten descriptions, 2026-11-19); thirteen
+verb_noun tools got A 4.4 (2026-11-19: names 5 of 5, and a remark that no tool
+searches the text of the source files); the list is now fourteen, with
+`search_source`.
 
 Default: a change of the server keeps the tool list as it is. A new question
 becomes a parameter of the tool that already answers the nearest question. Add,

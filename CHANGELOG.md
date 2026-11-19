@@ -9,6 +9,29 @@
   dependents is complete and where it is read from, and that the value of the block of code is the
   answer. Each example now ends with that value instead of an assignment, so the assistant does
   not spend a turn printing it.
+- A new command, `wingbox grep <text> [path-pattern] [--first N]`, and the MCP tool `search_source`
+  over it: the lines of the source files of the graph that hold a text, each with its file and
+  line number, in all files or in those whose path matches. It is for what is not a name in the
+  graph: a string, a message, a comment, a configuration key. Every character of the text stands
+  for itself, so code can be searched as it is written (`grep "total(items)"`); special are only
+  `.*`, `^` first, `$` last and a backslash before a character meant literally; the letter case is
+  ignored. One answer lists at most 200 matches and 100,000 characters, gives the total and the
+  match to go on from (`--first 201`, `first` in the tool); a line over 300 characters is cut and
+  says its length. It reads source files of the graph only, never a file that is a symbolic
+  link. The MCP server now has fourteen tools. **It also changes what the HTTP transport lets a
+  token holder do**: whoever holds the token can now search the text of every source file of the
+  graph in one call. It is the same permission as `read_source`, used faster: a secret that is
+  committed in a source file is found by one search instead of file by file.
+- `wingbox query` and the MCP tool `query_graph` answer a malformed expression with one line
+  `(error invalid-query "<expression>" "<what is wrong>")` and no result: parentheses that do
+  not match, a string that is not closed, an empty expression, a function the language does not
+  have. Before, an unknown function printed a comment and an empty result, and a parenthesis
+  that was not closed was accepted. **A script that reads the comment `; unknown function` must
+  read the error line instead.**
+- The descriptions of the MCP tools `analyze_impact`, `list_layers`, `check_boundaries` and
+  `query_graph` say more: what goes in and what comes back in sentences of their own, when
+  `all` is needed, which tool answers the neighbouring question. The example of `query_graph`
+  was described the wrong way round and is corrected: `(deps "A" 2)` is what A uses.
 
 ## 0.15.0 - 2026-11-19
 

@@ -14,7 +14,7 @@ MCP_PATH = SOURCE / "wingbox" / "mcp_server.py"
 
 LEGACY_VERSION = "2025-11-25"
 MODERN_VERSION = "2026-07-28"
-EXPECTED_TOOLS = {"build_graph", "analyze_impact", "describe_module", "list_files", "read_source", "find_definitions", "find_usages",
+EXPECTED_TOOLS = {"build_graph", "analyze_impact", "describe_module", "list_files", "read_source", "search_source", "find_definitions", "find_usages",
                   "list_dependencies", "trace_calls", "list_layers", "check_boundaries", "list_changes", "query_graph"}
 
 

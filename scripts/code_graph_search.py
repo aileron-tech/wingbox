@@ -57,6 +57,8 @@ Usage::
     code_graph_search.py files [pattern]                  The source files of the graph: path, module, language, layer
     code_graph_search.py source <file|Name|file::Name> [first] [last]
                                                           The lines of a source file of the graph or of one definition
+    code_graph_search.py grep <text> [path-pattern] [--first N]
+                                                          The lines of the source files of the graph that hold a text
     code_graph_search.py query <scheme-expr>    Evaluate a Scheme query expression
     code_graph_search.py repl                   Interactive Scheme REPL
 
@@ -99,7 +101,7 @@ import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Optional
+from typing import Optional, Union
 
 if __package__:
     from .architecture import advice as _advice
@@ -255,8 +257,12 @@ class Edge:
     lines: tuple[int, ...] = ()
 
 
-def parse_search_pattern(raw: str) -> SearchPatternResult:
-    """Parse the supported linear pattern grammar without regex execution."""
+def parse_search_pattern(raw: str, text: bool = False) -> SearchPatternResult:
+    """Parse the supported linear pattern grammar without regex execution.
+
+    With text=True the pattern is text to find in source lines: every character stands for itself, the
+    operators the grammar refuses elsewhere included; special are only `.*`, `^` first, `$` last and the
+    backslash that makes the next character literal."""
     if len(raw) > MAX_SEARCH_PATTERN_LENGTH:
         return SearchPatternErr(
             f"pattern exceeds {MAX_SEARCH_PATTERN_LENGTH} characters"
@@ -272,7 +278,7 @@ def parse_search_pattern(raw: str) -> SearchPatternResult:
     segments: list[str] = []
     literal: list[str] = []
     index = 0
-    unsupported = set("[](){}+?|")
+    unsupported = set() if text else set("[](){}+?|")
     while index < len(body):
         character = body[index]
         if character == "\\":
@@ -286,11 +292,11 @@ def parse_search_pattern(raw: str) -> SearchPatternResult:
             literal = []
             index += 2
             continue
-        if character == "*" or character in unsupported:
+        if not text and (character == "*" or character in unsupported):
             return SearchPatternErr(
                 f"unsupported pattern operator: {character}"
             )
-        if character in ("^", "$"):
+        if not text and character in ("^", "$"):
             return SearchPatternErr(
                 f"{character} is only supported at the pattern boundary"
             )
@@ -3536,6 +3542,115 @@ def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Opt
         print(line)
 
 
+GREP_LINE_CHARS = 300      # characters of one matching line `grep` prints; a longer line is cut (:cut N)
+GREP_MATCH_LIMIT = 200     # matches one `grep` answer lists; the summary gives the total and where to go on
+GREP_CHAR_LIMIT = 100_000  # characters of match lines in one answer; it stops before the line that would pass it
+
+
+def _grep_arguments(words: list[str]) -> Union[tuple[str, Optional[str], int], str]:
+    """(text, pattern of file paths or None, first match) from the words after `grep`, or what is wrong with
+    them. The first word is always the text, whatever it starts with."""
+    if not words:
+        return "grep requires the text to search for: literal text with optional .* wildcards"
+    path_pattern: Optional[str] = None
+    first = 1
+    index = 1
+    while index < len(words):
+        word = words[index]
+        if word == "--first":
+            value = words[index + 1] if index + 1 < len(words) else ""
+            if not (value.isdigit() and int(value) >= 1):
+                return "grep: --first takes the number of a match, from 1"
+            first = int(value)
+            index += 2
+            continue
+        if word.startswith("--"):
+            return f"unknown option {word}: grep takes --first N"
+        if path_pattern is not None:
+            return "grep takes the text and at most one pattern of file paths; quote a text that holds spaces"
+        path_pattern = word
+        index += 1
+    return words[0], path_pattern, first
+
+
+def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, first: int = 1) -> None:
+    """The lines of the source files of the graph that hold a text, with their file and line number.
+
+    The text is the linear pattern grammar in its text form (every character literal but `.*`, `^` first, `$`
+    last and the backslash), matched inside one line with the letter case ignored; path_pattern narrows the
+    files as `files` does. Only files of the graph are read (see _source_file); a file that must not or
+    cannot be read is counted, never printed. The lines are numbered as `source` numbers them. One answer
+    lists at most GREP_MATCH_LIMIT matches and GREP_CHAR_LIMIT characters, from match `first` on; the summary
+    gives the total and the match to go on from."""
+    if first < 1:
+        print(f"(error invalid-argument {_q('grep: first is the number of a match, from 1')})")
+        return
+    parsed = parse_search_pattern(pattern, text=True)
+    if isinstance(parsed, SearchPatternErr):
+        _print_invalid_pattern(pattern, parsed.error)
+        return
+    if not any(parsed.value.segments):
+        _print_invalid_pattern(pattern, "the pattern holds no text to search for")
+        return
+    parsed_path = None
+    if path_pattern is not None:
+        parsed_path = parse_search_pattern(path_pattern)
+        if isinstance(parsed_path, SearchPatternErr):
+            _print_invalid_pattern(path_pattern, parsed_path.error)
+            return
+    rows = sorted({(_impact_file(g, module), module) for module in g.nodes})
+    kept = [(path, module) for path, module in rows if parsed_path is None or search_pattern_matches(parsed_path.value, path)]
+    matches, files_matched, unread, characters = 0, 0, 0, 0
+    printed: list[str] = []
+    full = False   # the answer holds what one answer may hold; later matches are only counted
+    read: set[str] = set()
+    for _path, module in kept:
+        located = _source_file(g, module)
+        if located is None:
+            unread += 1
+            continue
+        real, shown_path = located
+        if real in read:
+            continue
+        read.add(real)
+        try:
+            with open(real, "r", encoding="utf-8", errors="replace") as handle:
+                text_lines = handle.read().splitlines()
+        except OSError:
+            unread += 1
+            continue
+        before = matches
+        for number, text in enumerate(text_lines, 1):
+            if not search_pattern_matches(parsed.value, text):
+                continue
+            matches += 1
+            if matches < first or full:
+                continue
+            cut = f" :cut {len(text)}" if len(text) > GREP_LINE_CHARS else ""
+            line = f'(match {_q(shown_path)} {number} "{_escaped(text[:GREP_LINE_CHARS])}"{cut})'
+            if len(printed) == GREP_MATCH_LIMIT or (printed and characters + len(line) > GREP_CHAR_LIMIT):
+                full = True
+                continue
+            printed.append(line)
+            characters += len(line)
+        files_matched += matches > before
+    tail = f" :searched {len(kept)}"
+    scope = (f" :path {_q(path_pattern)}" if path_pattern is not None else "") + (f" :unread {unread}" if unread else "")
+    if not matches:
+        print(f"(matches-empty {_q(pattern)}{tail}{scope})")
+        return
+    if first > matches:
+        print(f"(error invalid-argument {_q(f'grep: first is {first}, there are {matches} matches')})")
+        return
+    for line in printed:
+        print(line)
+    part = ""
+    if len(printed) < matches:
+        last = first + len(printed) - 1
+        part = f" :shown {len(printed)} :first {first}" + (f" :next {last + 1}" if last < matches else "")
+    print(f"(matches-summary :matches {matches}{part} :files {files_matched}{tail} :pattern {_q(pattern)}{scope})")
+
+
 def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
     """Identify which functions were changed in a git diff.
 
@@ -3730,12 +3845,49 @@ _QUERY_HELP = """\
 """
 
 
+def _query_problem(expr: str) -> Optional[str]:
+    """What makes the text of a query unreadable, or None. It reads strings and comments as the tokenizer of
+    _SchemeEval does, so a parenthesis inside a string or after a comment sign is text."""
+    depth, index, holds_something = 0, 0, False
+    while index < len(expr):
+        character = expr[index]
+        if character == ";":
+            while index < len(expr) and expr[index] != "\n":
+                index += 1
+            continue
+        if character == '"':
+            end = index + 1
+            while end < len(expr) and expr[end] != '"':
+                end += 2 if expr[end] == "\\" else 1
+            if end >= len(expr):
+                return "a string is not closed"
+            holds_something = True
+            index = end + 1
+            continue
+        if character == "(":
+            depth += 1
+            holds_something = True
+        elif character == ")":
+            depth -= 1
+            if depth < 0:
+                return "a closing parenthesis has no opening one"
+        elif not character.isspace():
+            holds_something = True
+        index += 1
+    if not holds_something:
+        return "the expression is empty"
+    if depth:
+        return "a parenthesis is not closed"
+    return None
+
+
 class _SchemeEval:
     """Tiny Scheme evaluator for code graph queries."""
 
     def __init__(self, g: CodeGraph, sexp_path: str) -> None:
         self._g = g
         self._sexp_path = sexp_path
+        self.problems: list[str] = []   # what the last expressions asked for that the language does not have
 
     def eval_str(self, expr_str: str) -> object:
         tokens = self._tokenize(expr_str)
@@ -4046,7 +4198,7 @@ class _SchemeEval:
             cmd_diff_functions(g, ref)
             return set()
 
-        print(f"; unknown function: {fn}")
+        self.problems.append(f"unknown function: {fn}")
         return set()
 
     def _collect_deps(
@@ -4107,8 +4259,15 @@ def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> None:
     if expr.strip() in ("(help)", "help"):
         print(_QUERY_HELP)
         return
+    problem = _query_problem(expr)
+    if problem is not None:
+        print(f'(error invalid-query "{_escaped(expr)}" "{problem}")')
+        return
     evaluator = _SchemeEval(g, sexp_path)
     result = evaluator.eval_str(expr)
+    if evaluator.problems:
+        print(f'(error invalid-query "{_escaped(expr)}" "{evaluator.problems[0]}; (help) lists the functions")')
+        return
     _format_result(result)
 
 
@@ -4133,7 +4292,14 @@ def cmd_repl(g: CodeGraph, sexp_path: str) -> None:
             print(_QUERY_HELP)
             continue
 
+        problem = _query_problem(expr)
+        if problem is not None:
+            print(f"; {problem}")
+            continue
         result = evaluator.eval_str(expr)
+        for problem in evaluator.problems:
+            print(f"; {problem}")
+        evaluator.problems.clear()
         _format_result(result)
 
 
@@ -4249,6 +4415,19 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         unknown = [argument for argument in args[1:] if argument.startswith("--")]
         if unknown:
             return f"unknown option {unknown[0]}: {args[0]} takes --human, --json, --sexp and --all"
+
+    if args[0] == "grep":
+        asked = _grep_arguments(args[1:])
+        if isinstance(asked, str):
+            return asked
+        text_result = parse_search_pattern(asked[0], text=True)
+        if isinstance(text_result, SearchPatternErr):
+            return f"invalid pattern {asked[0]}: {text_result.error}"
+        if asked[1] is not None:
+            path_result = parse_search_pattern(asked[1])
+            if isinstance(path_result, SearchPatternErr):
+                return f"invalid pattern {asked[1]}: {path_result.error}"
+        return None
 
     if args[0] == "source":
         if len(args) < 2:
@@ -4469,6 +4648,10 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         cmd_files(g, args[1] if len(args) >= 2 else None)
     elif cmd == "source" and len(args) >= 2:
         cmd_source(g, args[1], *(int(number) for number in args[2:4]))
+    elif cmd == "grep":
+        asked = _grep_arguments(args[1:])
+        if not isinstance(asked, str):   # _validate_cli_command refused anything else
+            cmd_grep(g, *asked)
     elif cmd == "query" and len(args) >= 2:
         cmd_query(g, " ".join(args[1:]), sexp_path)
     elif cmd == "repl":
@@ -4477,7 +4660,7 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         print(f"(error unknown-command {_q(cmd if args else 'none')})")
         print("; Commands: analyze, boundary, quick, boundaries, layers, invariants, module, deps, rdeps, impact, entity, flow, search,")
         print(";          find_function, find_type, find_callchain, find_callers, find_calls, grep_functions, diff_functions,")
-        print(";          files, source, query, repl")
+        print(";          files, source, grep, query, repl")
         return 1
     return 0
 
