@@ -41,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import IO, Any, Optional
 
 from wingbox import cli, freshness
+from wingbox.launch import module_command
 
 MODERN_VERSIONS = ("2026-07-28",)
 HANDSHAKE_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
@@ -250,7 +251,7 @@ class Server:
         print(f"[wingbox] no code graph in {self._repository}: building it", file=sys.stderr)
         self._first_build_lock = handle   # held until the build ends: the lock of the other servers
         self._first_build = subprocess.Popen(
-            [sys.executable, "-m", "wingbox", "build", self._repository],
+            [*module_command(sys.executable, "wingbox"), "build", self._repository],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=sys.stderr,
             **helpers.hidden_process_options(),
         )

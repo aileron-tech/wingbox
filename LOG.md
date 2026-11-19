@@ -15,6 +15,21 @@
 - `tests/test_mcp_tools.py` (REQ-MCP-021..030) and `tests/test_mcp_server.py`: pass.
 - The Windows cells of the first CI run failed on REQ-MCP-027 (`changes`): `(diff-functions-no-match :files 1)`. `cmd_diff_functions` compared the path git prints (`shop/pricing.py`) with the graph's path (`shop\pricing.py`); the diff path is now normalized to the system's separator before the comparison. A defect of the command on Windows since it exists; no test ran it there before.
 
+## 2026-11-19 - A Python started by Wingbox never imports from the project folder (issue #134)
+
+### Changes
+- `src/wingbox/launch.py` (new, imports `os` only): `module_command(python, module)` = `(python, "-P", "-m", module)`, `code_command(python, code)` = `(python, "-P", "-c", code)`, and `without_starting_folder(path, folder, package_parent)`, pure.
+- Every own start goes through it: `freshness.start_refresh` (`wingbox.refresh`, working folder = the project), the first build of `mcp_server`, `cli.global_hook_program` (the hook form of an install without the `wingbox` program), and in `update.py` the pip method, the version probe and the `wingbox install` of the upgraded package.
+- `cli.main` called without arguments (a real command start) takes the starting folder and the empty entry off `sys.path` before `portable`, a script or a parser is loaded; the folder stays when the package itself lies in it. Calls with an argument list (tests, the MCP server in process) leave the path alone.
+- Tests `tests/test_project_code_never_runs.py`, REQ-SEC-006..009: a scan of the source for `-m`/`-c` without `-P` or `-I`; a refresh and a build started in a project that holds `wingbox/`, `pip/`, `yaml.py`, `json.py`, `tree_sitter.py` run none of them; the path function; a build started as `python -m wingbox` without `-P` runs no project file named like a script or a parser.
+- `tests/test_update.py` REQ-UPDATE (the pip method): the expected command gains `-P`. This is the changed behaviour itself, not a check bent to pass.
+
+### Motivation
+- A review of the pull request check found that it could run a module of the checked repository; the same start form was in the core. Reproduced on 0.12.1 with a stand-in folder.
+
+### Not covered
+- A person who types `python -m wingbox` in a project that holds a folder `wingbox/` starts that folder: nothing inside Wingbox runs before it. The `wingbox` program and `python -P -m wingbox` are not affected.
+
 ## 2026-11-18 - The layer guess is stored when the graph is built (issue #106)
 
 ### Changes
