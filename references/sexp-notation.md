@@ -422,6 +422,9 @@ counts, then each file with its `line:col` and kind. Kinds: `import`,
 (boundaries-ok :checked 3587)
 (boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files [:files (<rule file> ...)] :files-in-part <n>)
 (boundaries-partial :checked <n> :not-checked <m>)
+; with --strict only, after the lines above:
+(boundaries-checked :part <part> :style <style> :modules <n>)
+(boundaries-result :status pass|fail|incomplete|error :checked <files> :not-checked <files> :violations <n> :known <n> [:reason part-not-checked|no-files-checked|no-graph|invalid-graph|invalid-argument])
 ```
 
 `boundaries-ok` is printed only when every part with files was checked against
@@ -432,6 +435,18 @@ is listed first as `boundaries-not-checked`, and `boundaries-partial` replaces
 Exit status: 2 when a part's declared rules were not read (that part was not
 checked), else 1 when a violation, a capability violation or a pattern break
 was found, else 0.
+
+`boundaries --strict` is the form for a gate. It prints the same lines, then a
+`boundaries-checked` fact for each part that was checked and `boundaries-result`
+as the last line of standard output. Its exit status follows `:status`: 0
+`pass` (every part with files was checked, at least one file was checked,
+nothing breaks a rule), 1 `fail` (a violation, a capability violation or a
+pattern break), 2 `incomplete` (a part was not checked for any reason,
+including an undetermined style, no layer style, too few files and files in
+no part - reason `in-no-part` on their `boundaries-not-checked` line - or no
+file was checked), 3 `error` (no graph, a graph that cannot be read, an
+invalid argument). `:known` counts the breaks accepted in a baseline; they do
+not change the status.
 
 `violation`: both layers come from rules. `violation-known`: the same, but the
 pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`
