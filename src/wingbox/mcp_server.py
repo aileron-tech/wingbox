@@ -14,9 +14,9 @@ Protocol revisions:
   which is what most clients speak today.
 
 Each tool is a thin call into the functions behind the `wingbox` command; the
-answer is the command's output. Thirteen tools, each named verb_noun, with the
+answer is the command's output. Fourteen tools, each named verb_noun, with the
 command behind it: build_graph (build), list_files (files), describe_module
-(analyze, or quick for a keyword), read_source (source), find_definitions
+(analyze, or quick for a keyword), read_source (source), search_source (grep), find_definitions
 (find_function, find_type, entity), find_usages (usages), analyze_impact
 (impact), list_dependencies (deps, rdeps), trace_calls (find_callers,
 find_calls, find_callchain), list_layers (layers), check_boundaries
@@ -66,6 +66,8 @@ META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 
 ANSWER_LINE_LIMIT = 200
 SOURCE_LINES_PER_CALL = 400   # equals SOURCE_LINE_LIMIT of the `source` command (REQ-MCP-035)
+MATCH_LINE_CHARS = 300        # equals GREP_LINE_CHARS of the `grep` command (REQ-MCP-036)
+MATCHES_PER_CALL = 2000       # equals GREP_MATCH_LIMIT of the `grep` command (REQ-MCP-036)
 LIST_TTL_MS = 3_600_000
 BUILD_LOG_TAIL = 15
 MAX_DEPTH = 50
@@ -525,13 +527,14 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "analyze_impact",
-        "Lists what a change to one file reaches: the files that depend on it, grouped by depth, with the reason "
-        "each one is on the list, then the files to read first. Use it before editing a file; with `targets` it "
-        "answers for several files in one call, in the order given, after a line that says whether the graph is "
-        "current; give `target` or `targets`, as paths relative to the repository root or module IDs; `depth` is how "
-        "many hops to follow (2 by default). For one function or type use `find_usages`; for the bare import tree of "
-        "a module use `list_dependencies`. "
-        "Returns S-expressions and never stops at 200 items: every dependent is listed, with or without `all`."
+        "Lists what a change to one file reaches: the files that depend on it, grouped by depth, each with the "
+        "reason it is on the list, then the files to read first. Use it before editing a file. For one function or "
+        "type use `find_usages`; for the bare import tree of a module use `list_dependencies`. Input: `target` for "
+        "one file, or `targets` for several in one call; each is a path relative to the repository root or a module "
+        "ID, and `depth` is how many hops to follow (2 by default). Output: S-expression lines; with `targets`, one "
+        "answer per file in the order given, after one line that says when the graph was built and how many "
+        "changed files it misses. The list is complete: it never stops at 200 items, with or without `all`. It only "
+        "reads the graph and changes nothing."
         + _MISS,
         {
             "target": _string("File path relative to the repository root, or a module ID."),
@@ -586,7 +589,7 @@ TOOLS: tuple[Tool, ...] = (
         "line to the next definition. `first` and `last` are line numbers of the file. One call returns at most "
         f"{SOURCE_LINES_PER_CALL} lines and says how many are left and where to go on; a very long line is cut and "
         "says its length. It reads source files of the graph only: any other path is answered with an error. To "
-        "find a name first use `find_definitions`."
+        "find a name first use `find_definitions`; to find a text use `search_source`."
         + _MISS,
         {
             "target": _string("File path or module ID, a name, or <file>::Name."),
@@ -601,11 +604,34 @@ TOOLS: tuple[Tool, ...] = (
         ),
     ),
     Tool(
+        "search_source",
+        "Searches the text of the source files of the graph and returns one line per matching line: file, line "
+        "number and text, then a count. Use it for what is not a name in the graph: a string, a message, a "
+        "comment, a configuration key. `pattern` is literal text, letter case ignored, matched inside one line; "
+        "special are only `.*` (any characters), `^` first and `$` last (the ends of the line) and a backslash "
+        "before a character meant literally. `path` narrows the search to files whose path matches (`tests/.*`). "
+        "For where a name is defined use `find_definitions`; for who uses a symbol use `find_usages`, which follows "
+        "aliases and re-exports; to read around a match use `read_source`. It reads source files of the graph "
+        f"only. A line longer than {MATCH_LINE_CHARS} characters is cut; one call lists at most "
+        f"{MATCHES_PER_CALL:,} matches and then says the total." + _CAP,
+        {
+            "pattern": _string("Text to search for, as it is written in the code; .* stands for any characters, letter case is ignored."),
+            "path": _string("Part of a file path, literal text with optional .* wildcards: only matching files are searched."),
+            "all": _ALL,
+        },
+        ("pattern",),
+        _simple(
+            lambda a: ["grep", a["pattern"], *([a["path"]] if "path" in a else [])],
+            lambda s, g, _p, a: s.cmd_grep(g, a["pattern"], a.get("path")),
+        ),
+    ),
+    Tool(
         "find_definitions",
         "Finds where a function, type or constant is defined and returns one line per definition, with its file "
         "and line. Use it to locate a symbol, or to search names by pattern: `name` may hold `.*` wildcards, so "
         "`parse_.*` lists every matching name. `kind` narrows the search to functions or to types; without it "
-        "constants are found too. For the places that use a name use `find_usages`." + _CAP + _MISS,
+        "constants are found too. For the places that use a name use `find_usages`; for a text that is no name use "
+        "`search_source`." + _CAP + _MISS,
         {
             "name": _string("Name; literal text with optional .* wildcards."),
             "kind": {"type": "string", "enum": ["any", "function", "type"], "default": "any",
@@ -674,8 +700,10 @@ TOOLS: tuple[Tool, ...] = (
         "list_layers",
         "Lists the modules of the repository grouped by architecture layer, each with the rule that put it "
         "there. Use it to see how the code is organized, or where new code belongs. To check the imports between "
-        "the layers use `check_boundaries`; for the plain list of files use `list_files`. Returns one line per layer "
-        "and one per module." + _CAP,
+        "the layers use `check_boundaries`; for the plain list of files use `list_files`. Returns one line per layer, "
+        "then one line per module of that layer with its language and the rule. It takes no name: its one "
+        "parameter is `all`. A repository with more than about 200 modules needs `all: true`: without it the answer "
+        "stops after 200 lines, in the middle of a layer, and its last line says how many lines are hidden.",
         {"all": _ALL},
         (),
         _simple(lambda _a: ["layers"], lambda s, g, _p, _a: s.cmd_layers(g)),
@@ -686,8 +714,9 @@ TOOLS: tuple[Tool, ...] = (
         "infrastructure), for one module or for all, then the parts of the repository that could not be checked, "
         "with the reason. Use it before a review, or after moving code between layers. A part that was not "
         "checked is reported as not checked, never as passing. `scope` is one module ID to check that module alone; "
-        "left out, or `all`, it checks every part. To see the layers themselves use `list_layers`. Returns one line "
-        "per finding and one per part." + _CAP,
+        "left out, or `all`, it checks every part. It judges rules only: to see the layers themselves use "
+        "`list_layers`, for who depends on a module use `list_dependencies`, for what an edit reaches use "
+        "`analyze_impact`. Returns one line per finding and one per part." + _CAP,
         {"scope": {"type": "string", "minLength": 1, "default": "all", "description": "Module ID or \"all\"."}, "all": _ALL},
         (),
         _simple(
@@ -713,10 +742,14 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "query_graph",
         "Evaluates one expression of the query language over the graph and returns the modules, the files or "
-        "the count it selects. Use it only for a question no other tool answers, such as the modules that depend "
-        "on A and are also used by B: (files (intersect (deps \"A\" 2) (rdeps \"B\" 1))). The expression "
-        "(help) returns the list of the functions. An expression that selects nothing returns an empty result, "
-        "not an error." + _CAP,
+        "the count it selects. Use it only to combine sets, which no other tool does: the modules that A uses "
+        "within two hops and that use B directly are (files (intersect (deps \"A\" 2) (rdeps \"B\" 1))), where "
+        "each number is how many hops to follow. For one plain question use `list_dependencies` (what a module "
+        "uses, who uses it), `find_definitions` (a name), `trace_calls` (callers), `analyze_impact` (the reach of a "
+        "change) or `search_source` (a text). `expression` is one expression; (help) returns the functions of the "
+        "language with examples. A selection that holds nothing returns an empty result, not an error; a "
+        "malformed expression (parentheses that do not match, an unknown function) returns one error line that "
+        "says what is wrong." + _CAP,
         {"expression": _string("A Scheme expression; (help) lists the functions."), "all": _ALL},
         ("expression",),
         _simple(lambda a: ["query", a["expression"]], lambda s, g, p, a: s.cmd_query(g, a["expression"], p)),
@@ -751,7 +784,8 @@ def _instructions(root: str) -> str:
     return (
         f"Wingbox answers questions about the code graph of {root}. Call `analyze_impact` before editing a file: it lists "
         "what the change reaches and the files to read first. Call `describe_module` to understand a module or find a "
-        "feature, `find_usages` for every use of one function or type, `read_source` for the text of a file. "
+        "feature, `find_usages` for every use of one function or type, `read_source` for the text of a file, "
+        "`search_source` for a text that is not a name. "
         "If a tool says the graph is missing, call `build_graph` first; call `build_graph` again after large edits."
     )
 
@@ -784,6 +818,7 @@ TOOL_TITLES = {
     "describe_module": "One module in full",
     "list_files": "Source files of the graph",
     "read_source": "Read a source file or a definition",
+    "search_source": "Search the text of the source files",
     "find_definitions": "Where a name is defined",
     "find_usages": "Find every use of a symbol",
     "list_dependencies": "Dependencies of a module",

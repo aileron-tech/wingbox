@@ -1,4 +1,4 @@
-"""The tool list of the MCP server: eleven tools with distinct jobs, one naming pattern, descriptions that tell
+"""The tool list of the MCP server: fourteen tools with distinct jobs, one naming pattern, descriptions that tell
 neighbours apart."""
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from pathlib import Path
 
 from tests.test_mcp_server import McpSession, _call, _initialize, _make_shop, _request, _texts
 
-TOOLS = ("build_graph", "analyze_impact", "describe_module", "list_files", "read_source", "find_definitions", "find_usages",
+TOOLS = ("build_graph", "analyze_impact", "describe_module", "list_files", "read_source", "search_source", "find_definitions", "find_usages",
          "list_dependencies", "trace_calls", "list_layers", "check_boundaries", "list_changes", "query_graph")
 # Every name a tool had before: the first eighteen, then the three and the eleven one-word names that followed.
 REMOVED = ("analyze", "quick", "boundary", "deps", "rdeps", "entity", "find_function", "find_type", "find_callers", "find_calls",
            "find_callchain", "diff_functions", "build", "query", "module",
            "graph", "impact", "modules", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "facts")
 # The tools that have no neighbour to send a caller to.
-ALONE = ("build_graph", "query_graph")
+ALONE = ("build_graph",)
 # The tools that look one name up, and so say what an unknown name returns.
 LOOKUPS = ("analyze_impact", "describe_module", "read_source", "find_definitions", "find_usages", "list_dependencies", "trace_calls")
 
@@ -34,9 +34,9 @@ class ToolListTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         self.root = Path(tmpdir.name).resolve()
 
-    def test_the_server_offers_thirteen_tools_named_verb_noun(self) -> None:
-        """/* REQ-MCP-029: `tools/list` offers exactly thirteen tools (within the 3 to 15 a tool directory grades
-        best), in this order: build_graph, analyze_impact, describe_module, list_files, read_source,
+    def test_the_server_offers_fourteen_tools_named_verb_noun(self) -> None:
+        """/* REQ-MCP-029: `tools/list` offers exactly fourteen tools (within the 3 to 15 a tool directory grades
+        best), in this order: build_graph, analyze_impact, describe_module, list_files, read_source, search_source,
         find_definitions, find_usages, list_dependencies, trace_calls, list_layers, check_boundaries, list_changes,
         query_graph. Every name is a verb and a noun in lowercase snake_case; no name is a prefix of another;
         no name a tool had before is left. */"""
@@ -65,7 +65,7 @@ class ToolListTest(unittest.TestCase):
     def test_every_description_says_what_comes_back_and_when_to_use_a_neighbour(self) -> None:
         """/* REQ-MCP-021: the description of every tool starts with a verb that says what the tool does
         ("Lists ...", "Traces ..."), says when to use the tool ("Use it ..."), names the neighbour to use for
-        another question as "use `name`" (build_graph and query_graph have no neighbour), and names every
+        another question as "use `name`" (build_graph has no neighbour), and names every
         parameter of the tool except `all` in backticks, so that it says more about them than the schema. A tool
         that takes `all` says that a list stops at 200 items; a tool that looks a name up says what an unknown
         name returns. A description is at most 900 characters and sends a caller to existing tools only. */"""
@@ -84,7 +84,7 @@ class ToolListTest(unittest.TestCase):
                 self.assertNotIn(f"`{old}`", text.replace("`module`", ""), name)
             properties = tool["inputSchema"]["properties"]
             for parameter in properties:
-                if parameter != "all" and name != "query_graph":
+                if parameter != "all":
                     self.assertIn(f"`{parameter}", text, f"{name}: parameter {parameter} is not explained")
             if "all" in properties:
                 self.assertIn("200", text, name)
@@ -162,6 +162,62 @@ class ToolListTest(unittest.TestCase):
             text = "\n".join(_texts(reply))
             self.assertNotIn("(line ", text, identifier)
             self.assertNotIn("outside", text.replace("outside_secret", ""), identifier)
+
+    def test_text_is_searched_through_the_server(self) -> None:
+        """/* REQ-MCP-036: `search_source` returns the lines of the source files of the graph that hold a text,
+        each with its file and line number, in all files or in those whose path matches `path`. A text no line
+        holds is an empty answer, not an error; a pattern without text is a tool error. A file that is not a
+        source file of the graph is never searched. The limits its description names are those of the `grep`
+        command. */"""
+        from wingbox import cli, mcp_server
+
+        _make_shop(self.root)
+        (self.root / "notes.txt").write_text("def total(items): a note, not source\n", encoding="utf-8")
+        session = McpSession(self.root, [
+            _initialize(), _call(2, "build_graph", {}),
+            _call(3, "search_source", {"pattern": "TOTAL(items)"}),
+            _call(4, "search_source", {"pattern": "total", "path": "checkout"}),
+            _call(5, "search_source", {"pattern": "nowhere_at_all"}),
+            _call(6, "search_source", {"pattern": ".*"}),
+            _call(7, "search_source", {"pattern": "a note"}),
+        ])
+        found = "\n".join(_texts(session.reply(3))).splitlines()
+        self.assertIn('(match shop/pricing.py 1 "def total(items):")', found)
+        self.assertTrue(found[-1].startswith("(matches-summary :matches "), found)
+        self.assertNotIn("notes.txt", "\n".join(found))
+        narrowed = "\n".join(_texts(session.reply(4))).splitlines()
+        self.assertTrue(all(line.startswith("(match shop/checkout.py ") for line in narrowed[:-1]) and len(narrowed) > 1, narrowed)
+        self.assertFalse(session.reply(5)["result"]["isError"])
+        self.assertTrue("\n".join(_texts(session.reply(5))).startswith("(matches-empty nowhere_at_all "))
+        self.assertTrue(session.reply(6)["result"]["isError"])
+        self.assertTrue("\n".join(_texts(session.reply(7))).startswith("(matches-empty "))
+        search = cli.load_script("code_graph_search")
+        description = mcp_server.TOOLS_BY_NAME["search_source"].description
+        self.assertEqual((search.GREP_LINE_CHARS, search.GREP_MATCH_LIMIT), (mcp_server.MATCH_LINE_CHARS, mcp_server.MATCHES_PER_CALL))
+        self.assertIn(f"longer than {search.GREP_LINE_CHARS} characters", description)
+        self.assertIn(f"at most {search.GREP_MATCH_LIMIT:,} matches", description)
+
+    def test_a_malformed_query_is_a_tool_error(self) -> None:
+        """/* REQ-MCP-037: `query_graph` answers a malformed expression (a parenthesis that is not closed, a
+        function the language does not have) with a tool error whose text says what is wrong, as its
+        description says; a selection that holds nothing is an empty result and no error. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [
+            _initialize(), _call(2, "build_graph", {}),
+            _call(3, "query_graph", {"expression": '(deps "shop/checkout" 1'}),
+            _call(4, "query_graph", {"expression": '(nosuch "x")'}),
+            _call(5, "query_graph", {"expression": '(deps "no_such_module" 1)'}),
+        ])
+        for identifier, reason in ((3, "a parenthesis is not closed"), (4, "unknown function: nosuch")):
+            reply = session.reply(identifier)
+            self.assertTrue(reply["result"]["isError"], reply)
+            self.assertIn(reason, "\n".join(_texts(reply)))
+        self.assertFalse(session.reply(5)["result"]["isError"], session.reply(5))
+        from wingbox import mcp_server
+
+        description = mcp_server.TOOLS_BY_NAME["query_graph"].description
+        self.assertIn("malformed expression", description)
+        self.assertIn("error line", description)
 
     def test_the_line_limit_of_read_source_is_the_one_of_the_command(self) -> None:
         """/* REQ-MCP-035: the number of lines the description of `read_source` names is the limit of the

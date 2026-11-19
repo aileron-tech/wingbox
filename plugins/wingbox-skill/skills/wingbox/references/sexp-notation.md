@@ -739,6 +739,23 @@ text. `:cut N` marks a line of N characters printed up to its first 2,000.
 Only source files of the graph are printed; any other path, and a file that
 is a symbolic link, is `(error no-match ...)`.
 
+## grep Output
+
+```scheme
+(match <path> 42 "text of the line, quoted")
+(match <path> 43 "the first 300 characters of a longer line" :cut 512)
+(matches-summary :matches 2 :files 1 :searched 340 :pattern "text" :path "tests/.*" :unread 1)
+(matches-summary :matches 2100 :shown 2000 :files 12 :searched 340 :pattern "text")
+(matches-empty "text" :searched 340)
+```
+
+One `match` per line that holds the text, sorted by file and line and numbered
+as `source` numbers them. `:searched` is the number of files the search
+covered (all source files of the graph, or those `:path` selects), `:files`
+the number that hold a match. `:shown` is there when more than 2,000 lines
+match: the first 2,000 are listed. `:unread N` counts files that could not be
+read or are a symbolic link; their lines are never printed.
+
 ## diff_functions Output
 
 ```scheme
@@ -755,7 +772,13 @@ is a symbolic link, is `(error no-match ...)`.
 (result <module-or-path>)
 (result-empty)
 (result-count 42)
+(error invalid-query "(deps \"A\" 1" "a parenthesis is not closed")
+(error invalid-query "(nosuch \"A\")" "unknown function: nosuch; (help) lists the functions")
 ```
+
+A malformed expression answers one `error invalid-query` line and no result:
+parentheses that do not match, a string that is not closed, an empty
+expression, a function the language does not have.
 
 ## :lang Values
 

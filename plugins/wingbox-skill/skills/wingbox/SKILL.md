@@ -194,9 +194,10 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `diff_functions [ref]` | Changed functions in git diff | `diff_functions HEAD~3` |
 | `files [pattern]` | The source files of the graph: path, module, language, layer | `files "tests/.*pricing"` |
 | `source <file\|Name\|file::Name> [first] [last]` | The lines of a source file of the graph or of one definition, numbered (400 a call) | `source createOrder` |
+| `grep <text> [path-pattern]` | The lines of the source files of the graph that hold a text, with file and line; every character literal but `.*`, `^` first and `$` last | `grep "Basket is empty"` |
 | `query '<sexp>'` | Composable Scheme query | `query '(count (boundary "X"))'` |
 | `repl` | Interactive Scheme REPL | `repl` |
-| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build_graph`, `list_files`, `describe_module`, `read_source`, `find_definitions`, `find_usages`, `analyze_impact`, `list_dependencies`, `trace_calls`, `list_layers`, `check_boundaries`, `list_changes`, `query_graph`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
+| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build_graph`, `list_files`, `describe_module`, `read_source`, `search_source`, `find_definitions`, `find_usages`, `analyze_impact`, `list_dependencies`, `trace_calls`, `list_layers`, `check_boundaries`, `list_changes`, `query_graph`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
 
 `impact` accepts ordinary file paths, several in one call.
 

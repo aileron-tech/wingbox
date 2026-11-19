@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-19 - Text search in the source files, and an error for a malformed query
+
+### Changes
+- `wingbox grep <text> [path-pattern]` (`cmd_grep`) and the MCP tool `search_source`: the lines of the source files of the graph that hold a text, with file and line; files are read only through `_source_file`, as `source` reads them; 300 characters a line, 2,000 matches an answer. `parse_search_pattern` takes `text=True`, in which every character but `.*`, `^` first, `$` last and the backslash is literal; the other commands keep the strict form.
+- `wingbox query`: `_query_problem` refuses an expression whose parentheses do not match, whose string is not closed or that is empty, and an unknown function is an `(error invalid-query ...)` line instead of a comment and an empty result.
+- Descriptions of `analyze_impact`, `list_layers`, `check_boundaries` and `query_graph` rewritten; `query_graph` names the tools to prefer; the server has fourteen tools.
+
+### Motivation
+- The tool directory graded the thirteen tools of 0.15.0 A 4.4 of 5: names 5, count 5, and two remarks: no tool searches text inside the source files, and `query_graph` does not say how a malformed expression is reported and names no tool to prefer. The maintainer asked to bring the grade to 5 of 5 while there are no clients to break.
+
+### Verification
+- Tests first: REQ-CS-135 to REQ-CS-144 (`tests/test_grep.py`), REQ-MCP-036 and REQ-MCP-037, REQ-MCP-029 and REQ-MCP-021 reworded for fourteen tools and for `query_graph` naming its neighbours. Eight of the nine first tests failed before the code and pass after it.
+- `wingbox impact scripts/code_graph_search.py src/wingbox/mcp_server.py 2` before the edit named 12 and 18 test files; those were run.
+
 ## 2026-11-19 - Release 0.15.0
 
 ### Changes

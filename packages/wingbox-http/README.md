@@ -67,7 +67,7 @@ header `Authorization: Bearer <token>`.
 
 Whoever holds the token can read the code graph of the repository (file names,
 symbols, dependencies) and the text of the source files that are in the graph
-(the tool `read_source`), and rebuild the graph (the tool `build_graph`), which
+(the tools `read_source` and `search_source`), and rebuild the graph (the tool `build_graph`), which
 writes `.wingbox/` in the repository. No tool reads a file that is not a source
 file of the graph, runs a command you give it, or deletes anything.
 
