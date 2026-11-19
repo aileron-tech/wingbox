@@ -13,6 +13,13 @@
   `diff_functions` is `changes`; `boundary` is gone, `impact` lists the files to read first. Every description says what the answer holds and
   when to take the neighbouring tool, and every parameter is described. The `wingbox` command
   keeps its command names.
+
+### Fixes
+
+- Windows: the functions changed since a git ref (`wingbox diff_functions <ref>`, the MCP tool
+  `changes`) were not found, because the paths git prints and the paths of the graph were compared
+  with different separators.
+
 ## 0.12.1 - 2026-11-18
 
 ### Fixes
@@ -736,6 +743,7 @@ A release of the package page and the documents; the tool behaves as in 0.6.1.
   (`get_it`, `go_router`, `retrofit`) is not visible to static analysis.
   The Dart grammar is an opt-in extra, `pipx install "wingbox[dart]"`;
   without it `.dart` files are skipped with a warning and the build goes on.
+
 ## 0.5.0 - 2026-11-17
 
 ### Changes

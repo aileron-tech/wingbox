@@ -13,6 +13,8 @@
 
 ### Verification
 - `tests/test_mcp_tools.py` (REQ-MCP-021..030) and `tests/test_mcp_server.py`: pass.
+- The Windows cells of the first CI run failed on REQ-MCP-027 (`changes`): `(diff-functions-no-match :files 1)`. `cmd_diff_functions` compared the path git prints (`shop/pricing.py`) with the graph's path (`shop\pricing.py`); the diff path is now normalized to the system's separator before the comparison. A defect of the command on Windows since it exists; no test ran it there before.
+
 ## 2026-11-18 - The layer guess is stored when the graph is built (issue #106)
 
 ### Changes
@@ -108,6 +110,7 @@
 
 ### Motivation
 - Measured in three Code Mode sessions (Claude Code 2.1.327, claude-opus-5-5, a graph of 707 files): hooks run for every tool call a script makes (60 Grep calls: 60 PreToolUse and 60 PostToolUse runs); each context block is delivered to the model beside the script's result, at most 50 per run of code, 23,272 characters for the 60 calls; and a hook that does not finish within its timeout refuses the call ("the hook did not finish, so this call was not run"), which does not happen to a direct call. The answer once per script (from the code of the REPL call) comes with the batch `impact` in 0.11.0.
+
 ## 2026-11-18 - `impact` does less work per call (issue #106)
 
 ### Changes
@@ -129,6 +132,7 @@
 
 ### Motivation
 - The maintainer: release 0.10.0 with the Rust fix, measure the headline agent numbers on Opus with a question that states what the reference counts, and publish only what the numbers say.
+
 ## 2026-11-18 - `impact` says why each file is on the list
 
 ### Changes
@@ -172,6 +176,7 @@
 
 ### Motivation
 - The maintainer's decision of 2026-11-17: fix the Rust facade edges, test first; 0.10.0 because the impact answers for Rust change materially.
+
 ## 2026-11-18 - `wingbox update` replaces its own running wingbox.exe on Windows
 
 ### Changes
@@ -370,6 +375,7 @@
 - A TypeScript `new S(...)` is a site of class S: SCIP files it under the constructor symbol.
 - Every tool is asked for its whole list (`--all`, `--limit 1000000`); tokens are characters of the text answer / 4, as in the other benchmarks. No timing: accuracy and answer size only.
 - CodeGraph runs with the environment of `benchmarks/graphify/run.sh` (private HOME, no daemon, no watcher). Graphify has no find-usages command; `affected` is the nearest and is reported at both depths.
+
 ## 2026-11-17 - capability rules: what a layer may do (SQL in repositories, HTTP in infrastructure, no framework in the domain)
 
 ### Changes
@@ -1065,6 +1071,7 @@
 
 ### Motivation
 - The maintainer asked that `wingbox mcp` start an MCP server. MCP clients that do not load Agent Skills can then use the code graph.
+
 ## 2026-11-16 - README: the earlier repository is named without a link
 
 ### Changes
@@ -1084,6 +1091,7 @@
 
 ### Motivation
 - The check of a public monorepo before publishing its report found Rust dependencies through `use other_crate::module` and `crate::` paths in integration test folders missing, and one edge to a module of the main crate that the test did not use.
+
 ## 2026-11-16 - where Wingbox comes from
 
 ### Changes
@@ -1119,6 +1127,7 @@
 
 ### Motivation
 - These are the questions people ask when they compare code-graph tools; each answer states only what the code does.
+
 ## 2026-11-16 - benchmark results for version 0.2.3
 
 ### Changes
@@ -1152,6 +1161,7 @@
 
 ### Motivation
 - The summary of `boundaries` said 4 candidates where the report said 2 for the same repository. A timing on a hosted runner showed the build of a Python library slower in 0.2.2 than in 0.2.0.
+
 ## 2026-11-16 - README demo pictures rebuilt from 0.2.2
 
 ### Changes
@@ -1212,6 +1222,7 @@
 
 ### Motivation
 - The README described the commands but did not show the tool working. The pictures show the two things people ask about first: what one command answers, and what the map looks like.
+
 ## 2026-11-15 - version 0.2.0 and base classes matched by name
 
 ### Changes
