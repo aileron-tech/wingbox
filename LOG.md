@@ -1,5 +1,18 @@
 # Completion Log
 
+## 2026-11-19 - Python: imports of a package kept under `src/` are resolved
+
+### Why
+- Found while using Wingbox to pick the tests of a change in this repository: `wingbox impact src/wingbox/mcp_server.py` named no test and `wingbox usages TOOLS_BY_NAME` found 1 use in 1 file, although two test files use it. A test that called a renamed MCP tool was therefore missed before a push and failed in CI. Cause: an absolute import was looked up from the root of the repository, from the folder of the importing file and from its parent folders that hold the first segment of the name; a file in `tests/` that imports `wingbox` never looked into `src/`.
+
+### Changes
+- `scripts/lang/python/imports.py`, `_candidate_bases`: after the existing folders, the folder `src` of every parent folder of the importing file, nearest first. Resolution still needs the file to exist in the graph, so a name that no `src/` holds stays unresolved.
+- `tests/test_python_src_layout.py` (REQ-PY-012..014): the tests of a src-layout project are dependents of the modules they import and appear in `impact` and `usages`; two parts of a monorepo with a package of the same name each reach their own `src/`; a package at the root still wins and an unknown name is no dependency.
+
+### Result
+- This repository, before and after: `usages TOOLS_BY_NAME` 1 use in 1 file -> 7 uses in 3 files (`tests/test_freshness.py`, `tests/test_skipped_language_notice.py`); `impact src/wingbox/mcp_server.py 1` 1 direct dependent -> 4.
+- Not changed: the Python reference of the benchmarks (`benchmarks/*/tools/py_edges.py`) resolves an absolute name from the folder of the file and from the repository roots only. On a benchmark repository with a src layout Wingbox now reports dependencies the reference does not count; the reference needs the same rule before those benchmarks are run again, and no published figure changes until then.
+
 ## 2026-11-18 - The layer guess is stored when the graph is built (issue #106)
 
 ### Changes
