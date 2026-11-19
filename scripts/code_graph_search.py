@@ -3210,9 +3210,11 @@ def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
 
     for diff_file, ranges in changed_ranges.items():
         # Try matching against code graph files
-        abs_path = os.path.join(repo_root, diff_file)
+        # git prints paths with '/', the graph holds them with the system's separator
+        local_file = os.path.normpath(diff_file)
+        abs_path = os.path.join(repo_root, local_file)
         # Also try relative path
-        candidates = [abs_path, diff_file]
+        candidates = [abs_path, local_file]
 
         matched_ents: list[tuple[str, EntityFact]] = []
         for candidate in candidates:
@@ -3223,7 +3225,7 @@ def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
         if not matched_ents:
             # Try suffix matching
             for fpath, ent_list in file_entities.items():
-                if fpath.endswith(diff_file) or diff_file.endswith(fpath.lstrip("./")):
+                if fpath.endswith(local_file) or local_file.endswith(fpath.lstrip("./")):
                     matched_ents = ent_list
                     break
 

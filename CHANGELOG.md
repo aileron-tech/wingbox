@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### Changes
+
+- The MCP server can be called from another machine. `wingbox mcp --http` serves the same tools
+  over the Streamable HTTP transport of MCP at `http(s)://<host>:8765/mcp`, for Claude Code
+  (`claude mcp add --transport http ... --header "Authorization: Bearer ..."`), Codex
+  (`codex mcp add ... --url ... --bearer-token-env-var ...`) and any client that speaks that
+  transport. Install it with `pip install "wingbox[http]"`: the transport is a separate package,
+  `wingbox-http`, so `wingbox` itself still holds no listening code. By default it listens on
+  `127.0.0.1` only; any other address needs a token of at least 32 characters
+  (`WINGBOX_HTTP_TOKEN` or `--token-file`), `--tls-cert` and `--tls-key` serve HTTPS, and a long
+  call such as `build` is answered as an event stream with keep-alive lines. See "Over HTTP, from
+  another machine" in the README.
+- The MCP server has eleven tools instead of eighteen, each named after its answer: `build`,
+  `impact`, `module`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`,
+  `changes`, `query`. **An MCP client that calls a tool by its old name must use the new one**:
+  `analyze` and `quick` are `module`; `find_function`, `find_type` and `entity` are `definitions`
+  (`kind`: any, function, type); `deps` and `rdeps` are `dependencies` (`direction`: out, in);
+  `find_callers`, `find_calls` and `find_callchain` are `calls` (`direction`: in, out; `to`);
+  `diff_functions` is `changes`; `boundary` is gone, `impact` lists the files to read first. Every description says what the answer holds and
+  when to take the neighbouring tool, and every parameter is described. The `wingbox` command
+  keeps its command names.
+
 ### Fixes
 
 - Python projects that keep their package under `src/`: a test, a script or any file outside
@@ -10,6 +32,9 @@
   did not name the tests of such a project. Each part of a monorepo reaches its own `src/`; a
   package beside the importing file or at the root of the repository still comes first. Rebuild
   the graph once (`wingbox build --full`) to get the new dependencies.
+- Windows: the functions changed since a git ref (`wingbox diff_functions <ref>`, the MCP tool
+  `changes`) were not found, because the paths git prints and the paths of the graph were compared
+  with different separators.
 
 ## 0.12.2 - 2026-11-19
 

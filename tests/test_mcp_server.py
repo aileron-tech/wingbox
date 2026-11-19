@@ -14,26 +14,7 @@ MCP_PATH = SOURCE / "wingbox" / "mcp_server.py"
 
 LEGACY_VERSION = "2025-11-25"
 MODERN_VERSION = "2026-07-28"
-EXPECTED_TOOLS = {
-    "build",
-    "impact",
-    "analyze",
-    "quick",
-    "boundary",
-    "boundaries",
-    "layers",
-    "deps",
-    "rdeps",
-    "entity",
-    "usages",
-    "find_function",
-    "find_type",
-    "find_callers",
-    "find_calls",
-    "find_callchain",
-    "diff_functions",
-    "query",
-}
+EXPECTED_TOOLS = {"build", "impact", "module", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "query"}
 
 
 def _load_mcp_module():
@@ -217,7 +198,7 @@ class McpProtocolTest(unittest.TestCase):
                 _initialize(),
                 _call(2, "build", {}),
                 _call(3, "impact", {"target": "shop/pricing.py"}),
-                _call(4, "deps", {"module": "shop/checkout", "depth": 1}),
+                _call(4, "dependencies", {"module": "shop/checkout", "depth": 1}),
             ],
         )
         build = session.reply(2)["result"]
@@ -234,8 +215,8 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse(deps["isError"], deps)
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
 
-    def test_analyze_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
-        """/* REQ-MCP-020: after `build`, the `analyze` tool prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
+    def test_module_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
+        """/* REQ-MCP-020: after `build`, the `module` tool (the `analyze` command) prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
         _make_shop(self.root)
         shop = self.root / "shop"
         (shop / "forms.py").write_text(
@@ -249,8 +230,8 @@ class McpProtocolTest(unittest.TestCase):
             [
                 _initialize(),
                 _call(2, "build", {}),
-                _call(3, "analyze", {"module": "shop/api"}),
-                _call(4, "analyze", {"module": "shop/report"}),
+                _call(3, "module", {"module": "shop/api"}),
+                _call(4, "module", {"module": "shop/report"}),
             ],
         )
         self.assertFalse(session.reply(2)["result"]["isError"], session.reply(2))

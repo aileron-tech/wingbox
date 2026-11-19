@@ -8,6 +8,45 @@
 ### Motivation
 - The maintainer asked for the check on our own builds.
 
+## 2026-11-18 - MCP server: eleven tools named after their answers
+
+### Why
+- A tool directory grades an MCP server by four measures: one job per tool, one naming pattern, 3 to 15 tools, the whole life of the domain covered. The server had eighteen tools with overlapping jobs (`entity`, `usages`, `find_function`, `find_type`; `boundary` and `boundaries`; `analyze` and `quick`) and three naming styles. The owner decided to clean it up now, in one breaking change without aliases, while the server has few users.
+
+### Changes
+- `src/wingbox/mcp_server.py`: `TOOLS` is `build`, `impact`, `module`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`, `changes`, `query`. Tools that differed only by direction or kind are one tool with a parameter (`dependencies` `direction` out or in; `calls` `direction` in or out and `to` for a call path; `definitions` `kind` any, function or type); `module` analyzes a module or the best match of a keyword; `boundary` is removed, `impact` lists the files to read first. Every description says what the answer holds and when to take the neighbouring tool; every parameter is described; `enum` values are validated. The instructions given at `initialize` name the new tools.
+- The `wingbox` command keeps its command names.
+- `AGENTS.md`, section 5 "Changing the MCP server": the default is to keep the tool list; the checklist for a change and the tests that hold it.
+- README table "Use from an MCP client" and the changelog name the old tool for each new one.
+
+### Verification
+- `tests/test_mcp_tools.py` (REQ-MCP-021..030) and `tests/test_mcp_server.py`: pass.
+- The Windows cells of the first CI run failed on REQ-MCP-027 (`changes`): `(diff-functions-no-match :files 1)`. `cmd_diff_functions` compared the path git prints (`shop/pricing.py`) with the graph's path (`shop\pricing.py`); the diff path is now normalized to the system's separator before the comparison. A defect of the command on Windows since it exists; no test ran it there before.
+
+## 2026-11-18 - Streamable HTTP transport for the MCP server, as the package wingbox-http
+
+### Why
+- The owner asked for the MCP server to be reachable from another machine: stdio needs the client and the repository on one host. His two decisions: access for Claude Code and Codex with a secret token in the Authorization header (not OAuth), and the transport as a separate package so that the core keeps its promise of holding no listening code.
+
+### Changes
+- New distribution `packages/wingbox-http` (module `wingbox_http`, console script `wingbox-http`, standard library only, requires exactly its own version of `wingbox`):
+  - `transport.py`, pure: `admit` (path `/mcp`, Origin, token, method, Content-Type, Accept) and `decide` (size, one JSON object, `MCP-Protocol-Version`, and for revision 2026-07-28 the `Mcp-Method` and `Mcp-Name` headers against the body) return `Refuse(status, headers, body)` or `Forward(line, method, modern)`; `reply_status` maps the server's reply to 202, 200, 400 or 404.
+  - `settings.py`: arguments, `WINGBOX_HTTP_TOKEN` and `--token-file` into `Settings` or `Problem`; a non-loopback address without a token is a `Problem`.
+  - `listener.py`: `ThreadingHTTPServer`, optional TLS (handshake in the connection's thread), one worker thread for the calls, and the event-stream answer with keep-alive comments for a `tools/call` slower than one second.
+  - `__init__.py`: `main(args, cwd, env)` builds `mcp_server.Server` and passes `mcp_server.handle_line` to the listener; `run()` is the console script and turns SIGTERM into a clean stop.
+- `src/wingbox/mcp_server.py`: `wingbox mcp --http ...` loads `wingbox_http` by name and hands over the remaining arguments; without the package it prints the install command and exits 2. No network module is imported by the core.
+- `pyproject.toml`: the extra `http = ["wingbox-http==<version>"]`.
+- README section "Over HTTP, from another machine", the package README, the changelog entry, the `HTTP` test prefix in AGENTS.md.
+
+### Protocol choices
+- Read from the specification pages of 2025-11-25 and 2026-07-28: one endpoint, POST; a notification is answered 202; the server may answer a request with JSON or an event stream; GET and DELETE may be answered 405 when no server stream and no session exist; an invalid Origin is 403; an unsupported `MCP-Protocol-Version` is 400; under 2026-07-28 a header that differs from the body is 400 with -32020 and an unknown method is 404.
+- Not implemented, by design: sessions (`Mcp-Session-Id`), resumable streams (`Last-Event-ID`), the GET stream, OAuth. The token is a shared secret; the specification's authorization chapter describes OAuth and says nothing of a static token, which is the owner's choice for agents that send a fixed header.
+
+### Verification
+- `python -m unittest tests.test_http_transport`: 23 tests (REQ-HTTP-001..022, REQ-SEC-010), among them a real listener on a loopback port with the real server (initialize, 202 for the notification, tools/list, build, impact, 401 without the token, 404 for an unknown method under 2026-07-28), the event stream of a slow call, one call at a time, 411 and 413 before the body is read, and HTTPS with a certificate made by openssl.
+- `tests.test_local_only`, `tests.test_mcp_server`, `tests.test_english_only`, `tests.test_mcp_registry`: pass; REQ-SEC-001 is unchanged and still scans `src/` and `scripts/`.
+- Run for real in a clean environment (wheel of the package built with `uv build packages/wingbox-http`, installed beside the core): `wingbox mcp --http --host 0.0.0.0` without a token refuses to start; with a token file, curl got 401 without the token, 405 for GET, 403 for a foreign Origin, the `initialize` result, the `build` answer as an event stream, and `impact` over HTTPS with `--cacert`. Claude Code, with the server added by `--transport http` and the Authorization header, called `impact` and reported the 14 direct dependents the tool printed.
+
 ## 2026-11-19 - Python: imports of a package kept under `src/` are resolved
 
 ### Why

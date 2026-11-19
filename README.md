@@ -107,6 +107,9 @@ Wingbox is safe to run on code that must not leave the company:
   which runs your package installer (pipx, uv or pip), and `wingbox add <language>`,
   which downloads the pinned parser of that language from the Python Package Index
   and checks its sha256. Nothing is downloaded on its own.
+  Wingbox listens on no port either. Serving the MCP server to another machine is a
+  separate package, `wingbox-http`, that you install and start yourself; it only
+  answers the requests that reach it and opens no connection of its own.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
@@ -1110,8 +1113,9 @@ source files it analyzes.
 
 `wingbox mcp` runs Wingbox as an MCP (Model Context Protocol) server: the
 client starts the command, sends JSON-RPC requests on its standard input and
-reads the answers on its standard output. The transport is stdio only: no
-port, no network. Logs go to standard error. Every tool carries MCP
+reads the answers on its standard output. This command uses stdio only: no
+port, no network. To call the server from another machine, see
+[Over HTTP, from another machine](#over-http-from-another-machine). Logs go to standard error. Every tool carries MCP
 annotations: a title, and read-only for every tool except `build`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
@@ -1124,20 +1128,23 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 `_meta`, `server/discover`) and the `initialize` handshake of revisions
 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05.
 
-| Tool | What it answers |
-|---|---|
-| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) |
-| `impact` | Blast radius of a file, as text (`target`, `depth`, `all`) |
-| `analyze`, `quick` | Full analysis of a module, or of the first module matching a keyword |
-| `boundary`, `boundaries`, `layers` | Files to read for a change; layer violations; modules by layer |
-| `deps`, `rdeps` | Dependency and reverse dependency trees |
-| `entity`, `find_function`, `find_type` | Where a name is defined and used |
-| `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) |
-| `find_callers`, `find_calls`, `find_callchain` | Call graph questions |
-| `diff_functions` | Functions changed since a git ref |
-| `query` | A Scheme query on the graph |
+| Tool | What it answers | The `wingbox` command behind it |
+|---|---|---|
+| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) | `build` |
+| `impact` | What a change to one file reaches, as text (`target`, `depth`, `all`) | `impact` |
+| `module` | One module in full; a keyword instead of a module analyzes the best match (`module`) | `analyze`, `quick` |
+| `definitions` | Where a function, type or constant is defined (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
+| `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
+| `dependencies` | What a module uses or who uses it, hop by hop (`module`, `direction`: out, in; `depth`) | `deps`, `rdeps` |
+| `calls` | Who calls a function, what it calls, or a call path to another one (`function`, `direction`: in, out; `to`; `depth`) | `find_callers`, `find_calls`, `find_callchain` |
+| `layers` | The modules by architecture layer | `layers` |
+| `boundaries` | Imports that cross a layer rule, and the parts not checked (`scope`) | `boundaries` |
+| `changes` | Functions changed in the working files since a git ref (`ref`) | `diff_functions` |
+| `query` | A Scheme query on the graph (`expression`) | `query` |
 
-Each tool returns the output of the `wingbox` command of the same name. A
+Eleven tools, each named after its answer, and each description says when to
+take its neighbour instead. The command line keeps its own command names; a
+tool returns the output of the command behind it. A
 query tool called before the graph exists answers that `build` must be called
 first. Answers stop at 200 items; `all: true` lists everything. The graph is
 read once and read again when `.wingbox/index.sexp` changes.
@@ -1192,6 +1199,56 @@ prints the first):
 
 Without installing, `uvx wingbox mcp` works in place of `wingbox mcp`
 (`"command": "uvx", "args": ["wingbox", "mcp", ...]`).
+
+### Over HTTP, from another machine
+
+When the repository and its graph live on a build server, a dev container or
+a remote workstation and the agent runs somewhere else, serve the same tools
+over the Streamable HTTP transport of MCP:
+
+```bash
+pip install "wingbox[http]"          # or: pipx inject wingbox wingbox-http
+
+export WINGBOX_HTTP_TOKEN="$(openssl rand -hex 32)"
+wingbox mcp --http --root /path/to/project --host 0.0.0.0 --port 8765 \
+  --tls-cert fullchain.pem --tls-key privkey.pem
+```
+
+Then, where the agent runs:
+
+```bash
+# Claude Code
+claude mcp add --transport http wingbox https://host.example:8765/mcp \
+  --header "Authorization: Bearer $WINGBOX_HTTP_TOKEN"
+
+# Codex
+codex mcp add wingbox --url https://host.example:8765/mcp --bearer-token-env-var WINGBOX_HTTP_TOKEN
+```
+
+The transport is a package of its own,
+[`wingbox-http`](https://github.com/aileron-tech/wingbox/tree/main/packages/wingbox-http):
+`wingbox` itself holds no listening code, and `wingbox mcp --http` without the
+package only says how to install it. The package uses the Python standard
+library, listens and answers, and opens no connection of its own.
+
+- Without `--host` the server listens on `127.0.0.1` only and asks for no
+  token: use that with an SSH tunnel or a reverse proxy that checks who calls.
+- Any other address is refused without a token of at least 32 characters, from
+  `WINGBOX_HTTP_TOKEN` or `--token-file FILE`. Clients send it as
+  `Authorization: Bearer <token>`; it is never read from the command line and
+  never logged.
+- `--tls-cert` and `--tls-key` serve HTTPS. Without them the token travels
+  unencrypted: keep the port inside a private network or behind a TLS proxy.
+- A browser request from a foreign origin is answered 403 (`--allow-origin`
+  adds one). `GET` and `DELETE` are answered 405: the server keeps no session
+  and opens no stream of its own.
+- A call that runs longer than a second, such as `build` on a large
+  repository, is answered as an event stream with a keep-alive line every ten
+  seconds, so an idle timeout on the way does not cut it.
+
+Whoever holds the token can read the code graph of the repository and start a
+`build`, which writes `.wingbox/` there; no tool runs a command, reads outside
+the repository or deletes anything.
 
 ## Common code searches
 
