@@ -295,7 +295,7 @@ def _advice_command(args: list[str], cwd: str) -> int:
     """`wingbox advice [--sexp] [--learned]`, `wingbox advice accept|reject <id> [--reason TEXT]`."""
     load_script("architecture")
     from architecture.advice import to_sexp
-    from architecture.decisions import read_store, user_outcome, visible
+    from architecture.decisions import needs_reason, read_store, user_outcome, visible
     from architecture.sexp import q
 
     root = _find_root(cwd)
@@ -309,6 +309,11 @@ def _advice_command(args: list[str], cwd: str) -> int:
             print(f"[wingbox] ERROR: wingbox advice {args[0]} <id> [--reason TEXT]", file=sys.stderr)
             return 2
         reason = args[args.index("--reason") + 1] if "--reason" in args and args.index("--reason") + 1 < len(args) else ""
+        if args[0] == "reject" and not reason.strip() and needs_reason(store, args[1]):
+            # The finding stays in `boundaries`; its advice leaves the list only with the reason on record.
+            print(f"[wingbox] ERROR: advice {args[1]} is about a rule break: reject it with a reason, "
+                  f"wingbox advice reject {args[1]} --reason TEXT", file=sys.stderr)
+            return 2
         line = user_outcome(store, args[1], args[0] == "accept", reason, date.today().isoformat())
         if line is None:
             print(f"[wingbox] ERROR: no advice with id {args[1]} in {path}", file=sys.stderr)
@@ -386,6 +391,7 @@ def _align_command(args: list[str], cwd: str) -> int:
     from architecture import align
     from architecture.advice import PartRules
     from architecture.config import CONFIG_FILE, render_config
+    from architecture.baseline import terms_sexp
     from architecture.facts import BASELINE_FILE
     from architecture.library import load_library
     from architecture.plan import LayerFolder, RepositoryPlan
@@ -427,6 +433,12 @@ def _align_command(args: list[str], cwd: str) -> int:
     baseline_lines: list[str] = []
     bases: dict[str, object] = {}
     learn_context = _learn_context(root, library) if learn and target is None else None
+    # The owner, reason and end date a person wrote on an entry stay on it when the baseline is written again.
+    kept_terms = _baseline_terms(root) if learn and target is None else {}
+
+    def kept(*key: str) -> str:
+        return terms_sexp(kept_terms[key]) if key in kept_terms else ""
+
     for part in parts:
         if rest and part.path not in rest:
             continue
@@ -464,12 +476,14 @@ def _align_command(args: list[str], cwd: str) -> int:
         for entry in align.baseline(part, modules, dependencies, {i.folder: i.layer for i in learned}, project_baseline, type_only):
             baseline_lines.append(
                 f"(baseline {q(entry.part)} {_atom(entry.source)} {_atom(entry.target)} :rule {q(entry.rule)} "
-                f":from {_atom(entry.origin) if entry.origin == 'align' else q(entry.origin)})"
+                f":from {_atom(entry.origin) if entry.origin == 'align' else q(entry.origin)}"
+                f"{kept('baseline', entry.part, entry.source, entry.target)})"
             )
     if learn and target is None:
         # What files do that their layer may not (SQL in a service, ...) is accepted the same way.
         baseline_lines += [
-            f"(baseline-capability {q(item.part)} {_atom(item.module)} {item.capability} :line {item.line} :from align)"
+            f"(baseline-capability {q(item.part)} {_atom(item.module)} {item.capability} :line {item.line} :from align"
+            f"{kept('baseline-capability', item.part, item.module, item.capability)})"
             for item in search.capability_violations(graph, set(graph.nodes))
             if item.severity == "violation" and (not rest or item.part in rest)
         ]
@@ -479,6 +493,18 @@ def _align_command(args: list[str], cwd: str) -> int:
             return 1
     print("\n".join(facts) if sexp else _align_text(facts))
     return 0
+
+
+def _baseline_terms(root: str) -> dict:
+    """The terms (owner, reason, end date) stated in .wingbox/baseline.sexp, by entry; {} without the file."""
+    from architecture.baseline import read_baseline_terms
+    from architecture.facts import BASELINE_FILE
+
+    try:
+        with open(os.path.join(root, BASELINE_FILE), "r", encoding="utf-8") as handle:
+            return dict(read_baseline_terms(handle.read()))
+    except FileNotFoundError:
+        return {}
 
 
 def _align_text(facts: list[str]) -> str:
@@ -606,6 +632,9 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
             facts.append(f"(align-config-written {q(CONFIG_FILE)})")
         with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(f"; written by wingbox align --learn on {today}: rule breaks known at that time\n")
+            handle.write('; an entry may state who accepted it, why and until when: :owner "<who>" :reason "<why>" '
+                         ":expires YYYY-MM-DD\n")
+            handle.write("; (after that day the break is reported as a violation again); align --learn keeps them\n")
             handle.write("\n".join(baseline_lines) + ("\n" if baseline_lines else ""))
     except OSError as error:
         return str(error)

@@ -339,7 +339,7 @@ class DecisionsStoreTest(unittest.TestCase):
                       destination=destination)
 
     def test_outcomes_are_read_from_the_next_run(self) -> None:
-        """/* REQ-ARCH-027: the store logs advice once with a stable id; on the next run a created folder is followed, a file moved to the advised folder is followed, a file moved elsewhere is done differently and teaches that folder's layer, advice still open for 3 builds is hidden (logged once). */"""
+        """/* REQ-ARCH-027: the store logs advice once with a stable id; on the next run a created folder is followed, a file moved to the advised folder is followed, a file moved elsewhere is done differently and teaches that folder's layer, advice still open for 3 builds of a changed graph is hidden (logged once). */"""
         from scripts.architecture import decisions
 
         folder = self._advice("missing-folder", "src/domain/value-objects", "target domain/value-objects")
@@ -360,7 +360,7 @@ class DecisionsStoreTest(unittest.TestCase):
         self.assertFalse([line for line in second if ":ignored" in line])
         text = "\n".join(first + second)
         for run in (3, 4):
-            text += "\n" + "\n".join(decisions.reconcile(decisions.read_store(text), [still], paths, f"2026-01-0{run}", "g"))
+            text += "\n" + "\n".join(decisions.reconcile(decisions.read_store(text), [still], paths, f"2026-01-0{run}", f"g{run}"))
         self.assertEqual([], decisions.visible(decisions.read_store(text), [still]))
         self.assertEqual("core", decisions.learned_layers(decisions.read_store(text))["."][0].folder)
 

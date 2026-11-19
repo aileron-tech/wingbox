@@ -68,6 +68,7 @@ and backslash escapes. Other regex operators are rejected.
 from __future__ import annotations
 
 import collections
+import datetime
 import functools
 import hashlib
 import os
@@ -79,6 +80,7 @@ from typing import Optional
 
 if __package__:
     from .architecture import advice as _advice
+    from .architecture import baseline as _baseline
     from .architecture.detect import Part
     from .architecture.labels import label_in_part
     from .architecture.library import load_library
@@ -90,6 +92,7 @@ if __package__:
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from architecture import advice as _advice
+    from architecture import baseline as _baseline
     from architecture.detect import Part
     from architecture.labels import label_in_part
     from architecture.library import load_library
@@ -580,6 +583,12 @@ class CodeGraph:
         self._layer_guesses: Optional[dict[str, str]] = None   # purpose -> layer the build stored, read on first need
         self.labels: dict[str, "ModuleLabel"] = {}   # module -> layer label written by the build
         self.known: dict[tuple[str, str], str] = {}   # (source, target) -> baseline file of the project
+        # The owner, reason and end date a baseline entry states; an entry past its end date is not in
+        # `known` (nor in `capability_known`): its finding is a violation again.
+        self.known_terms: dict[tuple[str, str], _baseline.Acceptance] = {}
+        self.known_expired: dict[tuple[str, str], _baseline.Acceptance] = {}
+        self.capability_terms: dict[tuple[str, str], _baseline.Acceptance] = {}
+        self.capability_expired: dict[tuple[str, str], _baseline.Acceptance] = {}
         self.arch_capabilities: dict[str, dict[str, CapabilityRuleFact]] = {}   # part -> capability -> rule
         self.arch_patterns: dict[str, set[str]] = {}          # part -> pattern checks of its style
         self.capabilities: dict[str, list[CapabilityFact]] = {}   # module -> what its file does
@@ -621,6 +630,11 @@ class CodeGraph:
         self._layer_guesses = None
         self.labels = {}
         self.known = {}
+        self.known_terms = {}
+        self.known_expired = {}
+        self.capability_terms = {}
+        self.capability_expired = {}
+        today = datetime.date.today().isoformat()
         self.arch_capabilities = {}
         self.arch_patterns = {}
         self.capabilities = {}
@@ -810,7 +824,16 @@ class CodeGraph:
                     values.get("present", ""), values.get("source", ""),
                 ))
             elif kind == "arch-known" and len(tokens) >= 5:
-                self.known[(_resolve(tokens[2]), _resolve(tokens[3]))] = tokens[4]
+                pair = (_resolve(tokens[2]), _resolve(tokens[3]))
+                terms = _baseline.terms_of(tokens[5:])
+                if terms.expired(today):
+                    if pair not in self.known:
+                        self.known_expired[pair] = terms
+                    continue
+                self.known[pair] = tokens[4]
+                self.known_expired.pop(pair, None)
+                if terms.stated():
+                    self.known_terms[pair] = terms
             elif kind == "arch-capability" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])
                 self.arch_capabilities.setdefault(tokens[1], {})[tokens[2]] = CapabilityRuleFact(
@@ -827,7 +850,14 @@ class CodeGraph:
             elif kind == "arch-declared-unread" and len(tokens) >= 3:
                 self.declared_unread.setdefault(tokens[1], []).append(tokens[2])
             elif kind == "capability-known" and len(tokens) >= 5:
-                self.capability_known[(_resolve(tokens[2]), tokens[3])] = tokens[4]
+                key = (_resolve(tokens[2]), tokens[3])
+                terms = _baseline.terms_of(tokens[5:])
+                if terms.expired(today):
+                    self.capability_expired[key] = terms
+                    continue
+                self.capability_known[key] = tokens[4]
+                if terms.stated():
+                    self.capability_terms[key] = terms
             elif kind == "layer" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])  # :learned-from <id> is part of the rule text as well
                 self.labels[_resolve(tokens[1])] = ModuleLabel(
@@ -2403,7 +2433,9 @@ def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int,
         counts[fact] += 1
         allowed = f" :allowed ({' '.join(item.allowed)})" if item.allowed else ""
         forbidden = f" :forbidden ({' '.join(item.forbidden)})" if item.forbidden else ""
-        known = f" :known {_q(item.known)}" if item.known else ""
+        known = f" :known {_q(item.known)}{_known_terms(g.capability_terms, (item.module, item.capability))}" if item.known else ""
+        if fact == "capability-violation":
+            known = _expired_terms(g.capability_expired, (item.module, item.capability))
         pattern = f" :pattern {item.pattern}" if item.pattern else ""
         print(
             f"({fact} {_q(module_file(g, item.module))} :capability {item.capability} :layer {item.layer}{allowed}{forbidden} "
@@ -2420,6 +2452,18 @@ def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int,
         f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {len(scope_mods)})"
     )
     return counts["capability-violation"] + len(patterns), counts["capability-violation-known"]
+
+
+def _known_terms(terms: dict[tuple[str, str], _baseline.Acceptance], key: tuple[str, str]) -> str:
+    """` :owner "<who>" :reason "<why>" :expires <date>` of an accepted finding, with the fields its entry states."""
+    stated = terms.get(key)
+    return _baseline.terms_sexp(stated) if stated is not None else ""
+
+
+def _expired_terms(expired: dict[tuple[str, str], _baseline.Acceptance], key: tuple[str, str]) -> str:
+    """` :expired <date> [:owner "<who>"]` of a finding whose baseline entry is past its end date."""
+    stated = expired.get(key)
+    return _baseline.expired_sexp(stated) if stated is not None else ""
 
 
 def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
@@ -2585,7 +2629,9 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
         else:
             fact = "violation-candidate"
         pairs[fact].add((item.source, item.target))
-        known = f" :known {_q(item.known)}" if item.known else ""
+        known = f" :known {_q(item.known)}{_known_terms(g.known_terms, (item.source, item.target))}" if item.known else ""
+        if fact == "violation":
+            known = _expired_terms(g.known_expired, (item.source, item.target))
         print(
             f"({fact} {item.source} {item.target} :src-layer {item.source_layer} :tgt-layer {item.target_layer} "
             f":via {item.kind} :lang {g.module_lang(item.source)} :part {_q(item.part)} :style {item.style} "

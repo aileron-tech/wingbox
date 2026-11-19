@@ -613,8 +613,13 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   `wingbox advice accept|reject <id> [--reason TEXT]`. A file moved to another
   folder than the advised one teaches that folder's layer for the part, and
   later builds use it (`:learned-from <id>`); an item rejected or ignored for
-  3 builds is no longer shown. `wingbox advice` lists the open items,
-  `wingbox advice --learned` what was learned.
+  3 builds is no longer shown. A rebuild of unchanged code is not counted as
+  one of the 3, and a recommendation to fix a finding (`fix-violation`,
+  `fix-capability`, `fix-pattern`) is never hidden by inaction: it stays
+  until the finding is fixed, accepted in the baseline, or rejected with
+  `wingbox advice reject <id> --reason TEXT` (the reason is required for
+  these). `wingbox advice` lists the open items, `wingbox advice --learned`
+  what was learned.
 
 - **What a layer may do.** Besides who imports whom, each style says what
   kind of work belongs where: SQL and the database client in the repository
@@ -648,6 +653,21 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   `.wingbox/config.yaml` with a comment and what still breaks a rule into
   `.wingbox/baseline.sexp`; later builds report only new violations. For a
   part with declared rules nothing is guessed: the baseline comes from them.
+  An entry of the baseline may say who accepted the break, why and until
+  when; you add the three fields by hand to the entry, and `align --learn`
+  keeps them when it writes the file again:
+
+  ```
+  (baseline "." src/models/order src/routes/orders :rule "domain -> api" :from align
+            :owner "A. Reviewer" :reason "removed with the orders rewrite" :expires 2027-03-31)
+  ```
+
+  (one line in the file). `wingbox boundaries` prints the owner, the reason
+  and the date on the `violation-known` line. `:expires` is the last day the
+  entry holds: from the next day, or when the date is not `YYYY-MM-DD`, the
+  break is a `violation` again (with `:expired <date>`), `boundaries` exits 1
+  and `wingbox advice` asks for the fix again. `baseline-capability` entries
+  take the same fields.
 
 - **A new project.** In a folder without source files, `init` asks the
   language and offers the styles that fit it, best first: the style of the

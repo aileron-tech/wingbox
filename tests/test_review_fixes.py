@@ -23,22 +23,22 @@ def _part(style: str, layers: tuple, kind: str = "npm package") -> PartPlan:
 
 class DecisionsStateTest(unittest.TestCase):
     def test_accepted_advice_is_never_counted_as_ignored(self) -> None:
-        """/* REQ-ARCH-032: an accepted item stays shown: later builds do not count it as ignored. */"""
+        """/* REQ-ARCH-032: an accepted item stays shown: later builds, each of a changed graph, do not count it as ignored. */"""
         item = _advice("missing-folder", "src/domain/aggregates", "target domain/aggregates")
-        text = "\n".join(decisions.reconcile(decisions.Store(), [item], (), "2026-01-01", "g"))
+        text = "\n".join(decisions.reconcile(decisions.Store(), [item], (), "2026-01-01", "g1"))
         text += "\n" + decisions.user_outcome(decisions.read_store(text), item.id, True, "", "2026-01-01")
         for day in (2, 3, 4, 5):
-            text += "\n" + "\n".join(decisions.reconcile(decisions.read_store(text), [item], (), f"2026-01-0{day}", "g"))
+            text += "\n" + "\n".join(decisions.reconcile(decisions.read_store(text), [item], (), f"2026-01-0{day}", f"g{day}"))
         self.assertNotIn(":ignored", text)
         self.assertEqual([item], decisions.visible(decisions.read_store(text), [item]))
 
     def test_the_store_logs_changes_of_state_not_every_run(self) -> None:
-        """/* REQ-ARCH-033: a build logs one run line, new advice and changed states; an open item adds nothing per build until it becomes hidden after 3 ignored builds, which is logged once. */"""
+        """/* REQ-ARCH-033: a build logs one run line, new advice and changed states; an open item adds nothing per build until it becomes hidden after 3 ignored builds of a changed graph, which is logged once. */"""
         items = [_advice("missing-folder", f"src/domain/b{i}", f"target domain/b{i}") for i in range(50)]
-        text = "\n".join(decisions.reconcile(decisions.Store(), items, (), "2026-01-01", "g"))
+        text = "\n".join(decisions.reconcile(decisions.Store(), items, (), "2026-01-01", "g1"))
         sizes = []
         for day in (2, 3, 4, 5, 6):
-            lines = decisions.reconcile(decisions.read_store(text), items, (), f"2026-01-0{day}", "g")
+            lines = decisions.reconcile(decisions.read_store(text), items, (), f"2026-01-0{day}", f"g{day}")
             sizes.append(len(lines))
             text += "\n" + "\n".join(lines)
         self.assertEqual([1, 1, 51, 1, 1], sizes)
