@@ -1159,7 +1159,7 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 | `list_files` | The source files of the graph, all or those whose path matches (`pattern`) | `files` |
 | `describe_module` | One module in full; a keyword instead of a module describes the best match (`module`) | `analyze`, `quick` |
 | `read_source` | The numbered lines of a source file of the graph, of a range of it, or of one definition (`target`, `first`, `last`) | `source` |
-| `search_source` | The lines of the source files of the graph that hold a text, with file and line; in all files or those whose path matches (`pattern`, `path`) | `grep` |
+| `search_source` | The lines of the source files of the graph that hold a text, with file and line; in all files or those whose path matches, 200 matches a call (`pattern`, `path`, `first`) | `grep` |
 | `find_definitions` | Where a function, type or constant is defined; `name` may be a pattern with `.*` (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
 | `find_usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
 | `analyze_impact` | What a change to one file or to several reaches, as S-expressions (`target` or `targets`, `depth`) | `impact` |
@@ -1175,7 +1175,7 @@ comes back, when to use the tool, which neighbour to use instead and what its
 parameters mean. The command line keeps its own command names; a tool returns
 the output of the command behind it. A tool called before the graph exists
 answers that `build_graph` must be called first. `read_source` returns at most
-400 lines a call, `search_source` lists at most 2,000 matches a call, and both read source files of the graph only. Answers stop at 200 items; `all: true` lists everything. The graph is
+400 lines a call, `search_source` at most 200 matches a call with the total and the match to go on from, and both read source files of the graph only. Answers stop at 200 items; `all: true` lists everything. The graph is
 read once and read again when `.wingbox/index.sexp` changes.
 
 Claude Code, in the project directory:
@@ -1301,7 +1301,7 @@ anything.
 | Trace a call path | `find_callchain handleRequest createOrder 5` |
 | Search inside function bodies | `grep_functions "validate.*input"` |
 | List the source files of the graph | `files`, `files "tests/.*pricing"` |
-| Find a text in the source files of the graph: a string, a message, a comment | `grep "Basket is empty"`, `grep "total(items)" "tests/.*"` |
+| Find a text in the source files of the graph: a string, a message, a comment | `grep "Basket is empty"`, `grep "total(items)" "tests/.*"`, `grep TODO --first 201` |
 | Print a file of the graph or one definition, numbered | `source src/billing/invoice.ts`, `source createOrder`, `source src/billing/invoice.ts 40 80` |
 | State the architecture of each part | `wingbox init` (`--sexp` for agents) |
 | See or decide the open recommendations | `wingbox advice`, `wingbox advice reject <id> --reason "..."` |

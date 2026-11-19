@@ -167,8 +167,8 @@ class ToolListTest(unittest.TestCase):
         """/* REQ-MCP-036: `search_source` returns the lines of the source files of the graph that hold a text,
         each with its file and line number, in all files or in those whose path matches `path`. A text no line
         holds is an empty answer, not an error; a pattern without text is a tool error. A file that is not a
-        source file of the graph is never searched. The limits its description names are those of the `grep`
-        command. */"""
+        source file of the graph is never searched. An answer that is cut names the next match, and `first`
+        goes on from it. The limits its description names are those of the `grep` command. */"""
         from wingbox import cli, mcp_server
 
         _make_shop(self.root)
@@ -180,6 +180,8 @@ class ToolListTest(unittest.TestCase):
             _call(5, "search_source", {"pattern": "nowhere_at_all"}),
             _call(6, "search_source", {"pattern": ".*"}),
             _call(7, "search_source", {"pattern": "a note"}),
+            _call(8, "search_source", {"pattern": "total", "first": 2}),
+            _call(9, "search_source", {"pattern": "total", "first": 99}),
         ])
         found = "\n".join(_texts(session.reply(3))).splitlines()
         self.assertIn('(match shop/pricing.py 1 "def total(items):")', found)
@@ -191,11 +193,16 @@ class ToolListTest(unittest.TestCase):
         self.assertTrue("\n".join(_texts(session.reply(5))).startswith("(matches-empty nowhere_at_all "))
         self.assertTrue(session.reply(6)["result"]["isError"])
         self.assertTrue("\n".join(_texts(session.reply(7))).startswith("(matches-empty "))
+        later = "\n".join(_texts(session.reply(8))).splitlines()
+        self.assertEqual(['(match shop/checkout.py 5 "    return total(items)")', '(match shop/pricing.py 1 "def total(items):")'], later[:-1])
+        self.assertIn(" :first 2 ", later[-1])
+        self.assertTrue(session.reply(9)["result"]["isError"])
         search = cli.load_script("code_graph_search")
         description = mcp_server.TOOLS_BY_NAME["search_source"].description
         self.assertEqual((search.GREP_LINE_CHARS, search.GREP_MATCH_LIMIT), (mcp_server.MATCH_LINE_CHARS, mcp_server.MATCHES_PER_CALL))
         self.assertIn(f"longer than {search.GREP_LINE_CHARS} characters", description)
-        self.assertIn(f"at most {search.GREP_MATCH_LIMIT:,} matches", description)
+        self.assertIn(f"at most {search.GREP_MATCH_LIMIT} matches", description)
+        self.assertNotIn("all", mcp_server.TOOLS_BY_NAME["search_source"].input_schema()["properties"])
 
     def test_a_malformed_query_is_a_tool_error(self) -> None:
         """/* REQ-MCP-037: `query_graph` answers a malformed expression (a parenthesis that is not closed, a

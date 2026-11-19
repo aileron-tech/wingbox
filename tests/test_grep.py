@@ -150,24 +150,59 @@ class GrepTest(unittest.TestCase):
         _status, out = _wingbox(self.root, "files", "shop/(a|b)")
         self.assertTrue(out.startswith("(error "), out)
 
-    def test_a_long_line_is_cut_and_the_matches_stop_at_the_limit(self) -> None:
+    def test_a_long_line_is_cut_and_an_answer_stops_at_its_limits(self) -> None:
         """/* REQ-CS-141: a matching line longer than 300 characters is printed cut at that length with
-        `:cut <its length>`; one answer lists at most 2,000 matches, and the summary then says how many there
-        are and how many are shown (`:matches 2100 :shown 2000`). */"""
+        `:cut <its length>`. One answer lists at most 200 matches and at most 100,000 characters of match
+        lines; the summary then gives the total, how many are shown and from which match, and the match to go
+        on from (`:matches 450 :shown 200 :first 1 :next 201`). */"""
         search = _load_search()
-        self.assertEqual((300, 2000), (search.GREP_LINE_CHARS, search.GREP_MATCH_LIMIT))
+        self.assertEqual((300, 200, 100_000), (search.GREP_LINE_CHARS, search.GREP_MATCH_LIMIT, search.GREP_CHAR_LIMIT))
         with tempfile.TemporaryDirectory() as parent:
             root = _repository(Path(os.path.realpath(parent)), {
                 "wide.py": "A = 'needle" + "x" * 500 + "'\n",
-                "many.py": "".join("V%d = 'straw'\n" % number for number in range(2100)),
+                "many.py": "".join("V%d = 'straw'\n" % number for number in range(450)),
+                "quoted.py": "".join("Q%d = %s\n" % (number, '"' * 400) for number in range(200)),
             })
             _status, out = _wingbox(root, "grep", "needle")
             self.assertEqual('(match wide.py 1 "' + "A = 'needle" + "x" * 289 + '" :cut 512)', out.splitlines()[0])
             _status, out = _wingbox(root, "grep", "straw")
             lines = out.splitlines()
-            self.assertEqual(2001, len(lines))
-            self.assertEqual("(match many.py 2000 \"V1999 = 'straw'\")", lines[-2])
-            self.assertEqual("(matches-summary :matches 2100 :shown 2000 :files 1 :searched 2 :pattern straw)", lines[-1])
+            self.assertEqual(201, len(lines))
+            self.assertEqual("(match many.py 200 \"V199 = 'straw'\")", lines[-2])
+            self.assertEqual("(matches-summary :matches 450 :shown 200 :first 1 :next 201 :files 1 :searched 3 :pattern straw)", lines[-1])
+            _status, out = _wingbox(root, "grep", '""""', "quoted")
+            lines = out.splitlines()
+            shown = len(lines) - 1
+            self.assertTrue(0 < shown < 200, shown)
+            self.assertLessEqual(sum(len(line) for line in lines[:-1]), 100_000)
+            self.assertGreater(sum(len(line) for line in lines[:-1]) + len(lines[0]), 100_000)
+            self.assertEqual(f"(matches-summary :matches 200 :shown {shown} :first 1 :next {shown + 1} :files 1 :searched 1 :pattern \"\\\"\\\"\\\"\\\"\" :path quoted)", lines[-1])
+
+    def test_an_answer_goes_on_from_a_match(self) -> None:
+        """/* REQ-CS-145: `--first N` starts the answer at match N, counted in the order of the answer, so
+        that a caller reads every match in steps: the summary says `:first N` and, while matches are left,
+        `:next`. A number below 1, a text that is no number, and a number past the last match are errors. */"""
+        with tempfile.TemporaryDirectory() as parent:
+            root = _repository(Path(os.path.realpath(parent)), {"many.py": "".join("V%d = 'straw'\n" % number for number in range(450))})
+            _status, out = _wingbox(root, "grep", "straw", "--first", "201")
+            lines = out.splitlines()
+            self.assertEqual("(match many.py 201 \"V200 = 'straw'\")", lines[0])
+            self.assertEqual("(matches-summary :matches 450 :shown 200 :first 201 :next 401 :files 1 :searched 1 :pattern straw)", lines[-1])
+            _status, out = _wingbox(root, "grep", "straw", "many", "--first", "401")
+            lines = out.splitlines()
+            self.assertEqual(51, len(lines))
+            self.assertEqual("(match many.py 450 \"V449 = 'straw'\")", lines[-2])
+            self.assertEqual("(matches-summary :matches 450 :shown 50 :first 401 :files 1 :searched 1 :pattern straw :path many)", lines[-1])
+            for extra in (("--first", "0"), ("--first", "x"), ("--first",), ("--first", "451"), ("--last", "3")):
+                _status, out = _wingbox(root, "grep", "straw", *extra)
+                self.assertTrue(out.startswith("(error invalid-argument "), (extra, out))
+                self.assertNotIn("(match ", out)
+            search = _load_search()
+            graph = _graph(search, root)
+            for first in (0, -5, 451):
+                out = _captured(lambda: search.cmd_grep(graph, "straw", None, first))
+                self.assertTrue(out.startswith("(error invalid-argument "), (first, out))
+                self.assertNotIn("(match ", out)
 
     def test_a_file_replaced_by_a_link_is_not_read(self) -> None:
         """/* REQ-CS-140: a source file of the graph that was replaced by a symbolic link after the build is not

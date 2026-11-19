@@ -4,17 +4,19 @@
 
 ### Changes
 
-- A new command, `wingbox grep <text> [path-pattern]`, and the MCP tool `search_source` over it:
-  the lines of the source files of the graph that hold a text, each with its file and line
-  number, in all files or in those whose path matches. It is for what is not a name in the graph:
-  a string, a message, a comment, a configuration key. Every character of the text stands for
-  itself, so code can be searched as it is written (`grep "total(items)"`); special are only
+- A new command, `wingbox grep <text> [path-pattern] [--first N]`, and the MCP tool `search_source`
+  over it: the lines of the source files of the graph that hold a text, each with its file and
+  line number, in all files or in those whose path matches. It is for what is not a name in the
+  graph: a string, a message, a comment, a configuration key. Every character of the text stands
+  for itself, so code can be searched as it is written (`grep "total(items)"`); special are only
   `.*`, `^` first, `$` last and a backslash before a character meant literally; the letter case is
-  ignored. A line over 300 characters is cut and says its length, and one answer lists at most
-  2,000 matches and gives the total. It reads source files of the graph only, never a file that
-  is a symbolic link. The MCP server now has fourteen tools. Over the HTTP transport a token
-  holder could already read these files with `read_source`; `search_source` lets them search
-  them.
+  ignored. One answer lists at most 200 matches and 100,000 characters, gives the total and the
+  match to go on from (`--first 201`, `first` in the tool); a line over 300 characters is cut and
+  says its length. It reads source files of the graph only, never a file that is a symbolic
+  link. The MCP server now has fourteen tools. **It also changes what the HTTP transport lets a
+  token holder do**: whoever holds the token can now search the text of every source file of the
+  graph in one call. It is the same permission as `read_source`, used faster: a secret that is
+  committed in a source file is found by one search instead of file by file.
 - `wingbox query` and the MCP tool `query_graph` answer a malformed expression with one line
   `(error invalid-query "<expression>" "<what is wrong>")` and no result: parentheses that do
   not match, a string that is not closed, an empty expression, a function the language does not

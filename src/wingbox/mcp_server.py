@@ -67,7 +67,7 @@ META_SERVER_INFO = "io.modelcontextprotocol/serverInfo"
 ANSWER_LINE_LIMIT = 200
 SOURCE_LINES_PER_CALL = 400   # equals SOURCE_LINE_LIMIT of the `source` command (REQ-MCP-035)
 MATCH_LINE_CHARS = 300        # equals GREP_LINE_CHARS of the `grep` command (REQ-MCP-036)
-MATCHES_PER_CALL = 2000       # equals GREP_MATCH_LIMIT of the `grep` command (REQ-MCP-036)
+MATCHES_PER_CALL = 200        # equals GREP_MATCH_LIMIT of the `grep` command (REQ-MCP-036)
 LIST_TTL_MS = 3_600_000
 BUILD_LOG_TAIL = 15
 MAX_DEPTH = 50
@@ -612,17 +612,19 @@ TOOLS: tuple[Tool, ...] = (
         "before a character meant literally. `path` narrows the search to files whose path matches (`tests/.*`). "
         "For where a name is defined use `find_definitions`; for who uses a symbol use `find_usages`, which follows "
         "aliases and re-exports; to read around a match use `read_source`. It reads source files of the graph "
-        f"only. A line longer than {MATCH_LINE_CHARS} characters is cut; one call lists at most "
-        f"{MATCHES_PER_CALL:,} matches and then says the total." + _CAP,
+        f"only. One call returns at most {MATCHES_PER_CALL} matches, says the total and the match to go on from: "
+        f"pass that number as `first`. A line longer than {MATCH_LINE_CHARS} characters is cut.",
         {
             "pattern": _string("Text to search for, as it is written in the code; .* stands for any characters, letter case is ignored."),
             "path": _string("Part of a file path, literal text with optional .* wildcards: only matching files are searched."),
-            "all": _ALL,
+            "first": {"type": "integer", "minimum": 1, "maximum": 10_000_000,
+                      "description": "Number of the first match to return (default 1); a cut answer names the next one as :next."},
         },
         ("pattern",),
         _simple(
-            lambda a: ["grep", a["pattern"], *([a["path"]] if "path" in a else [])],
-            lambda s, g, _p, a: s.cmd_grep(g, a["pattern"], a.get("path")),
+            lambda a: ["grep", a["pattern"], *([a["path"]] if "path" in a else []), *(["--first", str(a["first"])] if "first" in a else [])],
+            lambda s, g, _p, a: s.cmd_grep(g, a["pattern"], a.get("path"), a.get("first", 1)),
+            capped=False,
         ),
     ),
     Tool(

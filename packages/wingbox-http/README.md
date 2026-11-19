@@ -67,8 +67,12 @@ header `Authorization: Bearer <token>`.
 
 Whoever holds the token can read the code graph of the repository (file names,
 symbols, dependencies) and the text of the source files that are in the graph
-(the tools `read_source` and `search_source`), and rebuild the graph (the tool `build_graph`), which
-writes `.wingbox/` in the repository. No tool reads a file that is not a source
+(the tool `read_source`), search that text in every source file of the graph at
+once (the tool `search_source`), and rebuild the graph (the tool `build_graph`),
+which writes `.wingbox/` in the repository. Searching is the same permission as
+reading, used faster: a secret that is committed in a source file is found by
+one search instead of file by file. Keep secrets out of source files, and give
+the token only to who may read the code. No tool reads a file that is not a source
 file of the graph, runs a command you give it, or deletes anything.
 
 - The token is a shared secret of at least 32 characters, compared in constant

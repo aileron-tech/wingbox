@@ -745,15 +745,17 @@ is a symbolic link, is `(error no-match ...)`.
 (match <path> 42 "text of the line, quoted")
 (match <path> 43 "the first 300 characters of a longer line" :cut 512)
 (matches-summary :matches 2 :files 1 :searched 340 :pattern "text" :path "tests/.*" :unread 1)
-(matches-summary :matches 2100 :shown 2000 :files 12 :searched 340 :pattern "text")
+(matches-summary :matches 450 :shown 200 :first 1 :next 201 :files 12 :searched 340 :pattern "text")
 (matches-empty "text" :searched 340)
 ```
 
 One `match` per line that holds the text, sorted by file and line and numbered
 as `source` numbers them. `:searched` is the number of files the search
 covered (all source files of the graph, or those `:path` selects), `:files`
-the number that hold a match. `:shown` is there when more than 2,000 lines
-match: the first 2,000 are listed. `:unread N` counts files that could not be
+the number that hold a match. One answer lists at most 200 matches and
+100,000 characters: when more match, `:shown` and `:first` say which part is
+listed and `:next` the match to go on from (`grep <text> --first 201`).
+`:unread N` counts files that could not be
 read or are a symbolic link; their lines are never printed.
 
 ## diff_functions Output

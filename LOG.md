@@ -3,7 +3,7 @@
 ## 2026-11-19 - Text search in the source files, and an error for a malformed query
 
 ### Changes
-- `wingbox grep <text> [path-pattern]` (`cmd_grep`) and the MCP tool `search_source`: the lines of the source files of the graph that hold a text, with file and line; files are read only through `_source_file`, as `source` reads them; 300 characters a line, 2,000 matches an answer. `parse_search_pattern` takes `text=True`, in which every character but `.*`, `^` first, `$` last and the backslash is literal; the other commands keep the strict form.
+- `wingbox grep <text> [path-pattern]` (`cmd_grep`) and the MCP tool `search_source`: the lines of the source files of the graph that hold a text, with file and line; files are read only through `_source_file`, as `source` reads them; 300 characters a line, 200 matches and 100,000 characters an answer, `--first N` goes on (REQ-CS-145, asked in review: an answer must not put 700,000 characters into a model's context). `parse_search_pattern` takes `text=True`, in which every character but `.*`, `^` first, `$` last and the backslash is literal; the other commands keep the strict form.
 - `wingbox query`: `_query_problem` refuses an expression whose parentheses do not match, whose string is not closed or that is empty, and an unknown function is an `(error invalid-query ...)` line instead of a comment and an empty result.
 - Descriptions of `analyze_impact`, `list_layers`, `check_boundaries` and `query_graph` rewritten; `query_graph` names the tools to prefer; the server has fourteen tools.
 
