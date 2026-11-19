@@ -1624,12 +1624,24 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 
 ## Thanks
 
+- [tolyod](https://github.com/tolyod) wrote the support for two languages:
+  PHP and Laravel, with Blade templates, Livewire components and Eloquent
+  models, and the benchmark on three public Laravel repositories
+  ([pull request #42](https://github.com/aileron-tech/wingbox/pull/42)); and
+  Dart, for Flutter apps
+  ([pull request #47](https://github.com/aileron-tech/wingbox/pull/47)).
 - [just4just2](https://github.com/just4just2) asked for native Windows support
   and has tested each release since on Windows 11, in live Claude Code sessions
   ([issue #48](https://github.com/aileron-tech/wingbox/issues/48)): the hooks
   without Git Bash, the console window of the background refresh, a
   `wingbox update` that replaces its own `wingbox.exe`. Every Windows fix from
-  0.7.0 to 0.9.2 started with one of those reports.
+  0.7.0 to 0.9.2 started with one of those reports. Two more reports followed:
+  Python files that start with a UTF-8 byte order mark were left out of the
+  graph ([issue #105](https://github.com/aileron-tech/wingbox/issues/105),
+  fixed in 0.10.1), and a profile of where `wingbox impact` spent its time in
+  a large project
+  ([issue #106](https://github.com/aileron-tech/wingbox/issues/106)), which
+  made it faster in 0.10.2 and again in 0.12.1.
 
 ## License
 
