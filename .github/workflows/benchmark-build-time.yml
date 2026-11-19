@@ -20,14 +20,14 @@ jobs:
     env:
       ROUNDS: ${{ inputs.rounds }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - name: Install uv
         run: pipx install uv
       - name: Environments and corpus at the pinned commits
         run: RUN_ONLY=corpus benchmarks/impact/run.sh "$RUNNER_TEMP/bench"
       - name: Time the builds
         run: python3 -I benchmarks/impact/tools/time_builds.py "$RUNNER_TEMP/bench" "$ROUNDS" | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: build_times
           path: ${{ runner.temp }}/bench/out/build_times.json

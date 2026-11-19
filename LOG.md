@@ -1,5 +1,29 @@
 # Completion Log
 
+## 2026-11-19 - Release integrity: actions at a commit, checksums and SBOM, a build that repeats (#153, part 1)
+
+### Why
+- Issue #153: a team that relies on Wingbox as an engineering control has to justify the tool itself. Its table for 0.14.0: 11 of 13 `uses:` lines of the workflows named a tag, the release assets carried no checksum, there was no SBOM, and whether two builds of a tag give the same bytes was not tested. This change closes those four rows. Publishing through trusted publishing needs a setting in the maintainer's PyPI account, so it is written down as a next step and nothing about how a release is published changes.
+
+### Changes
+- `.github/workflows/*.yml`: all 13 `uses:` lines name a full commit with the release tag as a trailing comment. `actions/checkout` v4.4.0 `11d5960a326750d5838078e36cf38b85af677262` (7 lines), `actions/upload-artifact` v4.6.2 `ea165f8d65b6e75b540449e92b4886f43607fa02` (4 lines; the line of `map-request.yml` already named this commit with the comment `v4`), `aileron-tech/wingbox-action` v1.4.2 `ef3733e3c0394c1e5ecf44d6c369c5a213b5d9d9`, `sigstore/cosign-installer` v4.1.2 `6f9f17788090df1f26f669e9d70d6ae9567deba6` (unchanged; v4.1.3 exists and is not taken here). Each commit was read with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`; all four tags are lightweight and point at a commit, and the commits of `v4`, `v4` and `v1` are the same as those of the three release tags, so no workflow runs other code than before.
+- `tools/release_files.py` (new, standard library): for a release folder writes `SHA256SUMS` (every file of the folder, the SBOM included, hidden files left out: `uv build` puts a `.gitignore` there) and `<name>-<version>.cdx.json`, a CycloneDX 1.5 document with the package, its built files with their SHA-256 and the dependencies `pyproject.toml` pins (those only an extra names are `optional`; an environment marker is kept as a property). No timestamp and a serial number derived from the content: the same input gives the same bytes. A dependency without `==`, or a folder without a built file of the package, is exit 1 and nothing written.
+- `tests/test_release_integrity.py` (new): REQ-REL-001 (the pins), REQ-REL-002 (the checksum file), REQ-REL-003 (the SBOM on a stand-in folder and `pyproject.toml`), REQ-REL-004 (the refusals), REQ-REL-005 (the SBOM of this repository names exactly the pinned dependencies; standard library only), REQ-REL-006 (`uv build` twice with `SOURCE_DATE_EPOCH`, the source archive and the wheel compared; skipped without `uv`).
+- `AGENTS.md`: the prefix `REL` and the rule for `uses:` lines in section 2; step 7 of section 3 (the two commands that write and attach the files); the row "Checksums and SBOM" in 6.1; in 6.4 the note that `wingbox.yml` follows a release of the action only when its commit is changed.
+- `docs/assurance/release-integrity.md` (new): what each file shows and how to check it, how to rebuild a release from its tag, what is not shown (no signature, no provenance on PyPI), and the trusted publishing steps with the proposed workflow, marked not active.
+- `CHANGELOG.md`: three lines under "Unreleased".
+
+### The build
+- No change of the build configuration was needed: two builds of the same tree gave the same bytes from the first run of the test. The backend stamps every file with a fixed date (2020-02-02 without `SOURCE_DATE_EPOCH`, the given date with it).
+- A shallow clone of the tag `v0.14.0`, built with `uv build` and `hatchling==1.33.0` (the version the wheel on PyPI names in its `WHEEL` file) under Python 3.11, 3.12, 3.13 and 3.14 on macOS, gave each time the two files PyPI serves: wheel `0bf88e2f...c74107`, source archive `1080db73...4b7b71`. With `SOURCE_DATE_EPOCH` set the digests differ (other dates in the archives), so a rebuild that is compared with a release leaves it unset.
+- Not assessed: the same bytes between operating systems; `wingbox-http`. `pyproject.toml` does not pin the build backend; whether to pin it is the maintainer's decision.
+
+### Verification
+- The five tests of the pins and the release files failed before the workflows were changed and the tool was written, then passed; the build test passed at once.
+- The SBOM of this checkout and the one of the stand-in folder validate against the CycloneDX 1.5 JSON schema of the specification repository (`bom-1.5.schema.json`, checked with `jsonschema`, 0 errors); the schema is not vendored.
+- The commands of step 7 and of the new 6.1 row were run on a folder built from this checkout: `shasum -a 256 -c SHA256SUMS` answered OK for the six files (the two of `wingbox`, the two of `wingbox-http`, the extension, the SBOM).
+- The whole suite: see the pull request.
+
 ## 2026-11-19 - Release 0.14.0
 
 ### Changes
