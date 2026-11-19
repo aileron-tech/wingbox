@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - Release 0.14.0
+
+### Changes
+- Version 0.14.0, core and `packages/wingbox-http` (REQ-HTTP-021): S-expressions as the default output of the query commands with `--human` and `--json`, `impact` for several files, one error object for a failed `--json` call, the code for Code Mode in the skill (#150); the MCP tool names `graph`, `modules`, `facts` and the new descriptions (#148); the installed block that puts the graph before text search (#149). The map-request workflow builds with 0.14.0. The module text of `mcp_server.py` names the tools as they are now.
+
+### Motivation
+- The maintainer decided the default output and asked for ready code for Code Mode; a second breaking change for MCP clients goes out together with the first of this release, under one note.
+
 ## 2026-11-19 - The always-on block: the graph before text search, tests from the impact
 
 ### Why

@@ -16,10 +16,10 @@ Protocol revisions:
 Each tool is a thin call into the functions behind the `wingbox` command; the
 answer is the command's output (`impact`: the default S-expression form, for
 one file or several; `usages`: the text). Eleven tools, each named after its answer:
-build, impact, module (analyze, or quick for a keyword), definitions
+graph (build), impact, modules (analyze, or quick for a keyword), definitions
 (find_function, find_type, entity), usages, dependencies (deps, rdeps), calls
 (find_callers, find_calls, find_callchain), layers, boundaries, changes
-(diff_functions), query. The command line keeps its own command names.
+(diff_functions), facts (query). The command line keeps its own command names.
 The loaded graph is kept between calls and reloaded when the file changes.
 Before each tool reads it, the graph is brought up to date with the files
 changed since it was built (freshness.ensure_graph_fresh); an answer from a
