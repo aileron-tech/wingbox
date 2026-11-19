@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changes
+
+- The block that `wingbox install` writes into the assistant's instructions file says more. It now
+  tells the assistant to ask the graph before `grep`, `rg`, `find` or opening files and to read
+  only the files and lines the graph names, with text search as the fallback for a keyword that is
+  not a symbol or a graph older than the files; and that tests follow the impact analysis: the
+  dependents `wingbox impact` names decide which tests to write and run, and for every changed
+  function a test that reaches it is shown (`wingbox diff_functions`, `wingbox usages`). Run
+  `wingbox install` or `wingbox update` once to get the new block.
+
 ### Fixes
 
 - A Python that Wingbox starts itself no longer imports from the folder it is started in. The
