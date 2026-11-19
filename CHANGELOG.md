@@ -14,6 +14,7 @@
   (`WINGBOX_HTTP_TOKEN` or `--token-file`), `--tls-cert` and `--tls-key` serve HTTPS, and a long
   call such as `build` is answered as an event stream with keep-alive lines. See "Over HTTP, from
   another machine" in the README.
+
 ## 0.12.1 - 2026-11-18
 
 ### Fixes
@@ -737,6 +738,7 @@ A release of the package page and the documents; the tool behaves as in 0.6.1.
   (`get_it`, `go_router`, `retrofit`) is not visible to static analysis.
   The Dart grammar is an opt-in extra, `pipx install "wingbox[dart]"`;
   without it `.dart` files are skipped with a warning and the build goes on.
+
 ## 0.5.0 - 2026-11-17
 
 ### Changes
