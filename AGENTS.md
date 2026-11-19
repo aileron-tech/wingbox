@@ -217,14 +217,18 @@ the maintainer, never left for the next release.
 
 | Check | Command | Expected |
 |---|---|---|
-| PyPI, both distributions | `uvx --refresh --from "wingbox[http]==X.Y.Z" wingbox --version` and `... wingbox mcp --http --help` | X.Y.Z; the options of the HTTP transport |
+| PyPI, both distributions complete | `curl -s https://pypi.org/pypi/wingbox/X.Y.Z/json` and the same for `wingbox-http`: count the entries of `urls` | two files each, the sdist and the wheel: a half-finished upload still installs |
+| PyPI, both distributions install | `uvx --refresh --from "wingbox[http]==X.Y.Z" wingbox --version` and `... wingbox mcp --http --help` | X.Y.Z; the options of the HTTP transport |
 | GitHub release | `gh release view vX.Y.Z --json tagName,assets` | the tag, the notes, the assets `wingbox-X.Y.Z.mcpb` and `wingbox.mcpb` |
 | Claude Desktop extension link | `curl -sIL https://github.com/aileron-tech/wingbox/releases/latest/download/wingbox.mcpb` | 200 |
 | GitHub Actions on `main` | `gh run list --branch main --limit 10` | `tests`, `docs` and `wingbox` green on the release commit; `publish-mcp` succeeded for the release |
 | MCP registry | `curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.aileron-tech/wingbox&version=latest"` | version X.Y.Z, status `active` |
 | Plugin pin | `python3 tools/sync_plugin.py`, then `python -m unittest tests.test_plugins` | no change left; the manifest pins the commit of the tag |
-| Homebrew tap | `gh run list -R aileron-tech/homebrew-wingbox --limit 3` and the formula file | the bump ran; the formula names X.Y.Z |
+| Homebrew tap | `gh workflow run bump.yml -R aileron-tech/homebrew-wingbox` right after PyPI (it also runs hourly), then `gh run list -R aileron-tech/homebrew-wingbox --limit 3` and the formula file | the bump ran; the formula names X.Y.Z and, when the dependencies of the package changed, every one of them as a resource |
 | Clean install | section 3, step 6 | `wingbox build .` and `wingbox impact <file>` answer in a small project |
+
+`wingbox-http` is built with `uv build packages/wingbox-http` and published
+after `wingbox`, because it requires exactly that version of it.
 
 A macOS job that ends "cancelled" with no steps never got a runner:
 `gh run rerun <run id> --failed` restarts only that job. A red job is read
@@ -280,15 +284,21 @@ PyPI, so a Wingbox release is followed there:
 1. Run `python3 scripts/bump_version.py X.Y.Z` in that repository: it sets the
    default of the `version` input in `action.yml`, the version its README
    names, and `WINGBOX_VERSION` in every template under `gitlab/`. Run its
-   tests; pull request; release the action (a patch version when only the
-   default moved) and move the tag `v1` to it.
+   tests; pull request; merge; commit "Release X" on `main`. Then wait for the
+   `test` workflow of that commit: its fixture job runs the action itself with
+   the new default Wingbox on Linux, macOS and Windows. Only when it is green,
+   tag `vX` (a patch version when only the default moved), move the tag `v1`
+   and create the release. A tag before that run is how a wrong default would
+   reach every user of `@v1`.
 2. GitHub: rerun the action on the example pull request the site links. The
    comment is updated in place, its review plan says `:wingbox "X.Y.Z"`, and
    the result and the counts are the ones expected for that change.
 3. GitLab: run the pipeline of the test project with the released template
    (`include` of the tag). The job succeeds, the note on the merge request is
    updated in place, and `wingbox-out/` holds the report, the plan and the
-   evidence record.
+   evidence record. Pin nothing of the test project to a commit of a
+   development branch: after the squash merge that commit is in no branch and
+   the job fails with "unable to read tree".
 4. The Marketplace page of the action shows the new version, and the workflow
    `.github/workflows/wingbox.yml` of this repository (the check on our own
    pull requests) ran green on a pull request opened after the release.
