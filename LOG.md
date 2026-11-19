@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - Release 0.15.0
+
+### Changes
+- Version 0.15.0, core and `packages/wingbox-http` (REQ-HTTP-021): the MCP tools named verb_noun with `list_files` and `read_source`, the commands `wingbox files` and `wingbox source` (#155); workflow actions pinned to commits, `tools/release_files.py` for the checksum file and the SBOM of a release (#154); `docs/assurance/` (#156); the roadmap item for the Evidence Assurance Layer (#159). The map-request workflow builds with 0.15.0.
+
+### Motivation
+- The maintainer asked for the MCP tool names while there are no clients to break, and for the assurance material; released together.
+
 ## 2026-11-19 - Roadmap: an Evidence Assurance Layer
 
 ### Changes
