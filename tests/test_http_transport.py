@@ -424,7 +424,7 @@ class CommandTest(unittest.TestCase):
 
 class PackagingTest(unittest.TestCase):
     def test_the_adapter_only_listens(self) -> None:
-        """/* REQ-SEC-006: the HTTP transport lives in its own distribution, outside the folders REQ-SEC-001 scans, and only listens: its code imports no HTTP client and opens no outbound connection. */"""
+        """/* REQ-SEC-010: the HTTP transport lives in its own distribution, outside the folders REQ-SEC-001 scans, and only listens: its code imports no HTTP client and opens no outbound connection. */"""
         outbound = re.compile(
             r"^\s*(?:import|from)\s+(?:urllib|http\.client|requests|httpx|aiohttp|urllib3|websockets?|smtplib|ftplib|telnetlib|xmlrpc)\b"
             r"|create_connection|\.connect(?:_ex)?\("
