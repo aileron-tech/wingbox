@@ -16,6 +16,11 @@ Details are in the [Changelog](https://github.com/aileron-tech/wingbox/blob/main
 
 ## Next
 
+- **An Evidence Assurance Layer above the code graph and the pull request check:** a deterministic layer, with no language model in it or in its tests, that says whether a piece of technical evidence is well formed, complete and traceable to its source. Not a compliance agent: three libraries, each with a command, a versioned schema and its own tests, usable alone:
+  - `wingbox-evidence` normalises and verifies technical evidence: the record of a run, where its inputs come from, what was and was not analysed, a self-contained package that verifies without the CI system, and the records of a period with their failures and gaps;
+  - `wingbox-acceptance` runs acceptance criteria and writes the result from the records: the checks a criterion requires, and negative scenarios that must never end in a pass;
+  - `wingbox-controls` holds formal rules and the mapping to ISO/IEC 27001, ISO/IEC 42001 and SOC 2, with the limits of what code evidence can show for each control.
+  It states what was checked and what a record holds; whether a control conforms stays a reviewer's decision. Task and open decisions: [#158](https://github.com/aileron-tech/wingbox/issues/158).
 - **`wingbox export coderabbit`:** turns the architecture into CodeRabbit review configuration: review instructions per layer and ast-grep rules that flag forbidden imports.
 - **Propose the layers, then hold them:** for a project that has no declared layers, `wingbox align --learn` proposes a full layer table (layers lowest first, folder patterns, the few files pinned to another layer than their folder suggests) from the graph and the architecture library, for a person to edit. Once accepted, the layers are held the way large monorepos hold them by hand today:
   - a check that fails on any new upward import, run locally and in CI;

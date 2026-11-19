@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - Roadmap: an Evidence Assurance Layer
+
+### Changes
+- `ROADMAP.md`, first item of "Next": a deterministic Evidence Assurance Layer above the code graph and the pull request check, as three libraries (`wingbox-evidence`, `wingbox-acceptance`, `wingbox-controls`), with no language model and with independent tests; the task is issue #158.
+
+### Motivation
+- The maintainer set the task and decided against a separate compliance agent.
+
 ## 2026-11-19 - MCP tools named verb_noun; `files` and `source`; parameters explained
 
 ### Why
