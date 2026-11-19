@@ -16,10 +16,8 @@ this file applies to you.
   `update.py` are `wingbox install`/`uninstall`, the Claude Code search hook
   and `wingbox update`; `mcp_server.py` is `wingbox mcp`, the local stdio MCP
   server; `overview.py` and `map_page.py` write `REPORT.md` and `map.html`.
-  `add.py` is `wingbox add`, which installs a parser on demand, and `fetch.py`
-  its download: the only module that opens a network connection, imported by
-  `add.py` alone (REQ-SEC-003). `scripts/lang/ondemand.py` says where those
-  parsers live and makes them importable.
+  `add.py` is `wingbox add`, kept for scripts written for 0.12: it adds
+  nothing and says so.
   The wheel bundles `SKILL.md` and `references/` as `wingbox/_skill`, the
   skill that `wingbox install` copies.
 - Plugins: `plugins/wingbox` is the folder Claude Code and Codex install
@@ -68,15 +66,13 @@ this file applies to you.
   maintainer before writing its code.
 - `scripts/` stays loadable by path: the tests import the scripts with
   `importlib` from `scripts/`, and the skill calls them by path.
-- The parsers of TypeScript and Rust are dependencies of the package; those
-  of C#, Java, Go, Ruby, PHP and Dart are installed on demand. The pin of
-  such a parser is written in four places that a test compares (REQ-DEPS-012):
-  the language adapter (`scripts/lang/<language>/__init__.py`),
-  `requirements/<language>.txt`, the extras of `pyproject.toml` (its own and
-  `all`) and `src/wingbox/assets/parsers.json`, which
-  `python3 tools/update_parsers.py` rewrites from the package index (it needs
-  the network; `--check` compares). No code path but `wingbox add` may
-  download anything.
+- The parser of every language is a dependency of the package. Its pin is
+  written in three places that a test compares (REQ-DEPS-012): the language
+  adapter (`scripts/lang/<language>/__init__.py`),
+  `requirements/<language>.txt` and `pyproject.toml` (the dependency and,
+  for C#, Java, Go, Ruby, PHP and Dart, the extras: its own and `all`).
+  No file of `src/` or `scripts/` imports a module that opens a network
+  connection (REQ-SEC-001): nothing in Wingbox downloads anything.
 - After a change to `SKILL.md`, `references/` or the version, run
   `python3 tools/sync_plugin.py`: a test keeps the plugin's copy of the skill
   byte for byte identical, and `--check` exits 1 while anything is stale. The

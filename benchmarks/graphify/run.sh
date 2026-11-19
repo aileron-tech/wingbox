@@ -25,9 +25,9 @@ mkdir -p out corpus/karpathy work/gf work/wb work/cg bench/plain bench/wb bench/
 
 step() { printf '\n== %s\n' "$1"; }
 
-# The Wingbox under test with every language parser: the extra `all` (C#, Java, Go, Ruby, PHP and Dart are
-# installed on demand otherwise). A release up to 0.11.0 carries its parsers as dependencies and has no
-# such extra: uv says so and installs it as it is.
+# The Wingbox under test with every language parser: the extra `all`. The 0.12 releases install C#, Java,
+# Go, Ruby, PHP and Dart only with it; later versions carry every parser as a dependency and keep the
+# extra. A release up to 0.11.0 has no such extra: uv says so and installs it as it is.
 with_all() {
   case "$1" in
     wingbox==*) printf 'wingbox[all]==%s' "${1#wingbox==}" ;;

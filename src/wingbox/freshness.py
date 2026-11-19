@@ -31,9 +31,6 @@ Settings (environment):
   checks for changes made outside Claude Code; 0 checks before every use.
 - WINGBOX_JOBS (a whole number, default every processor): the most worker
   processes a build or a refresh starts (`portable.worker_count`).
-- WINGBOX_PARSERS_DIR (a folder, default ~/.wingbox/parsers): where `wingbox add`
-  puts the parsers installed on demand and where a build looks for them
-  (scripts/lang/ondemand.py).
 """
 from __future__ import annotations
 
@@ -841,8 +838,8 @@ def stale_line(result: Freshness, root: str = ".") -> str:
 
 def skipped_languages_line(root: str) -> str:
     """The facts of the languages the last build left out because their parser is not installed, one per line:
-    `(skipped-language csharp :files 214 :add "wingbox add csharp")`; empty when the build parsed them all.
-    Every reader of the graph passes it on (query commands on stderr, MCP answers, the hook context)."""
+    `(skipped-language csharp :files 214 :add "pip install \\"wingbox[csharp]\\"")`; empty when the build parsed
+    them all. Every reader of the graph passes it on (query commands on stderr, MCP answers, the hook context)."""
     try:
         with open(_state_file(root, SKIPPED_NAME), "r", encoding="utf-8") as handle:
             text = handle.read()
