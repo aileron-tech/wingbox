@@ -45,6 +45,7 @@ from typing import Callable, Literal, Mapping, Optional, Union
 
 from wingbox.facts import Fact, make_fact, parse_fact
 from wingbox.install import Installed
+from wingbox.launch import code_command, module_command
 
 PACKAGE = "wingbox"
 _INSTALLER_TIMEOUT_SECONDS = 600
@@ -211,8 +212,8 @@ def choose_method(
         )
     return Method(
         "pip",
-        (python, "-m", "pip", "install", "--upgrade", PACKAGE),
-        (python, "-m", "pip", "index", "versions", PACKAGE),
+        (*module_command(python, "pip"), "install", "--upgrade", PACKAGE),
+        (*module_command(python, "pip"), "index", "versions", PACKAGE),
     )
 
 
@@ -460,13 +461,13 @@ def upgrade_past_launcher(
 
 
 def read_new_version(python: str) -> str:
-    ran = run_installer((python, "-c", "import importlib.metadata as m; print(m.version('wingbox'))"))
+    ran = run_installer(code_command(python, "import importlib.metadata as m; print(m.version('wingbox'))"))
     return ran.output.strip().splitlines()[-1] if ran.status == 0 and ran.output.strip() else "unknown"
 
 
 def refresh_installed(python: str, package_parent: str, entry: Installed) -> list[Fact]:
     """Run `wingbox install` of the upgraded package for one record entry; report what it rewrote."""
-    command = [python, "-m", "wingbox.cli", "install", "--yes", "--sexp"]
+    command = [*module_command(python, "wingbox.cli"), "install", "--yes", "--sexp"]
     for name in entry.assistants:
         command += ["--assistant", name]
     # The items the person left out stay out (an empty --without would put them back).

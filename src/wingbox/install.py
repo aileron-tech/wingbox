@@ -67,7 +67,7 @@ def _join(base: str, *relatives: str) -> str:
     """base joined with paths written with / (".claude/skills", "references/x.md"), in the system's form."""
     return os.path.join(base, *(part for relative in relatives for part in relative.split("/")))
 # The program of a hook and its leading arguments, before `hook pre-search` / `hook dirty`:
-# ("/abs/path/wingbox",) or (python, "-m", "wingbox.cli") for a global install, ("wingbox",) for a project.
+# ("/abs/path/wingbox",) or (python, "-P", "-m", "wingbox.cli") for a global install, ("wingbox",) for a project.
 HookProgram = tuple[str, ...]
 PROJECT_HOOK_PROGRAM: HookProgram = ("wingbox",)
 

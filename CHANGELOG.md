@@ -4,6 +4,15 @@
 
 ### Fixes
 
+- A Python that Wingbox starts itself no longer imports from the folder it is started in. The
+  refresh the hooks start, the first build of the MCP server, the hooks of an install without the
+  `wingbox` program and the steps of `wingbox update` ran `python -m ...` inside the project, and
+  Python puts that folder first on its module search path: a project holding a folder `wingbox/` or
+  `pip/`, or a file `yaml.py`, had it run in place of the installed module. Each of these commands
+  now carries `-P`, and a command started as `python -m wingbox` takes the folder off its own path
+  before it loads a parser. Code of a project is read, never run. An install whose hooks use the
+  `python -m wingbox.cli` form is rewritten by `wingbox update`, or by one `wingbox install`
+  ([#134](https://github.com/aileron-tech/wingbox/issues/134)).
 - Python projects that keep their package under `src/`: a test, a script or any file outside
   `src/` that imports the package by its name (`from shop.pricing import total` with
   `src/shop/pricing.py`) now depends on that module. Before, `wingbox impact` and `wingbox usages`
