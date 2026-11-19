@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Iterator
 
 from ..interface import BindingPayload, Entity, UsePayload
+from .tree import TreeIndex
 
 _FUNCTION_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef,
@@ -150,6 +151,8 @@ def _arguments(args: ast.arguments) -> set[str]:
 
 
 def _body_locals(body: list[ast.stmt]) -> set[str]:
+    """The names a function or class body binds. This is the definition; a collector given the walk of the
+    tree reads the same sets from it (TreeIndex.body_locals), worked out once for every scope of the file."""
     names = {name for statement in body for name in _stored_names(statement)}
     declared_global = {name for statement in body for name in _declared(statement, ast.Global)}
     return names - declared_global
@@ -216,7 +219,7 @@ class _Scope:
 class _UseCollector(ast.NodeVisitor):
     def __init__(
         self, wanted: frozenset[str], any_name: bool, is_package: bool = False,
-        full: bool = True, imported: frozenset[str] = frozenset(),
+        full: bool = True, imported: frozenset[str] = frozenset(), index: TreeIndex | None = None,
     ) -> None:
         self.wanted = wanted
         self.any_name = any_name
@@ -225,6 +228,7 @@ class _UseCollector(ast.NodeVisitor):
         # statements, chains headed by an imported name, names a glob import may provide.
         self.full = full
         self.imported = imported
+        self.index = index
         self.scopes: tuple[_Scope, ...] = ()
         self.uses: list[UsePayload] = []
         self.kind = ""  # how the expression being visited is used: call, type, extends; "" any other way
@@ -271,8 +275,12 @@ class _UseCollector(ast.NodeVisitor):
         owner = self.scopes[-1] if self.scopes and self.scopes[-1].is_class else None
         is_static = any(_type_path(decorator) == ("staticmethod",) for decorator in node.decorator_list)
         receiver = (owner.class_name,) if owner is not None and owner.class_name and not is_static else None
-        types = tuple(sorted(_local_types(node, receiver).items()))
-        self._within(_Scope(frozenset(_arguments(node.args) | _body_locals(node.body)), types=types), node.body)
+        # The types of the local names serve the method calls, which only the full list holds.
+        types = tuple(sorted(_local_types(node, receiver).items())) if self.full else ()
+        self._within(_Scope(frozenset(_arguments(node.args) | self._locals(node)), types=types), node.body)
+
+    def _locals(self, scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> frozenset[str] | set[str]:
+        return self.index.body_locals(scope) if self.index is not None else _body_locals(scope.body)
 
     visit_FunctionDef = _visit_function
     visit_AsyncFunctionDef = _visit_function
@@ -287,7 +295,7 @@ class _UseCollector(ast.NodeVisitor):
         for base in node.bases:
             self._visit_as(base, "extends")
         class_name = node.name if not self.scopes else ""
-        self._within(_Scope(frozenset(_body_locals(node.body)), is_class=True, class_name=class_name), node.body)
+        self._within(_Scope(frozenset(self._locals(node)), is_class=True, class_name=class_name), node.body)
 
     def _visit_comprehension(self, node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp) -> None:
         self.visit(node.generators[0].iter)
@@ -395,15 +403,17 @@ class _UseCollector(ast.NodeVisitor):
 
 def use_sites(
     tree: ast.Module, module_names: frozenset[str], has_glob: bool, is_package: bool = False,
-    full: bool = True, imported: frozenset[str] = frozenset(),
+    full: bool = True, imported: frozenset[str] = frozenset(), index: TreeIndex | None = None,
 ) -> list[UsePayload]:
     """Names and attribute chains that refer to a module-level name of the file.
 
     module_names: names the module binds (definitions and imports); with a glob
     import every free name may come from it. full=False keeps only the uses that
-    can name another file; imported: the names import statements bind.
+    can name another file; imported: the names import statements bind. index:
+    the walk of the tree (tree.index_tree), when the caller has one: the names
+    each function and class binds are then read from it, not walked for again.
     """
-    collector = _UseCollector(module_names, has_glob, is_package, full, imported)
+    collector = _UseCollector(module_names, has_glob, is_package, full, imported, index)
     collector.visit(tree)
     return collector.uses
 

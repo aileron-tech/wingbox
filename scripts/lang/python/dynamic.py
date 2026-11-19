@@ -17,19 +17,27 @@ import ast
 from typing import Iterator, Optional
 
 from ..interface import ModuleLoadPayload, RegistryCallPayload
+from .tree import TreeIndex, index_tree
 
 PLACEHOLDER = "{}"
+_ASSIGN = (ast.Assign,)
+_CALL = (ast.Call,)
+_LOOPS = (ast.For, ast.AsyncFor)
 
 
 def find_module_loads(
     tree: ast.AST,
     module_of_name: dict[str, str],
+    index: Optional[TreeIndex] = None,
 ) -> tuple[list[str], list[ModuleLoadPayload]]:
-    """Literal import strings and load patterns of every importlib call in the tree."""
+    """Literal import strings and load patterns of every importlib call in the tree.
+
+    index: the walk of the tree, when the caller has one (tree.index_tree)."""
     literal_imports: list[str] = []
     patterns: list[ModuleLoadPayload] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not node.args:
+    for node in (index_tree(tree) if index is None else index).walk(_CALL):
+        assert isinstance(node, ast.Call)
+        if not node.args:
             continue
         loader = _loader_kind(node.func, module_of_name)
         if loader is None:
@@ -137,23 +145,36 @@ def _is_package_pattern(pattern: str) -> bool:
 def find_registry_calls(
     tree: ast.Module,
     import_targets: dict[str, list[str]],
+    index: Optional[TreeIndex] = None,
 ) -> list[RegistryCallPayload]:
     """Method calls on objects that an imported registry returns for a loop variable.
 
     ``import_targets`` maps each local name bound by an import to the import
-    strings that may name its module, most specific first.
+    strings that may name its module, most specific first. index: the walk of
+    the tree, when the caller has one (tree.index_tree).
     """
     calls: list[RegistryCallPayload] = []
+    if not import_targets:
+        return calls  # a registry is an imported name: without one no object comes from a registry
+    if index is None:
+        index = index_tree(tree)
+    if not any(index.by_class.get(loop) for loop in _LOOPS):
+        return calls
     for entity_name, function in _functions(tree):
+        start = index.position_of(function)
+        loops = [loop for loop in index.walk(_LOOPS, start) if isinstance(loop.target, ast.Name)]  # type: ignore[attr-defined]
+        if not loops:
+            continue
         bound = dict(import_targets)
-        for node in ast.walk(function):
-            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        for node in index.walk(_ASSIGN, start):
+            assert isinstance(node, ast.Assign)
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
                 root = _root_name(node.value) if isinstance(node.value, ast.Call) else None
                 if root in import_targets:
                     bound[node.targets[0].id] = import_targets[root]
-        for loop in ast.walk(function):
-            if isinstance(loop, (ast.For, ast.AsyncFor)) and isinstance(loop.target, ast.Name):
-                calls.extend(_loop_calls(entity_name, loop, loop.target.id, bound))
+        for loop in loops:
+            assert isinstance(loop, (ast.For, ast.AsyncFor)) and isinstance(loop.target, ast.Name)
+            calls.extend(_loop_calls(entity_name, loop, loop.target.id, bound, index))
     return calls
 
 
@@ -173,6 +194,7 @@ def _loop_calls(
     loop: ast.For | ast.AsyncFor,
     variable: str,
     bound: dict[str, list[str]],
+    index: TreeIndex,
 ) -> list[RegistryCallPayload]:
     looked_up: dict[str, list[str]] = {}
 
@@ -188,35 +210,40 @@ def _loop_calls(
                 return bound[root]
         return None
 
-    body = [node for statement in loop.body for node in ast.walk(statement)]
+    # The statements of the loop body, each walked as ast.walk does, one after the other: the body
+    # statements are the children of the loop after its target and its iterable.
+    statements = index.children(index.position_of(loop))[2:2 + len(loop.body)]
+    assigns: list[ast.Assign] = [
+        node for statement in statements for node in index.walk(_ASSIGN, statement)  # type: ignore[misc]
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)  # type: ignore[attr-defined]
+    ]
     for _ in range(3):
-        for node in body:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-                found = source_of(node.value)
-                if found is not None:
-                    looked_up[node.targets[0].id] = found
+        for node in assigns:
+            found = source_of(node.value)
+            if found is not None:
+                looked_up[node.targets[0].id] = found  # type: ignore[attr-defined]
 
     folds = {
         id(node.value)
-        for node in body
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
+        for node in assigns
+        if isinstance(node.targets[0], ast.Name)
         and isinstance(node.value, ast.Call)
         and _passes(node.value, node.targets[0].id)
     }
     calls: list[RegistryCallPayload] = []
-    for node in body:
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            modules = source_of(node.func.value)
-            if modules is not None:
-                calls.append({
-                    "modules": list(modules),
-                    "method": node.func.attr,
-                    "source_entity": entity_name,
-                    "line": node.lineno,
-                    "fold": id(node) in folds,
-                })
+    for statement in statements:
+        for node in index.walk(_CALL, statement):
+            assert isinstance(node, ast.Call)
+            if isinstance(node.func, ast.Attribute):
+                modules = source_of(node.func.value)
+                if modules is not None:
+                    calls.append({
+                        "modules": list(modules),
+                        "method": node.func.attr,
+                        "source_entity": entity_name,
+                        "line": node.lineno,
+                        "fold": id(node) in folds,
+                    })
     return calls
 
 

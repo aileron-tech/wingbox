@@ -4,7 +4,12 @@ A build with a fragment store (build_code_graph.write_fragments) keeps, for
 every module, its facts (node purpose, outgoing edges, resolved uses,
 unresolved calls) and what producing them read: the other modules whose parse
 results it looked at, the module names as written that it resolved, the
-provider names it looked up, the method names of its unresolved calls.
+provider names it looked up, the method names of its unresolved calls, and
+the modules behind whose glob imports it looked for a name. Such a module
+stands for every module its glob imports reach, through any number of further
+glob imports: the store keeps the glob imports of each module once (the
+modules they name, their module names as written), not the whole set in every
+reader.
 
 update_graph(root, changed) then:
 
@@ -13,8 +18,9 @@ update_graph(root, changed) then:
 3. redoes the modules that changed, and every module that read a changed or
    deleted module, that resolved a name which a created or deleted path could
    now answer (a segment of the name equals the file stem or a folder of the
-   path), that looked up a provider name the change added or removed, or whose
-   unresolved calls name a method the change added or removed;
+   path), that looked behind glob imports which reach such a module or carry
+   such a name, that looked up a provider name the change added or removed, or
+   whose unresolved calls name a method the change added or removed;
 4. keeps the stored facts of every other module, assembles the graph exactly as
    a build does, and publishes the cache, the graph, the use file, the layer
    guesses of its purposes and the store.
@@ -263,6 +269,7 @@ def affected_modules(
         after = builder.provider_names(new_context.id_to_result[node_id]) if node_id in new_context.id_to_result else set()
         names |= before ^ after
     methods = old_methods ^ new_context.methods
+    searched = glob_readers(stored, read_changed, created_or_deleted)
     for node_id in new_context.id_to_result:
         if node_id in redo:
             continue
@@ -272,12 +279,39 @@ def affected_modules(
             continue
         if (
             not fragment.modules.isdisjoint(read_changed)
+            or not fragment.closures.isdisjoint(searched)
             or not fragment.names.isdisjoint(names)
             or not fragment.members.isdisjoint(methods)
             or (created_or_deleted and any(not tokens(spec).isdisjoint(created_or_deleted) for spec in fragment.specs))
         ):
             redo.add(node_id)
     return redo
+
+
+def glob_readers(
+    stored: dict[str, builder.StoredFragment],
+    read_changed: set[str],
+    created_or_deleted: frozenset[str],
+) -> set[str]:
+    """The modules whose glob imports reach, through any number of further glob imports, a changed or deleted
+    module or a glob import whose module name a created or deleted path could now answer. A module that looked
+    for a name behind the glob imports of one of them (fragment.closures) read what changed."""
+    importers: dict[str, list[str]] = {}  # a module -> the modules that glob-import it
+    found: set[str] = set()
+    for node_id, fragment in stored.items():
+        targets, specs = fragment.globs
+        for target in targets:
+            importers.setdefault(target, []).append(node_id)
+        if created_or_deleted and any(not tokens(spec).isdisjoint(created_or_deleted) for spec in specs):
+            found.add(node_id)
+    todo = list(found) + [node_id for node_id in read_changed if node_id not in found]
+    found.update(read_changed)
+    while todo:
+        for importer in importers.get(todo.pop(), ()):
+            if importer not in found:
+                found.add(importer)
+                todo.append(importer)
+    return found
 
 
 def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int = 1) -> UpdateResult:

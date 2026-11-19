@@ -33,6 +33,26 @@
   `all` is needed, which tool answers the neighbouring question. The example of `query_graph`
   was described the wrong way round and is corrected: `(deps "A" 2)` is what A uses.
 
+### Fixes
+
+- The build of a large Python repository is linear in its size (#157). A file that imports a name
+  through a facade (a package `__init__.py` that re-exports its modules with `from .x import *`,
+  also through several levels) made the build look into every module behind the facade for every
+  such name, keep that list of modules with every answer, and write it for every importing file
+  into `.wingbox/graph-fragments.json`: time, memory and that file grew with the number of
+  importing files times the number of modules behind the facade. The search now follows only the
+  wildcard imports that reach a module holding the name, and a file is recorded with the facades
+  it searched; what stands behind a facade is stored once, with the module that imports it. The
+  same search serves TypeScript `export *` barrels. The graph and the use file are the same, byte
+  for byte; the fragment store has a new schema, so the first refresh after the upgrade is a
+  build, as after every upgrade.
+- The Python parser walks the syntax tree of a file once. The imports, the modules loaded at run
+  time, the calls through a registry and the names each function and class binds are read from
+  that one walk; before, the tree was walked again for each of them and the body of every
+  function several times. The role a class name gives a file (`...Service`, `...Controller`, a
+  spelling one edit away) is worked out once per name, not for every file that holds the name,
+  and the folders a module name is looked for in once per importing folder.
+
 ## 0.15.0 - 2026-11-19
 
 ### Changes

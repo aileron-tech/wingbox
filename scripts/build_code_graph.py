@@ -1203,16 +1203,19 @@ class Trace:
     """What the resolution of one module read besides its own parse result.
 
     modules: other modules whose parse results it looked at; specs: the module
-    names as written that it resolved; names: the provider names it looked up.
+    names as written that it resolved; names: the provider names it looked up;
+    closures: the modules behind whose glob imports it looked for a name (each
+    stands for every module those imports reach, see SymbolIndex).
     A graph update redoes a module when one of these may have changed.
     """
 
-    __slots__ = ("modules", "specs", "names")
+    __slots__ = ("modules", "specs", "names", "closures")
 
     def __init__(self) -> None:
         self.modules: set[str] = set()
         self.specs: set[str] = set()
         self.names: set[str] = set()
+        self.closures: set[str] = set()
 
 
 class _TracedLanguage:
@@ -1310,6 +1313,9 @@ class ModuleFragment:
     modules: frozenset[str]
     specs: frozenset[str]
     names: frozenset[str]
+    closures: frozenset[str] = frozenset()  # modules whose glob imports it searched: it read all they reach
+    # Its own glob imports: the modules they name and their module names as written (SymbolIndex.glob_record).
+    globs: tuple[tuple[str, ...], tuple[str, ...]] = ((), ())
 
 
 def provider_names(result: FileResult) -> set[str]:
@@ -1749,15 +1755,18 @@ def module_fragment(context: GraphContext, index: Optional[SymbolIndex], node_id
     uses: Optional[list[ResolvedSite]] = None
     unresolved: Optional[UnresolvedCalls] = None
     members: frozenset[str] = frozenset()
+    globs: tuple[tuple[str, ...], tuple[str, ...]] = ((), ())
     if index is not None and supports_symbols(result.language):
         index.begin()
         uses, unresolved, members = _module_uses(index, context.methods, node_id, result)
+        read = {"m": trace.modules, "q": trace.specs, "c": trace.closures}
         for kind, value in index.end():
-            (trace.modules if kind == "m" else trace.specs).add(value)
+            read[kind].add(value)
+        globs = index.glob_record(node_id)
     trace.modules.discard(node_id)
     return ModuleFragment(
         node, edges, uses, unresolved, members,
-        frozenset(trace.modules), frozenset(trace.specs), frozenset(trace.names),
+        frozenset(trace.modules), frozenset(trace.specs), frozenset(trace.names), frozenset(trace.closures), globs,
     )
 
 
@@ -1987,7 +1996,7 @@ def build_graph(
     return Ok(assemble_graph(context, results, fragments, reused))
 
 
-FRAGMENTS_SCHEMA_VERSION = 1
+FRAGMENTS_SCHEMA_VERSION = 2  # 2: closures and globs, in place of every module behind a glob import in each reader
 
 
 def fragment_record(node_id: str, fragment: ModuleFragment) -> list:
@@ -2003,6 +2012,8 @@ def fragment_record(node_id: str, fragment: ModuleFragment) -> list:
         sorted(fragment.modules),
         sorted(fragment.specs),
         sorted(fragment.names),
+        sorted(fragment.closures),
+        [list(part) for part in fragment.globs] if any(fragment.globs) else [],
     ]
 
 
@@ -2059,11 +2070,14 @@ class StoredFragment:
     modules: frozenset[str]
     specs: frozenset[str]
     names: frozenset[str]
+    closures: frozenset[str]
+    globs: tuple[tuple[str, ...], tuple[str, ...]]
 
     def fragment(self, node_id: str, result: FileResult, root: str) -> ModuleFragment:
         return ModuleFragment(
             module_node(node_id, result, root, self.purpose),
             self.edges, self.uses, self.unresolved, self.members, self.modules, self.specs, self.names,
+            self.closures, self.globs,
         )
 
 
@@ -2085,7 +2099,8 @@ def read_fragments(path: str, root: str) -> Result[tuple[str, DiscoveryExclusion
             paths=frozenset(os.path.normcase(os.path.join(root, item)) for item in header["ignored"]),
         )
         for line in lines[1:]:
-            node_id, rel, purpose, edges, uses, unresolved, members, modules, specs, names = json.loads(line)
+            (node_id, rel, purpose, edges, uses, unresolved, members, modules, specs, names,
+             closures, globs) = json.loads(line)
             stored[node_id] = StoredFragment(
                 line,
                 rel,
@@ -2099,6 +2114,8 @@ def read_fragments(path: str, root: str) -> Result[tuple[str, DiscoveryExclusion
                 frozenset(modules),
                 frozenset(specs),
                 frozenset(names),
+                frozenset(closures),
+                (tuple(globs[0]), tuple(globs[1])) if globs else ((), ()),
             )
     except (ValueError, TypeError, IndexError, AttributeError, KeyError) as error:
         return Err(f"invalid fragment store: {error}")
