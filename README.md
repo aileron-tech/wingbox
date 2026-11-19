@@ -1128,20 +1128,23 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 `_meta`, `server/discover`) and the `initialize` handshake of revisions
 2025-11-25, 2025-06-18, 2025-03-26 and 2024-11-05.
 
-| Tool | What it answers |
-|---|---|
-| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) |
-| `impact` | Blast radius of a file, as text (`target`, `depth`, `all`) |
-| `analyze`, `quick` | Full analysis of a module, or of the first module matching a keyword |
-| `boundary`, `boundaries`, `layers` | Files to read for a change; layer violations; modules by layer |
-| `deps`, `rdeps` | Dependency and reverse dependency trees |
-| `entity`, `find_function`, `find_type` | Where a name is defined and used |
-| `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) |
-| `find_callers`, `find_calls`, `find_callchain` | Call graph questions |
-| `diff_functions` | Functions changed since a git ref |
-| `query` | A Scheme query on the graph |
+| Tool | What it answers | The `wingbox` command behind it |
+|---|---|---|
+| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) | `build` |
+| `impact` | What a change to one file reaches, as text (`target`, `depth`, `all`) | `impact` |
+| `module` | One module in full; a keyword instead of a module analyzes the best match (`module`) | `analyze`, `quick` |
+| `definitions` | Where a function, type or constant is defined (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
+| `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
+| `dependencies` | What a module uses or who uses it, hop by hop (`module`, `direction`: out, in; `depth`) | `deps`, `rdeps` |
+| `calls` | Who calls a function, what it calls, or a call path to another one (`function`, `direction`: in, out; `to`; `depth`) | `find_callers`, `find_calls`, `find_callchain` |
+| `layers` | The modules by architecture layer | `layers` |
+| `boundaries` | Imports that cross a layer rule, and the parts not checked (`scope`) | `boundaries` |
+| `changes` | Functions changed in the working files since a git ref (`ref`) | `diff_functions` |
+| `query` | A Scheme query on the graph (`expression`) | `query` |
 
-Each tool returns the output of the `wingbox` command of the same name. A
+Eleven tools, each named after its answer, and each description says when to
+take its neighbour instead. The command line keeps its own command names; a
+tool returns the output of the command behind it. A
 query tool called before the graph exists answers that `build` must be called
 first. Answers stop at 200 items; `all: true` lists everything. The graph is
 read once and read again when `.wingbox/index.sexp` changes.
