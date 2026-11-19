@@ -64,7 +64,7 @@ def loaded_graph(root: Path, files: dict[str, str], language: str) -> tuple[code
 def impact(graph: code_graph_search.CodeGraph, target: str, depth: int = 2, sexp: bool = False) -> list[str]:
     output = io.StringIO()
     with redirect_stdout(output):
-        code_graph_search.cmd_impact(graph, target, depth, sexp=sexp)
+        code_graph_search.cmd_impact(graph, [target], depth, "flat" if sexp else "human")
     return output.getvalue().splitlines()
 
 

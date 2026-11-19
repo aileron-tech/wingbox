@@ -105,11 +105,11 @@ class BoundariesCoverageTest(unittest.TestCase):
         self.assertTrue(any(line.startswith("(violation ") for line in lines), lines)
 
     def test_report_advice_and_the_mcp_tool_say_the_same(self) -> None:
-        """/* REQ-BCOV-006: REPORT.md, `wingbox advice` and the MCP boundaries tool name the part that was not checked, its reason and its rule files, and never say ok for it. */"""
+        """/* REQ-BCOV-006: REPORT.md, `wingbox advice` (its text and its facts) and the MCP boundaries tool name the part that was not checked, its reason and its rule files, and never say ok for it. */"""
         root = self.project({"package.json": '{"name": "x"}\n', ".dependency-cruiser.js": UNREAD_CONFIG, **_flat("", 13)})
         report = (root / ".wingbox" / "REPORT.md").read_text(encoding="utf-8")
         self.assertIn("Not checked: part `.` - declared rules not read (`.dependency-cruiser.js`)", report)
-        advice = self.wingbox(root, "advice")
+        advice = self.wingbox(root, "advice", "--human")
         self.assertIn("not checked: part . - declared rules not read (.dependency-cruiser.js)", advice.stdout)
         advice_sexp = self.wingbox(root, "advice", "--sexp")
         self.assertIn('(advice-none "." :reason "not checked: declared rules not read (.dependency-cruiser.js)")', advice_sexp.stdout)

@@ -19,6 +19,59 @@
   does and what comes back, when to use it, which tool to use for the neighbouring question, that a
   long list stops at 200 items unless `all` is true, and what an unknown name returns. `definitions`
   now says that `name` may be a pattern (`parse_.*`).
+- The default output of the commands that answer a question changed. `wingbox impact`, `usages`,
+  `advice`, `align`, `place` and `compare` printed text for people; without an option they now
+  print S-expressions, the compact form a coding agent reads. `--human` gives the old text, byte
+  for byte as 0.13.0 printed it, with its list limits (`--all` lifts them). `--json` prints the
+  same answer as one JSON object for code. The other query commands (`analyze`, `quick`, `module`,
+  `deps`, `rdeps`, `layers`, `boundaries`, `entity`, `search`, the `find_*` commands and the rest)
+  printed fact lines before and print the same lines now; they take `--human` and `--json` as
+  well, and their default answer is complete: `analyze` and `quick` no longer stop at 200
+  dependents unless `--human` is given. Two form options at once are an invalid argument.
+- `impact` takes several files in one call: `wingbox impact a.py b.py 2` (a last argument that is a
+  whole number is the depth). The answer opens with `(graph :built <UTC time> :files <n> :stale
+  <n>)`, which says when the graph was written, how many files it holds and how many changed
+  files it is known to miss (0 after the refresh every query starts; the number of changed files
+  with `WINGBOX_AUTO_REFRESH=0`), then one answer per file in the order given. A file that is not
+  in the graph gives `(error no-match <file> ...)` in its place, the other files are answered, and
+  the exit status is 1.
+- The default form of `impact` names each thing once: `(impact <file> :direct N :total M (1 <file>
+  ...) (2 (:through <file> <file> ...)) (read-first <file> ...))`, with file paths, the rows
+  grouped by depth and by the file they are reached through, and the reason of each row (`:via`
+  for a relation that is not an import, `:more N`, the name lists of the edge). The default form
+  of `usages` is `(usages <Name> <kind> :at <file>:<line> :uses U :files M (<file> <kind>
+  <line>:<col> ...) ...)`. Both are complete: nothing is cut and `--all` changes nothing there.
+  `impact --json` prints `{"graph": {...}, "impact": [{"file", "direct", "total", "rows",
+  "read_first", "advice"}, ...]}` and `usages --json` `{"usages": {..., "rows": [...]}}`; every
+  other command prints `{"facts": [...]}`, one object per fact line.
+- Code for Claude Code's Code Mode: the skill carries `references/code-mode.md`, one JavaScript
+  helper (`wingbox(...args)`, the command with `--json` through `` $`...` ``) and a recipe per
+  question: what depends on several files, every use of a name, where a feature lives, what
+  changed since a commit with the tests that use it, the architecture rules. The block that
+  `wingbox install` writes names the call and the file.
+- A `--json` call that fails as a whole says so in one place: the document starts with `"error":
+  {"code", "message"}` on standard output, for a folder without a graph (`no-graph`), an argument
+  that is not valid (`invalid-argument`), a name nothing matches (`no-match`) and a git reference
+  that does not exist (`git-diff-failed`). Code checks `answer.error` and nothing else. A file of
+  an `impact` call that is not in the graph carries its own `error` and the other files are
+  answered.
+- `--sexp` stays where 0.13 had it and prints exactly what 0.13.0 printed with it: for `impact`
+  and `usages` the flat facts, one per line (`impact-root`, `(impact <root> <dependent> :lang ..
+  :via .. :depth N ...)`, `impact-summary`, `read-first`; `usages-target`, `usage`,
+  `usages-summary`), with module IDs, the list limits unless `--all`, and exit status 0 for a file
+  that is not in the graph; for `advice`, `align`, `place` and `compare` their facts. `wingbox
+  module <id>`, `wingbox boundaries` and `wingbox boundaries --strict` print the same lines with
+  the same exit statuses. A script written for 0.13 that passes `--sexp` (the pull request check
+  does) reads what it read; a script that parsed the text of `impact` or `usages` without an
+  option adds `--human`.
+- MCP: the `impact` tool takes `target` (one file) or `targets` (a list) and answers in the
+  default S-expression form, complete, with the graph fact first when several files are asked;
+  it answered in text before, cut at 200 dependents unless `all`. `all` is still accepted there
+  and changes nothing. The other ten tools answer as before.
+- The skill has a short section "Use from code" (one call for several files, read as JSON), and
+  the always-on block of `wingbox install` says the same in one line; `wingbox update` refreshes
+  both. The skill no longer tells an agent to pass `--sexp` to a command that answers in facts
+  by default.
 
 ### Fixes
 

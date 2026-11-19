@@ -181,7 +181,7 @@ class ImpactTargetTest(unittest.TestCase):
             def impact(target: str) -> str:
                 output = io.StringIO()
                 with redirect_stdout(output):
-                    code_graph_search.cmd_impact(graph, target, 2, sexp=True)
+                    code_graph_search.cmd_impact(graph, [target], 2, "flat")
                 return output.getvalue()
 
             by_index = impact("src/lib/index.ts")
@@ -222,7 +222,7 @@ class ImpactRelationTest(unittest.TestCase):
             self.assertIsInstance(graph.load(str(sexp_path), str(root)), code_graph_search.MapLoadOk)
             output = io.StringIO()
             with redirect_stdout(output):
-                code_graph_search.cmd_impact(graph, "app/models", 1, sexp=True)
+                code_graph_search.cmd_impact(graph, ["app/models"], 1, "flat")
 
         self.assertIn("(impact app/models app/routes :lang py :via imports :depth 1)", output.getvalue())
         self.assertIn("(impact app/models app/forms :lang py :via imports :depth 1)", output.getvalue())
@@ -569,15 +569,15 @@ class AnswerSizeTest(unittest.TestCase):
         self.assertIn("(analyze-summary src/hub :entities 1 :imports 1 :dataflows 0 :refs 0 :dependents 3 :boundary-files 2)", lines)
 
     def test_analyze_and_impact_stop_at_the_file_limit_and_say_how_to_get_the_rest(self) -> None:
-        """/* REQ-CS-057: `analyze` and `impact` must print the counts and at most 200 dependent files, then one line that gives the number left out and names --all; with --all they print every file. */"""
+        """/* REQ-CS-057: with the list limits (the text of --human, the flat facts of --sexp) `analyze` and `impact` must print the counts and at most 200 dependent files, then one line that gives the number left out and names --all; with --all they print every file. The default form has no such limit (REQ-CS-117). */"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             search, graph = self._hub(root, 205)
             analyze = self._lines(lambda: search.cmd_analyze(graph, "src/hub"))
             analyze_all = self._lines(lambda: search.cmd_analyze(graph, "src/hub", show_all=True))
-            impact = self._lines(lambda: search.cmd_impact(graph, "src/hub.ts", 2))
-            impact_all = self._lines(lambda: search.cmd_impact(graph, "src/hub.ts", 2, show_all=True))
-            impact_sexp = self._lines(lambda: search.cmd_impact(graph, "src/hub.ts", 2, sexp=True))
+            impact = self._lines(lambda: search.cmd_impact(graph, ["src/hub.ts"], 2, "human"))
+            impact_all = self._lines(lambda: search.cmd_impact(graph, ["src/hub.ts"], 2, "human", show_all=True))
+            impact_sexp = self._lines(lambda: search.cmd_impact(graph, ["src/hub.ts"], 2, "flat"))
 
         self.assertEqual(200, sum(line.startswith("(analyze-dependent") for line in analyze))
         self.assertIn('(analyze-more src/hub :dependents 5 :rerun "analyze src/hub --all")', analyze)

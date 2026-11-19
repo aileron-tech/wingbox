@@ -1,0 +1,373 @@
+{
+ "cli | advice": {
+  "output": "42ae61ce57d2  fix-violation  src/models/models0.ts\n  move the code src/models/models0.ts needs out of src/routes/ into the domain or shared, and let the API layer import it from there [layered: domain -> api]\ned72225ab481  missing-folder  src/components\n  the layered layout has a folder for the layer ui; create it when such code appears [layered: target ui]\nd19cbdc51bf3  missing-folder  src/config\n  the layered layout has a folder for the layer config; create it when such code appears [layered: target config]\nc390c2d9eaba  missing-folder  src/domain/aggregates\n  the layered layout has a folder for the domain building block aggregates; create it when such code appears [layered: target domain/aggregates]\n829b63c313af  missing-folder  src/domain/entities\n  the layered layout has a folder for the domain building block entities; create it when such code appears [layered: target domain/entities]\ndefdb22d7ec9  missing-folder  src/domain/events\n  the layered layout has a folder for the domain building block domain-events; create it when such code appears [layered: target domain/domain-events]\n4c7636bdb50a  missing-folder  src/domain/repositories\n  the layered layout has a folder for the domain building block repository-interfaces; create it when such code appears [layered: target domain/repository-interfaces]\n2de78866c09e  missing-folder  src/domain/services\n  the layered layout has a folder for the domain building block domain-services; create it when such code appears [layered: target domain/domain-services]\n4608f5d7c13c  missing-folder  src/domain/specifications\n  the layered layout has a folder for the domain building block specifications; create it when such code appears [layered: target domain/specifications]\nde37c20af8e6  missing-folder  src/domain/value-objects\n  the layered layout has a folder for the domain building block value-objects; create it when such code appears [layered: target domain/value-objects]\n56aab4c1588a  missing-folder  src/shared\n  the layered layout has a folder for the layer shared; create it when such code appears [layered: target shared]\n",
+  "status": 0
+ },
+ "cli | advice --learned": {
+  "output": "Nothing learned yet.\n",
+  "status": 0
+ },
+ "cli | advice --learned --sexp": {
+  "output": "(learned-none)\n",
+  "status": 0
+ },
+ "cli | advice --sexp": {
+  "length": 4006,
+  "sha256": "d88850bdc36a1a0dccd86ca48a1ee4e7dc62f04c3f69b2a0cb3eb2a6ed160382",
+  "status": 0
+ },
+ "cli | align": {
+  "output": ".  layered: 14 of 14 files placed, 1 of 2 dependencies follow the rules; missing layers: ui config shared\n  domain -> api: 1 breaks, e.g. src/models/models0.ts -> src/routes/routes0.ts\n",
+  "status": 0
+ },
+ "cli | align --sexp": {
+  "output": "(align-part \".\" :style layered :placed 14 :files 14 :following 1 :dependencies 2 :present \"api domain infra service\" :missing \"ui config shared\")\n(align-gap \".\" :kind missing-layer :target \"ui\" :count 0)\n(align-gap \".\" :kind missing-layer :target \"config\" :count 0)\n(align-gap \".\" :kind missing-layer :target \"shared\" :count 0)\n(align-gap \".\" :kind rule :target \"domain -> api\" :count 1 :example \"src/models/models0.ts -> src/routes/routes0.ts\")\n",
+  "status": 0
+ },
+ "cli | boundaries": {
+  "output": "(violation src/models/models0 src/routes/routes0 :src-layer domain :tgt-layer api :via imports :lang ts :part . :style layered :rule \"domain -> api\" :src-file <ROOT>/src/models/models0.ts :tgt-file <ROOT>/src/routes/routes0.ts \"domain imports API layer\")\n(boundaries-summary :violations 1 :known 0 :type-only 0 :candidates 0 :checked 14)\n",
+  "status": 1
+ },
+ "cli | boundaries --strict": {
+  "output": "(violation src/models/models0 src/routes/routes0 :src-layer domain :tgt-layer api :via imports :lang ts :part . :style layered :rule \"domain -> api\" :src-file <ROOT>/src/models/models0.ts :tgt-file <ROOT>/src/routes/routes0.ts \"domain imports API layer\")\n(boundaries-summary :violations 1 :known 0 :type-only 0 :candidates 0 :checked 14)\n(boundaries-checked :part . :style layered :modules 14)\n(boundaries-result :status fail :checked 14 :not-checked 0 :violations 1 :known 0)\n",
+  "status": 1
+ },
+ "cli | compare": {
+  "output": ".                              typescript  layered         api domain infra service\n",
+  "status": 0
+ },
+ "cli | compare --sexp": {
+  "output": "(compare-part \".\" :language typescript :style layered :layers \"api domain infra service\")\n",
+  "status": 0
+ },
+ "cli | impact package.json 2 --sexp --all": {
+  "output": "(error no-match package.json)\n",
+  "status": 0
+ },
+ "cli | impact src/routes/routes0.ts": {
+  "output": "Impact of changing src/routes/routes0.ts\n  direct dependents   1\n  within 2 hops       2\n\nDepth 1\n  src/models/models0.ts   imports it\n\nDepth 2\n  src/services/services0.ts   through src/models/models0.ts: imports it\n\nRead first (2 files)\n  src/routes/routes0.ts\n  src/models/models0.ts\n\nAdvice\n  move the code src/models/models0.ts needs out of src/routes/ into the domain or shared, and let the API layer import it from there [layered: domain -> api]\n",
+  "status": 0
+ },
+ "cli | impact src/routes/routes0.ts 2 --sexp --all": {
+  "output": "(impact-root src/routes/routes0 :lang ts :file src/routes/routes0.ts)\n(impact src/routes/routes0 src/models/models0 :lang ts :via imports :depth 1)\n(impact src/routes/routes0 src/services/services0 :lang ts :via imports :depth 2 :through src/models/models0)\n(impact-summary src/routes/routes0 :direct 1 :total 2 :depth 2)\n(read-first src/routes/routes0.ts)\n(read-first src/models/models0.ts)\n(advice \".\" :id 42ae61ce57d2 :kind fix-violation :target \"src/models/models0.ts\" :style layered :rule \"domain -> api\" :reason \"move the code src/models/models0.ts needs out of src/routes/ into the domain or shared, and let the API layer import it from there\" :evidence \"src/models/models0.ts (domain) imports src/routes/routes0.ts (api): domain imports API layer\")\n",
+  "status": 0
+ },
+ "cli | module src/models/models0": {
+  "output": "(node src/models/models0 :lang ts \"general module\" :file <ROOT>/src/models/models0.ts)\n(fn src/models/models0 models0 2 :lang ts)\n(imports src/models/models0 src/routes/routes0)\n(refs src/models/models0 src/routes/routes0::routes0)\n(imports src/services/services0 src/models/models0)\n(refs src/services/services0 src/models/models0::models0)\n",
+  "status": 0
+ },
+ "cli | place a new route for users": {
+  "output": "src/routes/  api layer of layered\n  because: placement: HTTP endpoint, route, controller, guard, middleware\n  may import: service domain shared config\n  like: src/routes/routes0.ts, src/routes/routes1.ts, src/routes/routes2.ts\n",
+  "status": 0
+ },
+ "cli | place a new route for users --sexp": {
+  "output": "(place \".\" :layer api :folder \"src/routes\" :present :style layered :rule \"placement: HTTP endpoint, route, controller, guard, middleware\" :may-import \"service domain shared config\" :examples \"src/routes/routes0.ts src/routes/routes1.ts src/routes/routes2.ts\")\n",
+  "status": 0
+ },
+ "cli | usages src/routes/routes0::routes0": {
+  "output": "Usages of routes0 (function, src/routes/routes0.ts:1)\n  2 uses in 1 file\n\nsrc/models/models0.ts\n  1:10   import\n  2:24   reference\n",
+  "status": 0
+ },
+ "cli | usages src/routes/routes0::routes0 --sexp --all": {
+  "output": "(usages-target src/routes/routes0::routes0 :kind fn :file src/routes/routes0.ts :line 1)\n(usage src/models/models0 1 10 :kind import :file src/models/models0.ts)\n(usage src/models/models0 2 24 :kind reference :file src/models/models0.ts)\n(usages-summary src/routes/routes0::routes0 :uses 2 :files 1 :unresolved 0)\n",
+  "status": 0
+ },
+ "python | impact app/models.py": {
+  "output": "Impact of changing app/models.py\n  direct dependents   2\n  within 2 hops       2\n\nDepth 1\n  app/__init__.py   imports it\n  app/billing.py    imports it\n\nRead first (3 files)\n  app/models.py\n  app/__init__.py\n  app/billing.py\n",
+  "status": 0
+ },
+ "python | impact app/models.py 2 --sexp --all": {
+  "output": "(impact-root app/models :lang py :file app/models.py)\n(impact app/models app/__init__ :lang py :via imports :depth 1)\n(impact app/models app/billing :lang py :via imports :depth 1)\n(impact-summary app/models :direct 2 :total 2 :depth 2)\n(read-first app/models.py)\n(read-first app/__init__.py)\n(read-first app/billing.py)\n",
+  "status": 0
+ },
+ "python | usages Invoice": {
+  "output": "2 definitions of Invoice; ask for one of them:\n  app/models.py::Invoice      class, line 1\n  legacy/models.py::Invoice   class, line 1\n",
+  "status": 0
+ },
+ "python | usages Invoice --sexp --all": {
+  "output": "(usages-ambiguous Invoice :definitions 2)\n(usages-candidate app/models::Invoice :kind cls :file app/models.py :line 1)\n(usages-candidate legacy/models::Invoice :kind cls :file legacy/models.py :line 1)\n",
+  "status": 0
+ },
+ "python | usages app/models.py::Invoice": {
+  "output": "Usages of Invoice (class, app/models.py:1)\n  7 uses in 2 files\n\napp/__init__.py\n  1:21   re-export\napp/billing.py\n  1:17   import\n  2:24   import\n  4:13   extends\n  7:13   type\n  7:25   type\n  8:11   call\n",
+  "status": 0
+ },
+ "python | usages app/models.py::Invoice.total": {
+  "output": "Usages of Invoice.total (method of Invoice, app/models.py:1)\n  1 use in 1 file; 1 unresolved call (receiver type not in sight)\n\napp/billing.py\n  9:16   call\napp/other.py\n  2:14   unresolved-call\n",
+  "status": 0
+ },
+ "python | usages app/models::Invoice --sexp --all": {
+  "output": "(usages-target app/models::Invoice :kind cls :file app/models.py :line 1)\n(usage app/__init__ 1 21 :kind re-export :file app/__init__.py)\n(usage app/billing 1 17 :kind import :file app/billing.py)\n(usage app/billing 2 24 :kind import :file app/billing.py)\n(usage app/billing 4 13 :kind extends :file app/billing.py)\n(usage app/billing 7 13 :kind type :file app/billing.py)\n(usage app/billing 7 25 :kind type :file app/billing.py)\n(usage app/billing 8 11 :kind call :file app/billing.py)\n(usages-summary app/models::Invoice :uses 7 :files 2 :unresolved 0)\n",
+  "status": 0
+ },
+ "python | usages app/models::Invoice.total --sexp --all": {
+  "output": "(usages-target app/models::Invoice.total :kind cls :file app/models.py :line 1)\n(usage app/billing 9 16 :kind call :file app/billing.py)\n(usage app/other 2 14 :kind unresolved-call :file app/other.py)\n(usages-summary app/models::Invoice.total :uses 1 :files 1 :unresolved 1)\n",
+  "status": 0
+ },
+ "rust | analyze src/native/actions": {
+  "output": "(analyze src/native/actions :lang rs \"general module\" :file src/native/actions.rs)\n(cls src/native/actions HarEntry 2 :lang rs)\n(fn src/native/actions act 3 :lang rs)\n(analyze-import src/native/actions src/native/scripts :lang rs :file src/native/scripts.rs)\n(refs src/native/actions src/native/scripts::other)\n(refs src/native/actions src/native/scripts::script)\n(analyze-dependent src/native/actions src/native :lang rs :via imports :file src/native/mod.rs)\n(analyze-dependent src/native/actions src/native/flow :lang rs :via imports refs :file src/native/flow/mod.rs)\n(analyze-dependent src/native/actions src/native/flow/replay :lang rs :via imports refs :file src/native/flow/replay.rs)\n(dep src/native/actions src/native/scripts :lang rs :via imports :depth 1)\n(key-entity src/native/actions HarEntry :lang rs :kind cls :line 2 :refs 2 :modules 2)\n(key-entity-ref HarEntry src/native/flow :lang rs)\n(key-entity-ref HarEntry src/native/flow/replay :lang rs)\n(boundary-file src/native/actions src/native/actions.rs)\n(boundary-file src/native/actions src/native/scripts.rs)\n(layer src/native/actions scripts :layer other :style none :rule \"style none: no layers\")\n(analyze-summary src/native/actions :entities 2 :imports 1 :dataflows 0 :refs 2 :dependents 3 :boundary-files 2)\n",
+  "status": 0
+ },
+ "rust | boundaries": {
+  "output": "(boundaries-not-checked :part . :reason no-layer-style :files-in-part 12)\n(boundaries-partial :checked 0 :not-checked 12)\n",
+  "status": 0
+ },
+ "rust | boundaries all --strict": {
+  "output": "(boundaries-not-checked :part . :reason no-layer-style :files-in-part 12)\n(boundaries-partial :checked 0 :not-checked 12)\n(boundaries-result :status incomplete :checked 0 :not-checked 12 :violations 0 :known 0 :reason part-not-checked)\n",
+  "status": 2
+ },
+ "rust | boundary src/store": {
+  "output": "(boundary src/store :lang rs :file <ROOT>/src/store.rs :purpose \"state store\")\n(fn src/store s 2 :lang rs)\n(boundary-dep src/store src/settings :lang rs :file <ROOT>/src/settings/mod.rs :relation imports)\n(boundary-dep src/store src/settings/running :lang rs :file <ROOT>/src/settings/running.rs :relation imports)\n(boundary-dep src/store src/settings/seed :lang rs :file <ROOT>/src/settings/seed.rs :relation imports)\n(boundary-rdep src/store src/main :lang rs :file <ROOT>/src/main.rs :relation imports)\n(boundary-summary src/store :total 5 :deps 3 :rdeps 1)\n",
+  "status": 0
+ },
+ "rust | boundary src/store --files-only": {
+  "output": "<ROOT>/src/store.rs\n<ROOT>/src/settings/mod.rs\n<ROOT>/src/settings/running.rs\n<ROOT>/src/settings/seed.rs\n<ROOT>/src/main.rs\n",
+  "status": 0
+ },
+ "rust | deps src/native/actions 2": {
+  "output": "(deps-root src/native/actions :lang rs)\n(dep src/native/actions src/native/scripts :lang rs :via imports :depth 1)\n",
+  "status": 0
+ },
+ "rust | entity HarEntry": {
+  "output": "(entity-def cls src/native/actions HarEntry 2 :lang rs :file <ROOT>/src/native/actions.rs)\n(refs src/native/flow src/native/actions::HarEntry)\n(refs src/native/flow/replay src/native/actions::HarEntry)\n",
+  "status": 0
+ },
+ "rust | entity HarEntry --positions": {
+  "output": "(entity-def cls src/native/actions HarEntry 2 :lang rs :file <ROOT>/src/native/actions.rs)\n(refs src/native/flow src/native/actions::HarEntry)\n(refs src/native/flow/replay src/native/actions::HarEntry)\n(use src/native/flow 2 29 src/native/actions::HarEntry :file src/native/flow/mod.rs)\n(use src/native/flow 3 13 src/native/actions::HarEntry :file src/native/flow/mod.rs)\n(use src/native/flow/replay 2 13 src/native/actions::HarEntry :file src/native/flow/replay.rs)\n",
+  "status": 0
+ },
+ "rust | find_callchain main script": {
+  "output": "; no function-level call path found, trying module-level path\n(callchain-module-step 0 src/main :lang rs :file <ROOT>/src/main.rs)\n(callchain-module-step 1 src/native :lang rs :file <ROOT>/src/native/mod.rs)\n(callchain-module-step 2 src/native/scripts :lang rs :file <ROOT>/src/native/scripts.rs)\n(callchain-module-summary :length 3 :hops 2)\n",
+  "status": 0
+ },
+ "rust | find_callers script 1": {
+  "output": "(callers-target src/native/scripts::script :line 1 :lang rs :file <ROOT>/src/native/scripts.rs)\n; no calls edges found, showing module-level callers via imports/refs\n(caller-module src/native -> src/native/scripts :via imports :depth 1 :lang rs :file <ROOT>/src/native/mod.rs)\n(caller-module src/native/actions -> src/native/scripts :via imports :depth 1 :lang rs :file <ROOT>/src/native/actions.rs)\n",
+  "status": 0
+ },
+ "rust | find_calls act 1": {
+  "output": "(calls-source src/native/actions::act :line 3 :lang rs :file <ROOT>/src/native/actions.rs)\n; no calls edges found, showing module-level deps via imports\n(calls-module src/native/actions -> src/native/scripts :via imports :depth 1 :lang rs :file <ROOT>/src/native/scripts.rs)\n",
+  "status": 0
+ },
+ "rust | find_function act": {
+  "output": "(fn-def src/native/actions::act :line 3 :lang rs :file <ROOT>/src/native/actions.rs :kind function)\n",
+  "status": 0
+ },
+ "rust | find_type HarEntry": {
+  "output": "(type-def cls src/native/actions::HarEntry :line 2 :lang rs :file <ROOT>/src/native/actions.rs)\n",
+  "status": 0
+ },
+ "rust | flow src/native/actions act": {
+  "output": "(flow src/native/actions::act src/native/scripts :lang rs :via imports :depth 0 :module-level)\n",
+  "status": 0
+ },
+ "rust | grep_functions script": {
+  "output": "(grep-fn src/native/actions::act :line 3 :lang rs :file <ROOT>/src/native/actions.rs :match \"pub fn act() -> u8 { script() + super::scripts::other() }\")\n(grep-fn src/native/scripts::script :line 1 :lang rs :file <ROOT>/src/native/scripts.rs :match \"pub fn script() -> u8 { 1 }\")\n(grep-functions-summary :matches 2 :pattern script)\n",
+  "status": 0
+ },
+ "rust | impact --sexp src/main.rs 2 --all": {
+  "output": "(impact-root src/main :lang rs :file src/main.rs)\n(impact-summary src/main :direct 0 :total 0 :depth 2)\n(read-first src/main.rs)\n",
+  "status": 0
+ },
+ "rust | impact README.md 2 --sexp --all": {
+  "output": "(error no-match README.md)\n",
+  "status": 0
+ },
+ "rust | impact src/main.rs": {
+  "output": "Impact of changing src/main.rs\n  direct dependents   0\n  within 2 hops       0\n\nNo other module depends on it.\n",
+  "status": 0
+ },
+ "rust | impact src/many.rs --sexp": {
+  "output": "(impact-root src/many :lang rs :file src/many.rs)\n(impact src/many src/main :lang rs :via imports :depth 1)\n(impact src/many src/settings/wide :lang rs :via imports :depth 1 (:use A B C :of 5))\n(impact-summary src/many :direct 2 :total 2 :depth 2)\n(read-first src/many.rs)\n(read-first src/main.rs)\n(read-first src/settings/wide.rs)\n",
+  "status": 0
+ },
+ "rust | impact src/many.rs 1": {
+  "output": "Impact of changing src/many.rs\n  direct dependents   2\n  within 1 hop        2\n\nDepth 1\n  src/main.rs            imports it\n  src/settings/wide.rs   imports A, B, C and 2 more from it\n\nRead first (3 files)\n  src/many.rs\n  src/main.rs\n  src/settings/wide.rs\n",
+  "status": 0
+ },
+ "rust | impact src/native/scripts.rs": {
+  "output": "Impact of changing src/native/scripts.rs\n  direct dependents   2\n  within 2 hops       5\n\nDepth 1\n  src/native/mod.rs       imports it\n  src/native/actions.rs   imports other, script from it\n\nDepth 2\n  src/main.rs                 through src/native/mod.rs: imports it\n  src/native/flow/mod.rs      through src/native/actions.rs: imports HarEntry from it\n  src/native/flow/replay.rs   through src/native/actions.rs: uses HarEntry by name after `use super::*`\n\nRead first (3 files)\n  src/native/scripts.rs\n  src/native/mod.rs\n  src/native/actions.rs\n",
+  "status": 0
+ },
+ "rust | impact src/native/scripts.rs 2 --sexp --all": {
+  "output": "(impact-root src/native/scripts :lang rs :file src/native/scripts.rs)\n(impact src/native/scripts src/native :lang rs :via imports :depth 1)\n(impact src/native/scripts src/native/actions :lang rs :via imports :depth 1 (:use other script))\n(impact src/native/scripts src/main :lang rs :via imports :depth 2 :through src/native)\n(impact src/native/scripts src/native/flow :lang rs :via imports :depth 2 :through src/native/actions (:use HarEntry))\n(impact src/native/scripts src/native/flow/replay :lang rs :via imports :depth 2 :through src/native/actions (:glob \"super\" HarEntry))\n(impact-summary src/native/scripts :direct 2 :total 5 :depth 2)\n(read-first src/native/scripts.rs)\n(read-first src/native/mod.rs)\n(read-first src/native/actions.rs)\n",
+  "status": 0
+ },
+ "rust | impact src/native/scripts.rs 3 --all": {
+  "output": "Impact of changing src/native/scripts.rs\n  direct dependents   2\n  within 3 hops       5\n\nDepth 1\n  src/native/mod.rs       imports it\n  src/native/actions.rs   imports other, script from it\n\nDepth 2\n  src/main.rs                 through src/native/mod.rs: imports it\n  src/native/flow/mod.rs      through src/native/actions.rs: imports HarEntry from it\n  src/native/flow/replay.rs   through src/native/actions.rs: uses HarEntry by name after `use super::*`\n\nRead first (3 files)\n  src/native/scripts.rs\n  src/native/mod.rs\n  src/native/actions.rs\n",
+  "status": 0
+ },
+ "rust | impact src/native/scripts.rs 3 --sexp": {
+  "output": "(impact-root src/native/scripts :lang rs :file src/native/scripts.rs)\n(impact src/native/scripts src/native :lang rs :via imports :depth 1)\n(impact src/native/scripts src/native/actions :lang rs :via imports :depth 1 (:use other script))\n(impact src/native/scripts src/main :lang rs :via imports :depth 2 :through src/native)\n(impact src/native/scripts src/native/flow :lang rs :via imports :depth 2 :through src/native/actions (:use HarEntry))\n(impact src/native/scripts src/native/flow/replay :lang rs :via imports :depth 2 :through src/native/actions (:glob \"super\" HarEntry))\n(impact-summary src/native/scripts :direct 2 :total 5 :depth 3)\n(read-first src/native/scripts.rs)\n(read-first src/native/mod.rs)\n(read-first src/native/actions.rs)\n",
+  "status": 0
+ },
+ "rust | impact src/nowhere.rs": {
+  "output": "(error no-match src/nowhere :suggestions src/main src/many src/native src/native/actions src/native/flow)\n",
+  "status": 0
+ },
+ "rust | impact src/nowhere.rs 2 --sexp --all": {
+  "output": "(error no-match src/nowhere :suggestions src/main src/many src/native src/native/actions src/native/flow)\n",
+  "status": 0
+ },
+ "rust | impact src/settings/running.rs": {
+  "output": "Impact of changing src/settings/running.rs\n  direct dependents   3\n  within 2 hops       4\n\nDepth 1\n  src/settings/mod.rs    imports Running from it\n  src/settings/seed.rs   imports Running from it\n  src/store.rs           uses Running, re-exported by crate::settings\n\nDepth 2\n  src/main.rs   through src/settings/mod.rs (or 1 other file): imports it\n\nRead first (4 files)\n  src/settings/running.rs\n  src/settings/mod.rs\n  src/settings/seed.rs\n  src/store.rs\n",
+  "status": 0
+ },
+ "rust | impact src/settings/running.rs 2 --sexp --all": {
+  "output": "(impact-root src/settings/running :lang rs :file src/settings/running.rs)\n(impact src/settings/running src/settings :lang rs :via imports :depth 1 (:use Running))\n(impact src/settings/running src/settings/seed :lang rs :via imports :depth 1 (:use Running))\n(impact src/settings/running src/store :lang rs :via imports :depth 1 (:reexport \"crate::settings\" Running))\n(impact src/settings/running src/main :lang rs :via imports :depth 2 :through src/settings :more 1)\n(impact-summary src/settings/running :direct 3 :total 4 :depth 2)\n(read-first src/settings/running.rs)\n(read-first src/settings/mod.rs)\n(read-first src/settings/seed.rs)\n(read-first src/store.rs)\n",
+  "status": 0
+ },
+ "rust | impact src/settings/seed.rs 1": {
+  "output": "Impact of changing src/settings/seed.rs\n  direct dependents   2\n  within 1 hop        2\n\nDepth 1\n  src/settings/mod.rs   imports it\n  src/store.rs          uses Running::from_env, Running::from_lookup, defined in an impl block there\n\nRead first (3 files)\n  src/settings/seed.rs\n  src/settings/mod.rs\n  src/store.rs\n",
+  "status": 0
+ },
+ "rust | impact src/settings/seed.rs 1 --sexp --all": {
+  "output": "(impact-root src/settings/seed :lang rs :file src/settings/seed.rs)\n(impact src/settings/seed src/settings :lang rs :via imports :depth 1)\n(impact src/settings/seed src/store :lang rs :via imports :depth 1 (:member \"Running\" from_env from_lookup))\n(impact-summary src/settings/seed :direct 2 :total 2 :depth 1)\n(read-first src/settings/seed.rs)\n(read-first src/settings/mod.rs)\n(read-first src/store.rs)\n",
+  "status": 0
+ },
+ "rust | invariants": {
+  "output": "(invariants-ok :checked 12)\n",
+  "status": 0
+ },
+ "rust | layers": {
+  "output": "(layer-group other :count 12)\n(layer-member other src/main :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/many :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/native :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/native/actions :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/native/flow :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/native/flow/replay :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/native/scripts :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/settings :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/settings/running :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/settings/seed :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/settings/wide :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n(layer-member other src/store :lang rs :part . :style none :rule \"style none: no layers\" :match none)\n",
+  "status": 0
+ },
+ "rust | module src/many": {
+  "output": "(node src/many :lang rs \"general module\" :file <ROOT>/src/many.rs)\n(cls src/many A 1 :lang rs)\n(cls src/many B 2 :lang rs)\n(cls src/many C 3 :lang rs)\n(cls src/many D 4 :lang rs)\n(cls src/many E 5 :lang rs)\n(imports src/main src/many)\n(imports src/settings/wide src/many)\n(refs src/settings/wide src/many::A)\n(refs src/settings/wide src/many::B)\n(refs src/settings/wide src/many::C)\n(refs src/settings/wide src/many::D)\n(refs src/settings/wide src/many::E)\n",
+  "status": 0
+ },
+ "rust | module src/native/actions --lines": {
+  "output": "(node src/native/actions :lang rs \"general module\" :file <ROOT>/src/native/actions.rs)\n(cls src/native/actions HarEntry 2 :lang rs)\n(fn src/native/actions act 3 :lang rs)\n(imports src/native/actions src/native/scripts :line 1)\n(refs src/native/actions src/native/scripts::other)\n(refs src/native/actions src/native/scripts::script :line 1)\n(imports src/native src/native/actions :line 1)\n(imports src/native/flow src/native/actions :line 2)\n(imports src/native/flow/replay src/native/actions :candidate :item)\n(refs src/native/flow src/native/actions::HarEntry :line 2)\n(refs src/native/flow/replay src/native/actions::HarEntry)\n",
+  "status": 0
+ },
+ "rust | query (count (rdeps \"src/native/scripts\" 2))": {
+  "output": "(result-count 5)\n",
+  "status": 0
+ },
+ "rust | quick running": {
+  "output": "(analyze src/settings/running :lang rs \"general module\" :file src/settings/running.rs)\n(cls src/settings/running Running 1 :lang rs (:methods defaults))\n(analyze-dependent src/settings/running src/settings :lang rs :via imports refs :file src/settings/mod.rs)\n(analyze-dependent src/settings/running src/settings/seed :lang rs :via imports refs :file src/settings/seed.rs)\n(analyze-dependent src/settings/running src/store :lang rs :via imports refs :file src/store.rs)\n(key-entity src/settings/running Running :lang rs :kind cls :line 1 :refs 3 :modules 3)\n(key-entity-ref Running src/settings :lang rs)\n(key-entity-ref Running src/settings/seed :lang rs)\n(key-entity-ref Running src/store :lang rs)\n(boundary-file src/settings/running src/settings/running.rs)\n(analyze-summary src/settings/running :entities 1 :imports 0 :dataflows 0 :refs 0 :dependents 3 :boundary-files 1)\n",
+  "status": 0
+ },
+ "rust | rdeps src/native/scripts 2": {
+  "output": "(rdeps-root src/native/scripts :lang rs)\n(rdep src/native/scripts src/native :lang rs :via imports :depth 1)\n(rdep src/native/scripts src/main :lang rs :via imports :depth 2)\n(rdep src/native/scripts src/native/actions :lang rs :via imports :depth 1)\n(rdep src/native/scripts src/native :lang rs :via imports :depth 2 :cycle)\n(rdep src/native/scripts src/native/flow :lang rs :via imports :depth 2)\n(rdep src/native/scripts src/native/flow/replay :lang rs :via imports :depth 2)\n",
+  "status": 0
+ },
+ "rust | search HarEntry": {
+  "output": "(cls ru3 HarEntry 2 :eid 58baafe9)\n(imports ru4 ru3 (:use HarEntry))\n(imports ru5 ru3 :candidate :item (:glob \"super\" HarEntry))\n(refs ru4 ru3::HarEntry)\n(refs ru5 ru3::HarEntry)\n(result-count 5)\n",
+  "status": 0
+ },
+ "rust | search HarEntry --lines": {
+  "output": "(cls ru3 HarEntry 2 :eid 58baafe9)\n(imports ru4 ru3 :line 2 (:use HarEntry))\n(imports ru5 ru3 :candidate :item (:glob \"super\" HarEntry))\n(refs ru4 ru3::HarEntry :line 2)\n(refs ru5 ru3::HarEntry)\n(result-count 5)\n",
+  "status": 0
+ },
+ "rust | usages Nowhere": {
+  "output": "(error no-match Nowhere)\n",
+  "status": 0
+ },
+ "rust | usages Nowhere --sexp --all": {
+  "output": "(error no-match Nowhere)\n",
+  "status": 0
+ },
+ "rust | usages script": {
+  "output": "Usages of script (function, src/native/scripts.rs:1)\n  2 uses in 1 file\n\nsrc/native/actions.rs\n  1:21   import\n  3:22   call\n",
+  "status": 0
+ },
+ "rust | usages script --sexp": {
+  "output": "(usages-target src/native/scripts::script :kind fn :file src/native/scripts.rs :line 1)\n(usage src/native/actions 1 21 :kind import :file src/native/actions.rs)\n(usage src/native/actions 3 22 :kind call :file src/native/actions.rs)\n(usages-summary src/native/scripts::script :uses 2 :files 1 :unresolved 0)\n",
+  "status": 0
+ },
+ "rust | usages src/native/actions.rs::HarEntry": {
+  "output": "Usages of HarEntry (class, src/native/actions.rs:2)\n  3 uses in 2 files\n\nsrc/native/flow/mod.rs\n  2:29   import\n  3:13   type\nsrc/native/flow/replay.rs\n  2:13   type\n",
+  "status": 0
+ },
+ "rust | usages src/native/actions.rs::HarEntry --sexp --all": {
+  "output": "(usages-target src/native/actions::HarEntry :kind cls :file src/native/actions.rs :line 2)\n(usage src/native/flow 2 29 :kind import :file src/native/flow/mod.rs)\n(usage src/native/flow 3 13 :kind type :file src/native/flow/mod.rs)\n(usage src/native/flow/replay 2 13 :kind type :file src/native/flow/replay.rs)\n(usages-summary src/native/actions::HarEntry :uses 3 :files 2 :unresolved 0)\n",
+  "status": 0
+ },
+ "rust | usages src/native/actions::HarEntry --sexp --all": {
+  "output": "(usages-target src/native/actions::HarEntry :kind cls :file src/native/actions.rs :line 2)\n(usage src/native/flow 2 29 :kind import :file src/native/flow/mod.rs)\n(usage src/native/flow 3 13 :kind type :file src/native/flow/mod.rs)\n(usage src/native/flow/replay 2 13 :kind type :file src/native/flow/replay.rs)\n(usages-summary src/native/actions::HarEntry :uses 3 :files 2 :unresolved 0)\n",
+  "status": 0
+ },
+ "ts | analyze src/core/util": {
+  "output": "(analyze src/core/util :lang ts \"utility helpers\" :file src/core/util.ts)\n(fn src/core/util limit 1 :lang ts)\n(analyze-dependent src/core/util src/billing/invoice :lang ts :via imports refs :file src/billing/invoice.ts)\n(analyze-dependent src/core/util src/billing/report :lang ts :via imports refs :file src/billing/report.ts)\n(boundary-file src/core/util src/core/util.ts)\n(analyze-summary src/core/util :entities 1 :imports 0 :dataflows 0 :refs 0 :dependents 2 :boundary-files 1)\n",
+  "status": 0
+ },
+ "ts | impact src/api/handler.ts": {
+  "output": "Impact of changing src/api/handler.ts\n  direct dependents   0\n  within 2 hops       0\n\nNo other module depends on it.\n",
+  "status": 0
+ },
+ "ts | impact src/api/handler.ts 2 --sexp --all": {
+  "output": "(impact-root src/api/handler :lang ts :file src/api/handler.ts)\n(impact-summary src/api/handler :direct 0 :total 0 :depth 2)\n(read-first src/api/handler.ts)\n",
+  "status": 0
+ },
+ "ts | impact src/core/util.ts": {
+  "output": "Impact of changing src/core/util.ts\n  direct dependents   2\n  within 2 hops       3\n\nDepth 1\n  src/billing/invoice.ts   imports it\n  src/billing/report.ts    imports it\n\nDepth 2\n  src/api/handler.ts   through src/billing/invoice.ts (or 1 other file): imports it\n\nRead first (3 files)\n  src/core/util.ts\n  src/billing/invoice.ts\n  src/billing/report.ts\n",
+  "status": 0
+ },
+ "ts | impact src/core/util.ts 2 --sexp --all": {
+  "output": "(impact-root src/core/util :lang ts :file src/core/util.ts)\n(impact src/core/util src/billing/invoice :lang ts :via imports :depth 1)\n(impact src/core/util src/billing/report :lang ts :via imports :depth 1)\n(impact src/core/util src/api/handler :lang ts :via imports :depth 2 :through src/billing/invoice :more 1)\n(impact-summary src/core/util :direct 2 :total 3 :depth 2)\n(read-first src/core/util.ts)\n(read-first src/billing/invoice.ts)\n(read-first src/billing/report.ts)\n",
+  "status": 0
+ },
+ "ts | rdeps src/core/util 2": {
+  "output": "(rdeps-root src/core/util :lang ts)\n(rdep src/core/util src/billing/invoice :lang ts :via imports :depth 1)\n(rdep src/core/util src/api/handler :lang ts :via imports :depth 2)\n(rdep src/core/util src/billing/report :lang ts :via imports :depth 1)\n(rdep src/core/util src/api/handler :lang ts :via imports :depth 2 :cycle)\n",
+  "status": 0
+ },
+ "ts | usages src/core/util.ts::limit": {
+  "output": "Usages of limit (function, src/core/util.ts:1)\n  4 uses in 2 files\n\nsrc/billing/invoice.ts\n  1:10   import\n  2:24   reference\nsrc/billing/report.ts\n  1:10   import\n  2:23   reference\n",
+  "status": 0
+ },
+ "ts | usages src/core/util::limit --sexp --all": {
+  "output": "(usages-target src/core/util::limit :kind fn :file src/core/util.ts :line 1)\n(usage src/billing/invoice 1 10 :kind import :file src/billing/invoice.ts)\n(usage src/billing/invoice 2 24 :kind reference :file src/billing/invoice.ts)\n(usage src/billing/report 1 10 :kind import :file src/billing/report.ts)\n(usage src/billing/report 2 23 :kind reference :file src/billing/report.ts)\n(usages-summary src/core/util::limit :uses 4 :files 2 :unresolved 0)\n",
+  "status": 0
+ },
+ "wide | analyze src/core/hub": {
+  "length": 23773,
+  "sha256": "81dfca8dd1fff18b5ea00642e07e6bda19499d2ba20bc9c90e0ba04b82d87e08",
+  "status": 0
+ },
+ "wide | analyze src/core/hub --all": {
+  "length": 24280,
+  "sha256": "d5db825ce544cffb641d7ade3d55feafe94ccad70c221359bf222e5a3d483e06",
+  "status": 0
+ },
+ "wide | impact src/core/hub.ts": {
+  "length": 8911,
+  "sha256": "056512d9ac08aeabf740dd7361d6922cc86a6cc209971d61e649bfede987f2fc",
+  "status": 0
+ },
+ "wide | impact src/core/hub.ts 2 --all": {
+  "length": 30583,
+  "sha256": "407bf7bd8c7e13d94b4eb663cb8ec6548cf18629bd9e504674c853b3552e0769",
+  "status": 0
+ },
+ "wide | impact src/core/hub.ts 2 --sexp": {
+  "length": 16058,
+  "sha256": "75243025ca54ead2a6390f69bde962a9e3d5fe20c10a8e3965f56797620282cb",
+  "status": 0
+ },
+ "wide | impact src/core/hub.ts 2 --sexp --all": {
+  "length": 46584,
+  "sha256": "412b5a31a0208f8a4ce417cd518d1d9b908fe4c0294221594b32dac9fb615245",
+  "status": 0
+ },
+ "wide | usages src/core/hub.ts::clamp": {
+  "length": 4852,
+  "sha256": "8b467945ab946d2b9f4af2387a3c0e5db081544988eaf4f878738b664b55b584",
+  "status": 0
+ },
+ "wide | usages src/core/hub.ts::clamp --all": {
+  "length": 14626,
+  "sha256": "2e005be86444b214f797302ec4546e5430ad6f89b016256f5f9ab7da7f4ed6a0",
+  "status": 0
+ },
+ "wide | usages src/core/hub::clamp --sexp": {
+  "length": 16569,
+  "sha256": "202d59d26f4154bcdadec856eeca374a20252ed291d55d46f86164f3871763e6",
+  "status": 0
+ },
+ "wide | usages src/core/hub::clamp --sexp --all": {
+  "length": 50372,
+  "sha256": "fbcb8343e59525dd8bbd36b2d9ce9515a784771a20bef70d1389c5dc8bfd4db5",
+  "status": 0
+ }
+}

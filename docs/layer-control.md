@@ -52,7 +52,7 @@ wingbox export coderabbit        # review instructions and ast-grep rules under 
 wingbox export dependency-cruiser    # a .dependency-cruiser config the team can run as it is
 ```
 
-The output of every command is a list of S-expression facts, printed as text for people (`--sexp` gives the facts).
+The output of every command is a list of S-expression facts; `--human` prints them as text for people and `--json` as one JSON object (`init` and `learn` print text and give the facts with `--sexp`).
 
 ## 4. Solution
 

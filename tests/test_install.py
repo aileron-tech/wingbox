@@ -366,7 +366,7 @@ class InstallOutputTest(InstallTestCase):
 class PackagedSkillTest(unittest.TestCase):
     def test_the_packaged_skill_holds_skill_md_references_and_the_slash_command(self) -> None:
         """/* REQ-INSTALL-015: the skill that install copies must be SKILL.md named wingbox with its references, and SKILL.md must describe `/wingbox` with no argument, with a file and with a command. */"""
-        self.assertEqual({"SKILL.md", "references/scheme-queries.md", "references/sexp-notation.md"}, set(SKILL_FILES))
+        self.assertEqual({"SKILL.md", "references/code-mode.md", "references/scheme-queries.md", "references/sexp-notation.md"}, set(SKILL_FILES))
         text = SKILL_FILES["SKILL.md"].decode()
         self.assertIn("name: wingbox", text)
         for usage in ("/wingbox`", "/wingbox <file>", "/wingbox <command>"):

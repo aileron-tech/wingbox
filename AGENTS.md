@@ -60,8 +60,19 @@ this file applies to you.
 - Terms: the product is Wingbox, the skill is `wingbox`, the map is a "code
   graph".
 - Output formats: S-expressions are the internal and agent-facing format
-  (compact, few tokens). What people read is text or HTML; a command meant for
-  people prints text by default and offers `--sexp` for agents.
+  (compact, few tokens). A command that answers a question (the query
+  commands, `advice`, `align`, `place`, `compare`) prints S-expressions by
+  default, complete; `--human` prints the text for people and `--json` the
+  same answer as one JSON object. A command that sets something up for a
+  person (`init`, `learn`, `install`, `uninstall`, `update`) prints text and
+  offers `--sexp`.
+- `--sexp` on a command that answers a question is a compatibility promise:
+  it prints, byte for byte, what version 0.13.0 printed with it (the flat
+  facts of `impact` and `usages` that the pull request check of
+  `aileron-tech/wingbox-action` reads), as do `wingbox module <id>`,
+  `wingbox boundaries` and `wingbox boundaries --strict` without an option.
+  `tests/data/outputs_0_13_0.json` holds those outputs; a change that alters
+  one of them is a change of the pull request check too.
 - Agree the name, the arguments and the output of a new command with the
   maintainer before writing its code.
 - `scripts/` stays loadable by path: the tests import the scripts with
@@ -186,7 +197,8 @@ Check every change of the server against this list before the pull request:
    destructive and not open-world.
 7. The answer is the output of the `wingbox` command behind the tool. An
    `(error ...)` answer is a tool error. Answers stop at 200 lines unless the
-   call sets `all`.
+   call sets `all`; `impact` answers in the default form of the command, one
+   complete form per file, and is never cut.
 8. Standard output carries JSON-RPC messages only; logs go to standard error;
    no network.
 9. The command line keeps its command names: a change of the tool list does

@@ -74,6 +74,13 @@ def load(path: str):
     return json.load(open(path))
 
 
+def text_form(help_text: str) -> list[str]:
+    """The option that asks the Wingbox under test for the text for people, which this benchmark reads and
+    measures: `--human` when S-expressions are its default (its help then names `--human|--json`), nothing for
+    an earlier release, whose default is that text."""
+    return ["--human"] if "--human|--json" in help_text else []
+
+
 def save(data, path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     json.dump(data, open(path, "w"), indent=1)
@@ -153,11 +160,12 @@ def sites(work: str) -> None:
 def wingbox(work: str) -> None:
     """`wingbox usages <file>::<S> --all`: the text an agent reads, and the S-expressions of the same answer."""
     binary = os.path.join(work, "venv_wb", "bin", "wingbox")
+    text_option = text_form(run([binary, "help"], work)[0])
     rows = {}
     for question in questions_of(work):
         root = tree(work, "wb", question["repo"])
         target = f"{question['file']}::{question['name']}"
-        text, _code = run([binary, "usages", target, "--all"], root)
+        text, _code = run([binary, "usages", target, *text_option, "--all"], root)
         sexp, _code = run([binary, "usages", target, "--sexp", "--all"], root)
         named, unresolved, resolved = set(), 0, False
         for line in sexp.splitlines():
@@ -174,7 +182,7 @@ def wingbox(work: str) -> None:
             if match:
                 named.add((match.group(3).strip('"'), None, None))
         rows[question["id"]] = {"resolved": resolved, "sites": sorted(named, key=_site_key), "unresolved": unresolved,
-                                "chars": len(text), "command": f"wingbox usages {target} --all"}
+                                "chars": len(text), "command": " ".join(["wingbox", "usages", target, *text_option, "--all"])}
         print(question["id"], question["name"], "wingbox", len(named), flush=True)
     save(rows, os.path.join(work, "out", "wingbox.json"))
 

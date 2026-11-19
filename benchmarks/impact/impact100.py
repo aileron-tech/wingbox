@@ -233,6 +233,13 @@ def score(named: set[str], gold: dict, target: str) -> dict:
             "exact_strict": named == required}
 
 
+def text_form(help_text: str) -> list[str]:
+    """The option that asks the Wingbox under test for the text for people, which this benchmark reads and
+    measures: `--human` when S-expressions are its default (its help then names `--human|--json`), nothing for
+    an earlier release, whose default is that text."""
+    return ["--human"] if "--human|--json" in help_text else []
+
+
 def wingbox_files(text: str) -> set[str]:
     files, section = set(), ""
     for line in text.split("\n"):
@@ -247,12 +254,13 @@ def wingbox_files(text: str) -> set[str]:
 
 def command(work: str) -> None:
     questions = json.load(open(os.path.join(work, "bench", "questions100.json")))["questions"]
+    binary = os.path.join(work, "venv_wb", "bin", "wingbox")
+    text_option = text_form(sh([binary, "help"], check=False))
     rows = []
     for question in questions:
         gold = json.load(open(os.path.join(work, "bench", "gold100", question["id"] + ".json")))
         repo, target = question["repo"], question["file"]
-        text = sh([os.path.join(work, "venv_wb", "bin", "wingbox"), "impact", target, "2", "--all"],
-                  cwd=os.path.join(work, "bench", "wb", repo), check=False)
+        text = sh([binary, "impact", target, "2", "--all", *text_option], cwd=os.path.join(work, "bench", "wb", repo), check=False)
         row = {"id": question["id"], "repo": repo, "language": question["language"], "file": target, "reference_files": len(gold["gold"]),
                "wingbox": {"tokens": len(text) // 4, **score(wingbox_files(text), gold, target)}}
         rows.append(row)

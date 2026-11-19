@@ -14,7 +14,8 @@ Protocol revisions:
   which is what most clients speak today.
 
 Each tool is a thin call into the functions behind the `wingbox` command; the
-answer is the command's output. Eleven tools, each named after its answer:
+answer is the command's output (`impact`: the default S-expression form, for
+one file or several; `usages`: the text). Eleven tools, each named after its answer:
 build, impact, module (analyze, or quick for a keyword), definitions
 (find_function, find_type, entity), usages, dependencies (deps, rdeps), calls
 (find_callers, find_calls, find_callchain), layers, boundaries, changes
@@ -191,6 +192,7 @@ class GraphReady:
     graph: Any
     path: str
     warning: str = ""  # (wingbox-graph-stale ...) when the graph may miss recent changes
+    stale: Optional[int] = None  # changed files the graph is known to miss; None when nothing can tell
 
 
 @dataclass(frozen=True)
@@ -348,7 +350,7 @@ class Server:
             if isinstance(loaded, search.MapLoadErr):
                 return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the `graph` tool.")
             self._cache_key, self._cache_graph = key, graph
-        return GraphReady(self._cache_graph, path, freshness.notes(fresh, project))
+        return GraphReady(self._cache_graph, path, freshness.notes(fresh, project), freshness.known_stale(fresh))
 
 
 def _captured(action: Callable[[], Any]) -> tuple[Any, str, str]:
@@ -366,7 +368,7 @@ def _answer(text: str) -> ToolAnswer:
 def _query(
     server: Server,
     argv: list[str],
-    command: Callable[[Any, Any, str], None],
+    command: Callable[[Any, GraphReady], Any],
     show_all: bool,
     capped: bool = True,
 ) -> ToolAnswer:
@@ -378,7 +380,7 @@ def _query(
     ready = server.graph()
     if isinstance(ready, GraphMissing):
         return ToolAnswer((ready.message,), is_error=True)
-    _value, out, err = _captured(lambda: command(search, ready.graph, ready.path))
+    _value, out, err = _captured(lambda: command(search, ready))
     text = (ready.warning + "\n" if ready.warning else "") + out + ("\n" + err if err.strip() else "")
     answer = _answer(text if not capped else cap_answer(text.strip("\n"), show_all))
     # A note before the answer (a stale graph, a skipped language) must not hide that the answer is an error.
@@ -402,17 +404,24 @@ def _run_build(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
     return ToolAnswer((text or "Build finished.",))
 
 
+def impact_targets(arguments: dict[str, Any]) -> list[str]:
+    """The files an impact call asks about: `target`, then those of `targets`, each once."""
+    asked = ([arguments["target"]] if "target" in arguments else []) + list(arguments.get("targets", []))
+    return list(dict.fromkeys(asked))
+
+
 def _run_impact(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
-    target, depth, show_all = arguments["target"], arguments.get("depth", 2), arguments.get("all", False)
-    argv = ["impact", target, str(depth)]
-    text = _query(
+    targets, depth = impact_targets(arguments), arguments.get("depth", 2)
+    if not targets:
+        return ToolAnswer(('(error invalid-argument "impact requires target or targets")',), is_error=True)
+    # The compact form agents read: complete, so it has no list limit to lift.
+    return _query(
         server,
-        argv,
-        lambda s, g, _p: s.cmd_impact(g, target, depth, sexp=False, show_all=show_all),
-        show_all,
+        ["impact", *targets, str(depth)],
+        lambda s, ready: s.cmd_impact(ready.graph, targets, depth, "sexp", stale=ready.stale),
+        True,
         capped=False,
     )
-    return text
 
 
 def _simple(
@@ -424,7 +433,7 @@ def _simple(
         return _query(
             server,
             argv(arguments),
-            lambda s, g, p: command(s, g, p, arguments),
+            lambda s, ready: command(s, ready.graph, ready.path, arguments),
             arguments.get("all", False),
             capped,
         )
@@ -443,9 +452,9 @@ def _no_match(text: str) -> bool:
 def _run_module(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
     """The analysis of the module that is named; of the best match when the word names no module."""
     named, show_all = arguments["module"], arguments.get("all", False)
-    answer = _query(server, ["analyze", named], lambda s, g, _p: s.cmd_analyze(g, named, show_all=show_all), show_all, capped=False)
+    answer = _query(server, ["analyze", named], lambda s, r: s.cmd_analyze(r.graph, named, show_all=show_all), show_all, capped=False)
     if answer.is_error and _no_match(answer.texts[0]):
-        return _query(server, ["quick", named], lambda s, g, p: s.cmd_quick(g, named, p, show_all=show_all), show_all, capped=False)
+        return _query(server, ["quick", named], lambda s, r: s.cmd_quick(r.graph, named, r.path, show_all=show_all), show_all, capped=False)
     return answer
 
 
@@ -454,10 +463,10 @@ def _run_definitions(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
     and keeps the definition lines only (who refers to the name is the answer of `usages`)."""
     name, kind, show_all = arguments["name"], arguments.get("kind", "any"), arguments.get("all", False)
     if kind == "function":
-        return _query(server, ["find_function", name], lambda s, g, _p: s.cmd_find_function(g, name), show_all)
+        return _query(server, ["find_function", name], lambda s, r: s.cmd_find_function(r.graph, name), show_all)
     if kind == "type":
-        return _query(server, ["find_type", name], lambda s, g, _p: s.cmd_find_type(g, name), show_all)
-    answer = _query(server, ["entity", name], lambda s, g, _p: s.cmd_entity(g, name), True, capped=False)
+        return _query(server, ["find_type", name], lambda s, r: s.cmd_find_type(r.graph, name), show_all)
+    answer = _query(server, ["entity", name], lambda s, r: s.cmd_entity(r.graph, name), True, capped=False)
     if answer.is_error:
         return answer
     kept = [line for line in answer.texts[0].splitlines() if not line.startswith(_REFERENCE_LINES)]
@@ -512,15 +521,27 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "impact",
         "Lists what a change to one file reaches: the files that depend on it, grouped by depth, with the reason "
-        "each one is on the list, then the files to read first. Use it before editing a file. For one function or "
-        "type use `usages`; for the bare import tree of a module use `dependencies`. Returns plain text."
-        + _CAP + _MISS,
+        "each one is on the list, then the files to read first. Use it before editing a file; with `targets` it "
+        "answers for several files in one call, in the order given, after a line that says whether the graph is "
+        "current. For one function or type use `usages`; for the bare import tree of a module use `dependencies`. "
+        "Returns S-expressions and never stops at 200 items: every dependent is listed, with or without `all`."
+        + _MISS,
         {
             "target": _string("File path relative to the repository root, or a module ID."),
+            "targets": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Several file paths or module IDs; one answer each, in this order, after a fact that "
+                               "says when the graph was built and how many changed files it misses.",
+            },
             "depth": _depth(2),
-            "all": _ALL,
+            "all": {
+                "type": "boolean",
+                "default": False,
+                "description": "Accepted for callers written for earlier versions; the answer lists every dependent either way.",
+            },
         },
-        ("target",),
+        (),
         _run_impact,
     ),
     Tool(
@@ -564,7 +585,7 @@ TOOLS: tuple[Tool, ...] = (
         ("symbol",),
         _simple(
             lambda a: ["usages", a["symbol"]],
-            lambda s, g, _p, a: s.cmd_usages(g, a["symbol"], show_all=a.get("all", False)),
+            lambda s, g, _p, a: s.cmd_usages(g, a["symbol"], "human", show_all=a.get("all", False)),
             capped=False,
         ),
     ),

@@ -23,6 +23,13 @@ def run(command: list[str], cwd: str, env_extra: dict | None = None) -> str:
     return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=600).stdout
 
 
+def text_form(help_text: str) -> list[str]:
+    """The option that asks the Wingbox under test for the text for people, which this benchmark reads and
+    measures: `--human` when S-expressions are its default (its help then names `--human|--json`), nothing for
+    an earlier release, whose default is that text."""
+    return ["--human"] if "--human|--json" in help_text else []
+
+
 def score(files: set[str], gold: set[str], target: str) -> dict:
     files = files - {target}
     hit = len(files & gold)
@@ -34,12 +41,14 @@ def score(files: set[str], gold: set[str], target: str) -> dict:
             "missing_files": sorted(gold - files)[:40], "wrong_files": sorted(files - gold)[:40]}
 
 
+WINGBOX = os.path.join(P, "venv_wb", "bin", "wingbox")
+TEXT_OPTION = text_form(run([WINGBOX, "help"], P))
 rows = []
 for name in sorted(os.listdir(os.path.join(BENCH, "gold"))):
     gold_data = json.load(open(os.path.join(BENCH, "gold", name)))
     question, gold = gold_data["question"], set(gold_data["gold"])
     repo, target = question["repo"], question["file"]
-    text = run([os.path.join(P, "venv_wb", "bin", "wingbox"), "impact", target, "2"], os.path.join(BENCH, "wb", repo))
+    text = run([WINGBOX, "impact", target, "2", *TEXT_OPTION], os.path.join(BENCH, "wb", repo))
     files, section = set(), ""
     for line in text.split("\n"):
         if line.startswith("Depth "):

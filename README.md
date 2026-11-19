@@ -145,7 +145,7 @@ anything. Real output on the server of
 [immich](https://github.com/immich-app/immich) (commit `e5d6eb7`, 707 modules):
 
 ```text
-$ wingbox impact src/dtos/asset.dto.ts 2
+$ wingbox impact src/dtos/asset.dto.ts 2 --human
 Impact of changing src/dtos/asset.dto.ts
   direct dependents   10
   within 2 hops       30
@@ -174,6 +174,10 @@ it is reached through. For Rust the row also names the items (`uses HarEntry
 by name after `use super::*``). The answer is 30 files in about 880 tokens, and it is exact: a TypeScript
 import resolver written separately from Wingbox finds the same 3,795
 dependencies between the 707 modules, none extra and none missing.
+
+`--human` asks for this text. Without an option the same answer is printed as
+S-expressions, the compact form an agent reads, and `--json` gives it to a
+script; `wingbox impact a.ts b.ts 2` answers for several files in one call.
 
 `wingbox build` also writes `.wingbox/map.html` (`wingbox open` shows it). Its layers view stacks the
 architecture in 3D; click a file and its blast radius lights up across the
@@ -219,26 +223,41 @@ the same facts as a tree and as a change boundary.
 
 ```text
 $ wingbox impact scripts/lang/treesitter.py
+(impact scripts/lang/treesitter.py :direct 13 :total 25
+ (1 scripts/lang/csharp/parser.py
+    scripts/lang/csharp/validation.py
+    scripts/lang/dart/parser.py
+    ...
+    scripts/lang/typescript/validation.py)
+ (2
+  (:through scripts/lang/csharp/parser.py
+   scripts/lang/csharp/__init__.py
+   scripts/lang/csharp/imports.py)
+  (:through scripts/lang/dart/parser.py
+   scripts/lang/dart/__init__.py)
+  ...)
+ (read-first scripts/lang/treesitter.py scripts/lang/csharp/parser.py ...))
 
+$ wingbox impact scripts/lang/treesitter.py --human
 Impact of changing scripts/lang/treesitter.py
-  direct dependents   6
-  within 2 hops       17
+  direct dependents   13
+  within 2 hops       25
 
 Depth 1
-  scripts/lang/csharp/parser.py   imports it
-  scripts/lang/dart/parser.py     imports it
-  scripts/lang/go/parser.py       imports it
-  scripts/lang/java/parser.py     imports it
-  scripts/lang/php/parser.py      imports it
-  scripts/lang/ruby/parser.py     imports it
+  scripts/lang/csharp/parser.py           imports it
+  scripts/lang/csharp/validation.py       imports it
+  scripts/lang/dart/parser.py             imports it
+...
 
 Depth 2
-  scripts/lang/csharp/__init__.py   through scripts/lang/csharp/parser.py: imports it
+  scripts/lang/csharp/__init__.py     through scripts/lang/csharp/parser.py: imports it
 ...
 ```
 
-The text form is for people. Agents add `--sexp` to get the same facts as
-compact S-expressions.
+The default form is S-expressions, for agents: the asked file once, the rows
+grouped by depth and by the file they are reached through, each with the
+reason it is listed. `--human` prints the same answer as text for people and
+`--json` as one JSON object for code.
 
 ## Measured: 100 questions, with and without Wingbox
 
@@ -471,10 +490,31 @@ wingbox usages path/to/file.py::create_order
 wingbox quick "file upload"
 ```
 
+Several files in one call, from a script: `wingbox impact a.py b.py 2 --json`
+prints one object with the state of the graph and one answer per file.
+
+```python
+answer = json.loads(subprocess.run(["wingbox", "impact", *files, "2", "--json"], capture_output=True, text=True).stdout)
+if answer["graph"]["stale"] == 0:                      # the graph misses no changed file
+    for item in answer["impact"]:                       # one per file, in the order asked
+        print(item["file"], [row["file"] for row in item.get("rows", [])])
+```
+
+Without `--json` the same call prints `(graph :built 2026-01-31T09:15:00Z :files
+359 :stale 0)` and then one `(impact <file> ...)` form per file; a file that is
+not in the graph gives `(error no-match <file> ...)` in its place and the other
+files are still answered.
+
 `wingbox usages` lists every place that uses one symbol, through re-exports and
 aliases, grouped by file, with the line, the column and the kind of use:
 
 ```text
+$ wingbox usages app/models.py::Invoice
+(usages Invoice cls :at app/models.py:1 :uses 7 :files 2
+ (app/__init__.py re-export 1:21)
+ (app/billing.py import 1:17 2:24 extends 4:13 type 7:13 7:25 call 8:11))
+
+$ wingbox usages app/models.py::Invoice --human
 Usages of Invoice (class, app/models.py:1)
   7 uses in 2 files
 
@@ -493,8 +533,8 @@ The symbol is `Name`, `<file>::Name` or `<file>::Class.method`; a name defined
 in several files lists the candidates. Kinds: `import`, `re-export`, `call`,
 `type`, `extends` (extends or implements), `reference`. For a method, calls
 whose receiver type is not in sight are listed as `unresolved-call`, never
-guessed. At most 200 uses unless `--all`; `--sexp` prints the same answer as
-`usage` facts. The build records which files use each definition; the first
+guessed. The answer is complete; the text of `--human` lists at most 200 uses
+unless `--all`, and `--json` prints one row per use. The build records which files use each definition; the first
 `usages` after a change also reads every use position (a parallel pass over the
 files, about as long as a build) and keeps them for the next calls. Python,
 TypeScript, JavaScript and Rust have use positions; in
@@ -511,20 +551,20 @@ $ wingbox init                      # the style of each part, written to .wingbo
 .  nestjs (NestJS)   1.00   container
   *.repository.ts 60  *.service.ts 57  *.dto.ts 53  *.controller.ts 48
 
-$ wingbox align                     # gaps against the style
+$ wingbox align --human             # gaps against the style
 .  nestjs: 371 of 475 files placed, 1132 of 1132 dependencies follow the rules
 
-$ wingbox place "a client for the payment API"
+$ wingbox place "a client for the payment API" --human
 src/repositories/  infra layer of nestjs
   because: placement: database access, client of another system
 
 $ wingbox learn --agent             # the task for the coding agent: folders the style cannot place
 Part .: closest style nestjs 1.00 (runner-up layered 1.00). Layers:
 
-$ wingbox advice                    # open recommendations; accept or reject them by id
+$ wingbox advice --human            # open recommendations; accept or reject them by id
 f7c97b6d2342  missing-folder  src/<feature>
 
-$ wingbox compare                   # the parts of a monorepo side by side
+$ wingbox compare --human           # the parts of a monorepo side by side
 .    typescript  nestjs  api domain infra service shared
 
 $ wingbox boundaries all            # layer rules, then what each layer may do
@@ -1116,7 +1156,7 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 | Tool | What it answers | The `wingbox` command behind it |
 |---|---|---|
 | `graph` | Build or refresh the code graph (`full`, `exclude_dirs`) | `build` |
-| `impact` | What a change to one file reaches, as text (`target`, `depth`, `all`) | `impact` |
+| `impact` | What a change to one file or to several reaches, as S-expressions (`target` or `targets`, `depth`) | `impact` |
 | `modules` | One module in full; a keyword instead of a module describes the best match (`module`) | `analyze`, `quick` |
 | `definitions` | Where a function, type or constant is defined; `name` may be a pattern with `.*` (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
 | `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
@@ -1246,6 +1286,7 @@ the repository or deletes anything.
 | Find files needed for a change | `boundary path/to/module --files-only` |
 | Trace dependencies | `deps path/to/module 2` |
 | See what a change will break | `impact path/to/file.py` |
+| The same for several files in one call | `impact path/to/a.py path/to/b.py 2` |
 | Find every use of one symbol | `usages path/to/file.py::create_order` |
 | Measure blast radius as a tree | `rdeps path/to/module 2` |
 | Find a class, module, interface, enum, or type | `find_type OrderService` |
@@ -1265,8 +1306,15 @@ the repository or deletes anything.
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |
 
-`analyze` and `impact` always print the complete counts and list at most 200
-dependent files, nearest first; add `--all` for every file. `boundaries` reports
+Every command of this table prints S-expressions by default, complete: no
+list is cut. `--human` prints the text for people (readable text for `impact`,
+`usages`, `advice`, `align`, `place` and `compare`; the fact lines of the
+others), where `analyze`, `impact` and `usages` list at most 200 dependent
+files or uses, nearest first, unless `--all`; the counts are always complete.
+`--json` prints the same answer as one JSON object. `--sexp` is still taken
+where versions up to 0.13 took it and prints what they printed with it (for
+`impact` and `usages` one flat fact per line), so a script written for them
+keeps reading the same lines. `boundaries` reports
 an import of TypeScript types only apart from the violations: the compiler
 erases it, but a change of the type still reaches the importing file.
 `boundaries` prints `boundaries-ok` only when every part with files was
@@ -1498,9 +1546,9 @@ looks similar.
 
 RAG splits code into chunks, embeds them and returns the chunks that look
 closest to a question. Wingbox resolves each import to the file it names and
-answers from those edges, so `impact --all` returns the complete list of
-dependent files with nothing guessed (without `--all` it names at most 200,
-nearest first, and always gives the complete counts). The benchmark checks every list against resolvers
+answers from those edges, so `impact` returns the complete list of
+dependent files with nothing guessed (the text of `--human` names at most 200,
+nearest first, unless `--all`, and always gives the complete counts). The benchmark checks every list against resolvers
 that share no code with Wingbox: [benchmarks/impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md).
 
 ### My editor already has "go to definition" and "find usages". Why a graph?

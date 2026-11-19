@@ -853,6 +853,14 @@ def notes(result: Freshness, root: str) -> str:
     return "\n".join(line for line in (stale_line(result, root), skipped_languages_line(root)) if line)
 
 
+def known_stale(result: Freshness) -> Optional[int]:
+    """How many changed files the graph is known to miss: 0 when it is up to date, None when nothing can
+    tell (no graph here, or one that was not built from this folder)."""
+    if isinstance(result, Fresh):
+        return 0
+    return result.changed if isinstance(result, Stale) else None
+
+
 def withholds_context(result: Freshness) -> bool:
     """A graph known to miss changes gives no context; an unconfirmed one is read as it is, with its note."""
     return isinstance(result, Stale)

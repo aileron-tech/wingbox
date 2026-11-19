@@ -46,6 +46,16 @@ def wb(*args: str) -> str:
     return done.stdout.replace(os.path.realpath(wb_root), "/repo").replace(os.path.abspath(wb_root), "/repo")
 
 
+def limited_form(help_text: str) -> list[str]:
+    """The option that asks the Wingbox under test for the answer with its list limits, which this test
+    measures: `--human` when its default answer is complete (its help then names `--human|--json`), nothing for
+    an earlier release, whose default answer has those limits."""
+    return ["--human"] if "--human|--json" in help_text else []
+
+
+LIMITED = limited_form(wb("help"))
+
+
 def stats(values: list[int]) -> dict:
     return {"queries": len(values), "mean_tokens": round(statistics.mean(values)), "median_tokens": round(statistics.median(values)),
             "max_tokens": max(values), "reduction_by_mean": round(corpus_tokens / statistics.mean(values), 1),
@@ -61,7 +71,7 @@ result["graphify"] = {
 
 modules = [os.path.splitext(f)[0] for f in code_files]
 with ThreadPoolExecutor(max_workers=12) as pool:
-    analyze = dict(zip(modules, pool.map(lambda m: wb("analyze", m), modules)))
+    analyze = dict(zip(modules, pool.map(lambda m: wb("analyze", m, *LIMITED), modules)))
     impact = dict(zip(code_files, pool.map(lambda f: wb("impact", f, "2", "--sexp"), code_files)))
 empty = [m for m, t in analyze.items() if "(analyze " not in t]
 result["wingbox"] = {
@@ -75,7 +85,7 @@ for name, questions in (("default_questions", list(_SAMPLE_QUESTIONS)), ("publis
     for question in questions:
         parts = []
         for term in _query_terms(question):
-            text = wb("quick", term)
+            text = wb("quick", term, *LIMITED)
             if text.strip() and not text.lstrip().startswith(("No ", "Error", "(no-match")) and "(analyze " in text:
                 parts.append({"term": term, "tokens": tokens(text)})
         if parts:
