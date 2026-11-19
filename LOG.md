@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-19 - Code Mode text: an instruction first
+
+### Changes
+- `references/code-mode.md` (and its two plugin copies): for each question an instruction (what the call returns, what to do with it) followed by a short example whose last expression is the value of the block; the shared helper is gone, each example is one call. For `impact` the instruction is the text measured in Code Mode sessions: the three facts of the answer (each dependent once and never the file itself, the list not cut, read from every source file of the graph with test files included) and "let the value of that block be the object that maps each file to the list of its rows' files".
+- `src/wingbox/install.py`: the line of the always-on block says the same in one sentence (the block stays under its 1,600 characters). `SKILL.md`: the pointer says "one call in one block of code whose value is the answer".
+- `tests/test_json_errors.py` REQ-INSTALL-046: the expectation follows the new form on purpose (instruction sentences present, five examples, none ends with an assignment, the block's sentence). `docs/assurance/requirements.md` regenerated.
+
+### Motivation
+- Sessions in Code Mode with the earlier text (a helper and recipes that ended with `var x = ...`) took an extra model turn to print the result and re-checked the answer by text search in two of five sessions; with a plain instruction that states where the answer comes from and that the block's value is the answer, they answered in two turns and did not re-check. The maintainer: an instruction, not code.
+
 ## 2026-11-19 - Release 0.15.0
 
 ### Changes
