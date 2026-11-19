@@ -52,6 +52,10 @@
   function several times. The role a class name gives a file (`...Service`, `...Controller`, a
   spelling one edit away) is worked out once per name, not for every file that holds the name,
   and the folders a module name is looked for in once per importing folder.
+- The search hook (`wingbox hook pre-search`) could end with a segmentation fault instead of exit
+  code 0, seen on macOS: the thread of its time limit was still running while Python shut down.
+  The hook now waits for that thread to end before it returns. Nothing was blocked by it (a hook
+  that fails lets the tool call go ahead), but the session showed a failed hook.
 
 ## 0.15.0 - 2026-11-19
 

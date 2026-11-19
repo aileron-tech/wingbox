@@ -3,7 +3,7 @@
 ## 2026-11-19 - Release 0.16.0
 
 ### Changes
-- Version 0.16.0, core and `packages/wingbox-http` (REQ-HTTP-021): the Code Mode text as an instruction (#171); `wingbox grep` and the MCP tool `search_source`, and an error for a malformed `wingbox query` expression (#172). The map-request workflow builds with 0.16.0.
+- Version 0.16.0, core and `packages/wingbox-http` (REQ-HTTP-021): the Code Mode text as an instruction (#171); `wingbox grep` and the MCP tool `search_source`, and an error for a malformed `wingbox query` expression (#172); the build of a large Python repository linear in its size, with the same graph byte for byte (#157, #174); the search hook waits for its timer thread, which ended the hook process with a segmentation fault on macOS (#175, merged into this branch after its own eleven checks were green). The map-request workflow builds with 0.16.0.
 
 ### Motivation
 - The instruction form is what measured sessions in Code Mode answered from in two turns; the maintainer asked for it and for the MCP grade.
@@ -44,6 +44,17 @@
 - The whole repository of the issue was built by the branch only: 0.14.0 needs more memory for it than this machine may give one build (2 GB). Its node and edge counts are those the issue reports for 0.14.0 (5,182 and 88,211) and its graph has the same size (7.9 MB).
 - Tests written first, `tests/test_issue_157_build_growth.py`: REQ-PY-015..020, REQ-LANG-014..017, REQ-FRESH-054..056. On 0.14.0 the growth guard fails on the store size, the questions asked, the items kept and the walks per file (numbers above). `docs/assurance/requirements.md` regenerated.
 - Not measured: a build with several workers (every measurement here ran with one). Each chunk of 64 modules still builds a symbol index of its own in its worker, as before.
+
+## 2026-11-19 - The search hook waits for its timer thread before it returns
+
+### Changes
+- `src/wingbox/hook.py` `main`: after `out_of_time.cancel()` the timer thread is joined. Test REQ-INSTALL-047 (`tests/test_hook.py`): after `hook.main(["pre-search"])` returns, with an answer, without one and after an error, no thread but the caller's is alive; it failed before the change with the daemon timer still listed.
+
+### Motivation
+- Three failures of the test matrix on macOS in two days, each a `hook pre-search` child process that returned -11 (SIGSEGV) with nothing on stderr: REQ-FRESH-025 on Python 3.12 once, then REQ-INSTALL-020 on 3.12 and a freshness test on 3.13 in one run. The common part is the daemon `threading.Timer` added in 0.10.2 for the hook's time limit; a daemon thread that is still running during interpreter shutdown is a known way for CPython to crash. Not reproduced locally in 400 runs, so the proof is the deterministic test plus the matrix.
+
+### Not covered
+- Whether the crash is gone can only be seen over many runs of the macOS cells.
 
 ## 2026-11-19 - Code Mode text: an instruction first
 

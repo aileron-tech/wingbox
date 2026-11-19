@@ -596,6 +596,9 @@ def main(args: list[str]) -> int:
         return 0
     finally:
         out_of_time.cancel()   # an answer that is ready is printed whole
+        # Wait for the timer's thread to end (cancelled, it ends at once): a daemon thread still running while
+        # the interpreter shuts down can end the process with a segmentation fault instead of exit code 0.
+        out_of_time.join()
     if output:
         sys.stdout.write(output + "\n")
     return 0
