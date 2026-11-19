@@ -145,12 +145,22 @@ class CodeModeRecipesTest(unittest.TestCase):
         return document
 
     def test_every_call_of_the_recipes_answers_with_the_keys_the_recipes_read(self) -> None:
-        """/* REQ-INSTALL-046: references/code-mode.md, the code for Claude Code's Code Mode, holds one helper (`wingbox(...args)`: the command with --json through `` $`...` ``, `.nothrow()`, `.json()`, a thrown Error for `answer.error`) and a recipe per question; every command the recipes call (`impact` for several files, `usages`, `quick`, `diff_functions`, `boundaries`) answers on a real project with the keys the recipes read, the item a `diff-fn` fact names is accepted by `usages`, and the test files of the change come out of the recipe's own pattern. The skill and the always-on block point to the file, and the plugin copies are the same text. */"""
+        """/* REQ-INSTALL-046: references/code-mode.md, the text for Claude Code's Code Mode, gives for each question an instruction first (what one call returns and that the value of the block is the answer) and a short example whose last expression is that value (no example ends with an assignment); for `impact` it states the three facts of the answer: each dependent once and never the file itself, the list not cut, read from every source file of the graph with test files included. Every command the text calls (`impact` for several files, `usages`, `quick`, `diff_functions`, `boundaries`) answers on a real project with the keys the text reads, the item a `diff-fn` fact names is accepted by `usages`, and the test files of the change come out of the text's own pattern. The skill and the always-on block point to the file and say the same in one line, and the plugin copies are the same text. */"""
         text = RECIPES.read_text(encoding="utf-8")
-        self.assertIn("const answer = (await $`wingbox ${args} --json`.nothrow()).json();", text)
-        self.assertIn("if (answer.error) throw new Error(`wingbox ${args[0]}: ${answer.error.code} ${answer.error.message}`);", text)
         import re
-        self.assertEqual({"impact", "usages", "quick", "diff_functions", "boundaries"}, set(re.findall(r'wingbox\("([a-z_]+)"', text)))
+        self.assertIn("Make the call in one block of code and let the value of that block be the answer", text)
+        for fact in ("Each dependent is listed once, never the file itself, and the list\nis not cut.",
+                     "read from the import statements and uses of every source file of the graph, test files\nincluded",
+                     "`graph.stale` is 0 when none changed since the\ngraph was built"):
+            self.assertIn(fact, text)
+        self.assertIn("const answer = (await $`wingbox impact ${files} 2 --json`.nothrow()).json();", text)
+        blocks = re.findall(r"```javascript\n(.*?)```", text, re.S)
+        self.assertEqual(5, len(blocks))
+        for block in blocks:
+            last = block.strip().splitlines()[-1]
+            self.assertNotRegex(last, r"^\s*(const|let|var)\s", block)       # the block's value is its last expression
+        self.assertEqual({"impact", "usages", "quick", "diff_functions", "boundaries"},
+                         set(re.findall(r"`wingbox ([a-z_]+)[ `]", text)) & {"impact", "usages", "quick", "diff_functions", "boundaries"})
         impact = self.answer("impact", "app/pricing.py", "app/cart.py", "2")
         self.assertEqual({"built", "files", "stale"}, set(impact["graph"]))
         self.assertEqual(0, impact["graph"]["stale"])
@@ -173,8 +183,10 @@ class CodeModeRecipesTest(unittest.TestCase):
         self.assertIn("boundaries-not-checked", {fact["fact"] for fact in rules})
         self.assertIn("references/code-mode.md", (REPO / "SKILL.md").read_text(encoding="utf-8"))
         from wingbox import install
-        self.assertIn("references/code-mode.md", install.ALWAYS_ON_BLOCK)
-        self.assertIn("(await $`wingbox impact ${files} 2 --json`.nothrow()).json()", install.ALWAYS_ON_BLOCK)
+        block = install.ALWAYS_ON_BLOCK
+        self.assertIn("references/code-mode.md", block)
+        self.assertIn("Make the call in one block and let its value be the map from each file to its rows' files.", block)
+        self.assertIn("listed once, the list not cut, test files included", block)
         for copy in ("plugins/wingbox/skills/wingbox/references/code-mode.md", "plugins/wingbox-skill/skills/wingbox/references/code-mode.md"):
             self.assertEqual(text, (REPO / copy).read_text(encoding="utf-8"), copy)
 

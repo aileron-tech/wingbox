@@ -4,6 +4,11 @@
 
 ### Changes
 
+- The text for Claude Code's Code Mode (`references/code-mode.md` of the skill, and the line of the
+  block `wingbox install` writes) is an instruction first: what one call returns, that the list of
+  dependents is complete and where it is read from, and that the value of the block of code is the
+  answer. Each example now ends with that value instead of an assignment, so the assistant does
+  not spend a turn printing it.
 - A new command, `wingbox grep <text> [path-pattern] [--first N]`, and the MCP tool `search_source`
   over it: the lines of the source files of the graph that hold a text, each with its file and
   line number, in all files or in those whose path matches. It is for what is not a name in the

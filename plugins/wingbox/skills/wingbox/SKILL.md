@@ -221,8 +221,10 @@ dependents = {a["file"]: [row["file"] for row in a.get("rows", [])] for a in ans
 `answer["graph"]["stale"]` is 0 when the graph is up to date. Each row carries
 the reason it is listed: `depth`, `via` (the relation), `through` (the file it
 is reached through) and `reasons` (the names it takes). A file that is not in
-the graph has `error` in place of `rows`. In Claude Code's Code Mode use the
-JavaScript helper and the recipes of [references/code-mode.md](references/code-mode.md).
+the graph has `error` in place of `rows`. The rows are complete (each dependent
+once, the list not cut, test files included). In Claude Code's Code Mode follow
+[references/code-mode.md](references/code-mode.md): one call in one block of
+code whose value is the answer.
 
 ## Quick Reference: rg Queries
 
