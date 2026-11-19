@@ -44,6 +44,11 @@
   `impact --json` prints `{"graph": {...}, "impact": [{"file", "direct", "total", "rows",
   "read_first", "advice"}, ...]}` and `usages --json` `{"usages": {..., "rows": [...]}}`; every
   other command prints `{"facts": [...]}`, one object per fact line.
+- Code for Claude Code's Code Mode: the skill carries `references/code-mode.md`, one JavaScript
+  helper (`wingbox(...args)`, the command with `--json` through `` $`...` ``) and a recipe per
+  question: what depends on several files, every use of a name, where a feature lives, what
+  changed since a commit with the tests that use it, the architecture rules. The block that
+  `wingbox install` writes names the call and the file.
 - A `--json` call that fails as a whole says so in one place: the document starts with `"error":
   {"code", "message"}` on standard output, for a folder without a graph (`no-graph`), an argument
   that is not valid (`invalid-argument`), a name nothing matches (`no-match`) and a git reference

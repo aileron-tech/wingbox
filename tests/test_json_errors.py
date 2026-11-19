@@ -109,5 +109,85 @@ class JsonErrorsTest(unittest.TestCase):
         self.assertEqual(["error", "usages"], list(fact_json.with_error({"usages": {"symbol": "x", "error": "no-match", "suggestions": []}}, None)))
 
 
+RECIPES = REPO / "references" / "code-mode.md"
+
+
+class CodeModeRecipesTest(unittest.TestCase):
+    root: Path
+    _folder: tempfile.TemporaryDirectory
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._folder = tempfile.TemporaryDirectory()
+        cls.root = Path(os.path.realpath(cls._folder.name)) / "project"
+        files = {**FILES, "app/checkout.py": "from app.cart import total\n\n\ndef checkout(items):\n    return total(items)\n",
+                 "tests/__init__.py": "", "tests/test_pricing.py": "from app.pricing import price\n\n\ndef test_price():\n    assert price(2) == 2\n"}
+        for name, text in files.items():
+            (cls.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (cls.root / name).write_text(text, encoding="utf-8")
+        git = ["git", "-C", str(cls.root), "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid"]
+        subprocess.run(["git", "init", "-q", str(cls.root)], check=True)
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "base"], check=True)
+        (cls.root / "app" / "pricing.py").write_text("VALUE = 2\n\n\ndef price(x):\n    return x * VALUE + 0\n", encoding="utf-8")
+        status, _out, err = wingbox(cls.root, "build", str(cls.root))
+        if status != 0:
+            raise AssertionError(err)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._folder.cleanup()
+
+    def answer(self, *args: str) -> dict:
+        _status, out, err = wingbox(self.root, *args, "--json")
+        document = json.loads(out)
+        self.assertNotIn("error", document, out + err)
+        return document
+
+    def test_every_call_of_the_recipes_answers_with_the_keys_the_recipes_read(self) -> None:
+        """/* REQ-INSTALL-046: references/code-mode.md, the code for Claude Code's Code Mode, holds one helper (`wingbox(...args)`: the command with --json through `` $`...` ``, `.nothrow()`, `.json()`, a thrown Error for `answer.error`) and a recipe per question; every command the recipes call (`impact` for several files, `usages`, `quick`, `diff_functions`, `boundaries`) answers on a real project with the keys the recipes read, the item a `diff-fn` fact names is accepted by `usages`, and the test files of the change come out of the recipe's own pattern. The skill and the always-on block point to the file, and the plugin copies are the same text. */"""
+        text = RECIPES.read_text(encoding="utf-8")
+        self.assertIn("const answer = (await $`wingbox ${args} --json`.nothrow()).json();", text)
+        self.assertIn("if (answer.error) throw new Error(`wingbox ${args[0]}: ${answer.error.code} ${answer.error.message}`);", text)
+        import re
+        self.assertEqual({"impact", "usages", "quick", "diff_functions", "boundaries"}, set(re.findall(r'wingbox\("([a-z_]+)"', text)))
+        impact = self.answer("impact", "app/pricing.py", "app/cart.py", "2")
+        self.assertEqual({"built", "files", "stale"}, set(impact["graph"]))
+        self.assertEqual(0, impact["graph"]["stale"])
+        for entry in impact["impact"]:
+            for row in entry["rows"]:
+                self.assertLessEqual({"file", "depth", "via", "through", "reasons"}, set(row))
+        self.assertEqual({"app/pricing.py": ["app/cart.py", "tests/test_pricing.py", "app/checkout.py"], "app/cart.py": ["app/checkout.py"]},
+                         {entry["file"]: [row["file"] for row in entry["rows"]] for entry in impact["impact"]})
+        usages = self.answer("usages", "price")["usages"]
+        self.assertLessEqual({"file", "line", "kind"}, set(usages["rows"][0]))
+        found = self.answer("quick", "pricing")["facts"]
+        self.assertIn("app/pricing.py", {fact.get("file") for fact in found})
+        changed = [fact["args"][0] for fact in self.answer("diff_functions", "HEAD")["facts"] if fact["fact"] == "diff-fn"]
+        self.assertEqual(["app/pricing::price"], changed)
+        pattern = re.search(r"if \(/(.+)/\.test\(row\.file\)\)", text).group(1)
+        tests = {row["file"] for item in changed for row in self.answer("usages", item)["usages"]["rows"] if re.search(pattern, row["file"])}
+        self.assertEqual({"tests/test_pricing.py"}, tests)
+        rules = self.answer("boundaries")["facts"]
+        self.assertTrue(all("fact" in fact for fact in rules))
+        self.assertIn("boundaries-not-checked", {fact["fact"] for fact in rules})
+        self.assertIn("references/code-mode.md", (REPO / "SKILL.md").read_text(encoding="utf-8"))
+        from wingbox import install
+        self.assertIn("references/code-mode.md", install.ALWAYS_ON_BLOCK)
+        self.assertIn("(await $`wingbox impact ${files} 2 --json`.nothrow()).json()", install.ALWAYS_ON_BLOCK)
+        for copy in ("plugins/wingbox/skills/wingbox/references/code-mode.md", "plugins/wingbox-skill/skills/wingbox/references/code-mode.md"):
+            self.assertEqual(text, (REPO / copy).read_text(encoding="utf-8"), copy)
+
+    def test_the_rows_of_an_impact_answer_hold_each_dependent_once_and_never_the_file(self) -> None:
+        """/* REQ-CLI-047: in the JSON answer of `impact`, for every source file of a project, `rows` names each dependent file once, never the file asked about, and `total` is the number of rows: what the code for Code Mode says of the answer. */"""
+        files = ["app/pricing.py", "app/cart.py", "app/checkout.py", "tests/test_pricing.py", "app/__init__.py"]
+        for entry in self.answer("impact", *files, "2")["impact"]:
+            with self.subTest(file=entry["file"]):
+                named = [row["file"] for row in entry["rows"]]
+                self.assertEqual(len(named), len(set(named)))
+                self.assertNotIn(entry["file"], named)
+                self.assertEqual(entry["total"], len(named))
+
+
 if __name__ == "__main__":
     unittest.main()
