@@ -7,11 +7,17 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from wingbox import freshness
-from wingbox.cli import global_hook_program
-from wingbox.launch import code_command, module_command, without_starting_folder
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from wingbox import freshness  # noqa: E402
+from wingbox.cli import global_hook_program  # noqa: E402
+from wingbox.launch import code_command, module_command, without_starting_folder  # noqa: E402
+
+# The package, named for a Python that leaves the starting folder off its path (as every start of Wingbox's own
+# does: freshness.start_refresh, update.refresh_installed).
+ENVIRONMENT = {**os.environ, "WINGBOX_JOBS": "1",
+               "PYTHONPATH": os.pathsep.join(filter(None, (str(ROOT / "src"), os.environ.get("PYTHONPATH", ""))))}
 # Every module a Python started by Wingbox imports first, as a file a project could hold.
 TRAPS = ("wingbox/__init__.py", "wingbox/__main__.py", "wingbox/cli.py", "wingbox/refresh.py", "pip/__init__.py",
          "pip/__main__.py", "yaml.py", "json.py", "tree_sitter.py")
@@ -71,7 +77,7 @@ class ProjectCodeNeverRunsTest(unittest.TestCase):
             project = project_with_traps(folder)
             done = subprocess.run([*module_command(sys.executable, "wingbox"), "build", "."], cwd=project, capture_output=True,
                                   text=True, encoding="utf-8", errors="replace", timeout=300,
-                                  env={**os.environ, "WINGBOX_JOBS": "1"})
+                                  env=ENVIRONMENT)
             self.assertEqual(0, done.returncode, done.stderr)
             self.assertEqual([], marks(folder), done.stderr)
             index = (project / ".wingbox" / "index.sexp").read_text(encoding="utf-8")
@@ -90,7 +96,7 @@ class ProjectCodeNeverRunsTest(unittest.TestCase):
                 (project / name).write_text("import os\nopen(os.path.join(%r, 'RAN-' + %r), 'w').close()\n" % (folder, name),
                                             encoding="utf-8")
             done = subprocess.run([sys.executable, "-m", "wingbox", "build", "."], cwd=project, capture_output=True, text=True,
-                                  encoding="utf-8", errors="replace", timeout=300, env={**os.environ, "WINGBOX_JOBS": "1"})
+                                  encoding="utf-8", errors="replace", timeout=300, env=ENVIRONMENT)
             self.assertEqual(0, done.returncode, done.stderr)
             self.assertEqual([], marks(folder), done.stderr)
 
