@@ -9,6 +9,8 @@ or `rb`.
 ## Raw Graph Facts (in .wingbox/index.sexp)
 
 ```scheme
+(code-graph :schema 1 :files <n> :nodes <n> :edges <n> :violations <n>)
+(built-from :tree <digest> [:commit <sha>] [:wingbox <version>])
 (node <id> <lang> "<purpose>" :naming <convention> :pkg <repo>)
 (fn <mod> <name> <line> :eid <uuid>)
 (cls <mod> <name> <line> :eid <uuid> (:bases A) (:deco D) (:methods m1 m2))
@@ -16,13 +18,40 @@ or `rb`.
 (ifc <mod> <name> <line> :eid <uuid> (:methods m1 m2))
 (typ <mod> <name> <line> :eid <uuid>)
 (enm <mod> <name> <line> :eid <uuid>)
-(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp] [(:use|:reexport|:glob|:member|:macro ...)])
+(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp] [:line N | :lines N M ...] [(:use|:reexport|:glob|:member|:macro ...)])
 (calls-api <src> <tgt> :via-ifc [:lsp])
 (data-flow <src> <tgt> [:validation-module :evidence "<kind> <name>"] [:pipeline])
 (registry-wires <src> <tgt> [:config <path>])
-(refs <src> <tgt>::<Entity> [:callback] [:lsp])
+(refs <src> <tgt>::<Entity> [:callback] [:lsp] [:line N | :lines N M ...])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
+
+`built-from` names what the graph was built from. `:tree` is a digest of the
+path and the text of every source file in the graph, as the parsers read it
+(without a byte order mark, every line ending `\n`): the same files give the
+same digest on any machine and with any line endings, and a changed character
+gives another. `:commit`
+is the commit checked out when Git reported no change and no untracked file
+under the project folder at build time; with any change it is left out.
+`:wingbox` is the version that built the graph, when Wingbox runs as an
+installed package.
+
+`:line N` (or `:lines N M ...`, ascending, for several statements), the last
+mark of an `imports` or `refs` fact (the lists of names follow it), is the
+1-based line, in the file of `<src>`, where the statement
+that states the fact starts: an `import`, `from ... import`, `require`, `use`,
+`using` or `uses` statement, an import directive, an `import()` or `require()`
+call with a literal name, a `mod` declaration. A fact no single statement
+states carries no line: an import followed through a module facade or found by
+a naming convention (a constant, a type of the same package or namespace, a
+view or route name), a `refs` fact from a class naming its base or from a use
+in the code (those positions are in the use file: `usages`, `entity
+--positions`), and every `data-flow` and `calls-api` fact. A graph built
+before lines were stored reads the same way, without them.
+
+The query commands print these facts as they did before the lines existed;
+`module <id> --lines` and `search <pattern> --lines` print them with their
+lines (`search --lines` also matches the `built-from` fact).
 
 `:item` (Rust): the file names an item that a module facade re-exports
 (`pub use child::*`, `pub use child::Name`); the edge goes to the file that

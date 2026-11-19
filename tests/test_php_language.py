@@ -132,7 +132,7 @@ enum WidgetStatus: string
         )
 
     def test_parser_reads_aliased_and_grouped_use_statements(self) -> None:
-        """/* REQ-PHP-002: `use` statements, aliases and grouped `use A\\{B, C as D}` produce php-class imports and imported_names. */"""
+        """/* REQ-PHP-002: `use` statements, aliases and grouped `use A\\{B, C as D}` produce php-class imports and imported_names, each name with the line of its `use` statement. */"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             result = self._parse(
@@ -167,21 +167,25 @@ class Widget
                     "local": "User",
                     "original": "User",
                     "module": r"php-class:App\Models\User",
+                    "line": 4,
                 },
                 {
                     "local": "Billing",
                     "original": "Billing",
                     "module": r"php-class:App\Services\Billing",
+                    "line": 5,
                 },
                 {
                     "local": "ReportService",
                     "original": "Reports",
                     "module": r"php-class:App\Services\Reports",
+                    "line": 5,
                 },
                 {
                     "local": "Database",
                     "original": "DB",
                     "module": r"php-class:Illuminate\Support\Facades\DB",
+                    "line": 6,
                 },
             ],
             result.imported_names,

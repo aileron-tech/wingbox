@@ -18,10 +18,16 @@ class EntityPayload(EntityPayloadRequired, total=False):
     visible_in: str  # Rust: "super" for `pub(super)`, the path of `pub(in path)`: where a re-export carries the item
 
 
-class ImportedNamePayload(TypedDict):
+class ImportedNamePayloadRequired(TypedDict):
     local: str
     original: str
     module: str
+
+
+class ImportedNamePayload(ImportedNamePayloadRequired, total=False):
+    """line: the 1-based line of the statement that imports the name, when the name is read from one statement."""
+
+    line: int
 
 
 class BindingPayload(TypedDict):
@@ -138,13 +144,18 @@ class ImportedName:
     local_name: str
     original_name: str
     module: str
+    # The line of the import statement; 0 for a name no single statement imports. Not part of the identity.
+    line: int = field(default=0, compare=False)
 
     def to_dict(self) -> ImportedNamePayload:
-        return {
+        result: ImportedNamePayload = {
             "local": self.local_name,
             "original": self.original_name,
             "module": self.module,
         }
+        if self.line > 0:
+            result["line"] = self.line
+        return result
 
 
 @dataclass
@@ -167,6 +178,13 @@ class FileResult:
     imported_names: list[ImportedNamePayload]
     exported_names: list[str]
     relations: list[SourceRelationPayload] = field(default_factory=list)
+    # An entry of `imports` (the module as written) -> the 1-based lines of the statements that import it, in
+    # ascending order. An import no single statement states (a type of the same package, a literal found in a
+    # call that builds the name) has no entry: the graph never invents a line.
+    import_lines: dict[str, list[int]] = field(default_factory=dict)
+    # sha256 of the text the parser read: decoded, without a byte order mark, every line ending "\n". Set
+    # where the file is read (build_code_graph.parse_file); "" for a result made another way.
+    text_hash: str = ""
     # TypeScript: specifier -> "type" or "named" when the file imports it for names only
     import_forms: dict[str, str] = field(default_factory=dict)
     # Symbol index: module-level import bindings and the use sites of names.

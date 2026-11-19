@@ -9,7 +9,7 @@ from tree_sitter import Node, Parser
 
 from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
 from .validation import validation_evidence
 
@@ -36,6 +36,7 @@ class JavaImport:
     target: str
     is_static: bool
     is_wildcard: bool
+    line: int = 0   # the 1-based line of the import declaration
 
 
 def _package_name(root: Node) -> str:
@@ -140,6 +141,7 @@ def _parse_import(node: Node) -> JavaImport | None:
         target=f"{target}.*" if is_wildcard else target,
         is_static=bool(re.match(r"import\s+static\b", text)),
         is_wildcard=is_wildcard,
+        line=node.start_point[0] + 1,
     )
 
 
@@ -183,17 +185,23 @@ def parse_java_treesitter(
 
     imports: list[str] = []
     imported_names: list[ImportedName] = []
+    # An import declaration has a line, and so has a type its wildcard brings in; a type of the file's own
+    # package is not stated by any statement.
+    import_lines: dict[str, list[int]] = {}
     for java_import in java_imports:
         imports.append(java_import.target)
+        add_import_line(import_lines, java_import.target, java_import.line)
         if java_import.is_wildcard:
             namespace = java_import.target.removesuffix(".*")
             for type_name in referenced_types:
                 candidate = f"{namespace}.{type_name}"
                 imports.append(candidate)
+                add_import_line(import_lines, candidate, java_import.line)
                 imported_names.append(ImportedName(
                     local_name=type_name,
                     original_name=type_name,
                     module=candidate,
+                    line=java_import.line,
                 ))
             continue
 
@@ -202,6 +210,7 @@ def parse_java_treesitter(
             local_name=original,
             original_name=original,
             module=java_import.target,
+            line=java_import.line,
         ))
 
     if package:
@@ -254,5 +263,6 @@ def parse_java_treesitter(
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[entity.name for entity in entities],
+        import_lines=import_lines,
         validation_evidence=validation,
     )

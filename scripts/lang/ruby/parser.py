@@ -6,7 +6,7 @@ from tree_sitter import Node, Parser
 
 from ..interface import Entity, FileResult, ImportedName, SourceRelationPayload
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings
 from .validation import validation_evidence
 
@@ -225,9 +225,12 @@ def _walk_dependencies(
     root: Node,
     path: str,
     entities: list[Entity],
-) -> tuple[list[str], list[ImportedName], list[SourceRelationPayload]]:
+) -> tuple[list[str], list[ImportedName], list[SourceRelationPayload], dict[str, list[int]]]:
     imports: list[str] = []
     imported_names: list[ImportedName] = []
+    # Only require and require_relative are import statements with a line of their own: a constant is a use
+    # (its positions belong to `usages`), an association or a callback a convention.
+    import_lines: dict[str, list[int]] = {}
     relations: list[SourceRelationPayload] = []
     relation_keys: set[tuple[str, str, str, str]] = set()
     imported_keys: set[tuple[str, str]] = set()
@@ -329,6 +332,7 @@ def _walk_dependencies(
                         else "ruby-require:"
                     )
                     add_import(f"{prefix}{required}")
+                    add_import_line(import_lines, f"{prefix}{required}", node.start_point[0] + 1)
             elif method in _MIXINS and owner and declaration_scope:
                 for argument in arguments:
                     constant_name = _receiver_constant(argument)
@@ -408,6 +412,7 @@ def _walk_dependencies(
         unique_strings(iter(imports)),
         imported_names,
         relations,
+        import_lines,
     )
 
 
@@ -419,7 +424,7 @@ def parse_ruby_treesitter(
 ) -> FileResult:
     root = Parser(_RUBY_LANGUAGE).parse(content.encode("utf-8")).root_node
     entities, exported_names = _extract_entities(root)
-    imports, imported_names, relations = _walk_dependencies(
+    imports, imported_names, relations, import_lines = _walk_dependencies(
         root,
         path,
         entities,
@@ -449,5 +454,6 @@ def parse_ruby_treesitter(
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=exported_names,
         relations=relations,
+        import_lines=import_lines,
         validation_evidence=validation,
     )

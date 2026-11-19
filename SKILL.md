@@ -164,7 +164,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 
 | Command | Purpose | Example |
 |---|---|---|
-| `search "<pattern>"` | Safe literal/`.*` search on graph | `search "operative.*service"` |
+| `search "<pattern>" [--lines]` | Safe literal/`.*` search on graph; `--lines`: the facts as stored, with the source lines of `imports` and `refs` and the `built-from` fact | `search "operative.*service"` |
 | `analyze <id> [--all]` | Full module analysis (PRIMARY command); names at most 200 dependents unless `--all`; ends with the `(advice ...)` that concerns the module | `analyze drive/modules/drive/drive_schema` |
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
@@ -175,7 +175,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
 | `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; lists at most 200 unless `--all`, counts are always complete; ends with the advice that concerns the file | `impact src/billing/invoice.service.ts --sexp` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
-| `module <id>` | Single module with edges | `module operatives.controller` |
+| `module <id> [--lines]` | Single module with edges; `--lines`: each `imports` and `refs` fact names the line of the statement it is read from (`:line 7`, `:lines 3 9`), in the file of its source module | `module operatives.controller --lines` |
 | `wingbox init [PATH] [--force] [--sexp]` | Split the repository into parts, judge the architecture style of each (with score, evidence and sources) and write `.wingbox/config.yaml` (kept unless `--force`) and `.wingbox/assistant-setup.md` (the lines a team may add by hand to AGENTS.md, CLAUDE.md and .claude/settings.json; Wingbox writes nothing outside `.wingbox/`); `--synonyms` also maps folder names through the built-in word vectors; in an empty folder `--language L --style S --yes [--scaffold]` starts a new project (without them it prints the choices and exits 2) | `wingbox init --sexp` |
 | `wingbox advice [--sexp] [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; a recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) is never hidden by inaction and is rejected only with `--reason`; record a decision in `.wingbox/decisions.sexp` | `wingbox advice --sexp` |
 | `wingbox align [PART] [--to STYLE] [--learn] [--sexp]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported; a baseline entry may state `:owner "<who>" :reason "<why>" :expires YYYY-MM-DD` (written by the person who accepts the break, never by you on your own), and past that day the break is a violation again | `wingbox align --sexp` |
