@@ -65,17 +65,17 @@ Run them in a repository with source files (for example a clone of a public
 project). Positive:
 
 1. "Build the code graph of this repository and tell me where to start
-   reading." Expected: runs `wingbox build .` (MCP tool `build`), summarizes
+   reading." Expected: runs `wingbox build .` (MCP tool `build_graph`), summarizes
    `.wingbox/REPORT.md`: key findings, most depended-on modules, the map.
 2. "What depends on src/orders/order.py, and what could break if I change it?"
-   Expected: `wingbox impact` (tool `impact`): direct dependents, those within
+   Expected: `wingbox impact` (tool `analyze_impact`): direct dependents, those within
    two hops, the files to read first.
 3. "Which modules handle authentication, and which files should I read
-   first?" Expected: `wingbox quick "authentication"` (tool `quick`).
+   first?" Expected: `wingbox quick "authentication"` (tool `describe_module`).
 4. "Show the dependencies of the billing module two levels deep." Expected:
-   `wingbox deps <module> 2` (tool `deps`).
+   `wingbox deps <module> 2` (tool `list_dependencies`).
 5. "Which dependencies cross architecture layers here?" Expected:
-   `wingbox layers` or `wingbox boundaries` (tools `layers`, `boundaries`).
+   `wingbox layers` or `wingbox boundaries` (tools `list_layers`, `check_boundaries`).
 
 Negative (the plugin must not act):
 

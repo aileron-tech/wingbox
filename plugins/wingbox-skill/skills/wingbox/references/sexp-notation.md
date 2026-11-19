@@ -716,6 +716,26 @@ graph gives its `(error no-match ...)` line and exit status 0.
 (grep-functions-empty "pattern")
 ```
 
+## files Output
+
+```scheme
+(file <path> :module <mod> :lang ts :layer domain)
+(files-summary :count 12 :of 340 :pattern "pattern")
+(files-empty "pattern")
+```
+
+## source Output
+
+```scheme
+(source <path> :first 40 :last 80 :of 212 :entity <mod>::<name> :more 30 :next 81)
+(line 40 "text of the line, quoted")
+(error ambiguous "name" :candidates <path>::<name> <path>::<name>)
+```
+
+`:entity` is there when the target is a definition; `:more` and `:next` when the
+range is longer than the 400 lines one call prints. Only source files of the
+graph are printed; any other path is `(error no-match ...)`.
+
 ## diff_functions Output
 
 ```scheme

@@ -214,11 +214,11 @@ class ClaudeCodeEditsTest(FreshnessTestCase):
     def test_the_mcp_tools_answer_from_the_newest_graph(self) -> None:
         """/* REQ-FRESH-021: an MCP tool called after an edit must answer from the refreshed graph (its cache reloads the new file). */"""
         server = mcp_server.Server(str(self.root))
-        before = mcp_server.TOOLS_BY_NAME["impact"].run(server, {"target": "shop/notes.py"})
+        before = mcp_server.TOOLS_BY_NAME["analyze_impact"].run(server, {"target": "shop/notes.py"})
         self.assertNotIn("shop/cart", before.texts[0])
         self.edited("shop/cart.py", "from shop.notes import note\n\n\ndef pay(items):\n    return note()\n")
         with redirect_stderr(io.StringIO()):
-            after = mcp_server.TOOLS_BY_NAME["impact"].run(server, {"target": "shop/notes.py"})
+            after = mcp_server.TOOLS_BY_NAME["analyze_impact"].run(server, {"target": "shop/notes.py"})
         self.assertIn("shop/cart", after.texts[0])
         self.assertNotIn("wingbox-graph-stale", after.texts[0])
 

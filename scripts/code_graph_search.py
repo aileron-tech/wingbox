@@ -54,6 +54,9 @@ Usage::
     code_graph_search.py find_calls <fn_name> [depth]    What does this function call (outgoing calls)
     code_graph_search.py grep_functions <pattern>         Search function bodies in source files
     code_graph_search.py diff_functions [ref]             Identify changed functions in git diff (default: HEAD)
+    code_graph_search.py files [pattern]                  The source files of the graph: path, module, language, layer
+    code_graph_search.py source <file|Name|file::Name> [first] [last]
+                                                          The lines of a source file of the graph or of one definition
     code_graph_search.py query <scheme-expr>    Evaluate a Scheme query expression
     code_graph_search.py repl                   Interactive Scheme REPL
 
@@ -3386,6 +3389,115 @@ def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
     print(f"(grep-functions-summary :matches {len(results)} :pattern {_q(pattern)})")
 
 
+# ---------------------------------------------------------------------------
+# files, source: what the graph holds on disk
+# ---------------------------------------------------------------------------
+SOURCE_LINE_LIMIT = 400   # lines one `source` call prints; the first line says where to go on
+
+
+def cmd_files(g: CodeGraph, pattern: Optional[str] = None) -> None:
+    """The source files of the graph, sorted by path, with the module, the language and the layer of each;
+    with a pattern, the files whose path matches it."""
+    parsed = None
+    if pattern is not None:
+        parsed = parse_search_pattern(pattern)
+        if isinstance(parsed, SearchPatternErr):
+            _print_invalid_pattern(pattern, parsed.error)
+            return
+    rows = sorted((_impact_file(g, module), module) for module in g.nodes)
+    kept = [(path, module) for path, module in rows if parsed is None or search_pattern_matches(parsed.value, path)]
+    if not kept:
+        print(f"(files-empty {_q(pattern or '')})")
+        return
+    for path, module in kept:
+        print(f"(file {_q(path)} :module {_q(module)} :lang {g.module_lang(module)} :layer {_graph_layer(g, module)})")
+    print(f"(files-summary :count {len(kept)} :of {len(rows)}" + (f" :pattern {_q(pattern)})" if pattern is not None else ")"))
+
+
+def _source_module(g: CodeGraph, target: str) -> Optional[str]:
+    """The module of the graph a file path or module ID names exactly; None for anything else, so that
+    `source` never guesses which file to print."""
+    path = portable.local_path(target).replace(os.sep, "/")
+    if g._root and os.path.isabs(portable.local_path(target)):
+        relative = portable.relative_posix(portable.local_path(target), g._root)
+        if relative is None:
+            return None
+        path = relative
+    if path.startswith("./"):
+        path = path[2:]
+    if ".." in path.split("/"):
+        return None
+    for module in g.nodes:
+        if module == path or _impact_file(g, module) == path:
+            return module
+    return None
+
+
+def _source_target(g: CodeGraph, target: str) -> Union[tuple[str, Optional["EntityFact"]], str]:
+    """(module, entity or None) for a file, a module or one definition; or the error line."""
+    if "::" in target:
+        file_part, name = target.split("::", 1)
+        module = _source_module(g, file_part)
+        found = [e for e in g.entities.get(module, [])] if module is not None else []
+        found = [e for e in found if e.name == name]
+        return (module, found[0]) if module is not None and found else _no_match_fact(target, [])
+    module = _source_module(g, target)
+    if module is not None:
+        return module, None
+    found = g.entity_by_name.get(target, [])
+    if len(found) == 1:
+        return found[0].module, found[0]
+    if found:
+        candidates = " ".join(_q(f"{_impact_file(g, e.module)}::{e.name}") for e in sorted(found, key=lambda e: (e.module, e.line)))
+        return f"(error ambiguous {_q(target)} :candidates {candidates})"
+    return _no_match_fact(target, [])
+
+
+def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Optional[int] = None) -> None:
+    """The lines of one source file of the graph, or of one definition in it, numbered and quoted.
+
+    Only files of the graph are read: the path is the one the graph holds for the module, and a file that
+    resolves outside the root (a symbolic link) is refused."""
+    resolved = _source_target(g, target)
+    if isinstance(resolved, str):
+        print(resolved)
+        return
+    module, entity = resolved
+    path = g.module_to_file(module)
+    root = os.path.realpath(g._root) if g._root else ""
+    real = os.path.realpath(path)
+    if not os.path.isfile(real) or (root and not (real == root or real.startswith(root + os.sep))):
+        print(_no_match_fact(target, []))
+        return
+    try:
+        with open(real, "r", encoding="utf-8", errors="replace") as handle:
+            text_lines = handle.read().splitlines()
+    except OSError as error:
+        print(f"(error source-read-failed {_q(_impact_file(g, module))} {_q(str(error))})")
+        return
+    total = len(text_lines)
+    start, end = 1, total
+    if entity is not None:
+        later = sorted(e.line for e in g.entities.get(module, []) if e.line > entity.line)
+        start, end = entity.line, (later[0] - 1 if later else total)
+    if first is not None:
+        start = first
+    if last is not None:
+        end = min(last, total)
+    if start > max(total, 1) or end < start:
+        print(f"(error invalid-argument {_q(f'lines {start} to {end}: the file has {total} lines')})")
+        return
+    shown_end = min(end, start + SOURCE_LINE_LIMIT - 1)
+    head = f"(source {_q(_impact_file(g, module))} :first {start} :last {shown_end} :of {total}"
+    if entity is not None:
+        head += f" :entity {_q(f'{module}::{entity.name}')}"
+    if shown_end < end:
+        head += f" :more {end - shown_end} :next {shown_end + 1}"
+    print(head + ")")
+    for number in range(start, shown_end + 1):
+        print(f'(line {number} "{_escaped(text_lines[number - 1])}")')
+
+
 def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
     """Identify which functions were changed in a git diff.
 
@@ -4088,6 +4200,7 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         "find_function",
         "find_type",
         "grep_functions",
+        "files",
     }
     if args[0] in pattern_commands and len(args) >= 2:
         pattern_result = parse_search_pattern(args[1])
@@ -4098,6 +4211,18 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         unknown = [argument for argument in args[1:] if argument.startswith("--")]
         if unknown:
             return f"unknown option {unknown[0]}: {args[0]} takes --human, --json, --sexp and --all"
+
+    if args[0] == "source":
+        if len(args) < 2:
+            return "source requires a file path, a module ID or a name: <file>, Name or <file>::Name"
+        if len(args) > 4:
+            return "source takes a target and at most two line numbers: first and last"
+        numbers = args[2:4]
+        if not all(number.isdigit() and int(number) >= 1 for number in numbers):
+            return "source: first and last are line numbers from 1"
+        if len(numbers) == 2 and int(numbers[1]) < int(numbers[0]):
+            return "source: last is before first"
+        return None
 
     if args[0] == "usages":
         if len(args) < 2:
@@ -4302,6 +4427,10 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
     elif cmd == "diff_functions":
         ref = args[1] if len(args) >= 2 else "HEAD"
         cmd_diff_functions(g, ref)
+    elif cmd == "files":
+        cmd_files(g, args[1] if len(args) >= 2 else None)
+    elif cmd == "source" and len(args) >= 2:
+        cmd_source(g, args[1], *(int(number) for number in args[2:4]))
     elif cmd == "query" and len(args) >= 2:
         cmd_query(g, " ".join(args[1:]), sexp_path)
     elif cmd == "repl":
@@ -4310,7 +4439,7 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         print(f"(error unknown-command {_q(cmd if args else 'none')})")
         print("; Commands: analyze, boundary, quick, boundaries, layers, invariants, module, deps, rdeps, impact, entity, flow, search,")
         print(";          find_function, find_type, find_callchain, find_callers, find_calls, grep_functions, diff_functions,")
-        print(";          query, repl")
+        print(";          files, source, query, repl")
         return 1
     return 0
 

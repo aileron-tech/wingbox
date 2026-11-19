@@ -117,7 +117,7 @@ class BoundariesCoverageTest(unittest.TestCase):
             json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
                 "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "test", "version": "0"}}}),
             json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
-            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "boundaries", "arguments": {}}}),
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "check_boundaries", "arguments": {}}}),
         ]
         done = subprocess.run([sys.executable, "-m", "wingbox", "mcp", "--root", str(root)], input="\n".join(lines) + "\n",
                               capture_output=True, text=True, cwd=root, env=_environment(), timeout=300)
