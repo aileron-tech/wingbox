@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- The text for Claude Code's Code Mode (`references/code-mode.md` of the skill, and the line of the
+  block `wingbox install` writes) is an instruction first: what one call returns, that the list of
+  dependents is complete and where it is read from, and that the value of the block of code is the
+  answer. Each example now ends with that value instead of an assignment, so the assistant does
+  not spend a turn printing it.
+
 ## 0.15.0 - 2026-11-19
 
 ### Changes
