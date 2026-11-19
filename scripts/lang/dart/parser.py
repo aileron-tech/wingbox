@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ..interface import Entity, EntityPayload, FileResult, ImportedName
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings
 from .validation import validation_evidence
 
@@ -61,6 +61,7 @@ class DartDirective:
     uri: str
     kind: str
     conditional: bool = False
+    line: int = field(default=0, compare=False)   # the 1-based line of the directive
 
     @property
     def is_codegen(self) -> bool:
@@ -106,13 +107,13 @@ def _directives(root) -> list[DartDirective]:
     for child in root.named_children:
         if child.type == _PART_OF:
             directives.extend(
-                DartDirective(uri, "part_of")
+                DartDirective(uri, "part_of", line=child.start_point[0] + 1)
                 for uri in _uri_texts(child)
             )
             continue
         if child.type == _PART:
             directives.extend(
-                DartDirective(uri, "part")
+                DartDirective(uri, "part", line=child.start_point[0] + 1)
                 for uri in _uri_texts(child)
             )
             continue
@@ -128,7 +129,7 @@ def _directives(root) -> list[DartDirective]:
         )
         conditional = _is_conditional(child)
         directives.extend(
-            DartDirective(uri, kind, conditional)
+            DartDirective(uri, kind, conditional, line=child.start_point[0] + 1)
             for uri in _uri_texts(child)
         )
     return directives
@@ -507,8 +508,20 @@ def _imported_names(directives: list[DartDirective]) -> list[ImportedName]:
                 local_name=stem,
                 original_name=stem,
                 module=directive.uri,
+                line=directive.line,
             ))
     return names
+
+
+def _directive_lines(directives: list[DartDirective]) -> dict[str, list[int]]:
+    """URI -> the lines of the import, export, part and part of directives that name it (the URIs of
+    `imports`, so the codegen part is left out as it is there)."""
+    lines: dict[str, list[int]] = {}
+    for directive in directives:
+        if directive.kind == "part" and directive.is_codegen:
+            continue
+        add_import_line(lines, directive.uri, directive.line)
+    return lines
 
 
 def _part_directive_imports(directives: list[DartDirective]) -> list[str]:
@@ -603,6 +616,7 @@ def parse_dart_treesitter(
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=exported_names,
+        import_lines=_directive_lines(directives),
         validation_evidence=validation,
     )
 

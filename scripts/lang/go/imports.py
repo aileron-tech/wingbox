@@ -118,3 +118,11 @@ class BoundGoLanguage:
                 }
             )
         )
+
+    def additional_import_lines(self, result: FileResult) -> dict[str, list[int]]:
+        """Every file of an imported package, with the lines of the import specs that name the package."""
+        lines: dict[str, set[int]] = {}
+        for import_name, stated in result.import_lines.items():
+            for node_id in self._package_ids(import_name):
+                lines.setdefault(node_id, set()).update(stated)
+        return {node_id: sorted(found) for node_id, found in lines.items()}

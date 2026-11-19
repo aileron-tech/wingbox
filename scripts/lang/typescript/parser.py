@@ -6,7 +6,7 @@ from tree_sitter import Node, Parser as _TsParser
 
 from ..interface import BindingPayload, Entity, FileResult, ImportedName, UsePayload
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from .javascript import is_javascript_file
 from .symbols import module_bindings, module_names, use_sites
 from .validation import validation_evidence
@@ -186,11 +186,12 @@ _MODULE_CALLS = frozenset({
 })
 
 
-def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[no-untyped-def]
-    """Every static and literal runtime dependency in source order, with the form of its statement."""
-    occurrences: list[tuple[str, str]] = []
+def _ts_dependency_occurrences(root) -> list[tuple[str, str, int]]:  # type: ignore[no-untyped-def]
+    """Every static and literal runtime dependency in source order, with the form of its statement and the
+    1-based line where the statement (or the call that loads the module) starts."""
+    occurrences: list[tuple[str, str, int]] = []
 
-    def _append_literal(node, form: str) -> None:  # type: ignore[no-untyped-def]
+    def _append_literal(node, form: str, line: int) -> None:  # type: ignore[no-untyped-def]
         if node is None or not node.text:
             return
         if node.type == "string":
@@ -205,7 +206,7 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[n
         else:
             return
         if specifier:
-            occurrences.append((specifier, form))
+            occurrences.append((specifier, form, line))
 
     def _visit(node) -> None:  # type: ignore[no-untyped-def]
         if node.type in ("import_statement", "export_statement"):
@@ -223,7 +224,7 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[n
                 if import_require is not None:
                     source = import_require.child_by_field_name("source")
                     form = "value"
-            _append_literal(source, form)
+            _append_literal(source, form, node.start_point[0] + 1)
         elif node.type == "call_expression":
             function = node.child_by_field_name("function")
             function_name = (
@@ -238,7 +239,7 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[n
                     first_argument = next(
                         (child for child in arguments.named_children if child.type != "comment"), None
                     )
-                    _append_literal(first_argument, "value")
+                    _append_literal(first_argument, "value", node.start_point[0] + 1)
 
         for child in node.named_children:
             _visit(child)
@@ -247,12 +248,23 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str]]:  # type: ignore[n
     return occurrences
 
 
-def _ts_dependency_specifiers(root) -> list[str]:  # type: ignore[no-untyped-def]
+_Occurrences = list[tuple[str, str, int]]   # what _ts_dependency_occurrences returns: one walk serves the three below
+
+
+def _ts_dependency_specifiers(occurrences: _Occurrences) -> list[str]:
     """Extract static and literal runtime dependencies in source order."""
-    return list(dict.fromkeys(specifier for specifier, _ in _ts_dependency_occurrences(root)))
+    return list(dict.fromkeys(specifier for specifier, _form, _line in occurrences))
 
 
-def _ts_import_forms(root) -> dict[str, str]:  # type: ignore[no-untyped-def]
+def _ts_import_lines(occurrences: _Occurrences) -> dict[str, list[int]]:
+    """Specifier -> the lines of the statements and calls that name it."""
+    lines: dict[str, list[int]] = {}
+    for specifier, _form, line in occurrences:
+        add_import_line(lines, specifier, line)
+    return lines
+
+
+def _ts_import_forms(occurrences: _Occurrences) -> dict[str, str]:
     """Specifiers that this file imports for names only, never as a value.
 
     "type" when every statement that names the specifier is a type import,
@@ -260,7 +272,7 @@ def _ts_import_forms(root) -> dict[str, str]:  # type: ignore[no-untyped-def]
     default, namespace, side-effect, re-export or runtime import is left out.
     """
     forms: dict[str, set[str]] = {}
-    for specifier, form in _ts_dependency_occurrences(root):
+    for specifier, form, _line in occurrences:
         forms.setdefault(specifier, set()).add(form)
     return {
         specifier: "type" if seen == {"type"} else "named"
@@ -302,7 +314,8 @@ def parse_typescript_treesitter(
     tree = parser.parse(content.encode("utf-8"))
     root = tree.root_node
 
-    imports = _ts_dependency_specifiers(root)
+    occurrences = _ts_dependency_occurrences(root)
+    imports = _ts_dependency_specifiers(occurrences)
     exports_abstract: list[str] = []
     implements_list: list[str] = []
     extends_list: list[str] = []
@@ -344,6 +357,7 @@ def parse_typescript_treesitter(
                                     local_name=_node_text(ic),
                                     original_name="default",
                                     module=specifier,
+                                    line=node.start_point[0] + 1,
                                 ))
                             elif ic.type == "named_imports":
                                 for spec in ic.children:
@@ -357,6 +371,7 @@ def parse_typescript_treesitter(
                                                 local_name=local,
                                                 original_name=orig,
                                                 module=specifier,
+                                                line=node.start_point[0] + 1,
                                             ))
 
         # -- Class --
@@ -535,7 +550,8 @@ def parse_typescript_treesitter(
         entities=[e.to_dict() for e in entities],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
-        import_forms=_ts_import_forms(root),
+        import_forms=_ts_import_forms(occurrences),
+        import_lines=_ts_import_lines(occurrences),
         bindings=bindings,
         uses=_use_sites(root, bindings, lang, full=False),
         validation_evidence=validation,

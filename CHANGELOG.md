@@ -1,9 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 - 2026-11-19
 
 ### Changes
 
+- Edges carry the source line they come from. An `imports` or `refs` fact of `.wingbox/index.sexp`
+  that is read from import statements names the line where each statement starts: `:line 7`, or
+  `:lines 3 9` when two statements import the same module. It covers the import statements of
+  every supported language (`import`, `from ... import`, `require`, `use`, `using`, `uses`, import
+  directives, `import()` and `require()` calls with a literal name, Rust `mod` declarations). A
+  fact that no single statement states (an import followed through a module facade or found by a
+  naming convention, a reference from a class to its base, a data-flow fact) carries no line.
+  `wingbox module <id> --lines` prints the edges of a module with their lines, and `search
+  <pattern> --lines` the facts as stored. Every other output is unchanged.
+- The graph names what it was built from. The line after the header, `(built-from :tree <digest>
+  [:commit <sha>] [:wingbox <version>])`, carries a digest of the paths and the text of the
+  source files in the graph, the commit when Git reported a clean working tree at build time, and
+  the Wingbox version. The same files give the same digest on any machine and with any line
+  endings, so an exported fact can be tied to a snapshot of the repository. A graph built by an earlier version is read as
+  before; the first build after the upgrade parses every file again, once
+  ([#124](https://github.com/aileron-tech/wingbox/issues/124)).
 - `wingbox boundaries --strict`: a mode for gates. It prints the same lines as before, then one
   `(boundaries-checked :part P :style S :modules N)` fact for each part that was checked and, as
   the last line, `(boundaries-result :status pass|fail|incomplete|error :checked N :not-checked N

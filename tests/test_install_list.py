@@ -282,7 +282,7 @@ class RefreshHooksTest(unittest.TestCase):
         self.assertEqual((0, "", ""), (done.returncode, done.stdout, done.stderr))
         self.wait_until_fresh()
         graph = (self.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8")
-        self.assertIn("(imports pr1 pr2)", graph)
+        self.assertIn("(imports pr1 pr2 :line 1)", graph)
 
     def test_session_start_refreshes_a_stale_graph_and_nothing_else(self) -> None:
         """/* REQ-FRESH-051: `wingbox hook session-start` refreshes a graph that misses changes in the background and prints nothing; in a fresh project or a folder without a graph it does nothing and writes nothing. */"""
@@ -293,7 +293,7 @@ class RefreshHooksTest(unittest.TestCase):
         done = self.hook("session-start", {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(self.root)})
         self.assertEqual((0, ""), (done.returncode, done.stdout))
         self.wait_until_fresh()
-        self.assertIn("(imports pr1 pr2)", (self.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8"))
+        self.assertIn("(imports pr1 pr2 :line 1)", (self.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as empty:
             done = subprocess.run([sys.executable, "-m", "wingbox.cli", "hook", "session-start"],
                                   input=json.dumps({"cwd": empty}), capture_output=True, text=True, cwd=empty,
