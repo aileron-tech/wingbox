@@ -20,6 +20,7 @@ _SEPARATORS: dict[str, Optional[str]] = {
     "python": ".", "rust": "::", "typescript": None, "tsx": None, "javascript": None,
 }
 _MAX_DEPTH = 16
+_ENDLESS = _MAX_DEPTH + 1  # the height of a chain of glob imports that no search follows to its end
 # Entity kinds whose methods a call can name: classes, structs, enums, interfaces, traits.
 _MEMBER_KINDS = frozenset({"class", "enum", "interface"})
 
@@ -65,11 +66,20 @@ class SymbolIndex:
     """Definitions, bindings and globs of every module, resolved lazily and memoised.
 
     With trace=True the index also records what each answer read: the modules
-    whose definitions or bindings it looked at (("m", id)) and the module names
-    it resolved (("q", spec)). Every memoised answer keeps what it read, so a
-    later answer served from the memo still names it; begin() and end() collect
-    what the uses of one file read, for an update that redoes only the files
-    whose inputs changed.
+    whose definitions or bindings it looked at (("m", id)), the module names
+    it resolved (("q", spec)) and the modules whose glob imports it searched
+    (("c", id)). Every memoised answer keeps what it read, so a later answer
+    served from the memo still names it; begin() and end() collect what the
+    uses of one file read, for an update that redoes only the files whose
+    inputs changed.
+
+    A name looked for behind the glob imports of a module (`from .a import *`,
+    `export * from`, `pub use a::*`) may be defined by any module those imports
+    reach, directly or through further globs: the answer reads all of them.
+    One item, ("c", module), stands for that whole set (glob_record gives the
+    part each module adds to it), so that an answer keeps a few items however
+    many modules stand behind a facade, and the search itself visits only the
+    glob imports that reach a module holding the name.
     """
 
     def __init__(
@@ -103,6 +113,13 @@ class SymbolIndex:
         self._cuts = 0
         self._by_local: dict[str, dict[str, list]] = {}
         self._glob_targets: dict[str, list[tuple[str, bool]]] = {}
+        # For the search behind glob imports: the modules that define or bind each name, the modules
+        # the globs of a module reach, and through which of its glob imports each of them is reached.
+        self._holders: Optional[dict[str, set[str]]] = None
+        self._reached: dict[str, frozenset[str]] = {}
+        self._routes: dict[str, dict[str, tuple[int, ...]]] = {}
+        self._heights: dict[str, int] = {}
+        self._tallest: dict[str, list[tuple[int, int]]] = {}
 
     # -- tracing ------------------------------------------------------------
 
@@ -145,21 +162,124 @@ class SymbolIndex:
         return self._by_local[module].get(local, [])
 
     def _globs_of(self, module: str) -> list[tuple[str, bool]]:
-        """The modules a module glob-imports or re-exports with `*`, and whether in its own scope."""
-        key = ("g", module)
-        if module in self._glob_targets:
-            self._hit(key)
-            return self._glob_targets[module]
-        self._open()
-        result = self._results[module]
-        found: list[tuple[str, bool]] = []
-        for binding in self._bindings_named(module, "*"):
-            target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
-            if target is not None:
-                found.append((target, binding["scope"]))
-        self._glob_targets[module] = found
-        self._close(key, True)
+        """The modules a module glob-imports or re-exports with `*`, and whether in its own scope.
+
+        What this reads (the module, the names of its glob imports) is part of the ("c", module) record
+        and is kept out of the answer being traced."""
+        found = self._glob_targets.get(module)
+        if found is None:
+            if self._trace:
+                self._stack.append(set())
+            result = self._results[module]
+            found = []
+            for binding in self._bindings_named(module, "*"):
+                target = self.module_id(ModuleRef(binding["module"], result.path, result.language))
+                if target is not None:
+                    found.append((target, binding["scope"]))
+            if self._trace:
+                self._stack.pop()
+            self._glob_targets[module] = found
         return found
+
+    def glob_record(self, module: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """What a module adds to the set that ("c", ...) stands for: the modules its glob imports name
+        and the module names of those imports as written (also the ones that resolve to nothing), sorted.
+        The whole set of ("c", m) is m, this record of m and of every module reached through the first part."""
+        result = self._results.get(module)
+        stars = [binding for binding in result.bindings if binding["local"] == "*"] if result is not None else []
+        if not stars:
+            return (), ()
+        targets = sorted({target for target, _scope in self._globs_of(module)})
+        return tuple(targets), tuple(sorted({binding["module"] for binding in stars}))
+
+    def _holding(self, name: str) -> Optional[set[str]]:
+        """The modules that define name or bind it by an import: the only ones `export` can answer for."""
+        if self._holders is None:
+            holders: dict[str, set[str]] = {}
+            for module, result in self._results.items():
+                for defined in self._defined[module]:
+                    holders.setdefault(defined, set()).add(module)
+                for binding in result.bindings:
+                    holders.setdefault(binding["local"], set()).add(module)
+            self._holders = holders
+        return self._holders.get(name)
+
+    def _reach(self, module: str) -> frozenset[str]:
+        """Every module the glob imports of module reach, through any number of further glob imports."""
+        known = self._reached.get(module)
+        if known is not None:
+            return known
+        found: set[str] = set()
+        todo = [target for target, _scope in self._globs_of(module)]
+        while todo:
+            current = todo.pop()
+            if current in found:
+                continue
+            found.add(current)
+            reached = self._reached.get(current)
+            if reached is not None:
+                found.update(reached)
+            else:
+                todo.extend(target for target, _scope in self._globs_of(current))
+        self._reached[module] = frozenset(found)
+        return self._reached[module]
+
+    def _height(self, module: str) -> int:
+        """How many glob imports the longest chain below module strings together; _ENDLESS when the chains
+        reach a re-export cycle (or are longer than any search goes)."""
+        heights = self._heights
+        if module in heights:
+            return heights[module]
+        path = [module]
+        on_path = {module}
+        pending = [[target for target, _scope in self._globs_of(module)]]
+        best = [0]
+        while path:
+            current, targets = path[-1], pending[-1]
+            if targets:
+                target = targets.pop()
+                if target in on_path:
+                    best[-1] = _ENDLESS
+                elif target in heights:
+                    best[-1] = max(best[-1], min(_ENDLESS, heights[target] + 1))
+                else:
+                    path.append(target)
+                    on_path.add(target)
+                    pending.append([inner for inner, _scope in self._globs_of(target)])
+                    best.append(0)
+                continue
+            path.pop()
+            pending.pop()
+            on_path.discard(current)
+            heights[current] = height = best.pop()
+            if best:
+                best[-1] = max(best[-1], min(_ENDLESS, height + 1))
+        return heights[module]
+
+    def _tallest_globs(self, module: str) -> list[tuple[int, int]]:
+        """(height of the target, position in _globs_of) of every glob import of module, tallest first."""
+        found = self._tallest.get(module)
+        if found is None:
+            found = sorted(
+                ((self._height(target), position) for position, (target, _scope) in enumerate(self._globs_of(module))),
+                reverse=True,
+            )
+            self._tallest[module] = found
+        return found
+
+    def _glob_routes(self, module: str) -> dict[str, tuple[int, ...]]:
+        """Each module the globs of module reach -> the positions (in _globs_of) of the glob imports that reach it."""
+        routes = self._routes.get(module)
+        if routes is None:
+            collected: dict[str, list[int]] = {}
+            for position, (target, _scope) in enumerate(self._globs_of(module)):
+                collected.setdefault(target, []).append(position)
+                for reached in self._reach(target):
+                    if reached != target:
+                        collected.setdefault(reached, []).append(position)
+            routes = {reached: tuple(positions) for reached, positions in collected.items()}
+            self._routes[module] = routes
+        return routes
 
     def module_id(self, ref: ModuleRef) -> Optional[str]:
         self._touch(("q", ref.spec))
@@ -234,8 +354,33 @@ class SymbolIndex:
         result = self._results[module]
         if result.language == "python" and name.startswith("_"):
             return None
+        globs = self._globs_of(module)
+        if not globs and not self._bindings_named(module, "*"):
+            return None
+        # The answer depends on every module behind the globs: any of them may come to hold the name.
+        self._touch(("c", module))
+        # `export` answers None for a module when neither it nor a module its globs reach holds the name:
+        # only the glob imports that reach a holder are followed, in their order.
+        positions: set[int] = set()
+        holders = self._holding(name)
+        if holders:
+            routes = self._glob_routes(module)
+            if len(holders) <= len(routes):
+                positions.update(position for holder in holders for position in routes.get(holder, ()))
+            else:
+                positions.update(
+                    position for reached, through in routes.items() if reached in holders for position in through
+                )
+        # A glob import behind which the search would stop at a re-export cycle or at the depth limit is
+        # followed as well: such a stop decides which answers are kept (see export), as it always did.
+        within = _MAX_DEPTH - depth - 1
+        for height, position in self._tallest_globs(module):
+            if height <= within:
+                break
+            positions.add(position)
         found: set[Target] = set()
-        for target, scope in self._globs_of(module):
+        for position in sorted(positions):
+            target, scope = globs[position]
             if in_scope and not scope:
                 continue
             resolved = self.export(target, name, depth + 1, seen)
