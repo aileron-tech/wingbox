@@ -15,6 +15,14 @@
 - `tests/test_mcp_tools.py` (REQ-MCP-021..030) and `tests/test_mcp_server.py`: pass.
 - The Windows cells of the first CI run failed on REQ-MCP-027 (`changes`): `(diff-functions-no-match :files 1)`. `cmd_diff_functions` compared the path git prints (`shop/pricing.py`) with the graph's path (`shop\pricing.py`); the diff path is now normalized to the system's separator before the comparison. A defect of the command on Windows since it exists; no test ran it there before.
 
+## 2026-11-19 - Release 0.12.2
+
+### Changes
+- Version 0.12.2: every Python that Wingbox starts itself gets `-P`, so a folder of the project is never imported in place of an installed module (#134). The map-request workflow builds with 0.12.2.
+
+### Motivation
+- A fix of what Wingbox promises (code is read, never run) goes out on its own, at once.
+
 ## 2026-11-19 - A Python started by Wingbox never imports from the project folder (issue #134)
 
 ### Changes

@@ -16,6 +16,14 @@
 
 ### Fixes
 
+- Windows: the functions changed since a git ref (`wingbox diff_functions <ref>`, the MCP tool
+  `changes`) were not found, because the paths git prints and the paths of the graph were compared
+  with different separators.
+
+## 0.12.2 - 2026-11-19
+
+### Fixes
+
 - A Python that Wingbox starts itself no longer imports from the folder it is started in. The
   refresh the hooks start, the first build of the MCP server, the hooks of an install without the
   `wingbox` program and the steps of `wingbox update` ran `python -m ...` inside the project, and
@@ -25,9 +33,6 @@
   before it loads a parser. Code of a project is read, never run. An install whose hooks use the
   `python -m wingbox.cli` form is rewritten by `wingbox update`, or by one `wingbox install`
   ([#134](https://github.com/aileron-tech/wingbox/issues/134)).
-- Windows: the functions changed since a git ref (`wingbox diff_functions <ref>`, the MCP tool
-  `changes`) were not found, because the paths git prints and the paths of the graph were compared
-  with different separators.
 
 ## 0.12.1 - 2026-11-18
 
@@ -752,7 +757,6 @@ A release of the package page and the documents; the tool behaves as in 0.6.1.
   (`get_it`, `go_router`, `retrofit`) is not visible to static analysis.
   The Dart grammar is an opt-in extra, `pipx install "wingbox[dart]"`;
   without it `.dart` files are skipped with a warning and the build goes on.
-
 ## 0.5.0 - 2026-11-17
 
 ### Changes
