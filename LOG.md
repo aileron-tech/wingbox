@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - The Wingbox pull request check on this repository's own pull requests
+
+### Changes
+- `.github/workflows/wingbox.yml`: on every pull request the released action (`aileron-tech/wingbox-action@v1`) writes its one comment: who uses what the pull request changes, the tests that use it, the review plan. Default settings; it fails no job.
+
+### Motivation
+- The maintainer asked for the check on our own builds.
+
 ## 2026-11-19 - Release 0.12.2
 
 ### Changes
