@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-19 - The always-on block: the graph before text search, tests from the impact
+
+### Why
+- The owner's words: an instruction he found good in his own agents' work ("Prefer Wingbox to grep, rg, find and opening files for research, search and reading code: ask the graph first, then read only the files and lines it names. A text search is the fallback...") belongs in the block Wingbox installs, together with the rule for validating tests. A field report of a team of about thirty agents the same day said the same from the other side: one worker tested only the edited file, a dependent's test failed and the main branch went red.
+
+### Changes
+- `src/wingbox/install.py`, `ALWAYS_ON_BLOCK`: the first bullet is now the preference for the graph over `grep`, `rg`, `find` and opening files, with the fallback named; a new bullet ties tests to the impact analysis and asks, for every changed function, for a test that reaches it, and says that this proves reach, not the strength of the assertions. 1,147 characters (was 545).
+- `tests/test_install.py`, REQ-INSTALL-044: the phrases, that every `wingbox <command>` the block names exists, ASCII, at most 1,600 characters.
+
+### Verification
+- `tests.test_install`, `tests.test_plugins`, `tests.test_english_only`: pass. An installed block is replaced between its markers by `wingbox install` and `wingbox update` (REQ-INSTALL-012, unchanged).
+
 ## 2026-11-19 - MCP tools: three names become nouns, every description rewritten
 
 ### Why

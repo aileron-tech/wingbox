@@ -305,6 +305,33 @@ class BlockEditTest(unittest.TestCase):
         self.assertEqual(install.Edited("keep me\n"), install.remove_block(appended.text))
 
 
+class BlockTextTest(unittest.TestCase):
+    def test_the_block_puts_the_graph_before_text_search_and_ties_tests_to_impact(self) -> None:
+        """/* REQ-INSTALL-044: the always-on block tells the assistant to ask the graph before `grep`, `rg`, `find` or opening files and to read only what it names, with text search as the stated fallback; to run `impact` before changing a file; to take the tests of a change from the dependents `impact` names and to show for every changed function a test that reaches it, which proves reach and not the strength of the assertions. Every command it names is a command of `wingbox`, and the block stays short: at most 1,600 characters. */"""
+        block = install.ALWAYS_ON_BLOCK
+        for phrase in (
+            "Prefer Wingbox to `grep`, `rg`, `find` and opening files",
+            "ask the graph first",
+            "read only the files and lines it names",
+            "A text search is the fallback",
+            "Before changing a file, run `wingbox impact <file>`",
+            "Tests follow the impact",
+            "a test that reaches it",
+            "not that its assertions are strong",
+        ):
+            self.assertIn(phrase, block)
+        import re
+
+        named = set(re.findall(r"`wingbox ([a-z_]+)", block))
+        self.assertEqual({"quick", "analyze", "usages", "impact", "diff_functions"}, named)
+        search = cli.load_script("code_graph_search")
+        source = Path(search.__file__).read_text(encoding="utf-8")
+        for command in named:
+            self.assertIn(f'"{command}"', source, command)
+        self.assertLessEqual(len(block), 1600)
+        self.assertTrue(block.isascii())
+
+
 class InstallOutputTest(InstallTestCase):
     def test_install_prints_sexp_with_sexp_and_a_pretty_print_by_default(self) -> None:
         """/* REQ-INSTALL-013: `wingbox install --sexp` must print one `(install-wrote <path> :what ... :assistant ...)` fact per target; the default output is the same facts as aligned text, with the home folder shown as ~. */"""

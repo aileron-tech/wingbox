@@ -4,6 +4,13 @@
 
 ### Changes
 
+- The block that `wingbox install` writes into the assistant's instructions file says more. It now
+  tells the assistant to ask the graph before `grep`, `rg`, `find` or opening files and to read
+  only the files and lines the graph names, with text search as the fallback for a keyword that is
+  not a symbol or a graph older than the files; and that tests follow the impact analysis: the
+  dependents `wingbox impact` names decide which tests to write and run, and for every changed
+  function a test that reaches it is shown (`wingbox diff_functions`, `wingbox usages`). Run
+  `wingbox install` or `wingbox update` once to get the new block.
 - Three MCP tools are renamed, so that all eleven are nouns named after their answer: `build` is
   `graph`, `module` is `modules`, `query` is `facts`. **An MCP client that calls one of the three by
   its old name must use the new one**; the other eight tools and every `wingbox` command keep their
