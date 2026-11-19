@@ -57,7 +57,7 @@ class ByteOrderMarkTest(unittest.TestCase):
         self.assertNotIn("AST parse failed", output)
         self.assertIn(" bravo_func ", index)
         self.assertIn(" Charlie ", index)
-        self.assertIn("::bravo_func)", index)
+        self.assertIn("::bravo_func :line 1)", index)
 
     def test_a_bom_changes_nothing_in_the_graph_of_any_language(self) -> None:
         """/* REQ-LANG-013: for every language (Python, TypeScript, Rust, Java, C#, Go, Ruby, PHP) the graph of a project whose source files and manifests (tsconfig.json, Cargo.toml, go.mod) start with a UTF-8 byte order mark must be byte for byte the graph of the same project without it: same nodes, entities with the same line numbers, edges and layers. */"""
@@ -66,11 +66,11 @@ class ByteOrderMarkTest(unittest.TestCase):
             marked, output = build(Path(tmp) / "marked" / "project", bom=True)
         for name in NAMES:
             self.assertIn(f" {name} ", plain, name)
-        self.assertIn("::kiloTs)", plain)          # the alias of tsconfig.json resolves
-        self.assertIn("::echo_rs)", plain)         # the package name of Cargo.toml resolves
+        self.assertIn("::kiloTs :line 1)", plain)          # the alias of tsconfig.json resolves
+        self.assertIn("::echo_rs :line 1)", plain)         # the package name of Cargo.toml resolves
         hotel, mike = (re.search(rf"\((\w+) {name}\)", plain) for name in ("hotel", "mike"))
         assert hotel is not None and mike is not None
-        self.assertIn(f"(imports {hotel.group(1)} {mike.group(1)})", plain)   # the module name of go.mod resolves
+        self.assertIn(f"(imports {hotel.group(1)} {mike.group(1)} :line 3)", plain)   # the module name of go.mod resolves
         self.assertEqual(plain, marked, output)
 
 

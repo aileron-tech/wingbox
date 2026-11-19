@@ -64,22 +64,3 @@ jobs:
         # program, which on Windows is a running wingbox.exe the installer has to replace (tools/check_update.py).
         shell: bash
         run: uv run --no-project --python "${{ matrix.python }}" python tools/check_update.py
-
-  # The one command that downloads, against the real package index, in a job of its own so that an index
-  # outage is told apart from a failing test: the checkout installed without any extra, a build that skips
-  # C# and Go, `wingbox add` of both into a temporary per-user folder, and the graph with them at its next
-  # use (tools/check_add.py). The unit tests of the matrix cover the same path without the network.
-  add:
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        run: pipx install uv
-      - name: wingbox add from the package index
-        shell: bash
-        run: uv run --no-project --python 3.12 python tools/check_add.py

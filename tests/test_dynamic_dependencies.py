@@ -12,14 +12,11 @@ from scripts.lang import LANGUAGES
 
 class DynamicDependencyTests(unittest.TestCase):
     def _without_pythonpath(self) -> dict[str, str]:
-        environment = {
+        return {
             name: value
             for name, value in os.environ.items()
             if name != "PYTHONPATH"
         }
-        # No parser of the per-user folder either (`wingbox add` on the machine that runs the tests).
-        environment["WINGBOX_PARSERS_DIR"] = str(Path(__file__).resolve().parent / "no-parsers-here")
-        return environment
 
     def test_python_only_build_needs_no_tree_sitter_packages(self) -> None:
         """/* REQ-DEPS-001: A Python-only map builds when every optional Tree-sitter package is absent. */"""

@@ -11,6 +11,120 @@
   dependents `wingbox impact` names decide which tests to write and run, and for every changed
   function a test that reaches it is shown (`wingbox diff_functions`, `wingbox usages`). Run
   `wingbox install` or `wingbox update` once to get the new block.
+- Three MCP tools are renamed, so that all eleven are nouns named after their answer: `build` is
+  `graph`, `module` is `modules`, `query` is `facts`. **An MCP client that calls one of the three by
+  its old name must use the new one**; the other eight tools and every `wingbox` command keep their
+  names.
+- The description of every MCP tool is rewritten for an agent that reads nothing else: what the tool
+  does and what comes back, when to use it, which tool to use for the neighbouring question, that a
+  long list stops at 200 items unless `all` is true, and what an unknown name returns. `definitions`
+  now says that `name` may be a pattern (`parse_.*`).
+
+### Fixes
+
+- `wingbox query "(help)"`, and so the MCP tool `facts` with the expression `(help)`, lists the
+  functions of the query language, as the tool's description says. It answered "unknown function:
+  help" outside the interactive `wingbox repl`.
+
+## 0.13.0 - 2026-11-19
+
+### Changes
+
+- Edges carry the source line they come from. An `imports` or `refs` fact of `.wingbox/index.sexp`
+  that is read from import statements names the line where each statement starts: `:line 7`, or
+  `:lines 3 9` when two statements import the same module. It covers the import statements of
+  every supported language (`import`, `from ... import`, `require`, `use`, `using`, `uses`, import
+  directives, `import()` and `require()` calls with a literal name, Rust `mod` declarations). A
+  fact that no single statement states (an import followed through a module facade or found by a
+  naming convention, a reference from a class to its base, a data-flow fact) carries no line.
+  `wingbox module <id> --lines` prints the edges of a module with their lines, and `search
+  <pattern> --lines` the facts as stored. Every other output is unchanged.
+- The graph names what it was built from. The line after the header, `(built-from :tree <digest>
+  [:commit <sha>] [:wingbox <version>])`, carries a digest of the paths and the text of the
+  source files in the graph, the commit when Git reported a clean working tree at build time, and
+  the Wingbox version. The same files give the same digest on any machine and with any line
+  endings, so an exported fact can be tied to a snapshot of the repository. A graph built by an earlier version is read as
+  before; the first build after the upgrade parses every file again, once
+  ([#124](https://github.com/aileron-tech/wingbox/issues/124)).
+- `wingbox boundaries --strict`: a mode for gates. It prints the same lines as before, then one
+  `(boundaries-checked :part P :style S :modules N)` fact for each part that was checked and, as
+  the last line, `(boundaries-result :status pass|fail|incomplete|error :checked N :not-checked N
+  :violations N :known N [:reason R])`. The exit status follows the status: 0 only when every part
+  with files was checked, at least one file was checked and nothing breaks a rule; 1 for a
+  violation; 2 when a part was not checked for any reason (declared rules not read, a style that
+  is undetermined or has no layers, too few files, files in no part) or no file was checked; 3
+  when the check could not run (no graph, a graph that cannot be read, an invalid argument). A
+  script can now tell "checked and clean" from "nothing was checked" and a violation from a tool
+  error. Without `--strict` the output and the exit status are unchanged
+  ([#123](https://github.com/aileron-tech/wingbox/issues/123)).
+- The MCP server can be called from another machine. `wingbox mcp --http` serves the same tools
+  over the Streamable HTTP transport of MCP at `http(s)://<host>:8765/mcp`, for Claude Code
+  (`claude mcp add --transport http ... --header "Authorization: Bearer ..."`), Codex
+  (`codex mcp add ... --url ... --bearer-token-env-var ...`) and any client that speaks that
+  transport. Install it with `pip install "wingbox[http]"`: the transport is a separate package,
+  `wingbox-http`, so `wingbox` itself still holds no listening code. By default it listens on
+  `127.0.0.1` only; any other address needs a token of at least 32 characters
+  (`WINGBOX_HTTP_TOKEN` or `--token-file`), `--tls-cert` and `--tls-key` serve HTTPS, and a long
+  call such as `build` is answered as an event stream with keep-alive lines. See "Over HTTP, from
+  another machine" in the README.
+- The MCP server has eleven tools instead of eighteen, each named after its answer: `build`,
+  `impact`, `module`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`,
+  `changes`, `query`. **An MCP client that calls a tool by its old name must use the new one**:
+  `analyze` and `quick` are `module`; `find_function`, `find_type` and `entity` are `definitions`
+  (`kind`: any, function, type); `deps` and `rdeps` are `dependencies` (`direction`: out, in);
+  `find_callers`, `find_calls` and `find_callchain` are `calls` (`direction`: in, out; `to`);
+  `diff_functions` is `changes`; `boundary` is gone, `impact` lists the files to read first. Every description says what the answer holds and
+  when to take the neighbouring tool, and every parameter is described. The `wingbox` command
+  keeps its command names.
+- The parsers of every language are installed with the package again. One `pipx install wingbox`,
+  `pip install wingbox` or `uvx wingbox` gives every language Wingbox reads; nothing has to be
+  added per language. **After upgrading from 0.12, run `wingbox build` once in a project whose
+  graph left a language out.** The Dart parser has no wheel for Windows on arm64: there the
+  package installs without it and a build skips `.dart` files with a warning.
+- The download of parsers is removed, and with it every network access of Wingbox: no code of the
+  package opens a network connection, and the test that proves it from the import statements has
+  no exception. `wingbox update` starts your package installer (pipx, uv or pip), as before.
+- `wingbox add` is kept as a command that does nothing, so that a script written for 0.12 still
+  runs: `wingbox add csharp`, `wingbox add --list` and `wingbox add php --from FILE` exit 0 and
+  say that every parser is in the package (`--list` shows the parser of each language as
+  installed or not). It downloads nothing and writes nothing. The extras `wingbox[csharp]`,
+  `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]` and `[all]` stay valid.
+- The per-user parser folder is no longer read: a parser is imported only from the environment
+  that runs Wingbox, and `WINGBOX_PARSERS_DIR` has no effect. Wingbox does not delete the folder
+  `~/.wingbox/parsers` that 0.12 may have filled; you can delete it.
+- A parser that is missing all the same (a broken install, Dart on Windows arm64) is handled as
+  in 0.12: the build maps the other languages and records one line that every reader of the graph
+  passes on. Its command is now the pip extra:
+  `(skipped-language dart :files 214 :add "pip install \"wingbox[dart]\"")`.
+- A baseline entry can say who accepted a rule break, why and until when. Add `:owner "<who>"
+  :reason "<why>" :expires YYYY-MM-DD` to a line of `.wingbox/baseline.sexp`; `wingbox boundaries`
+  prints the three fields on the `violation-known` (or `capability-violation-known`) line. From
+  the day after `:expires`, or when the date cannot be read, the entry no longer hides its
+  finding: it is a `violation` again, marked `:expired <date>`, `boundaries` exits 1 and `wingbox
+  advice` asks for the fix again. `wingbox align --learn` writes entries as before and keeps the
+  fields you added when it writes the file again. Entries without the fields behave as before
+  ([#125](https://github.com/aileron-tech/wingbox/issues/125)).
+
+### Fixes
+
+- Python projects that keep their package under `src/`: a test, a script or any file outside
+  `src/` that imports the package by its name (`from shop.pricing import total` with
+  `src/shop/pricing.py`) now depends on that module. Before, `wingbox impact` and `wingbox usages`
+  did not name the tests of such a project. Each part of a monorepo reaches its own `src/`; a
+  package beside the importing file or at the root of the repository still comes first. Rebuild
+  the graph once (`wingbox build --full`) to get the new dependencies.
+- Windows: the functions changed since a git ref (`wingbox diff_functions <ref>`, the MCP tool
+  `changes`) were not found, because the paths git prints and the paths of the graph were compared
+  with different separators.
+- A recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) no longer
+  disappears from `wingbox advice`, REPORT.md and the map after three builds without a reaction.
+  It stays until the finding is fixed, accepted in the baseline, or rejected with `wingbox advice
+  reject <id> --reason TEXT`; for these recommendations `reject` now requires the reason (exit
+  status 2 without one). A recommendation of this kind that an earlier version hid is shown
+  again. Layout suggestions (`missing-folder`, `move`) are still hidden after three builds.
+- Rebuilding unchanged code no longer counts as a build in which a recommendation was ignored:
+  only a build whose graph differs from the previous one counts toward the three
+  ([#125](https://github.com/aileron-tech/wingbox/issues/125)).
 
 ## 0.12.2 - 2026-11-19
 

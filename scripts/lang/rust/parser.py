@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import tree_sitter_rust as _tsr
 from tree_sitter import Language as _RustTreeSitterLanguage
@@ -9,7 +9,7 @@ from tree_sitter import Node, Parser as _RustParser
 
 from ..interface import Entity, FileResult, ImportedName, TypeMembersPayload, UsePayload
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from .symbols import use_bindings_and_sites
 
 
@@ -21,6 +21,7 @@ class RustUse:
     path: str
     alias: str | None = None
     glob: bool = False
+    line: int = field(default=0, compare=False)   # the 1-based line of the use declaration
 
 
 def _node_text(node: Node | None) -> str:
@@ -123,7 +124,7 @@ def _collect_uses(root: Node) -> list[RustUse]:
             for leaf in _use_leaves(node):
                 path = _path_seen_from_file(leaf.path, inline_depth)
                 if path is not None:
-                    uses.append(RustUse(path, leaf.alias, leaf.glob))
+                    uses.append(RustUse(path, leaf.alias, leaf.glob, node.start_point[0] + 1))
             return
         is_inline_module = node.type == "mod_item" and node.child_by_field_name("body") is not None
         for child in node.named_children:
@@ -266,9 +267,12 @@ def _type_members(container: Node) -> list[TypeMembersPayload]:
     return found
 
 
-def _declared_modules(container: Node, prefix: tuple[str, ...]) -> list[str]:
+def _declared_modules(
+    container: Node, prefix: tuple[str, ...], lines: dict[str, list[int]] | None = None,
+) -> list[str]:
     """`mod name;` declarations as paths from the file's module: self::name, and self::outer::name for a
-    declaration inside the inline module outer (its file lies in the folder outer/)."""
+    declaration inside the inline module outer (its file lies in the folder outer/). With `lines`, the
+    1-based line of each declaration is recorded under its path."""
     declared: list[str] = []
     for node in container.named_children:
         if node.type != "mod_item":
@@ -279,15 +283,17 @@ def _declared_modules(container: Node, prefix: tuple[str, ...]) -> list[str]:
             continue
         if body is None:
             declared.append("::".join((*prefix, name)))
+            if lines is not None:
+                add_import_line(lines, declared[-1], node.start_point[0] + 1)
         else:
-            declared.extend(_declared_modules(body, (*prefix, name)))
+            declared.extend(_declared_modules(body, (*prefix, name), lines))
     return declared
 
 
 def _imported_name(rust_use: RustUse) -> ImportedName | None:
     if rust_use.glob:
         # Every public name of the module, as Python's `from m import *`.
-        return ImportedName(local_name="*", original_name="*", module=rust_use.path)
+        return ImportedName(local_name="*", original_name="*", module=rust_use.path, line=rust_use.line)
     parts = tuple(part for part in rust_use.path.split("::") if part)
     if len(parts) < 2:
         return None
@@ -296,6 +302,7 @@ def _imported_name(rust_use: RustUse) -> ImportedName | None:
         local_name=rust_use.alias or original_name,
         original_name=original_name,
         module="::".join(parts[:-1]),
+        line=rust_use.line,
     )
 
 
@@ -404,6 +411,10 @@ def parse_rust_treesitter(
     root = tree.root_node
     rust_uses = _collect_uses(root)
     imports = [rust_use.path for rust_use in rust_uses]
+    # A use declaration and a `mod` declaration have a line; a path written inline in the code has none.
+    import_lines: dict[str, list[int]] = {}
+    for rust_use in rust_uses:
+        add_import_line(import_lines, rust_use.path, rust_use.line)
     imports.extend(path for path in _collect_inline_paths(root, rust_uses) if path not in imports)
     imported_names = [
         imported_name
@@ -446,7 +457,7 @@ def parse_rust_treesitter(
         if implemented_trait and implemented_trait not in implements:
             implements.append(implemented_trait)
 
-    for module_import in _declared_modules(root, ("self",)):
+    for module_import in _declared_modules(root, ("self",), import_lines):
         if module_import not in imports:
             imports.append(module_import)
 
@@ -468,6 +479,7 @@ def parse_rust_treesitter(
         entities=entity_payloads,
         imported_names=[imported_name.to_dict() for imported_name in imported_names],
         exported_names=[entity.name for entity in entities],
+        import_lines=import_lines,
         bindings=bindings,
         uses=use_sites,
         type_members=_type_members(root),

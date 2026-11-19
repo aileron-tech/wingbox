@@ -66,22 +66,20 @@ After the install run `wingbox build .` in the project: it writes only the
 `.wingbox/` folder. Leave `wingbox install` to the user: it changes their own
 assistant settings.
 
-Python, TypeScript, JavaScript, Rust and Pascal are parsed as installed. The
-parsers of C#, Java, Go, Ruby, PHP and Dart are added on demand, and Wingbox
-never downloads one by itself. When a build warns that files were skipped, or
-an answer carries `(skipped-language csharp :files 214 :add "wingbox add csharp")`,
-the graph does not hold those files: tell the user in one line, and with their
-approval run the command of `:add` (it downloads one pinned parser from PyPI,
-checked by sha256, into `~/.wingbox/parsers`; `uvx wingbox add csharp` when the
-command is not installed). The graph of the project is rebuilt at its next use.
-Until then, search the files of that language with `rg`.
+The package installs the parsers of every language, and Wingbox opens no
+network connection. Where a parser is missing all the same (Dart on Windows
+arm64, a broken install), a build warns that files were skipped and every
+answer carries `(skipped-language dart :files 214 :add "pip install \"wingbox[dart]\"")`:
+the graph does not hold those files. Tell the user in one line; with their
+approval run the command of `:add` in the environment that runs Wingbox, then
+`wingbox build`. Until then, search the files of that language with `rg`.
 
 | Command | Purpose |
 |---|---|
 | `wingbox install [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run]` | Set up the assistants in the user's own settings (home folder only): this skill, the always-on block in CLAUDE.md / AGENTS.md, the Claude Code hooks. Items: `skill`, `block`, `search-hook`, `edit-hook`, `session-hook` (refresh a stale graph at session start), `git-hook` (refresh after git switch/pull/merge...); `--without` leaves items out (`ITEM` or `ASSISTANT:ITEM`, comma separated), and the choice is remembered. An agent runs it with `--yes`; it asks only a person at a terminal |
 | `wingbox uninstall [--assistant NAME ...] [--without ITEM,...]` | Remove exactly what install added (keeps the `--without` items); `--project` removes what versions before 0.9.0 wrote into a repository |
 | `wingbox open [PATH]` | Open `.wingbox/map.html` of the project in the browser (prints its path when there is no browser) |
-| `wingbox add LANGUAGE [LANGUAGE ...] [--from PATH]` | Install the parser of `csharp`, `java`, `go`, `ruby`, `php` or `dart`: the pinned wheel from PyPI, refused unless its sha256 matches, into `~/.wingbox/parsers` (`WINGBOX_PARSERS_DIR`); `--from` takes a wheel file or a folder of wheels instead of the network; `wingbox add --list` shows each language as installed or not. The only command that downloads a parser; run it with the user's approval |
+| `wingbox add [LANGUAGE ...] [--list]` | Kept for scripts written for 0.12; it adds nothing, because every parser is in the package. `--list` shows each language's parser as installed or not |
 | `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed items only (never adds an item the user left out); warns about files an earlier version left (`.code_graph*`, `wingbox-out/`, `install --project` files) |
 | `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin; refreshes the graph before it reads it |
 | `wingbox hook dirty` | The Claude Code PostToolUse hook on Edit and Write: marks the changed file so the graph is refreshed before its next use |
@@ -127,8 +125,7 @@ python3 -m pip install -r "$SKILL_ROOT/requirements/dart.txt"
 ```
 
 Install only the requirement files named by the builder, then rerun it.
-With the `wingbox` command installed, `wingbox add csharp` adds the same pinned
-parser without pip. `requirements.txt` is reserved for the infrastructure-topology dependency.
+`requirements.txt` is reserved for the infrastructure-topology dependency.
 
 ## Mandatory Workflow: Query Before Code
 
@@ -167,7 +164,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 
 | Command | Purpose | Example |
 |---|---|---|
-| `search "<pattern>"` | Safe literal/`.*` search on graph | `search "operative.*service"` |
+| `search "<pattern>" [--lines]` | Safe literal/`.*` search on graph; `--lines`: the facts as stored, with the source lines of `imports` and `refs` and the `built-from` fact | `search "operative.*service"` |
 | `analyze <id> [--all]` | Full module analysis (PRIMARY command); names at most 200 dependents unless `--all`; ends with the `(advice ...)` that concerns the module | `analyze drive/modules/drive/drive_schema` |
 | `quick <keyword>` | Search + analyze first match (shortcut) | `quick operatives` |
 | `boundary <id>` | Files to read for a change | `boundary operatives.service` |
@@ -178,14 +175,14 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
 | `impact <file\|id> [depth] --sexp [--all]` | Blast radius of one file: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; lists at most 200 unless `--all`, counts are always complete; ends with the advice that concerns the file | `impact src/billing/invoice.service.ts --sexp` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
-| `module <id>` | Single module with edges | `module operatives.controller` |
+| `module <id> [--lines]` | Single module with edges; `--lines`: each `imports` and `refs` fact names the line of the statement it is read from (`:line 7`, `:lines 3 9`), in the file of its source module | `module operatives.controller --lines` |
 | `wingbox init [PATH] [--force] [--sexp]` | Split the repository into parts, judge the architecture style of each (with score, evidence and sources) and write `.wingbox/config.yaml` (kept unless `--force`) and `.wingbox/assistant-setup.md` (the lines a team may add by hand to AGENTS.md, CLAUDE.md and .claude/settings.json; Wingbox writes nothing outside `.wingbox/`); `--synonyms` also maps folder names through the built-in word vectors; in an empty folder `--language L --style S --yes [--scaffold]` starts a new project (without them it prints the choices and exits 2) | `wingbox init --sexp` |
-| `wingbox advice [--sexp] [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; record a decision in `.wingbox/decisions.sexp` | `wingbox advice --sexp` |
-| `wingbox align [PART] [--to STYLE] [--learn] [--sexp]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported | `wingbox align --sexp` |
+| `wingbox advice [--sexp] [--learned]` / `wingbox advice accept\|reject <id> [--reason TEXT]` | Open recommendations of the last build (move, fix-violation, missing-folder) without the rejected or long-ignored ones; a recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) is never hidden by inaction and is rejected only with `--reason`; record a decision in `.wingbox/decisions.sexp` | `wingbox advice --sexp` |
+| `wingbox align [PART] [--to STYLE] [--learn] [--sexp]` | Gaps of each part against its style (placed files, rules followed, unplaced folders, broken rules); `--to` against another style; `--learn` writes learned folders and a baseline so that only new violations are reported; a baseline entry may state `:owner "<who>" :reason "<why>" :expires YYYY-MM-DD` (written by the person who accepts the break, never by you on your own), and past that day the break is a violation again | `wingbox align --sexp` |
 | `wingbox place "<what>" [--part PART] [--sexp]` | Layer and folder for new code by the placement rules of the part's style (`:new` when the folder does not exist yet) and what it may import | `wingbox place "repository for invoices" --sexp` |
 | `wingbox compare [--sexp]` | Parts of a monorepo per language: style, layers, differences (missing layers, a folder name meaning another layer, a style unlike the majority) and advice for the part that deviates | `wingbox compare --sexp` |
 | `wingbox learn --agent [PART] [--sexp]` / `wingbox learn --apply [FILE]` | `/wingbox learn`: run `wingbox learn --agent`, read the files it names, answer only in its format (`(layer <part> <folder> <layer> :because "...")`, `(unknown ...)`, at most one `(style ...)`), pipe the answer to `wingbox learn --apply`, show the result; on errors fix the named lines and send the whole answer again. When the code does not decide a folder, ask the user in the chat and answer with `:because "operator: <their words>"`; never guess. To change `.wingbox/config.yaml`, follow the instructions at its top | `wingbox learn --agent` |
-| `boundaries [id\|all]` | Check the boundary rules of each part's style (or of rules the part declares); each line names `:part`, `:style` and `:rule`; type-only imports and guessed layers are reported apart; then what files do that their layer may not (`capability-violation`: SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the domain, with `:line` and `:evidence`) and the style's pattern checks (`pattern-violation`). `boundaries-ok` only when every part was checked; a part whose declared rules were not read, or without a determined style, is `boundaries-not-checked` with `boundaries-partial` instead of ok. Exit status: 2 not checked (declared rules not read), 1 violations, 0 otherwise - never report a pass on exit 2 | `boundaries all` |
+| `boundaries [id\|all]` | Check the boundary rules of each part's style (or of rules the part declares); each line names `:part`, `:style` and `:rule`; type-only imports and guessed layers are reported apart; then what files do that their layer may not (`capability-violation`: SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the domain, with `:line` and `:evidence`) and the style's pattern checks (`pattern-violation`). `boundaries-ok` only when every part was checked; a part whose declared rules were not read, or without a determined style, is `boundaries-not-checked` with `boundaries-partial` instead of ok. Exit status: 2 not checked (declared rules not read), 1 violations, 0 otherwise - never report a pass on exit 2. For a gate add `--strict`: the last line is `(boundaries-result :status pass\|fail\|incomplete\|error :checked N :not-checked N :violations N :known N [:reason R])`, each checked part has a `(boundaries-checked :part P :style S :modules N)` fact, and the exit status is 0 pass, 1 violation, 2 incomplete (any part not checked, or no file checked), 3 error (no graph or a graph that cannot be read) | `boundaries all`, `boundaries all --strict` |
 | `invariants [id\|all]` | Check naming convention violations | `invariants all` |
 | `layers` | Show all modules by layer, with the part, style and rule that set each layer | `layers` |
 | `find_function <name>` | Find function/method definitions | `find_function createOrder` |
@@ -197,7 +194,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `diff_functions [ref]` | Changed functions in git diff | `diff_functions HEAD~3` |
 | `query '<sexp>'` | Composable Scheme query | `query '(count (boundary "X"))'` |
 | `repl` | Interactive Scheme REPL | `repl` |
-| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build`, `impact`, `usages`, `analyze`, `quick`, `boundary`, `deps`, ...) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
+| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`graph`, `impact`, `modules`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`, `changes`, `facts`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
 
 `impact` accepts an ordinary file path. Without `--sexp` it prints readable text
 for people; agents pass `--sexp` to get the same facts in the compact
@@ -313,11 +310,11 @@ Do not force it for commit-only tasks, git-log summaries, manual demo/server run
 
 ## Error Recovery
 
-If an answer starts with `(skipped-language <language> :files N :add "wingbox add <language>")`,
+If an answer starts with `(skipped-language <language> :files N :add "<command>")`,
 or a build prints `WARNING: ... files are skipped`: the parser of that language
 is not installed and its N files are not in the graph, so dependents and usages
 in those files are missing from every answer. Say so, ask the user to approve
-the command of `:add`, run it, and query again (the graph rebuilds itself).
+the command of `:add`, run it, then run `wingbox build` and query again.
 
 If a command returns `(error no-match ...)`:
 1. Do NOT retry with the same ID or guess another ID

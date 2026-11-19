@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 
 from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 
 
 _ROUTINE_KEYWORDS = {
@@ -48,6 +48,7 @@ class PascalToken:
 class PascalImport:
     name: str
     explicit_path: str = ""
+    line: int = field(default=0, compare=False)   # the 1-based line where the clause or directive names it
 
 
 def tokenize_pascal(content: str) -> list[PascalToken]:
@@ -154,6 +155,7 @@ def _parse_dependency_clause(
         if not name:
             index += 1
             continue
+        name_line = tokens[index].line
         index = after_name
         explicit_path = ""
         if index < len(tokens) and tokens[index].lower == "in":
@@ -161,7 +163,7 @@ def _parse_dependency_clause(
             if index < len(tokens) and tokens[index].kind == "string":
                 explicit_path = tokens[index].value
                 index += 1
-        imports.append(PascalImport(name, explicit_path))
+        imports.append(PascalImport(name, explicit_path, name_line))
         while index < len(tokens) and tokens[index].value not in {",", ";"}:
             index += 1
         if index < len(tokens) and tokens[index].value == ",":
@@ -180,7 +182,7 @@ def extract_pascal_imports(content: str) -> tuple[PascalImport, ...]:
             if match:
                 path = match.group(1).strip().strip("'\"")
                 if path:
-                    imports.append(PascalImport(f"pascal-include:{path}", path))
+                    imports.append(PascalImport(f"pascal-include:{path}", path, token.line))
             index += 1
             continue
         if token.lower in {"contains", "requires", "uses"}:
@@ -463,6 +465,9 @@ def parse_pascal(
 
     entity_payloads = [entity.to_dict() for entity in entities]
     import_names = [item.name for item in imports]
+    import_lines: dict[str, list[int]] = {}
+    for item in imports:
+        add_import_line(import_lines, item.name, item.line)
     return FileResult(
         path=path,
         language="pascal",
@@ -481,7 +486,7 @@ def parse_pascal(
         entities=entity_payloads,
         imported_names=[
             *[
-                ImportedName(item.name, item.name, item.name).to_dict()
+                ImportedName(item.name, item.name, item.name, item.line).to_dict()
                 for item in imports
                 if not item.name.startswith("pascal-include:")
             ],
@@ -496,6 +501,7 @@ def parse_pascal(
             ],
         ],
         exported_names=[entity.name for entity in entities],
+        import_lines=import_lines,
     )
 
 

@@ -9,6 +9,8 @@ or `rb`.
 ## Raw Graph Facts (in .wingbox/index.sexp)
 
 ```scheme
+(code-graph :schema 1 :files <n> :nodes <n> :edges <n> :violations <n>)
+(built-from :tree <digest> [:commit <sha>] [:wingbox <version>])
 (node <id> <lang> "<purpose>" :naming <convention> :pkg <repo>)
 (fn <mod> <name> <line> :eid <uuid>)
 (cls <mod> <name> <line> :eid <uuid> (:bases A) (:deco D) (:methods m1 m2))
@@ -16,13 +18,40 @@ or `rb`.
 (ifc <mod> <name> <line> :eid <uuid> (:methods m1 m2))
 (typ <mod> <name> <line> :eid <uuid>)
 (enm <mod> <name> <line> :eid <uuid>)
-(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp] [(:use|:reexport|:glob|:member|:macro ...)])
+(imports <src> <tgt> [:via-base] [:association|:concern|:job|:mailer|:spec|:view|:extends|:include|:component|:livewire|:event] [:item [:candidate]] [:lsp] [:line N | :lines N M ...] [(:use|:reexport|:glob|:member|:macro ...)])
 (calls-api <src> <tgt> :via-ifc [:lsp])
 (data-flow <src> <tgt> [:validation-module :evidence "<kind> <name>"] [:pipeline])
 (registry-wires <src> <tgt> [:config <path>])
-(refs <src> <tgt>::<Entity> [:callback] [:lsp])
+(refs <src> <tgt>::<Entity> [:callback] [:lsp] [:line N | :lines N M ...])
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
+
+`built-from` names what the graph was built from. `:tree` is a digest of the
+path and the text of every source file in the graph, as the parsers read it
+(without a byte order mark, every line ending `\n`): the same files give the
+same digest on any machine and with any line endings, and a changed character
+gives another. `:commit`
+is the commit checked out when Git reported no change and no untracked file
+under the project folder at build time; with any change it is left out.
+`:wingbox` is the version that built the graph, when Wingbox runs as an
+installed package.
+
+`:line N` (or `:lines N M ...`, ascending, for several statements), the last
+mark of an `imports` or `refs` fact (the lists of names follow it), is the
+1-based line, in the file of `<src>`, where the statement
+that states the fact starts: an `import`, `from ... import`, `require`, `use`,
+`using` or `uses` statement, an import directive, an `import()` or `require()`
+call with a literal name, a `mod` declaration. A fact no single statement
+states carries no line: an import followed through a module facade or found by
+a naming convention (a constant, a type of the same package or namespace, a
+view or route name), a `refs` fact from a class naming its base or from a use
+in the code (those positions are in the use file: `usages`, `entity
+--positions`), and every `data-flow` and `calls-api` fact. A graph built
+before lines were stored reads the same way, without them.
+
+The query commands print these facts as they did before the lines existed;
+`module <id> --lines` and `search <pattern> --lines` print them with their
+lines (`search --lines` also matches the `built-from` fact).
 
 `:item` (Rust): the file names an item that a module facade re-exports
 (`pub use child::*`, `pub use child::Name`); the edge goes to the file that
@@ -80,11 +109,11 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
 ```scheme
 (arch-part <part> :style <style> :state <state> :origin detected|config|declared :level system|container|component :kind "<kind>" :files <n> [:source "<citation>"] [:declared "<file>"])
 (arch-deny <part> <from-layer> <to-layer> "<reason>")
-(arch-known <part> <src> <tgt> "<baseline file>")
+(arch-known <part> <src> <tgt> "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <YYYY-MM-DD>])
 (arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix "<text>"])
 (arch-pattern <part> <pattern>)
 (capability <mod> <capability> :line <n> :evidence "<source line>" [:suspect])
-(capability-known <part> <mod> <capability> "<baseline file>")
+(capability-known <part> <mod> <capability> "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <YYYY-MM-DD>])
 (layer <mod> <layer> :part <part> :style <style> :rule "<rule>" :match exact|spelling|config|file|declared|test|none)
 ```
 
@@ -97,7 +126,10 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
   "a layer may not import a higher one". Rules apply between two modules of
   the same part only.
 - `arch-known`: a pair the project already lists in its own baseline of
-  known exceptions (for example `layers.known-upward-imports.json`).
+  known exceptions (for example `layers.known-upward-imports.json`), or in
+  `.wingbox/baseline.sexp`, with the owner, the reason and the end date its
+  entry states. A query compares `:expires` with the current day: past it
+  (or with a date that cannot be read) the pair is not known any more.
 - `layer`: `:rule` says what set the layer (`folder routes/ -> api`,
   `file *.tsx -> ui`, `route file page.* in src/app/`, `<file>: layer core`,
   `test file`); `:match` says how the folder name matched the style's word.
@@ -195,7 +227,11 @@ says so: `(layer <mod> service ... :rule "folder core/ -> service (learned
 from <id>)" :match learned :learned-from <id>)`. `wingbox advice --sexp`
 prints the open `(advice ...)` items (rejected ones and those ignored for 3
 builds are left out) and `(advice-none ...)`; `--learned` prints the
-`learned-layer` facts.
+`learned-layer` facts. A build whose graph equals the one of the build before
+is not one of the 3. Advice of kind `fix-violation`, `fix-capability` or
+`fix-pattern` is never marked ignored: it stays until its finding is fixed,
+accepted in the baseline or rejected, and `wingbox advice reject <id>` takes
+it only with `--reason TEXT` (exit status 2 without).
 
 ## align Output
 
@@ -214,7 +250,10 @@ builds are left out) and `(advice-none ...)`; `--learned` prints the
 `.wingbox/baseline.sexp` holds `(baseline <part> <src> <tgt> :rule "<from -> to>"
 :from align|"<project baseline file>")` and `(baseline-capability <part> <module>
 <capability> :line <n> :from align)`; the build reads it and the pairs become
-`violation-known`, the capabilities `capability-violation-known`.
+`violation-known`, the capabilities `capability-violation-known`. Each entry
+may end with `:owner "<who>" :reason "<why>" :expires <YYYY-MM-DD>`, written
+by the person who accepts the break; `align --learn` keeps these fields of an
+entry when it writes the file again and never adds them itself.
 
 ## compare Output
 
@@ -417,11 +456,15 @@ counts, then each file with its `line:col` and kind. Kinds: `import`,
 (violation <src> <tgt> :src-layer domain :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "domain -> api" [:known "<baseline file>"] :src-file <path> :tgt-file <path> "<reason>")
 (violation-type-only <src> <tgt> :src-layer domain :tgt-layer infra :via imports :lang ts :part <part> :style layered :rule "domain -> infra" :src-file <path> :tgt-file <path> "<reason>")
 (violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "infra -> api" :src-file <path> :tgt-file <path> "<reason>")
-(violation-known <src> <tgt> ... :known "<baseline file>" "<reason>")
+(violation-known <src> <tgt> ... :known "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <date>] ... "<reason>")
+(violation <src> <tgt> ... :rule "domain -> api" :expired <date> [:owner "<who>"] ... "<reason>")   ; its baseline entry is past its end date
 (boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587)
 (boundaries-ok :checked 3587)
 (boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files [:files (<rule file> ...)] :files-in-part <n>)
 (boundaries-partial :checked <n> :not-checked <m>)
+; with --strict only, after the lines above:
+(boundaries-checked :part <part> :style <style> :modules <n>)
+(boundaries-result :status pass|fail|incomplete|error :checked <files> :not-checked <files> :violations <n> :known <n> [:reason part-not-checked|no-files-checked|no-graph|invalid-graph|invalid-argument])
 ```
 
 `boundaries-ok` is printed only when every part with files was checked against
@@ -433,9 +476,25 @@ Exit status: 2 when a part's declared rules were not read (that part was not
 checked), else 1 when a violation, a capability violation or a pattern break
 was found, else 0.
 
+`boundaries --strict` is the form for a gate. It prints the same lines, then a
+`boundaries-checked` fact for each part that was checked and `boundaries-result`
+as the last line of standard output. Its exit status follows `:status`: 0
+`pass` (every part with files was checked, at least one file was checked,
+nothing breaks a rule), 1 `fail` (a violation, a capability violation or a
+pattern break), 2 `incomplete` (a part was not checked for any reason,
+including an undetermined style, no layer style, too few files and files in
+no part - reason `in-no-part` on their `boundaries-not-checked` line - or no
+file was checked), 3 `error` (no graph, a graph that cannot be read, an
+invalid argument). `:known` counts the breaks accepted in a baseline; they do
+not change the status.
+
 `violation`: both layers come from rules. `violation-known`: the same, but the
 pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`
-written by `wingbox align --learn`); it is not counted as a violation. `violation-type-only`:
+written by `wingbox align --learn`); it is not counted as a violation, and the line carries the
+owner, the reason and the end date when its entry states them. An entry of `.wingbox/baseline.sexp`
+whose `:expires` day has passed, or is not a `YYYY-MM-DD` date, no longer makes the pair known: it is
+a `violation` again, marked `:expired <date>`, and so is a capability finding
+(`capability-violation ... :expired <date>`). `violation-type-only`:
 a TypeScript import of types or interfaces only (`import type`, or every imported
 name is a type or an interface of the target); the compiler erases it, so it is
 not counted as a violation, but a change of the type still reaches the importer.
@@ -446,7 +505,7 @@ What a layer may do (capability rules) follows, when a file breaks one:
 ```scheme
 (capability-violation <file> :capability sql :layer service :allowed (infra) :line 42 :evidence "<source line>" :part <part> :style layered [:pattern domain-imports-orm] [:fix "<the style's fix>"])
 (capability-violation <file> :capability framework :layer domain :forbidden (domain) :line 3 :evidence "..." ...)
-(capability-violation-known <file> ... :known .wingbox/baseline.sexp ...)
+(capability-violation-known <file> ... :known .wingbox/baseline.sexp [:owner "<who>"] [:reason "<why>"] [:expires <date>] ...)
 (capability-candidate <file> :capability sql ... :evidence "QUERY = \"SELECT ...\"" ...)
 (pattern-violation <file> :pattern controller-skips-service :target <repository file> :part <part> :style <style> "<reason>")
 (pattern-violation <file> :pattern service-builds-http-response :line 12 :evidence "return JSONResponse(...)" ...)
