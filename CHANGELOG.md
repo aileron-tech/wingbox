@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Changes
+
+- The MCP server can be called from another machine. `wingbox mcp --http` serves the same tools
+  over the Streamable HTTP transport of MCP at `http(s)://<host>:8765/mcp`, for Claude Code
+  (`claude mcp add --transport http ... --header "Authorization: Bearer ..."`), Codex
+  (`codex mcp add ... --url ... --bearer-token-env-var ...`) and any client that speaks that
+  transport. Install it with `pip install "wingbox[http]"`: the transport is a separate package,
+  `wingbox-http`, so `wingbox` itself still holds no listening code. By default it listens on
+  `127.0.0.1` only; any other address needs a token of at least 32 characters
+  (`WINGBOX_HTTP_TOKEN` or `--token-file`), `--tls-cert` and `--tls-key` serve HTTPS, and a long
+  call such as `build` is answered as an event stream with keep-alive lines. See "Over HTTP, from
+  another machine" in the README.
+
 ### Fixes
 
 - Python projects that keep their package under `src/`: a test, a script or any file outside
