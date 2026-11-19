@@ -7,6 +7,8 @@ from typing import Mapping
 
 from ..interface import FileResult
 
+SOURCE_FOLDER = "src"
+
 
 def _candidate_bases(
     root: str,
@@ -36,6 +38,17 @@ def _candidate_bases(
             and current_path not in bases
         ):
             bases.append(current_path)
+        if current == root_path:
+            break
+        current = current.parent
+    # The src layout: the package lives in `src/` and the files beside it (tests, scripts, docs)
+    # import it by its package name. Tried last and nearest first, so that a package beside the
+    # importing file or at the root still wins and each part of a monorepo reaches its own `src/`.
+    current = source_directory
+    while current == root_path or root_path in current.parents:
+        source_folder = str(current / SOURCE_FOLDER)
+        if source_folder not in bases:
+            bases.append(source_folder)
         if current == root_path:
             break
         current = current.parent
