@@ -30,7 +30,7 @@ jobs:
     env:
       PYTHONUTF8: "0"   # the code must not rely on UTF-8 mode
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0   # the plugin check reads the release tags
       - name: Install uv

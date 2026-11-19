@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0   # the plugin tests read the release tags
       - name: Install uv
@@ -29,4 +29,4 @@ jobs:
         run: |
           cat requirements.txt requirements/*.txt | sort -u > "$RUNNER_TEMP/wingbox-requirements.txt"
           uv run --no-project --python 3.12 --with-requirements "$RUNNER_TEMP/wingbox-requirements.txt" \
-            python -m unittest tests.test_english_only tests.test_readme_numbers tests.test_plugins tests.test_mcpb
+            python -m unittest tests.test_english_only tests.test_readme_numbers tests.test_plugins tests.test_mcpb tests.test_assurance_docs

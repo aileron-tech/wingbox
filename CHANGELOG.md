@@ -22,6 +22,28 @@
   changes what the HTTP transport exposes**: whoever holds its token can now read the text of the
   source files that are in the graph, not only the graph.
 - The description of every MCP tool says what each of its parameters means.
+- Releases carry two more files on the GitHub release, next to the Claude Desktop extension:
+  `SHA256SUMS`, one line per file of the release in the form `shasum -a 256 -c` reads, and
+  `wingbox-X.Y.Z.cdx.json`, a CycloneDX 1.5 SBOM that names the package, the SHA-256 of each of its
+  built files and every dependency with its pinned version. `tools/release_files.py` writes both.
+- A release can be rebuilt from its tag and compared with what PyPI serves: two builds of the same
+  tree give the same bytes, and a test builds twice on every push to keep it so. Checked for 0.14.0:
+  a clone of the tag, built with `uv build`, gives the two files of PyPI byte for byte.
+  [docs/assurance/release-integrity.md](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/release-integrity.md)
+  has the commands, what the checksum file and the SBOM show and what they do not, and the next
+  step that is not in use yet: publishing to PyPI through trusted publishing.
+- Every action the workflows of the repository use is named at a full commit, with its release tag
+  as a comment, and a test fails on a `uses:` line that names a tag or a branch.
+- New folder [docs/assurance](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/README.md)
+  for a team that has to justify the tool it relies on. It holds, in one place and taken from the
+  repository alone: every requirement with the test that verifies it (generated from the test
+  docstrings); the verification plan, which says for each claim of the README and of the benchmark
+  reports where its number comes from, what answers it and how to rerun it; the known limits per
+  language, what the graph does not see and what that means for an answer, each line with its
+  source; and an analysis of tool errors: which wrong answer can hide a defect of your code, how
+  Wingbox reports the condition (the fact and the exit status) and which independent check catches
+  it. Where the sources do not say, the pages say "not assessed". The folder also says what it is
+  not: a record for a reviewer, not a qualification of the tool for a regulated use.
 
 ## 0.14.0 - 2026-11-19
 

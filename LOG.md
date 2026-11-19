@@ -8,6 +8,60 @@
 ### Motivation
 - The maintainer set the task and decided against a separate compliance agent.
 
+## 2026-11-19 - docs/assurance: requirements, verification plan, known limits, tool errors (#153, part 2)
+
+### Why
+- Issue #153: the material a team needs to justify the tool exists in pieces. Every test names a requirement, and no document lists them; limits are spread over the README, the changelog and the log; nothing says which wrong answer could hide a defect and what catches it. This change puts that in one folder, from the repository alone: no benchmark was run and no number is new.
+
+### Changes
+- `tools/requirements_index.py` (new, standard library): reads the docstring `/* REQ-<AREA>-<n>: text */` of every function under `tests/` with `ast` (nothing is imported or run) and writes `docs/assurance/requirements.md`: a summary table, then one table per area (the id without its number) with the id, the text on one line and the test as `file::Class::method`; rows by number, then test. Markup is escaped outside code, every pipe everywhere. A test without an id is named at the top. `--check` exits 1 when the file is stale and writes nothing.
+- `docs/assurance/requirements.md` (generated): 764 tests, 751 ids, 43 areas; every test carries an id.
+- `docs/assurance/verification-plan.md`: the claims of the README's first screen and of the seven benchmark pages, each with the file its number comes from, the test class or benchmark that answers it and the command that reruns it; what keeps a published number from drifting; the missed-edge assessment per language as planned work, in three lines.
+- `docs/assurance/known-limits.md`: per language (and for every language, layers, installing), what the graph does not see and what that means for an answer, each line with its source: README sections, `docs/edge-model.md`, the benchmark pages, the changelog, the two "Not covered" entries of this log, and test docstrings.
+- `docs/assurance/tool-errors.md`: six kinds of wrong answer (a missing edge, an extra edge, a stale graph, a skipped language, a part that was not checked, a wrong layer): whether each can hide a defect, the fact and exit status Wingbox prints today with the command and the test, and the independent check.
+- `docs/assurance/README.md`: what the folder is, how to regenerate the generated page, and what the material is not.
+- `tests/test_assurance_docs.py` (new): REQ-DOC-004 (the committed index equals the generator's output), REQ-DOC-005 (tables, rows, order and escaping on a stand-in tree), REQ-DOC-006 (`--check` names a stale index, a run repairs it), REQ-DOC-007 (every relative link and every `tests/<file>.py::<Class>` of the folder exists).
+- `.github/workflows/docs.yml`: the documentation job also runs `tests.test_assurance_docs`, so a change of a page alone is checked. `AGENTS.md`, section 2: run the generator after a test changes. `README.md`, "Project resources": one line. `CHANGELOG.md`: one entry.
+
+### Written "not assessed", because the sources do not say
+- Verification plan: "no missed files" for C#, Java, Go, Ruby, Dart and Pascal (no benchmark result for them) and for questions other than the importers of a file and the uses of a symbol; the result file and the rule behind the line "Up to 5x faster, up to 8.8x fewer tokens, up to $484 saved per 1,000 questions" of the README; a session inside each assistant; a rerun of the time "about a second on a 1,200-file project".
+- Known limits: how complete the call commands are without `--lsp`; other limits of the Python and TypeScript graphs; Rust code that build scripts and procedural macros generate; what else the C#, Java and Go graphs miss; how often the Ruby and the Pascal limits occur; Pascal beyond "no LSP enrichment"; a public Dart project against its imports; the infrastructure map.
+- Tool errors: whether `boundaries --strict` counts a skipped language as not checked. A test of the `wingbox-graph-stale` line at the start of an MCP answer was not found.
+
+### Seen while writing, not changed here
+- A stale graph and a skipped language leave the exit status of a query at 0; a script has to read `graph.stale` or standard error, and a gate the file `.wingbox/graph-skipped.sexp`.
+- For a language Wingbox does not parse, the build prints the suffixes it reads and no count of the other source files.
+- Twelve requirement ids are carried by more than one test, each test with its own text (REQ-CLI-008, REQ-CLI-009, REQ-CS-060, REQ-CS-077, REQ-MCP-011, REQ-PY-001 to REQ-PY-005, REQ-RUST-031, REQ-UPDATE-008); the index lists one row per test.
+- One list of the defects that changed an answer, across versions, is not written; `known-limits.md` says where they are recorded.
+
+### Verification
+- The statements "how it is reported" of `tool-errors.md` were run once on two small projects with this checkout: `impact` of an unknown file (`(error no-match ...)`, exit 1), a changed file with `WINGBOX_AUTO_REFRESH=0` (the warning on standard error, `"stale": 1` with `--json`, exit 0), a build without the Dart parser (the warning, `.wingbox/graph-skipped.sexp`, exit 0, the note at the next query), `boundaries all` and `--strict` on a part with too few files (exit 0 and 2), `layers`, `module --lines`, a `.swift` file.
+- `tests.test_assurance_docs`, `tests.test_english_only`, `tests.test_readme_numbers`: pass. The whole suite: see the pull request.
+
+## 2026-11-19 - Release integrity: actions at a commit, checksums and SBOM, a build that repeats (#153, part 1)
+
+### Why
+- Issue #153: a team that relies on Wingbox as an engineering control has to justify the tool itself. Its table for 0.14.0: 11 of 13 `uses:` lines of the workflows named a tag, the release assets carried no checksum, there was no SBOM, and whether two builds of a tag give the same bytes was not tested. This change closes those four rows. Publishing through trusted publishing needs a setting in the maintainer's PyPI account, so it is written down as a next step and nothing about how a release is published changes.
+
+### Changes
+- `.github/workflows/*.yml`: all 13 `uses:` lines name a full commit with the release tag as a trailing comment. `actions/checkout` v4.4.0 `11d5960a326750d5838078e36cf38b85af677262` (7 lines), `actions/upload-artifact` v4.6.2 `ea165f8d65b6e75b540449e92b4886f43607fa02` (4 lines; the line of `map-request.yml` already named this commit with the comment `v4`), `aileron-tech/wingbox-action` v1.4.2 `ef3733e3c0394c1e5ecf44d6c369c5a213b5d9d9`, `sigstore/cosign-installer` v4.1.2 `6f9f17788090df1f26f669e9d70d6ae9567deba6` (unchanged; v4.1.3 exists and is not taken here). Each commit was read with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`; all four tags are lightweight and point at a commit, and the commits of `v4`, `v4` and `v1` are the same as those of the three release tags, so no workflow runs other code than before.
+- `tools/release_files.py` (new, standard library): for a release folder writes `SHA256SUMS` (every file of the folder, the SBOM included, hidden files left out: `uv build` puts a `.gitignore` there) and `<name>-<version>.cdx.json`, a CycloneDX 1.5 document with the package, its built files with their SHA-256 and the dependencies `pyproject.toml` pins (those only an extra names are `optional`; an environment marker is kept as a property). No timestamp and a serial number derived from the content: the same input gives the same bytes. A dependency without `==`, or a folder without a built file of the package, is exit 1 and nothing written.
+- `tests/test_release_integrity.py` (new): REQ-REL-001 (the pins), REQ-REL-002 (the checksum file), REQ-REL-003 (the SBOM on a stand-in folder and `pyproject.toml`), REQ-REL-004 (the refusals), REQ-REL-005 (the SBOM of this repository names exactly the pinned dependencies; standard library only), REQ-REL-006 (`uv build` twice with `SOURCE_DATE_EPOCH`, the source archive and the wheel compared; skipped without `uv`).
+- `AGENTS.md`: the prefix `REL` and the rule for `uses:` lines in section 2; step 7 of section 3 (the two commands that write and attach the files); the row "Checksums and SBOM" in 6.1; in 6.4 the note that `wingbox.yml` follows a release of the action only when its commit is changed.
+- `docs/assurance/release-integrity.md` (new): what each file shows and how to check it, how to rebuild a release from its tag, what is not shown (no signature, no provenance on PyPI), and the trusted publishing steps with the proposed workflow, marked not active.
+- `CHANGELOG.md`: three lines under "Unreleased".
+
+### The build
+- No change of the build configuration was needed: two builds of the same tree gave the same bytes from the first run of the test. The backend stamps every file with a fixed date (2020-02-02 without `SOURCE_DATE_EPOCH`, the given date with it).
+- A shallow clone of the tag `v0.14.0`, built with `uv build` and `hatchling==1.33.0` (the version the wheel on PyPI names in its `WHEEL` file) under Python 3.11, 3.12, 3.13 and 3.14 on macOS, gave each time the two files PyPI serves: wheel `0bf88e2f...c74107`, source archive `1080db73...4b7b71`. With `SOURCE_DATE_EPOCH` set the digests differ (other dates in the archives), so a rebuild that is compared with a release leaves it unset.
+- Not assessed: the same bytes between operating systems; `wingbox-http`. `pyproject.toml` does not pin the build backend; whether to pin it is the maintainer's decision.
+
+### Verification
+- The five tests of the pins and the release files failed before the workflows were changed and the tool was written, then passed; the build test passed at once.
+- The SBOM of this checkout and the one of the stand-in folder validate against the CycloneDX 1.5 JSON schema of the specification repository (`bom-1.5.schema.json`, checked with `jsonschema`, 0 errors); the schema is not vendored.
+- The commands of step 7 and of the new 6.1 row were run on a folder built from this checkout: `shasum -a 256 -c SHA256SUMS` answered OK for the six files (the two of `wingbox`, the two of `wingbox-http`, the extension, the SBOM).
+- The whole suite: see the pull request.
+
 ## 2026-11-19 - MCP tools named verb_noun; `files` and `source`; parameters explained
 
 ### Why
