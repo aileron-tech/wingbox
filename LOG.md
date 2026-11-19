@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - Release 0.16.0
+
+### Changes
+- Version 0.16.0, core and `packages/wingbox-http` (REQ-HTTP-021): the Code Mode text as an instruction (#171); `wingbox grep` and the MCP tool `search_source`, and an error for a malformed `wingbox query` expression (#172). The map-request workflow builds with 0.16.0.
+
+### Motivation
+- The instruction form is what measured sessions in Code Mode answered from in two turns; the maintainer asked for it and for the MCP grade.
+
 ## 2026-11-19 - Code Mode text: an instruction first
 
 ### Changes
