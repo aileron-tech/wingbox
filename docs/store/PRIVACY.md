@@ -36,11 +36,6 @@ command is not installed. uv then fetches that release commit from GitHub and th
 PyPI the first time. The
 search hook never downloads.
 
-The parsers of C#, Java, Go, Ruby, PHP and Dart are not part of that installation. Each is
-downloaded from PyPI only when you run `wingbox add <language>` yourself: one pinned file,
-checked against the sha256 recorded in the package, stored in `~/.wingbox/parsers`. A build,
-a hook and the MCP server never download one; they say which files were left out.
-
 ## Personal data and children
 
 Wingbox processes no personal data beyond what your own source files contain,

@@ -20,8 +20,7 @@ COPY pyproject.toml README.md LICENSE SKILL.md /src/
 COPY references /src/references
 COPY src /src/src
 COPY scripts /src/scripts
-# Every language parser is in the image (the extra `all`): a container without network cannot add one.
-RUN pip install --no-cache-dir "/src[all]" && rm -rf /src
+RUN pip install --no-cache-dir /src && rm -rf /src
 
 ENV PYTHONDONTWRITEBYTECODE=1 HOME=/tmp
 WORKDIR /repo

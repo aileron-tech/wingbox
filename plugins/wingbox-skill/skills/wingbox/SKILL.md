@@ -66,22 +66,20 @@ After the install run `wingbox build .` in the project: it writes only the
 `.wingbox/` folder. Leave `wingbox install` to the user: it changes their own
 assistant settings.
 
-Python, TypeScript, JavaScript, Rust and Pascal are parsed as installed. The
-parsers of C#, Java, Go, Ruby, PHP and Dart are added on demand, and Wingbox
-never downloads one by itself. When a build warns that files were skipped, or
-an answer carries `(skipped-language csharp :files 214 :add "wingbox add csharp")`,
-the graph does not hold those files: tell the user in one line, and with their
-approval run the command of `:add` (it downloads one pinned parser from PyPI,
-checked by sha256, into `~/.wingbox/parsers`; `uvx wingbox add csharp` when the
-command is not installed). The graph of the project is rebuilt at its next use.
-Until then, search the files of that language with `rg`.
+The package installs the parsers of every language, and Wingbox opens no
+network connection. Where a parser is missing all the same (Dart on Windows
+arm64, a broken install), a build warns that files were skipped and every
+answer carries `(skipped-language dart :files 214 :add "pip install \"wingbox[dart]\"")`:
+the graph does not hold those files. Tell the user in one line; with their
+approval run the command of `:add` in the environment that runs Wingbox, then
+`wingbox build`. Until then, search the files of that language with `rg`.
 
 | Command | Purpose |
 |---|---|
 | `wingbox install [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run]` | Set up the assistants in the user's own settings (home folder only): this skill, the always-on block in CLAUDE.md / AGENTS.md, the Claude Code hooks. Items: `skill`, `block`, `search-hook`, `edit-hook`, `session-hook` (refresh a stale graph at session start), `git-hook` (refresh after git switch/pull/merge...); `--without` leaves items out (`ITEM` or `ASSISTANT:ITEM`, comma separated), and the choice is remembered. An agent runs it with `--yes`; it asks only a person at a terminal |
 | `wingbox uninstall [--assistant NAME ...] [--without ITEM,...]` | Remove exactly what install added (keeps the `--without` items); `--project` removes what versions before 0.9.0 wrote into a repository |
 | `wingbox open [PATH]` | Open `.wingbox/map.html` of the project in the browser (prints its path when there is no browser) |
-| `wingbox add LANGUAGE [LANGUAGE ...] [--from PATH]` | Install the parser of `csharp`, `java`, `go`, `ruby`, `php` or `dart`: the pinned wheel from PyPI, refused unless its sha256 matches, into `~/.wingbox/parsers` (`WINGBOX_PARSERS_DIR`); `--from` takes a wheel file or a folder of wheels instead of the network; `wingbox add --list` shows each language as installed or not. The only command that downloads a parser; run it with the user's approval |
+| `wingbox add [LANGUAGE ...] [--list]` | Kept for scripts written for 0.12; it adds nothing, because every parser is in the package. `--list` shows each language's parser as installed or not |
 | `wingbox update [--check] [--dry-run]` | Upgrade with pipx, uv or pip, then refresh the installed items only (never adds an item the user left out); warns about files an earlier version left (`.code_graph*`, `wingbox-out/`, `install --project` files) |
 | `wingbox hook pre-search` | The Claude Code PreToolUse hook; reads the hook input on stdin; refreshes the graph before it reads it |
 | `wingbox hook dirty` | The Claude Code PostToolUse hook on Edit and Write: marks the changed file so the graph is refreshed before its next use |
@@ -127,8 +125,7 @@ python3 -m pip install -r "$SKILL_ROOT/requirements/dart.txt"
 ```
 
 Install only the requirement files named by the builder, then rerun it.
-With the `wingbox` command installed, `wingbox add csharp` adds the same pinned
-parser without pip. `requirements.txt` is reserved for the infrastructure-topology dependency.
+`requirements.txt` is reserved for the infrastructure-topology dependency.
 
 ## Mandatory Workflow: Query Before Code
 
@@ -313,11 +310,11 @@ Do not force it for commit-only tasks, git-log summaries, manual demo/server run
 
 ## Error Recovery
 
-If an answer starts with `(skipped-language <language> :files N :add "wingbox add <language>")`,
+If an answer starts with `(skipped-language <language> :files N :add "<command>")`,
 or a build prints `WARNING: ... files are skipped`: the parser of that language
 is not installed and its N files are not in the graph, so dependents and usages
 in those files are missing from every answer. Say so, ask the user to approve
-the command of `:add`, run it, and query again (the graph rebuilds itself).
+the command of `:add`, run it, then run `wingbox build` and query again.
 
 If a command returns `(error no-match ...)`:
 1. Do NOT retry with the same ID or guess another ID
