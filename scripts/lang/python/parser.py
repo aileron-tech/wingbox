@@ -17,9 +17,11 @@ from .dynamic import find_module_loads, find_registry_calls
 from ..purpose import infer_purpose
 from ..source import add_import_line, detect_naming, file_hash
 from .symbols import module_bindings, module_variables, use_sites
+from .tree import TreeIndex, index_tree
 from .validation import validation_evidence
 
 
+_IMPORTS = (ast.Import, ast.ImportFrom)
 PY_ABC_RE = re.compile(r"""class\s+\w+\s*\(.*(?:ABC|ABCMeta|Protocol).*\)""")
 
 
@@ -41,13 +43,16 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
 
     try:
         tree = ast.parse(content, filename=path)
+        # The one walk of the tree: the imports, the run-time loads, the registry calls and the
+        # use sites below read from it.
+        index = index_tree(tree)
 
-        # Imports can be conditional or function-local, so walk the full tree.
+        # Imports can be conditional or function-local: every import of the tree, in walk order.
         # module_of_name: the module path that each imported name stands for.
         module_of_name: dict[str, str] = {}
         # import_targets: the import strings that may name the module behind each local name.
         import_targets: dict[str, list[str]] = {}
-        for node in ast.walk(tree):
+        for node in index.walk(_IMPORTS):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     imports.append(alias.name)
@@ -83,9 +88,9 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
                         module_of_name[local] = _submodule(mod, alias.name)
                         import_targets[local] = [_submodule(mod, alias.name), mod]
 
-        literal_imports, module_loads = find_module_loads(tree, module_of_name)
+        literal_imports, module_loads = find_module_loads(tree, module_of_name, index)
         imports.extend(literal_imports)
-        registry_calls = find_registry_calls(tree, import_targets)
+        registry_calls = find_registry_calls(tree, import_targets, index)
 
         # Entities remain top-level so nested functions do not become modules.
         for node in ast.iter_child_nodes(tree):
@@ -142,7 +147,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
             variable.name for variable in variables if variable.name not in exported_names
         )
         bindings = module_bindings(tree)
-        uses = _use_sites(tree, path, entities, variables, bindings, full=False)
+        uses = _use_sites(tree, path, entities, variables, bindings, full=False, index=index)
         validation = validation_evidence(tree, bindings)
 
     except SyntaxError as error:
@@ -192,6 +197,7 @@ def _use_sites(
     variables: list[Entity],
     bindings: list[BindingPayload],
     full: bool,
+    index: TreeIndex | None = None,
 ) -> list[UsePayload]:
     module_names = frozenset(
         [entity.name for entity in (*entities, *variables)]
@@ -199,7 +205,7 @@ def _use_sites(
     )
     imported = frozenset(binding["local"] for binding in bindings if binding["local"] != "*")
     has_glob = any(binding["local"] == "*" for binding in bindings)
-    return use_sites(tree, module_names, has_glob, path.endswith("__init__.py"), full, imported)
+    return use_sites(tree, module_names, has_glob, path.endswith("__init__.py"), full, imported, index)
 
 
 def python_use_positions(path: str, content: str) -> list[UsePayload]:
@@ -218,7 +224,7 @@ def python_use_positions(path: str, content: str) -> list[UsePayload]:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
     ]
     variables = module_variables(tree, frozenset(entity.name for entity in definitions))
-    return _use_sites(tree, path, definitions, variables, module_bindings(tree), full=True)
+    return _use_sites(tree, path, definitions, variables, module_bindings(tree), full=True, index=index_tree(tree))
 
 
 def _decorator_name(node: ast.expr) -> str:

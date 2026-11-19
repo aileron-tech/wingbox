@@ -62,6 +62,20 @@ class BoundPythonLanguage:
     _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
     # The build asks for the submodules of a file twice (the targets, then their lines): one answer per file.
     _additional: dict[tuple[str, str], dict[str, list[int]]] = field(default_factory=dict, compare=False, repr=False)
+    # The folders a module name is looked for in, per folder of the importing file (see _bases).
+    _base_folders: dict[tuple[str, int, str], tuple[str, ...]] = field(default_factory=dict, compare=False, repr=False)
+
+    def _bases(self, source_path: str, import_name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """_candidate_bases(self.root, source_path, import_name), with the folders kept: they depend on the
+        folder of the importing file and on the dots of a relative name or the first segment of an absolute
+        one, never on the file or on the rest of the name. The files of a folder import the same few packages."""
+        level = len(import_name) - len(import_name.lstrip("."))
+        parts = tuple(part for part in import_name[level:].split(".") if part)
+        key = (os.path.dirname(source_path), level, parts[0] if parts and not level else "")
+        folders = self._base_folders.get(key)
+        if folders is None:
+            folders = self._base_folders[key] = _candidate_bases(self.root, source_path, "." * level + key[2])[0]
+        return folders, parts
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         # One build asks the same (specifier, file) pairs many times (imports, imported names,
@@ -72,7 +86,7 @@ class BoundPythonLanguage:
         return self._resolved[key]
 
     def _resolve_import(self, import_name: str, source_path: str) -> str | None:
-        bases, parts = _candidate_bases(self.root, source_path, import_name)
+        bases, parts = self._bases(source_path, import_name)
         for base in bases:
             for candidate in (
                 os.path.join(base, *parts) + ".py",
@@ -102,7 +116,7 @@ class BoundPythonLanguage:
             if not module or not original_name:
                 continue
 
-            bases, parts = _candidate_bases(self.root, result.path, module)
+            bases, parts = self._bases(result.path, module)
             for base in bases:
                 submodule_path = os.path.normpath(
                     os.path.join(base, *parts, original_name + ".py")

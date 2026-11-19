@@ -8,6 +8,43 @@
 ### Motivation
 - The instruction form is what measured sessions in Code Mode answered from in two turns; the maintainer asked for it and for the MCP grade.
 
+## 2026-11-19 - The build of a large Python repository is linear (#157)
+
+### Why
+- Issue #157: release 0.14.0 needs 752 s and about 5 GB for a repository of 5,182 Python files and 1.86 million lines (one worker), while 353 files of the same tree take 21 s and 102 MB. Two causes were named: a slow constant in the Python parser and a growth that was not found.
+
+### What grew
+- The repository keeps its public names behind a facade of three levels of `from .x import *` (package `__init__.py` -> `models/__init__.py` -> one `__init__.py` per model folder -> the files), and its tests import them from the facade (`from package import Name`).
+- `SymbolIndex._from_globs` answered such a name by asking every glob import in turn, down to every file behind the facade: all of them for every distinct name. Every answer kept the set of modules and module names it had read (`_deps`), one set per memoised answer, so per importing file and name; every use site merged that set again; and `module_fragment` wrote it for every importing file into `.wingbox/graph-fragments.json`. Work, memory and the store grew with (files importing through the facade) x (modules behind it).
+- Evidence, 0.14.0 on subsets of the repository with their tests (N model folders, the top level, the tests of those models): in the store of the 60-folder subset 138 of 832 modules list 200 to 300 modules read (the facade's whole closure of 245), in the 30-folder subset 73 of 573 list about 115. The subsets cut earlier (188, 353, 896 files) had the model folders flattened into one folder, so the facade led nowhere and they showed nothing.
+
+### Changes
+- `scripts/lang/symbols.py`: a search behind glob imports follows only the glob imports that reach a module holding the name (`_holding`, `_reach`, `_glob_routes`), plus those behind which the search would stop at a re-export cycle or at the depth limit (`_height`, `_tallest_globs`): such a stop decides which answers the index memoises, so the answers and the memo are those of the exhaustive search, question by question. What an answer read behind the globs of a module is one item, `("c", module)`; `glob_record` gives the glob targets and module names of one module.
+- `scripts/build_code_graph.py`: `ModuleFragment.closures` (the modules whose glob imports a module searched) and `.globs` (its own glob record); the fragment store writes both (schema 2). `scripts/graph_update.py`: `glob_readers` finds, backwards over the stored glob imports, the modules from which a changed or deleted module, or a glob import a created path could answer, is reached; a module that searched one of them is redone. The condition is the one the old lists expressed, stored once per facade instead of once per reader.
+- `scripts/lang/python/tree.py` (new): `index_tree` walks a tree once and keeps the nodes in preorder with depth and subtree end; the `ast.walk` order of any subtree is the slice sorted by depth. `parser.py` (imports), `dynamic.py` (`find_module_loads`, `find_registry_calls`) and the use collector of `symbols.py` (the names a function or class body binds, for every scope in one sweep) read it. Before: one `ast.walk` of the tree for the imports, one for the loads, two per function for the registry calls and one per loop body, and three walks of every function body in the use collector (`_stored_names`, `_declared`, `_local_types`; the last one only serves the full list of a query and is no longer run for a build).
+- `scripts/lang/purpose.py`: the suffix tables are module constants; `_entity_role` and `_stem_role` keep the role per name (exact suffix first, then one edit away); "one edit away" is decided by `_within_one_edit` (common start, compare the rest) instead of a full edit-distance table.
+- `scripts/lang/python/imports.py`: the folders a module name is looked for in are kept per importing folder and first segment (`_bases`); they were worked out, with `is_dir` calls up to the root, for every import of every file.
+
+### Measurements (one worker, `WINGBOX_JOBS=1`, a shared machine under other load; seconds are wall time of `wingbox build .`, memory is the peak resident size sampled every 2 s)
+
+| Tree | Files | Lines | 0.14.0: s / MB / store MB | Branch: s / MB / store MB |
+|---|---|---|---|---|
+| 30 model folders + tests | 573 | 276,756 | 33.7 / 134 / 3.96 | 13.0 / 124 / 2.93 |
+| 60 model folders + tests | 832 | 349,893 | 77.0 (machine busy) / 222 / 7.33 | 16.5 / 148 / 4.04 |
+| 120 model folders + tests | 1,325 | 517,874 | 68.3 / 514 / 17.69 | 24.8 / 184 / 6.42 |
+| 240 model folders + tests | 2,285 | 837,080 | 120.1 / 1,701 / 49.84 | 39.2 / 265 / 11.40 |
+| the whole repository | 5,182 | 1,861,171 | 752 / about 5,000 / 247 (issue; not rerun: over the 2 GB limit of this machine) | 102.1 / 588 / 27.49 |
+
+- Branch, per 1,000 lines: 47, 47, 48, 47 and 55 ms; store per file 5.1, 4.9, 4.8, 5.0 and 5.3 KB. 0.14.0 from 120 to 240 folders: lines x1.6, memory x3.3, store x2.8.
+- The generated project of the new test (40 and 160 model folders, 163 and 643 files): 0.14.0 asks the index 9,882 and 154,722 times (x15.7), its answers keep 81,613 and 1,286,413 items (x15.8), the store is 0.33 and 4.30 MB (x13.0), a test file is read from 254 and 974 items; the branch: 482 and 1,922 questions (x4.0), 3,010 and 12,010 items (x4.0), 0.10 and 0.39 MB (x4.0), 20 and 20 items.
+- Profile of the 353-file tree (cProfile, whole build): 73.6 s -> 28.1 s. `parse_python` 53.5 -> 17.2 s: `use_sites` 19.1 -> 5.2, `infer_purpose` 15.3 -> 0.9, `find_registry_calls` 10.9 and `find_module_loads` 5.9 -> inside `index_tree` 7.7 (the one walk), `_candidate_bases` 6.6 -> `_bases` 0.6; `module_fragments` 15.1 -> 3.6. What is left on top: the one walk, the use collector, `capabilities.detect` (3.8), `ast.parse` (2.3).
+
+### Verification
+- Graph bytes, release 0.14.0 against the branch run in the same Python environment (the `built-from` line names the installed version): `index.sexp` is equal byte for byte on nine trees: the four subsets with tests above, four subsets of the package that the issue measured (188 files: 13.3 -> 6.0 s; 353 files: 21.3 -> 9.5 s; 382 files: 24.5 -> 9.3 s; 896 files: about 55 -> 19.9 s), and fastapi at commit 2a1bd23 (1,227 files), the repository of the build-time benchmark. `index.uses.sexp` is equal except the `:key` of its header line (a digest that includes the builder's own source files, so it changes with every change of the builder). Every parse result in `cache.json` is equal (all fields but `mtime`), except the order of the two use sites of one JavaScript file of fastapi, which also differs between two runs of 0.14.0 itself (the TypeScript parser, not touched here; the graph sorts them).
+- The whole repository of the issue was built by the branch only: 0.14.0 needs more memory for it than this machine may give one build (2 GB). Its node and edge counts are those the issue reports for 0.14.0 (5,182 and 88,211) and its graph has the same size (7.9 MB).
+- Tests written first, `tests/test_issue_157_build_growth.py`: REQ-PY-015..020, REQ-LANG-014..017, REQ-FRESH-054..056. On 0.14.0 the growth guard fails on the store size, the questions asked, the items kept and the walks per file (numbers above). `docs/assurance/requirements.md` regenerated.
+- Not measured: a build with several workers (every measurement here ran with one). Each chunk of 64 modules still builds a symbol index of its own in its worker, as before.
+
 ## 2026-11-19 - Code Mode text: an instruction first
 
 ### Changes

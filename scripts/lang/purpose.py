@@ -7,9 +7,13 @@ import re
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from functools import lru_cache
 from pathlib import Path
 
 from .interface import Entity, EntityPayload
+
+
+_ROLE_CACHE_SIZE = 1 << 16  # names and stems whose role is kept; a repository has fewer distinct ones
 
 
 def _levenshtein(a: str, b: str) -> int:
@@ -27,12 +31,141 @@ def _levenshtein(a: str, b: str) -> int:
     return prev[-1]
 
 
+def _within_one_edit(a: str, b: str) -> bool:
+    """Whether one insertion, deletion or substitution at most turns a into b: _levenshtein(a, b) <= 1,
+    found by skipping the common start and comparing what is left."""
+    difference = len(a) - len(b)
+    if difference < -1 or difference > 1:
+        return False
+    if a == b:
+        return True
+    at = 0
+    for at, (ca, cb) in enumerate(zip(a, b)):
+        if ca != cb:
+            break
+    else:
+        return True  # one is the other plus a last character
+    if difference == 0:
+        return a[at + 1:] == b[at + 1:]
+    return a[at + 1:] == b[at:] if difference > 0 else a[at:] == b[at + 1:]
+
+
 def _fuzzy_suffix_match(name: str, suffix: str, max_dist: int = 1) -> bool:
     """Check if the tail of `name` fuzzy-matches `suffix` within edit distance."""
     if len(suffix) < 6:
         return False  # too short for fuzzy -- "Store"/"Storey" false positives
     tail = name[-len(suffix) - max_dist:]  # grab suffix + slack for insertions
+    if max_dist == 1:
+        return _within_one_edit(tail.lower(), suffix.lower())
     return _levenshtein(tail.lower(), suffix.lower()) <= max_dist
+
+
+# -- Suffix -> (purpose label, dedup keyword) --
+_ENTITY_SUFFIX_MAP = [
+    # Core architecture roles
+    ("Service", "service", "service"),
+    ("Controller", "API controller", "controller"),
+    ("Repository", "repository", "repository"),
+    ("Repo", "repository", "repository"),
+    ("Gateway", "gateway", "gateway"),
+    ("Registry", "registry", "registry"),
+    ("Store", "state store", "store"),
+    ("Guard", "access guard", "guard"),
+    ("Module", "module", "module"),
+    ("Adapter", "adapter", "adapter"),
+    ("Provider", "provider", "provider"),
+    ("Processor", "processor", "processor"),
+    ("Agent", "agent", "agent"),
+    ("Resolver", "resolver", "resolver"),
+    ("Scheduler", "scheduler", "scheduler"),
+    ("Worker", "worker", "worker"),
+    ("Client", "client", "client"),
+    ("Connector", "connector", "connector"),
+    ("Manager", "manager", "manager"),
+    ("Subscriber", "subscriber", "subscriber"),
+    ("Dispatcher", "dispatcher", "dispatcher"),
+    ("Emitter", "emitter", "emitter"),
+    ("Interceptor", "interceptor", "interceptor"),
+    ("Pipe", "validation pipe", "pipe"),
+    ("Handler", "handler", "handler"),
+    ("Listener", "event listener", "listener"),
+    # GoF patterns
+    ("Factory", "Factory pattern", "factory"),
+    ("Builder", "Builder pattern", "builder"),
+    ("Singleton", "Singleton pattern", "singleton"),
+    ("Observer", "Observer pattern", "observer"),
+    ("Strategy", "Strategy pattern", "strategy"),
+    ("Command", "Command pattern", "command"),
+    ("Mediator", "Mediator pattern", "mediator"),
+    ("Visitor", "Visitor pattern", "visitor"),
+    ("Decorator", "Decorator pattern", "decorator"),
+    ("Proxy", "Proxy pattern", "proxy"),
+    ("Facade", "Facade pattern", "facade"),
+    ("Composite", "Composite pattern", "composite"),
+    ("Iterator", "Iterator pattern", "iterator"),
+    ("ChainHandler", "Chain of Responsibility", "chain"),
+    # Fowler / DDD patterns
+    ("Specification", "Specification pattern", "specification"),
+    ("Spec", "Specification pattern", "specification"),
+    ("ValueObject", "value object", "value"),
+    ("Aggregate", "aggregate root", "aggregate"),
+    ("UnitOfWork", "Unit of Work", "unitofwork"),
+    ("DomainEvent", "domain event", "domainevent"),
+    ("IdentityMap", "Identity Map", "identitymap"),
+    ("Policy", "policy", "policy"),
+    ("Plugin", "plugin", "plugin"),
+    # SDK / API
+    ("Sdk", "SDK", "sdk"),
+    ("SDK", "SDK", "sdk"),
+]
+
+_STEM_SUFFIX_MAP = [
+    ("controller", "API controller"), ("service", "service"),
+    ("repository", "repository"), ("gateway", "gateway"),
+    ("registry", "registry"), ("agent", "agent"),
+    ("store", "state store"), ("factory", "factory"),
+    ("strategy", "Strategy pattern"), ("observer", "Observer pattern"),
+    ("builder", "Builder pattern"), ("command", "Command pattern"),
+    ("mediator", "Mediator pattern"), ("visitor", "Visitor pattern"),
+    ("facade", "Facade pattern"), ("proxy", "Proxy pattern"),
+    ("composite", "Composite pattern"), ("aggregate", "aggregate root"),
+    ("specification", "Specification pattern"), ("adapter", "adapter"),
+    ("provider", "provider"), ("processor", "processor"),
+    ("handler", "event handler"), ("listener", "event listener"),
+    ("middleware", "middleware"), ("interceptor", "interceptor"),
+    ("scheduler", "scheduler"), ("worker", "worker"),
+    ("dispatcher", "dispatcher"), ("subscriber", "subscriber"),
+    ("resolver", "resolver"), ("manager", "manager"),
+    ("connector", "connector"), ("client", "client"),
+    ("policy", "policy"), ("plugin", "plugin"),
+]
+
+
+@lru_cache(maxsize=_ROLE_CACHE_SIZE)
+def _entity_role(name: str) -> tuple[str, str] | None:
+    """The (purpose label, dedup keyword) of a class or interface name: of the first suffix it ends with,
+    otherwise (names of five letters or more) of the first suffix it ends with but for one edit.
+
+    A pure function of the name, kept per name: the same class names come back in file after file, and a
+    name is compared with the suffixes letter by letter only the first time, and only when none ends it.
+    """
+    for suffix, purpose_label, dedup_kw in _ENTITY_SUFFIX_MAP:
+        if name.endswith(suffix):
+            return purpose_label, dedup_kw
+    if len(name) >= 5:
+        for suffix, purpose_label, dedup_kw in _ENTITY_SUFFIX_MAP:
+            if _fuzzy_suffix_match(name, suffix):
+                return purpose_label, dedup_kw
+    return None
+
+
+@lru_cache(maxsize=_ROLE_CACHE_SIZE)
+def _stem_role(stem: str) -> str | None:
+    """The purpose label of the first stem suffix a file stem ends with but for one edit; kept per stem."""
+    for suffix, purpose_label in _STEM_SUFFIX_MAP:
+        if _fuzzy_suffix_match(stem, suffix):
+            return purpose_label
+    return None
 
 
 _TEST_FOLDER_NAMES = frozenset(
@@ -258,65 +391,6 @@ def infer_purpose(
             parts.append(match.group(1).strip()[:120])
 
     # Entity-name heuristics (Gap 3 fix: reduces "general module" fallback)
-    # -- Suffix -> (purpose label, dedup keyword) --
-    _ENTITY_SUFFIX_MAP = [
-        # Core architecture roles
-        ("Service", "service", "service"),
-        ("Controller", "API controller", "controller"),
-        ("Repository", "repository", "repository"),
-        ("Repo", "repository", "repository"),
-        ("Gateway", "gateway", "gateway"),
-        ("Registry", "registry", "registry"),
-        ("Store", "state store", "store"),
-        ("Guard", "access guard", "guard"),
-        ("Module", "module", "module"),
-        ("Adapter", "adapter", "adapter"),
-        ("Provider", "provider", "provider"),
-        ("Processor", "processor", "processor"),
-        ("Agent", "agent", "agent"),
-        ("Resolver", "resolver", "resolver"),
-        ("Scheduler", "scheduler", "scheduler"),
-        ("Worker", "worker", "worker"),
-        ("Client", "client", "client"),
-        ("Connector", "connector", "connector"),
-        ("Manager", "manager", "manager"),
-        ("Subscriber", "subscriber", "subscriber"),
-        ("Dispatcher", "dispatcher", "dispatcher"),
-        ("Emitter", "emitter", "emitter"),
-        ("Interceptor", "interceptor", "interceptor"),
-        ("Pipe", "validation pipe", "pipe"),
-        ("Handler", "handler", "handler"),
-        ("Listener", "event listener", "listener"),
-        # GoF patterns
-        ("Factory", "Factory pattern", "factory"),
-        ("Builder", "Builder pattern", "builder"),
-        ("Singleton", "Singleton pattern", "singleton"),
-        ("Observer", "Observer pattern", "observer"),
-        ("Strategy", "Strategy pattern", "strategy"),
-        ("Command", "Command pattern", "command"),
-        ("Mediator", "Mediator pattern", "mediator"),
-        ("Visitor", "Visitor pattern", "visitor"),
-        ("Decorator", "Decorator pattern", "decorator"),
-        ("Proxy", "Proxy pattern", "proxy"),
-        ("Facade", "Facade pattern", "facade"),
-        ("Composite", "Composite pattern", "composite"),
-        ("Iterator", "Iterator pattern", "iterator"),
-        ("ChainHandler", "Chain of Responsibility", "chain"),
-        # Fowler / DDD patterns
-        ("Specification", "Specification pattern", "specification"),
-        ("Spec", "Specification pattern", "specification"),
-        ("ValueObject", "value object", "value"),
-        ("Aggregate", "aggregate root", "aggregate"),
-        ("UnitOfWork", "Unit of Work", "unitofwork"),
-        ("DomainEvent", "domain event", "domainevent"),
-        ("IdentityMap", "Identity Map", "identitymap"),
-        ("Policy", "policy", "policy"),
-        ("Plugin", "plugin", "plugin"),
-        # SDK / API
-        ("Sdk", "SDK", "sdk"),
-        ("SDK", "SDK", "sdk"),
-    ]
-
     if entities:
         joined_lower = " ".join(parts).lower()
         for ent in entities:
@@ -324,23 +398,12 @@ def infer_purpose(
             ekind = ent.get("kind", "") if isinstance(ent, dict) else ent.kind
             if ekind not in ("class", "interface"):
                 continue
-            # Exact suffix match first
-            matched = False
-            for suffix, purpose_label, dedup_kw in _ENTITY_SUFFIX_MAP:
-                if ename.endswith(suffix):
-                    if dedup_kw not in joined_lower:
-                        parts.append(purpose_label)
-                        joined_lower = " ".join(parts).lower()
-                    matched = True
-                    break
-            # Fuzzy suffix fallback (distance <= 1, suffixes >= 4 chars)
-            if not matched and len(ename) >= 5:
-                for suffix, purpose_label, dedup_kw in _ENTITY_SUFFIX_MAP:
-                    if _fuzzy_suffix_match(ename, suffix):
-                        if dedup_kw not in joined_lower:
-                            parts.append(purpose_label)
-                            joined_lower = " ".join(parts).lower()
-                        break
+            role = _entity_role(ename)
+            if role is not None:
+                purpose_label, dedup_kw = role
+                if dedup_kw not in joined_lower:
+                    parts.append(purpose_label)
+                    joined_lower = " ".join(parts).lower()
 
     # Pattern detection -- only flag patterns when the file DEFINES one,
     # not when it merely imports from a module named factory/strategy.
@@ -579,31 +642,10 @@ def infer_purpose(
             parts.append("application bootstrap")
 
     # --- Fuzzy stem fallback (distance <= 1, stems >= 4 chars) ---
-    _STEM_SUFFIX_MAP = [
-        ("controller", "API controller"), ("service", "service"),
-        ("repository", "repository"), ("gateway", "gateway"),
-        ("registry", "registry"), ("agent", "agent"),
-        ("store", "state store"), ("factory", "factory"),
-        ("strategy", "Strategy pattern"), ("observer", "Observer pattern"),
-        ("builder", "Builder pattern"), ("command", "Command pattern"),
-        ("mediator", "Mediator pattern"), ("visitor", "Visitor pattern"),
-        ("facade", "Facade pattern"), ("proxy", "Proxy pattern"),
-        ("composite", "Composite pattern"), ("aggregate", "aggregate root"),
-        ("specification", "Specification pattern"), ("adapter", "adapter"),
-        ("provider", "provider"), ("processor", "processor"),
-        ("handler", "event handler"), ("listener", "event listener"),
-        ("middleware", "middleware"), ("interceptor", "interceptor"),
-        ("scheduler", "scheduler"), ("worker", "worker"),
-        ("dispatcher", "dispatcher"), ("subscriber", "subscriber"),
-        ("resolver", "resolver"), ("manager", "manager"),
-        ("connector", "connector"), ("client", "client"),
-        ("policy", "policy"), ("plugin", "plugin"),
-    ]
     if not parts and len(stem) >= 5:
-        for sfx, purpose_label in _STEM_SUFFIX_MAP:
-            if _fuzzy_suffix_match(stem, sfx):
-                parts.append(purpose_label)
-                break
+        stem_label = _stem_role(stem)
+        if stem_label is not None:
+            parts.append(stem_label)
 
     # --- Content-based heuristics (checked against first 4K) ---
     head4k = content[:4096]
