@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - Release 0.13.0
+
+### Changes
+- Version 0.13.0, core and `packages/wingbox-http` (version, its `wingbox==` pin and the `http` extra of the core, REQ-HTTP-021): the parsers of every language back in the package and the download removed (#142), the MCP server over HTTP as the package `wingbox-http` (#129), eleven MCP tools (#130), `boundaries --strict` (#123), baseline entries with owner, reason and end date (#125), the source line on edges and the `built-from` fact of the graph (#124), Python imports of a package kept under `src/` (#136). The map-request workflow builds with 0.13.0.
+
+### Motivation
+- The maintainer asked to bring every open pull request in and to close the open issues.
+
 ## 2026-11-19 - Edges carry their source line; the graph names what it was built from (issue #124)
 
 ### Changes
