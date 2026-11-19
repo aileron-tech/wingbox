@@ -10,12 +10,16 @@ from pathlib import Path
 
 from tests.test_mcp_server import McpSession, _call, _initialize, _make_shop, _request, _texts
 
-TOOLS = ("graph", "impact", "modules", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "facts")
+TOOLS = ("build_graph", "analyze_impact", "describe_module", "list_files", "read_source", "find_definitions", "find_usages",
+         "list_dependencies", "trace_calls", "list_layers", "check_boundaries", "list_changes", "query_graph")
+# Every name a tool had before: the first eighteen, then the three and the eleven one-word names that followed.
 REMOVED = ("analyze", "quick", "boundary", "deps", "rdeps", "entity", "find_function", "find_type", "find_callers", "find_calls",
-           "find_callchain", "diff_functions", "build", "query", "module")
-# Names of the query language and words of plain English that a description may use although a removed tool had the name.
-ALLOWED_IN_TEXT = {"facts": ("deps", "rdeps", "query"), "graph": ("build",), "modules": ("module",), "dependencies": ("module",),
-                   "boundaries": ("module",), "layers": ("module",), "impact": ("module",)}
+           "find_callchain", "diff_functions", "build", "query", "module",
+           "graph", "impact", "modules", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "facts")
+# The tools that have no neighbour to send a caller to.
+ALONE = ("build_graph", "query_graph")
+# The tools that look one name up, and so say what an unknown name returns.
+LOOKUPS = ("analyze_impact", "describe_module", "read_source", "find_definitions", "find_usages", "list_dependencies", "trace_calls")
 
 
 def _shop_with_more(root: Path) -> None:
@@ -30,85 +34,143 @@ class ToolListTest(unittest.TestCase):
         self.addCleanup(tmpdir.cleanup)
         self.root = Path(tmpdir.name).resolve()
 
-    def test_the_server_offers_eleven_tools_named_after_their_answers(self) -> None:
-        """/* REQ-MCP-029: `tools/list` offers exactly eleven tools (within the 3 to 15 a tool directory grades
-        best), in this order: graph, impact, modules, definitions, usages, dependencies, calls, layers,
-        boundaries, changes, facts. Every name is one lowercase noun, the name of what the tool answers; no name is a prefix of another or shares
-        its first six letters with another; the names of the merged and removed tools are gone. */"""
+    def test_the_server_offers_thirteen_tools_named_verb_noun(self) -> None:
+        """/* REQ-MCP-029: `tools/list` offers exactly thirteen tools (within the 3 to 15 a tool directory grades
+        best), in this order: build_graph, analyze_impact, describe_module, list_files, read_source,
+        find_definitions, find_usages, list_dependencies, trace_calls, list_layers, check_boundaries, list_changes,
+        query_graph. Every name is a verb and a noun in lowercase snake_case; no name is a prefix of another;
+        no name a tool had before is left. */"""
         tools = McpSession(self.root, [_initialize(), _request(2, "tools/list")]).reply(2)["result"]["tools"]
         names = [tool["name"] for tool in tools]
         self.assertEqual(list(TOOLS), names)
         self.assertTrue(3 <= len(names) <= 15)
         for name in names:
-            self.assertRegex(name, r"^[a-z]+$")
+            self.assertRegex(name, r"^[a-z]+_[a-z]+$")
             self.assertNotIn(name, REMOVED)
         for first in names:
             for second in names:
                 if first != second:
-                    self.assertNotEqual(first[:6], second[:6], (first, second))
+                    self.assertFalse(second.startswith(first), (first, second))
 
     def test_the_instructions_name_only_tools_that_exist(self) -> None:
         """/* REQ-MCP-030: the instructions the server gives at `initialize` and `server/discover` name tools of
-        the current list only: no merged or removed tool name is left in them as a tool to call, and they name
-        impact, modules, usages and graph. */"""
+        the current list only: no earlier tool name is left in them as a tool to call, and they name
+        analyze_impact, describe_module, find_usages, read_source and build_graph. */"""
         instructions = McpSession(self.root, [_initialize()]).reply(1)["result"]["instructions"]
         named = set(re.findall(r"`([a-z_]+)`", instructions))
         self.assertEqual(set(), named & set(REMOVED))
-        self.assertLessEqual({"impact", "modules", "usages", "graph"}, named)
+        self.assertLessEqual({"analyze_impact", "describe_module", "find_usages", "read_source", "build_graph"}, named)
         self.assertLessEqual(named, set(TOOLS))
 
     def test_every_description_says_what_comes_back_and_when_to_use_a_neighbour(self) -> None:
         """/* REQ-MCP-021: the description of every tool starts with a verb that says what the tool does
-        ("Lists ...", "Traces ..."), says when to use the tool ("Use it ..."), and names the neighbour to use
-        for another question as "use `name`" (graph and facts have no neighbour). A tool that takes `all` says
-        that a list stops at 200 items; a tool that looks a name up says what an unknown name returns. A
-        description is at most 700 characters and names no removed tool. */"""
+        ("Lists ...", "Traces ..."), says when to use the tool ("Use it ..."), names the neighbour to use for
+        another question as "use `name`" (build_graph and query_graph have no neighbour), and names every
+        parameter of the tool except `all` in backticks, so that it says more about them than the schema. A tool
+        that takes `all` says that a list stops at 200 items; a tool that looks a name up says what an unknown
+        name returns. A description is at most 900 characters and sends a caller to existing tools only. */"""
         tools = McpSession(self.root, [_initialize(), _request(2, "tools/list")]).reply(2)["result"]["tools"]
         for tool in tools:
             name, text = tool["name"], tool["description"]
-            self.assertLessEqual(len(text), 700, name)
+            self.assertLessEqual(len(text), 900, name)
             self.assertRegex(text, r"^[A-Z][a-z]+s ", name)
             self.assertIn("Use it ", text, name)
-            for old in REMOVED:
-                if old not in ALLOWED_IN_TEXT.get(name, ()):
-                    self.assertNotRegex(text, rf"\b{old}\b", name)
-            if name not in ("graph", "facts"):
+            if name not in ALONE:
                 others = [other for other in TOOLS if other != name and f"use `{other}`" in text]
                 self.assertTrue(others, f"{name}: no neighbour named in {text!r}")
             for other in re.findall(r"use `([a-z_]+)`", text):
                 self.assertIn(other, TOOLS, name)
-            if "all" in tool["inputSchema"]["properties"]:
+            for old in REMOVED:
+                self.assertNotIn(f"`{old}`", text.replace("`module`", ""), name)
+            properties = tool["inputSchema"]["properties"]
+            for parameter in properties:
+                if parameter != "all" and name != "query_graph":
+                    self.assertIn(f"`{parameter}", text, f"{name}: parameter {parameter} is not explained")
+            if "all" in properties:
                 self.assertIn("200", text, name)
-            if name in ("impact", "modules", "definitions", "usages", "dependencies", "calls"):
+            if name in LOOKUPS:
                 self.assertIn("is answered with an error", text, name)
 
     def test_facts_lists_its_functions(self) -> None:
-        """/* REQ-MCP-031: the expression `(help)`, which the description of `facts` names, returns the list of
+        """/* REQ-MCP-031: the expression `(help)`, which the description of `query_graph` names, returns the list of
         the functions of the query language and is not an error. */"""
         _make_shop(self.root)
-        session = McpSession(self.root, [_initialize(), _call(2, "graph", {}), _call(3, "facts", {"expression": "(help)"})])
+        session = McpSession(self.root, [_initialize(), _call(2, "build_graph", {}), _call(3, "query_graph", {"expression": "(help)"})])
         reply = session.reply(3)
         self.assertFalse(reply["result"]["isError"], reply)
         text = "\n".join(_texts(reply))
         for function in ("(deps ", "(rdeps ", "(intersect ", "(files "):
             self.assertIn(function, text)
 
-    def test_the_three_renamed_tools_answer_under_their_new_names(self) -> None:
-        """/* REQ-MCP-032: `graph` builds the code graph (the only tool that writes), `modules` describes a
-        module and `facts` evaluates a query; `build`, `module` and `query` are unknown tools. */"""
+    def test_only_the_new_names_answer(self) -> None:
+        """/* REQ-MCP-032: `build_graph` builds the code graph and is the only tool that writes, `describe_module`
+        describes a module and `query_graph` evaluates a query; every name a tool had before (`build`, `graph`,
+        `impact`, `modules`, `facts`, ...) is an unknown tool. */"""
         _make_shop(self.root)
+        old = ("build", "graph", "impact", "modules", "facts", "usages", "module", "query")
         session = McpSession(self.root, [
-            _initialize(), _request(2, "tools/list"), _call(3, "graph", {}), _call(4, "modules", {"module": "shop/checkout"}),
-            _call(5, "facts", {"expression": '(count (rdeps "shop/pricing" 1))'}),
-            _call(6, "build", {}), _call(7, "module", {"module": "shop/checkout"}), _call(8, "query", {"expression": "(help)"}),
+            _initialize(), _request(2, "tools/list"), _call(3, "build_graph", {}), _call(4, "describe_module", {"module": "shop/checkout"}),
+            _call(5, "query_graph", {"expression": '(count (rdeps "shop/pricing" 1))'}),
+            *[_call(100 + index, name, {}) for index, name in enumerate(old)],
         ])
         hints = {tool["name"]: tool["annotations"]["readOnlyHint"] for tool in session.reply(2)["result"]["tools"]}
-        self.assertEqual(["graph"], [name for name, read_only in hints.items() if not read_only])
+        self.assertEqual(["build_graph"], [name for name, read_only in hints.items() if not read_only])
         self.assertFalse(session.reply(3)["result"]["isError"], session.reply(3))
         self.assertIn("shop/pricing", "\n".join(_texts(session.reply(4))))
         self.assertIn("1", "\n".join(_texts(session.reply(5))))
-        for identifier in (6, 7, 8):
-            self.assertEqual(-32602, session.reply(identifier)["error"]["code"])
+        for index in range(len(old)):
+            self.assertEqual(-32602, session.reply(100 + index)["error"]["code"], old[index])
+
+    def test_files_and_source_are_read_through_the_server(self) -> None:
+        """/* REQ-MCP-034: `list_files` lists the source files of the graph, all or those whose path matches
+        `pattern`; `read_source` returns the numbered lines of a file of the graph, of a range of it, or of one
+        definition. A path outside the repository, a file that is not in the graph and an unknown name are tool
+        errors, and no line of any file is returned for them. */"""
+        _make_shop(self.root)
+        (self.root.parent / "outside_secret.py").write_text("TOKEN = 'outside'\n", encoding="utf-8")
+        self.addCleanup((self.root.parent / "outside_secret.py").unlink)
+        (self.root / "notes.txt").write_text("not source\n", encoding="utf-8")
+        session = McpSession(self.root, [
+            _initialize(), _call(2, "build_graph", {}),
+            _call(3, "list_files", {}), _call(4, "list_files", {"pattern": "check"}),
+            _call(5, "read_source", {"target": "shop/pricing.py"}),
+            _call(6, "read_source", {"target": "pay"}),
+            _call(7, "read_source", {"target": "shop/checkout.py", "first": 4, "last": 4}),
+            _call(8, "read_source", {"target": "../outside_secret.py"}),
+            _call(9, "read_source", {"target": str(self.root.parent / "outside_secret.py")}),
+            _call(10, "read_source", {"target": "notes.txt"}),
+            _call(11, "read_source", {"target": "no_such_name"}),
+            _call(12, "read_source", {"target": "shop/pricing.py", "first": 0}),
+        ])
+        everything = "\n".join(_texts(session.reply(3)))
+        for path in ("shop/pricing.py", "shop/checkout.py"):
+            self.assertIn(f"(file {path} ", everything)
+        self.assertNotIn("notes.txt", everything)
+        some = "\n".join(_texts(session.reply(4)))
+        self.assertIn("(file shop/checkout.py ", some)
+        self.assertNotIn("shop/pricing.py", some)
+        whole = "\n".join(_texts(session.reply(5))).splitlines()
+        self.assertEqual("(source shop/pricing.py :first 1 :last 2 :of 2)", whole[0])
+        self.assertEqual('(line 1 "def total(items):")', whole[1])
+        one = "\n".join(_texts(session.reply(6)))
+        self.assertIn(":entity shop/checkout::pay)", one)
+        self.assertIn('"def pay(items):")', one)
+        self.assertEqual(["(source shop/checkout.py :first 4 :last 4 :of 5)", '(line 4 "def pay(items):")'], "\n".join(_texts(session.reply(7))).splitlines())
+        for identifier in (8, 9, 10, 11, 12):
+            reply = session.reply(identifier)
+            self.assertTrue(reply["result"]["isError"], (identifier, reply))
+            text = "\n".join(_texts(reply))
+            self.assertNotIn("(line ", text, identifier)
+            self.assertNotIn("outside", text.replace("outside_secret", ""), identifier)
+
+    def test_the_line_limit_of_read_source_is_the_one_of_the_command(self) -> None:
+        """/* REQ-MCP-035: the number of lines the description of `read_source` names is the limit of the
+        `source` command. */"""
+        from wingbox import cli, mcp_server
+
+        search = cli.load_script("code_graph_search")
+        self.assertEqual(search.SOURCE_LINE_LIMIT, mcp_server.SOURCE_LINES_PER_CALL)
+        self.assertIn(f"at most {search.SOURCE_LINE_LIMIT} lines", mcp_server.TOOLS_BY_NAME["read_source"].description)
 
     def test_every_parameter_is_described_and_every_choice_is_closed(self) -> None:
         """/* REQ-MCP-028: every parameter of every tool has a description of at least ten characters; a parameter
@@ -143,21 +205,21 @@ class MergedToolsTest(unittest.TestCase):
         subprocess.run([*git, "commit", "-q", "-m", "base"], check=True)
         (cls.root / "shop" / "pricing.py").write_text("def total(items):\n    return sum(items) + 0\n", encoding="utf-8")
         cls.session = McpSession(cls.root, [
-            _initialize(), _call(2, "graph", {}),
-            _call(10, "dependencies", {"module": "shop/checkout", "depth": 1}),
-            _call(11, "dependencies", {"module": "shop/pricing", "direction": "in", "depth": 1}),
-            _call(12, "dependencies", {"module": "shop/pricing", "direction": "sideways"}),
-            _call(20, "calls", {"function": "total"}),
-            _call(21, "calls", {"function": "pay", "direction": "out"}),
-            _call(22, "calls", {"function": "post", "to": "total"}),
-            _call(30, "definitions", {"name": "total", "kind": "function"}),
-            _call(31, "definitions", {"name": "Order", "kind": "type"}),
-            _call(32, "definitions", {"name": "LIMIT"}),
-            _call(33, "definitions", {"name": "Order"}),
-            _call(40, "modules", {"module": "shop/checkout"}),
-            _call(41, "modules", {"module": "pricing"}),
-            _call(42, "modules", {"module": "no_such_thing_anywhere"}),
-            _call(50, "changes", {}),
+            _initialize(), _call(2, "build_graph", {}),
+            _call(10, "list_dependencies", {"module": "shop/checkout", "depth": 1}),
+            _call(11, "list_dependencies", {"module": "shop/pricing", "direction": "in", "depth": 1}),
+            _call(12, "list_dependencies", {"module": "shop/pricing", "direction": "sideways"}),
+            _call(20, "trace_calls", {"function": "total"}),
+            _call(21, "trace_calls", {"function": "pay", "direction": "out"}),
+            _call(22, "trace_calls", {"function": "post", "to": "total"}),
+            _call(30, "find_definitions", {"name": "total", "kind": "function"}),
+            _call(31, "find_definitions", {"name": "Order", "kind": "type"}),
+            _call(32, "find_definitions", {"name": "LIMIT"}),
+            _call(33, "find_definitions", {"name": "Order"}),
+            _call(40, "describe_module", {"module": "shop/checkout"}),
+            _call(41, "describe_module", {"module": "pricing"}),
+            _call(42, "describe_module", {"module": "no_such_thing_anywhere"}),
+            _call(50, "list_changes", {}),
         ])
 
     @classmethod

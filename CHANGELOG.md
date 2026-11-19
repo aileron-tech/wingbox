@@ -4,6 +4,36 @@
 
 ### Changes
 
+- The MCP tools are named with a verb and a noun, and there are thirteen of them. **An MCP client
+  that calls a tool by its old name must use the new one**: `graph` is `build_graph`, `impact` is
+  `analyze_impact`, `modules` is `describe_module`, `definitions` is `find_definitions`, `usages`
+  is `find_usages`, `dependencies` is `list_dependencies`, `calls` is `trace_calls`, `layers` is
+  `list_layers`, `boundaries` is `check_boundaries`, `changes` is `list_changes`, `facts` is
+  `query_graph`. The `wingbox` commands keep their names.
+- Two new commands, and the MCP tools `list_files` and `read_source` over them. `wingbox files
+  [pattern]` lists the source files of the graph with the module, the language and the layer of
+  each. `wingbox source <file>`, `wingbox source <Name>` or `wingbox source <file>::<Name>` prints
+  the numbered lines of a file of the graph, of a range of it (`first`, `last`) or of one
+  definition, at most 400 lines and 100,000 characters a call, and says where to go on; a line
+  over 2,000 characters is cut and says its length. It reads source files of the graph only: any
+  other path, inside or outside the repository, and a file that is a symbolic link, is answered
+  with an error. Over
+  the HTTP transport this lets an agent on another machine read the code it asks about. **It also
+  changes what the HTTP transport exposes**: whoever holds its token can now read the text of the
+  source files that are in the graph, not only the graph.
+- The description of every MCP tool says what each of its parameters means.
+- Releases carry two more files on the GitHub release, next to the Claude Desktop extension:
+  `SHA256SUMS`, one line per file of the release in the form `shasum -a 256 -c` reads, and
+  `wingbox-X.Y.Z.cdx.json`, a CycloneDX 1.5 SBOM that names the package, the SHA-256 of each of its
+  built files and every dependency with its pinned version. `tools/release_files.py` writes both.
+- A release can be rebuilt from its tag and compared with what PyPI serves: two builds of the same
+  tree give the same bytes, and a test builds twice on every push to keep it so. Checked for 0.14.0:
+  a clone of the tag, built with `uv build`, gives the two files of PyPI byte for byte.
+  [docs/assurance/release-integrity.md](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/release-integrity.md)
+  has the commands, what the checksum file and the SBOM show and what they do not, and the next
+  step that is not in use yet: publishing to PyPI through trusted publishing.
+- Every action the workflows of the repository use is named at a full commit, with its release tag
+  as a comment, and a test fails on a `uses:` line that names a tag or a branch.
 - New folder [docs/assurance](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/README.md)
   for a team that has to justify the tool it relies on. It holds, in one place and taken from the
   repository alone: every requirement with the test that verifies it (generated from the test

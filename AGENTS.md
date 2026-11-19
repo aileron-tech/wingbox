@@ -40,7 +40,9 @@ this file applies to you.
   install, uninstall and the search hook, `UPDATE`, `MCP` the MCP server,
   `HTTP` its HTTP transport in `packages/wingbox-http`,
   `PLUGIN` the plugins and their tools, `OUT` the report and the map page,
-  `BENCH` the benchmarks, `SEC` the local-only guarantees, `DARTACC` and
+  `BENCH` the benchmarks, `SEC` the local-only guarantees, `REL` the release
+  files (pinned workflow actions, checksums, SBOM, reproducible build),
+  `DARTACC` and
   `DARTLAYER` the Dart acceptance harness and the Flutter purpose and layer
   rules, `DEPS`, `LANG`, and one prefix per language such as `DART`, `GO` or
   `RUBY`).
@@ -96,6 +98,14 @@ this file applies to you.
   byte for byte identical, and `--check` exits 1 while anything is stale. The
   Claude Code manifest pins the commit of the newest `vX.Y.Z` tag in every
   `uvx` command, so run it again once the release tag exists.
+- A `uses:` line of a workflow names its action at a full commit, with the
+  release tag of that commit as a trailing comment
+  (`uses: actions/checkout@<40 hex>  # v4.4.0`; REQ-REL-001). Read the commit
+  of a tag with `gh api repos/<owner>/<repo>/git/ref/tags/<tag>`; when the
+  answer has `"type": "tag"` the tag is annotated, and
+  `gh api repos/<owner>/<repo>/git/tags/<sha>` gives the commit. A newer
+  release of an action is taken by changing the commit and the comment
+  together.
 - ASCII only, and English only: no Russian or other non-English text anywhere in the repository, including LOG.md entries and quotes of what the maintainer said (paraphrase them in English; REQ-DOC-001). `.gitignore` changes only when the name of a generated file
   changes.
 - A user-facing change updates `README.md` and `SKILL.md` (command tables),
@@ -145,6 +155,24 @@ Follow these steps in order when the maintainer asks for a release.
    ```
 
    then run `wingbox build .` and `wingbox impact <file>` in a small project.
+7. Write the checksum file and the SBOM for the files that were uploaded and
+   attach both to the GitHub release, next to the `.mcpb` assets:
+
+   ```bash
+   python3 tools/release_files.py /tmp/wingbox-dist
+   gh release upload vX.Y.Z /tmp/wingbox-dist/SHA256SUMS \
+                            /tmp/wingbox-dist/wingbox-X.Y.Z.cdx.json
+   ```
+
+   `SHA256SUMS` gets one line per file of the folder, so the folder holds the
+   files of this release and nothing else: the two files of step 5 and, to
+   have them listed too, the files of `wingbox-http`
+   (`uv build packages/wingbox-http --out-dir /tmp/wingbox-dist`) and the
+   extension (`python3 tools/build_mcpb.py --out /tmp/wingbox-dist`).
+   `wingbox-X.Y.Z.cdx.json` is the CycloneDX 1.5 SBOM: the package, the
+   SHA-256 of its built files and every dependency `pyproject.toml` pins.
+   `docs/assurance/release-integrity.md` says what each file proves and how a
+   reader checks it.
 
 A release is not finished here: go on with section 6, "After every release".
 
@@ -171,8 +199,9 @@ The tool list of `wingbox mcp` (`TOOLS` in `src/wingbox/mcp_server.py`) is
 graded by MCP directories, and the grade is shown next to the listing. Glama
 grades four things: whether the tools can be told apart, whether their names
 follow one pattern, how many there are, and whether they cover the domain. With
-eighteen tools the grade was B (3.4 of 5, 2026-11-17); the list was then cut to
-eleven.
+eighteen tools the grade was B (3.4 of 5, 2026-11-17); eleven one-word names
+got A (4.0, then 4.6 with rewritten descriptions, 2026-11-19); the list is now
+thirteen verb_noun tools.
 
 Default: a change of the server keeps the tool list as it is. A new question
 becomes a parameter of the tool that already answers the nearest question. Add,
@@ -183,24 +212,26 @@ Check every change of the server against this list before the pull request:
 
 1. Count: 3 to 15 tools.
 2. One job per tool. Two tools that differ only by direction or by kind are
-   one tool with a parameter (`dependencies` in and out, `calls` in, out and
-   to, `definitions` by kind). A wrapper around another tool is an option of
-   that tool (`modules` takes a keyword).
-3. Names: one lowercase word, the noun of the answer (`graph`, `impact`,
-   `usages`, `changes`, `facts`). No verb, and no name shares its first six
-   letters with another.
-4. Description: at most 700 characters, in this order. A verb first, saying
+   one tool with a parameter (`list_dependencies` in and out, `trace_calls`
+   in, out and to, `find_definitions` by kind). A wrapper around another tool is an option of
+   that tool (`describe_module` takes a keyword).
+3. Names: a verb and a noun in lowercase snake_case (`build_graph`,
+   `find_usages`, `list_changes`). One pattern for every tool; no name is a
+   prefix of another. A directory read one-word names that were not plural
+   nouns (`graph`, `facts`, `module`) as a break of the pattern.
+4. Description: at most 900 characters, in this order. A verb first, saying
    what the tool does and what comes back ("Lists ...", "Traces ..."); when
    to use it ("Use it before editing a file"); the neighbour for the next
    question, by name ("for one function use `usages`"); and what a caller
-   cannot see in the schema: that a list stops at 200 items unless `all` is
-   true, and what an unknown name returns. Plain sentences, no telegraphic
+   cannot see in the schema: what each parameter means, named in backticks
+   (the forms it takes, how two of them interact, the default), that a list
+   stops at 200 items unless `all` is true, and what an unknown name returns. Plain sentences, no telegraphic
    "take X".
 5. Parameters: every one has a description. A choice is an `enum` with a
    default, and the server refuses any other value. An integer has a lower and
    an upper bound.
 6. Annotations: a title of at most 40 characters; `readOnlyHint` is false only
-   for a tool that writes (today `graph`); every tool is idempotent, not
+   for a tool that writes (today `build_graph`); every tool is idempotent, not
    destructive and not open-world.
 7. The answer is the output of the `wingbox` command behind the tool. An
    `(error ...)` answer is a tool error. Answers stop at 200 lines unless the
@@ -254,6 +285,7 @@ the maintainer, never left for the next release.
 | PyPI, both distributions complete | `curl -s https://pypi.org/pypi/wingbox/X.Y.Z/json` and the same for `wingbox-http`: count the entries of `urls` | two files each, the sdist and the wheel: a half-finished upload still installs |
 | PyPI, both distributions install | `uvx --refresh --from "wingbox[http]==X.Y.Z" wingbox --version` and `... wingbox mcp --http --help` | X.Y.Z; the options of the HTTP transport |
 | GitHub release | `gh release view vX.Y.Z --json tagName,assets` | the tag, the notes, the assets `wingbox-X.Y.Z.mcpb` and `wingbox.mcpb` |
+| Checksums and SBOM | `gh release view vX.Y.Z --json assets --jq '.assets[].name'`, then `gh release download vX.Y.Z --pattern SHA256SUMS --output -` and `curl -s https://pypi.org/pypi/wingbox/X.Y.Z/json \| python3 -c "import json,sys; [print(u['digests']['sha256'], '', u['filename']) for u in json.load(sys.stdin)['urls']]"` | the assets `SHA256SUMS` and `wingbox-X.Y.Z.cdx.json` are listed; each of the two lines PyPI answers is a line of `SHA256SUMS` |
 | Claude Desktop extension link | `curl -sIL https://github.com/aileron-tech/wingbox/releases/latest/download/wingbox.mcpb` | 200 |
 | GitHub Actions on `main` | `gh run list --branch main --limit 10` | `tests`, `docs` and `wingbox` green on the release commit; `publish-mcp` succeeded for the release |
 | MCP registry | `curl -s "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.aileron-tech/wingbox&version=latest"` | version X.Y.Z, status `active` |
@@ -335,7 +367,11 @@ PyPI, so a Wingbox release is followed there:
    the job fails with "unable to read tree".
 4. The Marketplace page of the action shows the new version, and the workflow
    `.github/workflows/wingbox.yml` of this repository (the check on our own
-   pull requests) ran green on a pull request opened after the release.
+   pull requests) ran green on a pull request opened after the release. That
+   workflow names the action at a commit (REQ-REL-001), so it follows a
+   release of the action only when its `uses:` line is changed to the commit
+   of the new tag (`gh api repos/aileron-tech/wingbox-action/git/ref/tags/vX.Y.Z`)
+   with the tag as the comment; that pull request is the one to watch.
 5. A new input, output or variable of the action is in its README tables, in
    both GitLab templates and on the site page (6.5). A path that only unit
    tests cover is said to be so and is not written on the site before a real

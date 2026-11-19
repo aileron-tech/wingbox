@@ -192,9 +192,11 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `find_calls <fn> [depth]` | What does this function call | `find_calls createOrder 2` |
 | `grep_functions <pattern>` | Search function bodies in source | `grep_functions "validate.*input"` |
 | `diff_functions [ref]` | Changed functions in git diff | `diff_functions HEAD~3` |
+| `files [pattern]` | The source files of the graph: path, module, language, layer | `files "tests/.*pricing"` |
+| `source <file\|Name\|file::Name> [first] [last]` | The lines of a source file of the graph or of one definition, numbered (400 a call) | `source createOrder` |
 | `query '<sexp>'` | Composable Scheme query | `query '(count (boundary "X"))'` |
 | `repl` | Interactive Scheme REPL | `repl` |
-| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`graph`, `impact`, `modules`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`, `changes`, `facts`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
+| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build_graph`, `list_files`, `describe_module`, `read_source`, `find_definitions`, `find_usages`, `analyze_impact`, `list_dependencies`, `trace_calls`, `list_layers`, `check_boundaries`, `list_changes`, `query_graph`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
 
 `impact` accepts ordinary file paths, several in one call.
 
