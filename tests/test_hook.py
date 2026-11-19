@@ -163,6 +163,29 @@ class HookWithoutAGraphTest(unittest.TestCase):
             self.assertEqual("", completed.stdout)
 
 
+class HookTimerTest(unittest.TestCase):
+    def test_the_timer_thread_has_ended_when_the_hook_returns(self) -> None:
+        """/* REQ-INSTALL-047: when `wingbox hook pre-search` returns, with an answer, without one or after an error, the thread of its time limit has ended: no thread but the caller's is alive, so no daemon thread runs while the interpreter shuts down (the hook process ended with a segmentation fault on macOS when one did). The limit itself still ends a hook that runs over it. */"""
+        import io
+        import threading
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest import mock
+
+        from wingbox import hook
+
+        def run(payload: str, answer) -> None:
+            before = set(threading.enumerate())
+            with mock.patch.object(hook, "run_pre_search", side_effect=answer), mock.patch.object(sys, "stdin", io.StringIO(payload)), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(0, hook.main(["pre-search"]))
+            self.assertEqual(set(), set(threading.enumerate()) - before)
+
+        for answer in (lambda text, cwd: "", lambda text, cwd: "(context)", ValueError("boom")):
+            for _ in range(20):
+                run("{}", answer)
+        self.assertGreater(hook.BUDGET_SECONDS, 0)
+
+
 class HookBudgetTest(unittest.TestCase):
     def test_the_synthetic_graph_loads_in_the_query_engine(self) -> None:
         """/* REQ-INSTALL-021: the synthetic graph of the time-budget test must be a graph the query engine accepts, with the same dependents as the hook counts. */"""
