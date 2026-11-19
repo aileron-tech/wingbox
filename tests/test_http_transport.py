@@ -127,8 +127,8 @@ class DecisionTest(unittest.TestCase):
     def test_the_headers_of_a_2026_request_must_match_its_body(self) -> None:
         """/* REQ-HTTP-007: a request of revision 2026-07-28 must carry MCP-Protocol-Version and Mcp-Method equal to its body, and Mcp-Name equal to the tool of a tools/call; a missing or different header is answered 400 with error -32020. */"""
         meta = {META_VERSION: MODERN, META_CAPABILITIES: {}}
-        call = _message("tools/call", params={"name": "impact", "arguments": {"target": "a.py"}, "_meta": meta})
-        good = {"mcp-protocol-version": MODERN, "mcp-method": "tools/call", "mcp-name": "impact"}
+        call = _message("tools/call", params={"name": "analyze_impact", "arguments": {"target": "a.py"}, "_meta": meta})
+        good = {"mcp-protocol-version": MODERN, "mcp-method": "tools/call", "mcp-name": "analyze_impact"}
         passed = transport.decide(_policy(), _post(call, headers=good))
         self.assertIsInstance(passed, transport.Forward)
         self.assertTrue(passed.modern)
@@ -279,12 +279,12 @@ class ListenerTest(unittest.TestCase):
                 status, _, body = running.post(_message("tools/list", 2), {**auth, "MCP-Protocol-Version": LEGACY})
                 self.assertEqual(200, status)
                 self.assertEqual({tool.name for tool in mcp_server.TOOLS}, {tool["name"] for tool in json.loads(body)["result"]["tools"]})
-                status, kind, body = running.post(_message("tools/call", 3, {"name": "graph", "arguments": {}}), auth)
+                status, kind, body = running.post(_message("tools/call", 3, {"name": "build_graph", "arguments": {}}), auth)
                 self.assertEqual(200, status)
                 built = _event_or_json(kind, body)["result"]
                 self.assertFalse(built["isError"], built)
                 status, kind, body = running.post(
-                    _message("tools/call", 4, {"name": "impact", "arguments": {"target": "shop/pricing.py"}}), auth
+                    _message("tools/call", 4, {"name": "analyze_impact", "arguments": {"target": "shop/pricing.py"}}), auth
                 )
                 answer = _event_or_json(kind, body)["result"]
                 self.assertFalse(answer["isError"], answer)

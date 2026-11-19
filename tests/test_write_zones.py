@@ -83,7 +83,7 @@ class WriteZonesTest(unittest.TestCase):
         mcp_lines = "".join(json.dumps(line) + "\n" for line in (
             {"jsonrpc": "2.0", "id": 1, "method": "initialize",
              "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}},
-            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "impact", "arguments": {"target": "shop/pricing.py"}}},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "analyze_impact", "arguments": {"target": "shop/pricing.py"}}},
         ))
         steps = [
             ("mcp --build-missing", ["mcp", "--root", str(self.project), "--build-missing"], mcp_lines),

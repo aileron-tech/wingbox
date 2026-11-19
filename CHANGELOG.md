@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- The MCP tools are named with a verb and a noun, and there are thirteen of them. **An MCP client
+  that calls a tool by its old name must use the new one**: `graph` is `build_graph`, `impact` is
+  `analyze_impact`, `modules` is `describe_module`, `definitions` is `find_definitions`, `usages`
+  is `find_usages`, `dependencies` is `list_dependencies`, `calls` is `trace_calls`, `layers` is
+  `list_layers`, `boundaries` is `check_boundaries`, `changes` is `list_changes`, `facts` is
+  `query_graph`. The `wingbox` commands keep their names.
+- Two new commands, and the MCP tools `list_files` and `read_source` over them. `wingbox files
+  [pattern]` lists the source files of the graph with the module, the language and the layer of
+  each. `wingbox source <file>`, `wingbox source <Name>` or `wingbox source <file>::<Name>` prints
+  the numbered lines of a file of the graph, of a range of it (`first`, `last`) or of one
+  definition, at most 400 lines and 100,000 characters a call, and says where to go on; a line
+  over 2,000 characters is cut and says its length. It reads source files of the graph only: any
+  other path, inside or outside the repository, and a file that is a symbolic link, is answered
+  with an error. Over
+  the HTTP transport this lets an agent on another machine read the code it asks about. **It also
+  changes what the HTTP transport exposes**: whoever holds its token can now read the text of the
+  source files that are in the graph, not only the graph.
+- The description of every MCP tool says what each of its parameters means.
+
 ## 0.14.0 - 2026-11-19
 
 ### Changes

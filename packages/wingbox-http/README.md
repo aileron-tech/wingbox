@@ -3,7 +3,7 @@
 Call the [Wingbox](https://wingbox.dev) code graph of a repository from another
 machine. `wingbox-http` serves the Wingbox MCP server over the Streamable HTTP
 transport of the Model Context Protocol: the same tools as `wingbox mcp` on
-stdio (`impact`, `usages`, `graph` and the rest), at one URL.
+stdio (`analyze_impact`, `find_usages`, `build_graph` and the rest), at one URL.
 
 Use it when the repository and its graph live on a build server, a dev
 container or a remote workstation, and the coding agent runs somewhere else.
@@ -66,9 +66,10 @@ header `Authorization: Bearer <token>`.
 ## What is exposed
 
 Whoever holds the token can read the code graph of the repository (file names,
-symbols, dependencies, the lines Wingbox quotes) and rebuild the graph (the tool `graph`), which
-writes `.wingbox/` in the repository. No tool reads a file outside the
-repository, runs a command you give it, or deletes anything.
+symbols, dependencies) and the text of the source files that are in the graph
+(the tool `read_source`), and rebuild the graph (the tool `build_graph`), which
+writes `.wingbox/` in the repository. No tool reads a file that is not a source
+file of the graph, runs a command you give it, or deletes anything.
 
 - The token is a shared secret of at least 32 characters, compared in constant
   time. It is taken from the environment or a file, never from the command

@@ -164,8 +164,9 @@ The tool list of `wingbox mcp` (`TOOLS` in `src/wingbox/mcp_server.py`) is
 graded by MCP directories, and the grade is shown next to the listing. Glama
 grades four things: whether the tools can be told apart, whether their names
 follow one pattern, how many there are, and whether they cover the domain. With
-eighteen tools the grade was B (3.4 of 5, 2026-11-17); the list was then cut to
-eleven.
+eighteen tools the grade was B (3.4 of 5, 2026-11-17); eleven one-word names
+got A (4.0, then 4.6 with rewritten descriptions, 2026-11-19); the list is now
+thirteen verb_noun tools.
 
 Default: a change of the server keeps the tool list as it is. A new question
 becomes a parameter of the tool that already answers the nearest question. Add,
@@ -176,24 +177,26 @@ Check every change of the server against this list before the pull request:
 
 1. Count: 3 to 15 tools.
 2. One job per tool. Two tools that differ only by direction or by kind are
-   one tool with a parameter (`dependencies` in and out, `calls` in, out and
-   to, `definitions` by kind). A wrapper around another tool is an option of
-   that tool (`modules` takes a keyword).
-3. Names: one lowercase word, the noun of the answer (`graph`, `impact`,
-   `usages`, `changes`, `facts`). No verb, and no name shares its first six
-   letters with another.
-4. Description: at most 700 characters, in this order. A verb first, saying
+   one tool with a parameter (`list_dependencies` in and out, `trace_calls`
+   in, out and to, `find_definitions` by kind). A wrapper around another tool is an option of
+   that tool (`describe_module` takes a keyword).
+3. Names: a verb and a noun in lowercase snake_case (`build_graph`,
+   `find_usages`, `list_changes`). One pattern for every tool; no name is a
+   prefix of another. A directory read one-word names that were not plural
+   nouns (`graph`, `facts`, `module`) as a break of the pattern.
+4. Description: at most 900 characters, in this order. A verb first, saying
    what the tool does and what comes back ("Lists ...", "Traces ..."); when
    to use it ("Use it before editing a file"); the neighbour for the next
    question, by name ("for one function use `usages`"); and what a caller
-   cannot see in the schema: that a list stops at 200 items unless `all` is
-   true, and what an unknown name returns. Plain sentences, no telegraphic
+   cannot see in the schema: what each parameter means, named in backticks
+   (the forms it takes, how two of them interact, the default), that a list
+   stops at 200 items unless `all` is true, and what an unknown name returns. Plain sentences, no telegraphic
    "take X".
 5. Parameters: every one has a description. A choice is an `enum` with a
    default, and the server refuses any other value. An integer has a lower and
    an upper bound.
 6. Annotations: a title of at most 40 characters; `readOnlyHint` is false only
-   for a tool that writes (today `graph`); every tool is idempotent, not
+   for a tool that writes (today `build_graph`); every tool is idempotent, not
    destructive and not open-world.
 7. The answer is the output of the `wingbox` command behind the tool. An
    `(error ...)` answer is a tool error. Answers stop at 200 lines unless the

@@ -15,7 +15,7 @@ Project page: https://wingbox.dev. Source: https://github.com/aileron-tech/wingb
 | Part | Claude Code | Codex |
 |---|---|---|
 | The `wingbox` skill (`skills/wingbox/`) | yes | yes |
-| MCP server `wingbox mcp` over stdio (11 tools: graph, impact, modules, definitions, usages, ...) | yes | yes |
+| MCP server `wingbox mcp` over stdio (13 tools: build_graph, analyze_impact, find_usages, read_source, ...) | yes | yes |
 | Search hook: before Grep, Glob and Read, adds the matching modules and their dependents to the context | yes | no |
 
 ## Requirements
