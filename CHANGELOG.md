@@ -12,6 +12,8 @@
   function a test that reaches it is shown (`wingbox diff_functions`, `wingbox usages`). Run
   `wingbox install` or `wingbox update` once to get the new block.
 
+## 0.12.2 - 2026-11-19
+
 ### Fixes
 
 - A Python that Wingbox starts itself no longer imports from the folder it is started in. The
