@@ -729,12 +729,15 @@ graph gives its `(error no-match ...)` line and exit status 0.
 ```scheme
 (source <path> :first 40 :last 80 :of 212 :entity <mod>::<name> :more 30 :next 81)
 (line 40 "text of the line, quoted")
+(line 41 "the first 2,000 characters of a longer line" :cut 5006)
 (error ambiguous "name" :candidates <path>::<name> <path>::<name>)
 ```
 
 `:entity` is there when the target is a definition; `:more` and `:next` when the
-range is longer than the 400 lines one call prints. Only source files of the
-graph are printed; any other path is `(error no-match ...)`.
+range is longer than one call prints: 400 lines, or 100,000 characters of
+text. `:cut N` marks a line of N characters printed up to its first 2,000.
+Only source files of the graph are printed; any other path, and a file that
+is a symbolic link, is `(error no-match ...)`.
 
 ## diff_functions Output
 

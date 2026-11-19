@@ -3393,6 +3393,8 @@ def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
 # files, source: what the graph holds on disk
 # ---------------------------------------------------------------------------
 SOURCE_LINE_LIMIT = 400   # lines one `source` call prints; the first line says where to go on
+SOURCE_LINE_CHARS = 2000  # characters of one line; a longer line is cut and says its length (:cut N)
+SOURCE_CHAR_LIMIT = 100_000   # characters of text in one answer; it stops before the line that would pass it
 
 
 def cmd_files(g: CodeGraph, pattern: Optional[str] = None) -> None:
@@ -3453,27 +3455,53 @@ def _source_target(g: CodeGraph, target: str) -> Union[tuple[str, Optional["Enti
     return _no_match_fact(target, [])
 
 
+def _source_file(g: CodeGraph, module: str) -> Optional[tuple[str, str]]:
+    """(path to read, path to show) of a module of the graph, or None when it must not be read.
+
+    The file is read only when its real path is the root's real path joined with the path the graph holds:
+    no component below the root may be a symbolic link, so a file replaced by a link after the build is
+    refused, wherever the link points. Without a root nothing is read: the check cannot be made."""
+    if not g._root:
+        return None
+    named = g.module_to_file(module)
+    if not os.path.isabs(named):
+        return None
+    relative = os.path.relpath(named, g._root)
+    if relative.startswith(os.pardir) or os.path.isabs(relative):
+        return None
+    expected = os.path.join(os.path.realpath(g._root), relative)
+    real = os.path.realpath(named)
+    if os.path.normcase(real) != os.path.normcase(expected) or not os.path.isfile(real):
+        return None
+    return real, relative.replace(os.sep, "/")
+
+
 def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Optional[int] = None) -> None:
     """The lines of one source file of the graph, or of one definition in it, numbered and quoted.
 
-    Only files of the graph are read: the path is the one the graph holds for the module, and a file that
-    resolves outside the root (a symbolic link) is refused."""
+    Only files of the graph are read (see _source_file). One answer holds at most SOURCE_LINE_LIMIT lines and
+    SOURCE_CHAR_LIMIT characters of text, and a line longer than SOURCE_LINE_CHARS is cut."""
+    if (first is not None and first < 1) or (last is not None and last < 1):
+        print(f"(error invalid-argument {_q('source: first and last are line numbers from 1')})")
+        return
+    if first is not None and last is not None and last < first:
+        print(f"(error invalid-argument {_q('source: last is before first')})")
+        return
     resolved = _source_target(g, target)
     if isinstance(resolved, str):
         print(resolved)
         return
     module, entity = resolved
-    path = g.module_to_file(module)
-    root = os.path.realpath(g._root) if g._root else ""
-    real = os.path.realpath(path)
-    if not os.path.isfile(real) or (root and not (real == root or real.startswith(root + os.sep))):
+    located = _source_file(g, module)
+    if located is None:
         print(_no_match_fact(target, []))
         return
+    real, shown_path = located
     try:
         with open(real, "r", encoding="utf-8", errors="replace") as handle:
             text_lines = handle.read().splitlines()
     except OSError as error:
-        print(f"(error source-read-failed {_q(_impact_file(g, module))} {_q(str(error))})")
+        print(f"(error source-read-failed {_q(shown_path)} {_q(error.strerror or type(error).__name__)})")
         return
     total = len(text_lines)
     start, end = 1, total
@@ -3487,15 +3515,25 @@ def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Opt
     if start > max(total, 1) or end < start:
         print(f"(error invalid-argument {_q(f'lines {start} to {end}: the file has {total} lines')})")
         return
-    shown_end = min(end, start + SOURCE_LINE_LIMIT - 1)
-    head = f"(source {_q(_impact_file(g, module))} :first {start} :last {shown_end} :of {total}"
+    printed: list[str] = []
+    characters = 0
+    for number in range(start, min(end, start + SOURCE_LINE_LIMIT - 1) + 1):
+        text = text_lines[number - 1]
+        cut = f" :cut {len(text)}" if len(text) > SOURCE_LINE_CHARS else ""
+        line = f'(line {number} "{_escaped(text[:SOURCE_LINE_CHARS])}"{cut})'
+        if printed and characters + len(line) > SOURCE_CHAR_LIMIT:
+            break
+        printed.append(line)
+        characters += len(line)
+    shown_end = start + len(printed) - 1
+    head = f"(source {_q(shown_path)} :first {start} :last {shown_end} :of {total}"
     if entity is not None:
         head += f" :entity {_q(f'{module}::{entity.name}')}"
     if shown_end < end:
         head += f" :more {end - shown_end} :next {shown_end + 1}"
     print(head + ")")
-    for number in range(start, shown_end + 1):
-        print(f'(line {number} "{_escaped(text_lines[number - 1])}")')
+    for line in printed:
+        print(line)
 
 
 def cmd_diff_functions(g: CodeGraph, ref: str) -> None:

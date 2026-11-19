@@ -584,8 +584,9 @@ TOOLS: tuple[Tool, ...] = (
         "repository is on another machine. `target` is a file path or module ID, a name (`total`), or "
         "`<file>::Name` when several files define the name; for a name the answer is that definition, from its "
         "line to the next definition. `first` and `last` are line numbers of the file. One call returns at most "
-        f"{SOURCE_LINES_PER_CALL} lines and says how many are left and where to go on. It reads source files of the "
-        "graph only: any other path is answered with an error. To find a name first use `find_definitions`."
+        f"{SOURCE_LINES_PER_CALL} lines and says how many are left and where to go on; a very long line is cut and "
+        "says its length. It reads source files of the graph only: any other path is answered with an error. To "
+        "find a name first use `find_definitions`."
         + _MISS,
         {
             "target": _string("File path or module ID, a name, or <file>::Name."),

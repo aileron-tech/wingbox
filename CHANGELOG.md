@@ -14,8 +14,10 @@
   [pattern]` lists the source files of the graph with the module, the language and the layer of
   each. `wingbox source <file>`, `wingbox source <Name>` or `wingbox source <file>::<Name>` prints
   the numbered lines of a file of the graph, of a range of it (`first`, `last`) or of one
-  definition, at most 400 lines a call, and says where to go on. It reads source files of the
-  graph only: any other path, inside or outside the repository, is answered with an error. Over
+  definition, at most 400 lines and 100,000 characters a call, and says where to go on; a line
+  over 2,000 characters is cut and says its length. It reads source files of the graph only: any
+  other path, inside or outside the repository, and a file that is a symbolic link, is answered
+  with an error. Over
   the HTTP transport this lets an agent on another machine read the code it asks about. **It also
   changes what the HTTP transport exposes**: whoever holds its token can now read the text of the
   source files that are in the graph, not only the graph.

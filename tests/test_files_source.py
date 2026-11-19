@@ -42,6 +42,24 @@ class FilesAndSourceTest(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls._tmp.cleanup()
 
+    @staticmethod
+    def load_search():
+        if str(SOURCE) not in sys.path:
+            sys.path.insert(0, str(SOURCE))
+        from wingbox import cli
+
+        return cli.load_script("code_graph_search")
+
+    @staticmethod
+    def captured(action) -> str:
+        import contextlib
+        import io
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            action()
+        return out.getvalue()
+
     def lines(self, *args: str) -> list[str]:
         return [line for line in _wingbox(self.root, *args)[1].splitlines() if line.strip()]
 
@@ -113,6 +131,89 @@ class FilesAndSourceTest(unittest.TestCase):
         finally:
             (self.root / "shop" / "other.py").unlink()
             _wingbox(self.root, "build", ".")
+
+    def test_source_refuses_a_file_that_became_a_link(self) -> None:
+        """/* REQ-CS-131: a source file of the graph that was replaced by a symbolic link after the build (to a file of the repository that is not source, or to a file outside it) is not printed: `wingbox source` answers `(error no-match ...)`, because the real path of what it would read is no longer the path the graph holds. */"""
+        if not hasattr(os, "symlink"):
+            self.skipTest("no symbolic links here")
+        (self.root / ".env").write_text("SECRET=inside\n", encoding="utf-8")
+        victim = self.root / "shop" / "checkout.py"
+        kept = victim.read_text(encoding="utf-8")
+        try:
+            for target in (self.root / ".env", self.root.parent / "secret.py"):
+                victim.unlink()
+                try:
+                    os.symlink(target, victim)
+                except OSError:
+                    self.skipTest("symbolic links cannot be made here")
+                search = self.load_search()
+                graph = search.CodeGraph()
+                graph.load(str(self.root / ".wingbox" / "index.sexp"), str(self.root))
+                for asked in ("shop/checkout.py", "shop/checkout", "pay", "shop/checkout::pay"):
+                    out = self.captured(lambda: search.cmd_source(graph, asked))
+                    self.assertTrue(out.startswith("(error no-match "), (asked, out))
+                    self.assertNotIn("SECRET", out, asked)
+                    self.assertNotIn("outside", out, asked)
+        finally:
+            if victim.is_symlink() or victim.exists():
+                victim.unlink()
+            victim.write_text(kept, encoding="utf-8")
+            (self.root / ".env").unlink()
+
+    def test_source_reads_nothing_without_a_root(self) -> None:
+        """/* REQ-CS-132: `cmd_source` on a graph that has no root refuses every target: the check that a file lies inside the root cannot be made, so nothing is read. */"""
+        search = self.load_search()
+        graph = search.CodeGraph()
+        graph.load(str(self.root / ".wingbox" / "index.sexp"), str(self.root))
+        graph._root = ""
+        for asked in ("shop/pricing", "total"):
+            out = self.captured(lambda: search.cmd_source(graph, asked))
+            self.assertTrue(out.startswith("(error no-match "), (asked, out))
+            self.assertNotIn("(line ", out, asked)
+
+    def test_source_bounds_the_answer_in_characters(self) -> None:
+        """/* REQ-CS-133: a line longer than 2,000 characters is printed cut at that length with `:cut <its length>`, and one answer holds at most 100,000 characters of text: it stops before the line that would pass it and says `:more` and `:next` as for the line limit. */"""
+        wide = self.root / "shop" / "wide.py"
+        wide.write_text("A = '" + "x" * 5000 + "'\n" + "".join("B%d = '%s'\n" % (n, "y" * 1500) for n in range(100)), encoding="utf-8")
+        _wingbox(self.root, "build", ".")
+        try:
+            lines = self.lines("source", "shop/wide.py")
+            self.assertTrue(lines[1].startswith('(line 1 "A = \'xxx'), lines[1][:40])
+            self.assertTrue(lines[1].endswith('" :cut 5006)'), lines[1][-30:])
+            self.assertLessEqual(len(lines[1]), 2000 + 40)
+            text = sum(len(line) for line in lines[1:])
+            self.assertLessEqual(text, 100_000 + 2_100)
+            shown = len(lines) - 1
+            self.assertLess(shown, 101)
+            self.assertEqual(f"(source shop/wide.py :first 1 :last {shown} :of 101 :more {101 - shown} :next {shown + 1})", lines[0])
+        finally:
+            wide.unlink()
+            _wingbox(self.root, "build", ".")
+
+    def test_source_validates_its_range_itself(self) -> None:
+        """/* REQ-CS-134: `cmd_source` called directly, as the MCP server calls it, refuses a first line below 1 and a last line before the first with `(error invalid-argument ...)`, whatever the caller checked; and a file that cannot be read is reported without the folder of the server. */"""
+        search = self.load_search()
+        graph = search.CodeGraph()
+        graph.load(str(self.root / ".wingbox" / "index.sexp"), str(self.root))
+        for first, last in ((0, None), (-3, None), (5, 2), (1, 0)):
+            out = self.captured(lambda: search.cmd_source(graph, "shop/pricing.py", first, last))
+            self.assertTrue(out.startswith("(error invalid-argument "), ((first, last), out))
+            self.assertNotIn("(line ", out)
+        real_open = open
+
+        def failing(path, *args, **kwargs):
+            if str(path).endswith("pricing.py"):
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, *args, **kwargs)
+
+        import builtins
+        from unittest import mock
+
+        with mock.patch.object(builtins, "open", failing):
+            out = self.captured(lambda: search.cmd_source(graph, "shop/pricing.py"))
+        self.assertTrue(out.startswith("(error source-read-failed shop/pricing.py "), out)
+        self.assertIn("Permission denied", out)
+        self.assertNotIn(str(self.root), out)
 
     def test_source_checks_its_range(self) -> None:
         """/* REQ-CS-130: `first` and `last` are line numbers from 1; anything else, or a first line past the end of the file, is an `(error invalid-argument ...)` answer. */"""
