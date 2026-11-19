@@ -3,7 +3,7 @@
 Call the [Wingbox](https://wingbox.dev) code graph of a repository from another
 machine. `wingbox-http` serves the Wingbox MCP server over the Streamable HTTP
 transport of the Model Context Protocol: the same tools as `wingbox mcp` on
-stdio (`impact`, `usages`, `build` and the rest), at one URL.
+stdio (`impact`, `usages`, `graph` and the rest), at one URL.
 
 Use it when the repository and its graph live on a build server, a dev
 container or a remote workstation, and the coding agent runs somewhere else.
@@ -66,7 +66,7 @@ header `Authorization: Bearer <token>`.
 ## What is exposed
 
 Whoever holds the token can read the code graph of the repository (file names,
-symbols, dependencies, the lines Wingbox quotes) and start a `build`, which
+symbols, dependencies, the lines Wingbox quotes) and rebuild the graph (the tool `graph`), which
 writes `.wingbox/` in the repository. No tool reads a file outside the
 repository, runs a command you give it, or deletes anything.
 
@@ -85,7 +85,7 @@ repository, runs a command you give it, or deletes anything.
 One endpoint, `POST /mcp`, for protocol revisions 2026-07-28 and 2025-11-25
 down to 2024-11-05. Each request is answered with JSON; a `tools/call` that
 runs longer than a second is answered as an event stream, with a keep-alive
-line every ten seconds, when the client accepts one, so a long `build` is not
+line every ten seconds, when the client accepts one, so a long build of the graph is not
 cut by an idle timeout on the way. The server keeps no session and opens no
 stream of its own: `GET` and `DELETE` are answered 405. Calls run one after
 another, as on stdio.

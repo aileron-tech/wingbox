@@ -14,7 +14,7 @@ MCP_PATH = SOURCE / "wingbox" / "mcp_server.py"
 
 LEGACY_VERSION = "2025-11-25"
 MODERN_VERSION = "2026-07-28"
-EXPECTED_TOOLS = {"build", "impact", "module", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "query"}
+EXPECTED_TOOLS = {"graph", "impact", "modules", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "facts"}
 
 
 def _load_mcp_module():
@@ -120,7 +120,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual(LEGACY_VERSION, first["protocolVersion"])
         self.assertIn("tools", first["capabilities"])
         self.assertEqual("wingbox", first["serverInfo"]["name"])
-        self.assertIn("build", first["instructions"])
+        self.assertIn("`graph`", first["instructions"])
         self.assertEqual("2025-06-18", session.reply(2)["result"]["protocolVersion"])
         self.assertEqual(LEGACY_VERSION, session.reply(3)["result"]["protocolVersion"])
         self.assertEqual({}, session.reply(4)["result"])
@@ -155,7 +155,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual(-32602, session.reply(4)["error"]["code"])
 
     def test_tools_list_describes_every_tool_for_an_agent(self) -> None:
-        """/* REQ-MCP-003: `tools/list` must name the build tool and the read commands, each with a one-line description and a JSON object input schema. */"""
+        """/* REQ-MCP-003: `tools/list` must name the tool that builds the graph (`graph`) and the read commands, each with a one-line description and a JSON object input schema. */"""
         session = McpSession(self.root, [_initialize(), _request(2, "tools/list")])
         tools = session.reply(2)["result"]["tools"]
         self.assertEqual(EXPECTED_TOOLS, {tool["name"] for tool in tools})
@@ -177,7 +177,7 @@ class McpProtocolTest(unittest.TestCase):
             annotations = tool["annotations"]
             self.assertTrue(annotations["title"].strip(), tool["name"])
             self.assertLessEqual(len(annotations["title"]), 40, tool["name"])
-            self.assertIs(annotations["readOnlyHint"], tool["name"] != "build", tool["name"])
+            self.assertIs(annotations["readOnlyHint"], tool["name"] != "graph", tool["name"])
             self.assertIs(annotations["destructiveHint"], False, tool["name"])
             self.assertIs(annotations["idempotentHint"], True, tool["name"])
             self.assertIs(annotations["openWorldHint"], False, tool["name"])
@@ -190,13 +190,13 @@ class McpProtocolTest(unittest.TestCase):
             self.assertRegex(tool["name"], r"^[A-Za-z0-9_-]+$")
 
     def test_build_then_impact_return_text_and_s_expressions(self) -> None:
-        """/* REQ-MCP-004: the `build` tool must build the code graph of --root, and `impact` must then return the text answer of `wingbox impact` only, as one text item. */"""
+        """/* REQ-MCP-004: the `graph` tool must build the code graph of --root, and `impact` must then return the text answer of `wingbox impact` only, as one text item. */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,
             [
                 _initialize(),
-                _call(2, "build", {}),
+                _call(2, "graph", {}),
                 _call(3, "impact", {"target": "shop/pricing.py"}),
                 _call(4, "dependencies", {"module": "shop/checkout", "depth": 1}),
             ],
@@ -216,7 +216,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
 
     def test_module_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
-        """/* REQ-MCP-020: after `build`, the `module` tool (the `analyze` command) prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
+        """/* REQ-MCP-020: after `graph`, the `modules` tool (the `analyze` command) prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
         _make_shop(self.root)
         shop = self.root / "shop"
         (shop / "forms.py").write_text(
@@ -229,9 +229,9 @@ class McpProtocolTest(unittest.TestCase):
             self.root,
             [
                 _initialize(),
-                _call(2, "build", {}),
-                _call(3, "module", {"module": "shop/api"}),
-                _call(4, "module", {"module": "shop/report"}),
+                _call(2, "graph", {}),
+                _call(3, "modules", {"module": "shop/api"}),
+                _call(4, "modules", {"module": "shop/report"}),
             ],
         )
         self.assertFalse(session.reply(2)["result"]["isError"], session.reply(2))
@@ -251,7 +251,7 @@ class McpProtocolTest(unittest.TestCase):
         _make_shop(self.root)
         session = McpSession(
             self.root,
-            [_initialize(), _call(2, "build", {}), _call(3, "usages", {"symbol": "shop/pricing.py::total"})],
+            [_initialize(), _call(2, "graph", {}), _call(3, "usages", {"symbol": "shop/pricing.py::total"})],
         )
         answer = session.reply(3)["result"]
         self.assertFalse(answer["isError"], answer)
@@ -262,12 +262,12 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn("(usage ", texts[0])
 
     def test_a_query_without_a_graph_asks_for_build(self) -> None:
-        """/* REQ-MCP-005: a query tool called before any graph exists must return a tool error that tells the agent to call `build` first. */"""
+        """/* REQ-MCP-005: a query tool called before any graph exists must return a tool error that tells the agent to call `graph` first. */"""
         _make_shop(self.root)
         session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
         result = session.reply(2)["result"]
         self.assertTrue(result["isError"])
-        self.assertIn("call the build tool first", _texts(session.reply(2))[0])
+        self.assertIn("call the `graph` tool first", _texts(session.reply(2))[0])
 
     def test_with_build_missing_the_first_query_builds_the_graph(self) -> None:
         """/* REQ-MCP-015: `wingbox mcp --root DIR --build-missing` (what the Claude Desktop extension starts) builds the graph of DIR in the background when it has none; a tool call waits for that build up to WINGBOX_FIRST_BUILD_WAIT seconds (default 45) and then answers from the new graph. */"""
@@ -319,7 +319,7 @@ class McpProtocolTest(unittest.TestCase):
     def test_a_folder_that_is_no_repository_is_never_built(self) -> None:
         """/* REQ-MCP-019: started with --build-missing in a folder that is in no source repository (no .git or project manifest with source files, as when an app starts the server in the home folder), the server builds nothing and every tool answers that there is no repository here. */"""
         (self.root / "notes.txt").write_text("hello\n", encoding="utf-8")
-        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "notes.txt"}), _call(3, "build", {})], ("--build-missing",))
+        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "notes.txt"}), _call(3, "graph", {})], ("--build-missing",))
         for identifier in (2, 3):
             text = _texts(session.reply(identifier))[0]
             self.assertIn("No repository here", text)
@@ -374,7 +374,7 @@ class McpProtocolTest(unittest.TestCase):
         _make_shop(self.root)
         session = McpSession(
             self.root,
-            [_initialize(), _call(2, "build", {"full": True}), _call(3, "layers", {}), "garbage"],
+            [_initialize(), _call(2, "graph", {"full": True}), _call(3, "layers", {}), "garbage"],
         )
         self.assertEqual(0, session.returncode, session.stderr)
         lines = [line for line in session.stdout.split("\n") if line]

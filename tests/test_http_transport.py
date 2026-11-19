@@ -279,7 +279,7 @@ class ListenerTest(unittest.TestCase):
                 status, _, body = running.post(_message("tools/list", 2), {**auth, "MCP-Protocol-Version": LEGACY})
                 self.assertEqual(200, status)
                 self.assertEqual({tool.name for tool in mcp_server.TOOLS}, {tool["name"] for tool in json.loads(body)["result"]["tools"]})
-                status, kind, body = running.post(_message("tools/call", 3, {"name": "build", "arguments": {}}), auth)
+                status, kind, body = running.post(_message("tools/call", 3, {"name": "graph", "arguments": {}}), auth)
                 self.assertEqual(200, status)
                 built = _event_or_json(kind, body)["result"]
                 self.assertFalse(built["isError"], built)

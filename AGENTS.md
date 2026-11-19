@@ -167,18 +167,22 @@ Check every change of the server against this list before the pull request:
 2. One job per tool. Two tools that differ only by direction or by kind are
    one tool with a parameter (`dependencies` in and out, `calls` in, out and
    to, `definitions` by kind). A wrapper around another tool is an option of
-   that tool (`module` takes a keyword).
-3. Names: one lowercase word, the noun of the answer (`impact`, `usages`,
-   `changes`); the two actions are `build` and `query`. No name shares its
-   first six letters with another.
-4. Description: one line of at most 400 characters. It says what the answer
-   contains, and a tool with a neighbour says for which question to take the
-   neighbour, by name ("for the places that use a name take usages").
+   that tool (`modules` takes a keyword).
+3. Names: one lowercase word, the noun of the answer (`graph`, `impact`,
+   `usages`, `changes`, `facts`). No verb, and no name shares its first six
+   letters with another.
+4. Description: at most 700 characters, in this order. A verb first, saying
+   what the tool does and what comes back ("Lists ...", "Traces ..."); when
+   to use it ("Use it before editing a file"); the neighbour for the next
+   question, by name ("for one function use `usages`"); and what a caller
+   cannot see in the schema: that a list stops at 200 items unless `all` is
+   true, and what an unknown name returns. Plain sentences, no telegraphic
+   "take X".
 5. Parameters: every one has a description. A choice is an `enum` with a
    default, and the server refuses any other value. An integer has a lower and
    an upper bound.
 6. Annotations: a title of at most 40 characters; `readOnlyHint` is false only
-   for a tool that writes (today `build`); every tool is idempotent, not
+   for a tool that writes (today `graph`); every tool is idempotent, not
    destructive and not open-world.
 7. The answer is the output of the `wingbox` command behind the tool. An
    `(error ...)` answer is a tool error. Answers stop at 200 lines unless the
@@ -198,10 +202,21 @@ points 6 to 8. Run them with the packaging tests:
 python3 -m unittest tests.test_mcp_tools tests.test_mcp_server tests.test_mcpb tests.test_mcp_registry
 ```
 
-After a release that changes the list or a description: publish to the MCP
-registry as section 3 says, and ask Glama to score the server again
-(https://glama.ai/mcp/servers/aileron-tech/wingbox/score); write the new grade
-into LOG.md.
+Before the pull request, run the directory's own linter on the server of the
+branch (it needs no key and no model; `tdqs score`, the graded part, needs a
+model endpoint):
+
+```bash
+npx --yes mcp-tdqs lint --command "python -m wingbox mcp" --server-name wingbox
+```
+
+Expected: 0 errors and 0 warnings.
+
+After a release that changes the list or a description: the workflow
+`publish-mcp` publishes to the MCP registry; on Glama press "Sync Server" in
+the admin area of the listing (Repository), wait for its build and release,
+and read the new score (https://glama.ai/mcp/servers/aileron-tech/wingbox/score);
+write the grade and the notes of the score page into LOG.md.
 
 ## 6. After every release
 

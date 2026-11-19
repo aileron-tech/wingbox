@@ -64,11 +64,11 @@ class SkippedLanguageNoticeTest(FreshnessTestCase):
         answer = mcp_server.TOOLS_BY_NAME["impact"].run(server, {"target": "shop/pricing.py"})
         self.assertTrue(answer.texts[0].startswith(FACT + "\n"), answer.texts[0][:200])
         self.assertFalse(answer.is_error)
-        missing = mcp_server.TOOLS_BY_NAME["module"].run(server, {"module": "no/such/module"})
+        missing = mcp_server.TOOLS_BY_NAME["modules"].run(server, {"module": "no/such/module"})
         self.assertTrue(missing.texts[0].startswith(FACT + "\n(error "), missing.texts[0][:200])
         self.assertTrue(missing.is_error)
         with without_csharp_parser():
-            rebuilt = mcp_server.TOOLS_BY_NAME["build"].run(server, {})
+            rebuilt = mcp_server.TOOLS_BY_NAME["graph"].run(server, {})
         self.assertIn(COMMAND, rebuilt.texts[0])
         context = self.context("shop/pricing.py")
         self.assertIn("(wingbox-file shop/pricing.py", context)

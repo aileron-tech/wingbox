@@ -3876,7 +3876,10 @@ def _format_result(val: object) -> None:
 
 
 def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> None:
-    """Evaluate a single Scheme query expression."""
+    """Evaluate a single Scheme query expression; `(help)` lists the functions of the language."""
+    if expr.strip() in ("(help)", "help"):
+        print(_QUERY_HELP)
+        return
     evaluator = _SchemeEval(g, sexp_path)
     result = evaluator.eval_str(expr)
     _format_result(result)

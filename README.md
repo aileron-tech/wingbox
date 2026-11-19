@@ -1101,7 +1101,7 @@ client starts the command, sends JSON-RPC requests on its standard input and
 reads the answers on its standard output. This command uses stdio only: no
 port, no network. To call the server from another machine, see
 [Over HTTP, from another machine](#over-http-from-another-machine). Logs go to standard error. Every tool carries MCP
-annotations: a title, and read-only for every tool except `build`, which
+annotations: a title, and read-only for every tool except `graph`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
 ```bash
@@ -1115,23 +1115,23 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 
 | Tool | What it answers | The `wingbox` command behind it |
 |---|---|---|
-| `build` | Build or refresh the code graph (`full`, `exclude_dirs`) | `build` |
+| `graph` | Build or refresh the code graph (`full`, `exclude_dirs`) | `build` |
 | `impact` | What a change to one file reaches, as text (`target`, `depth`, `all`) | `impact` |
-| `module` | One module in full; a keyword instead of a module analyzes the best match (`module`) | `analyze`, `quick` |
-| `definitions` | Where a function, type or constant is defined (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
+| `modules` | One module in full; a keyword instead of a module describes the best match (`module`) | `analyze`, `quick` |
+| `definitions` | Where a function, type or constant is defined; `name` may be a pattern with `.*` (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
 | `usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
 | `dependencies` | What a module uses or who uses it, hop by hop (`module`, `direction`: out, in; `depth`) | `deps`, `rdeps` |
 | `calls` | Who calls a function, what it calls, or a call path to another one (`function`, `direction`: in, out; `to`; `depth`) | `find_callers`, `find_calls`, `find_callchain` |
 | `layers` | The modules by architecture layer | `layers` |
 | `boundaries` | Imports that cross a layer rule, and the parts not checked (`scope`) | `boundaries` |
 | `changes` | Functions changed in the working files since a git ref (`ref`) | `diff_functions` |
-| `query` | A Scheme query on the graph (`expression`) | `query` |
+| `facts` | A query on the graph for what no other tool answers; `(help)` lists its functions (`expression`) | `query` |
 
-Eleven tools, each named after its answer, and each description says when to
-take its neighbour instead. The command line keeps its own command names; a
-tool returns the output of the command behind it. A
-query tool called before the graph exists answers that `build` must be called
-first. Answers stop at 200 items; `all: true` lists everything. The graph is
+Eleven tools, each a noun named after its answer. Each description says what
+comes back, when to use the tool and which neighbour to use instead. The
+command line keeps its own command names; a tool returns the output of the
+command behind it. A tool called before the graph exists answers that `graph`
+must be called first. Answers stop at 200 items; `all: true` lists everything. The graph is
 read once and read again when `.wingbox/index.sexp` changes.
 
 Claude Code, in the project directory:
@@ -1227,12 +1227,12 @@ library, listens and answers, and opens no connection of its own.
 - A browser request from a foreign origin is answered 403 (`--allow-origin`
   adds one). `GET` and `DELETE` are answered 405: the server keeps no session
   and opens no stream of its own.
-- A call that runs longer than a second, such as `build` on a large
+- A call that runs longer than a second, such as `graph` on a large
   repository, is answered as an event stream with a keep-alive line every ten
   seconds, so an idle timeout on the way does not cut it.
 
-Whoever holds the token can read the code graph of the repository and start a
-`build`, which writes `.wingbox/` there; no tool runs a command, reads outside
+Whoever holds the token can read the code graph of the repository and rebuild
+it (the tool `graph`), which writes `.wingbox/` there; no tool runs a command, reads outside
 the repository or deletes anything.
 
 ## Common code searches
