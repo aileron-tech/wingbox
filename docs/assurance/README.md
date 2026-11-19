@@ -8,7 +8,7 @@ A team that relies on Wingbox to decide what to read, test and review before a c
 | [verification-plan.md](verification-plan.md) | Which claim does Wingbox make, which test class or benchmark answers it, and which command reruns it? What is planned and not done | by hand; a test checks that every cited file and test class exists |
 | [known-limits.md](known-limits.md) | What does the graph not see, per language, and what does that mean for an answer? Every line names its source | by hand; the same test |
 | [tool-errors.md](tool-errors.md) | Which wrong answer can hide a defect of the user's code, how does the tool report the condition, and which independent check catches it? | by hand; the same test |
-| `release-integrity.md` | What ties the files of a release to the source of its tag: actions at a commit, the checksum file, the SBOM, rebuilding a tag | by hand |
+| [`release-integrity.md`](release-integrity.md) | What ties the files of a release to the source of its tag: actions at a commit, the checksum file, the SBOM, rebuilding a tag | by hand |
 
 Where the sources of the repository do not say, a page says "not assessed". It does not guess.
 
