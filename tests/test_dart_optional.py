@@ -13,7 +13,7 @@ from scripts import build_code_graph
 
 class DartOptionalDependencyTest(unittest.TestCase):
     def test_a_missing_dart_grammar_skips_dart_files_and_the_build_goes_on(self) -> None:
-        """/* REQ-DART-015: tree-sitter-dart is an opt-in extra; without it the build skips .dart files with a warning naming wingbox[dart] and still writes the graph of the other languages; a Dart-only project keeps the install error (REQ-DART-012). */"""
+        """/* REQ-DART-015: tree-sitter-dart is installed with the package except on Windows arm64, where it has no wheel; without it the build skips .dart files with a warning naming wingbox[dart] and still writes the graph of the other languages; a Dart-only project keeps the install error (REQ-DART-012). */"""
         real_version = importlib.metadata.version
 
         def version(distribution: str) -> str:

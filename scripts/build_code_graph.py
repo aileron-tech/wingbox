@@ -83,11 +83,12 @@ only for languages present in the target repository::
 The builder detects missing or incompatible packages before publication and
 prints only the commands required by the discovered languages.
 
-The installed ``wingbox`` package carries the TypeScript and Rust parsers. Those
-of C#, Java, Go, Ruby, PHP and Dart are added on demand, ``wingbox add csharp``,
-into a per-user folder (``lang/ondemand.py``); the builder never downloads one.
-Files of such a language without its parser are skipped with a warning and
-recorded in ``.wingbox/graph-skipped.sexp``; the other languages are mapped.
+The installed ``wingbox`` package carries the parsers of every language, and a
+parser is imported only from the environment that runs the builder. Where the
+parser of C#, Java, Go, Ruby, PHP or Dart is missing all the same (a broken
+install, Dart on Windows arm64), the files of that language are skipped with a
+warning that names the pip extra, ``pip install "wingbox[dart]"``, and recorded
+in ``.wingbox/graph-skipped.sexp``; the other languages are mapped.
 
 Optional for ``--lsp``: ``typescript-language-server``, ``pyright-langserver``,
 ``rust-analyzer``, ``csharp-ls``, ``jdtls``, ``gopls``, or ``ruby-lsp``.
@@ -131,12 +132,11 @@ try:
     if __package__:
         from .lang import (
             LANGUAGES,
-            ON_DEMAND_LANGUAGES,
+            PIP_EXTRA_LANGUAGES,
             BoundLanguage,
             DiscoveryExclusions,
             FileResult,
             Language,
-            activate_user_parsers,
             language_for_file,
             language_for_name,
             language_for_result,
@@ -154,6 +154,7 @@ try:
         )
         from . import layer_guess, portable
         from .architecture.config import ConfigErr, plan_from_config, read_config
+        from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
         )
@@ -167,12 +168,11 @@ try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
             LANGUAGES,
-            ON_DEMAND_LANGUAGES,
+            PIP_EXTRA_LANGUAGES,
             BoundLanguage,
             DiscoveryExclusions,
             FileResult,
             Language,
-            activate_user_parsers,
             language_for_file,
             language_for_name,
             language_for_result,
@@ -191,6 +191,7 @@ try:
         import layer_guess
         import portable
         from architecture.config import ConfigErr, plan_from_config, read_config
+        from architecture.baseline import read_baseline_terms, terms_sexp
         from architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
         )
@@ -603,16 +604,16 @@ def _dependency_issues(
     return tuple(issues)
 
 
-# Languages whose parser is installed on demand: `wingbox add <language>` (or the pip extra of the same
-# name). Without it their files are left out of the graph with a warning; the build goes on.
-OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {name: name for name in ON_DEMAND_LANGUAGES}
+# Languages whose parser is also a pip extra of the same name. Where the parser is missing (a broken
+# install, Dart on Windows arm64), their files are left out of the graph with a warning; the build goes on.
+OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {name: name for name in PIP_EXTRA_LANGUAGES}
 # What the last build left out, for the readers of the graph: one `(skipped-language ...)` fact per language.
 SKIPPED_FILE = "graph-skipped.sexp"
 
 
-def add_command(language_name: str) -> str:
-    """The command that installs the parser of an on-demand language."""
-    return f"wingbox add {OPTIONAL_LANGUAGE_EXTRAS[language_name]}"
+def install_command(language_name: str) -> str:
+    """The command that installs a missing parser: the pip extra of its language."""
+    return f'pip install "wingbox[{OPTIONAL_LANGUAGE_EXTRAS[language_name]}]"'
 
 
 def skipped_path(root: str) -> str:
@@ -620,9 +621,11 @@ def skipped_path(root: str) -> str:
 
 
 def skipped_language_facts(skipped: Sequence[tuple[str, int]]) -> str:
-    """The record of the languages a build left out: (name, files) -> one fact per line."""
+    """The record of the languages a build left out: (name, files) -> one fact per line. `:add` holds the
+    command that installs the parser, as a quoted string."""
     return "".join(
-        f'(skipped-language {name} :files {files} :add "{add_command(name)}")\n' for name, files in skipped
+        '(skipped-language {} :files {} :add "{}")\n'.format(name, files, install_command(name).replace('"', '\\"'))
+        for name, files in skipped
     )
 
 
@@ -657,9 +660,8 @@ def _report_skipped_optional_languages(
         print(
             f"[code-graph] WARNING: {issue.language.display_name} files are skipped "
             f"({files} file{'' if files == 1 else 's'}): {', '.join(issue.unavailable)}. "
-            f"To include them: {add_command(name)} "
-            f"(or pip install \"wingbox[{OPTIONAL_LANGUAGE_EXTRAS[name]}]\""
-            + (f"; from a clone: {from_clone}" if from_clone else "") + ")",
+            f"To include them: {install_command(name)}"
+            + (f" (from a clone: {from_clone})" if from_clone else ""),
             file=sys.stderr,
         )
 
@@ -682,7 +684,7 @@ def _report_dependency_issues(
     )
     for issue in issues:
         if issue.language.name in OPTIONAL_LANGUAGE_EXTRAS:
-            print(f"[code-graph]   {add_command(issue.language.name)}", file=sys.stderr)
+            print(f"[code-graph]   {install_command(issue.language.name)}", file=sys.stderr)
         from_clone = _requirements_command(issue.language.name)
         if from_clone:
             print(f"[code-graph]   {from_clone}", file=sys.stderr)
@@ -3644,10 +3646,14 @@ def render_sexp(
                 f':rule "{_sexp_escape(label.rule)}" :match {label.match}{" :composition-root" if label.root else ""}'
                 f'{_learned_from(label.rule)})'
             )
+        terms = architecture.terms or {}
         for part, source, target, baseline in architecture.known:
             if source in path_to_sid and target in path_to_sid:
+                # Owner, reason and end date of an entry of .wingbox/baseline.sexp: a query decides by its own day.
+                stated = terms.get(("baseline", part, source, target)) if baseline == BASELINE_FILE else None
                 lines.append(
-                    f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}")'
+                    f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}"'
+                    f'{terms_sexp(stated) if stated else ""})'
                 )
         for node in sorted_nodes:
             for finding in (architecture.capabilities or {}).get(node["id"], ()):
@@ -3657,7 +3663,9 @@ def render_sexp(
                 )
         for part, node_id, capability in architecture.capability_known:
             if node_id in path_to_sid:
-                lines.append(f'(capability-known "{_sexp_escape(part)}" {path_to_sid[node_id]} {capability} "{BASELINE_FILE}")')
+                stated = terms.get(("baseline-capability", part, node_id, capability))
+                lines.append(f'(capability-known "{_sexp_escape(part)}" {path_to_sid[node_id]} {capability} "{BASELINE_FILE}"'
+                             f'{terms_sexp(stated) if stated else ""})')
 
     # -- Violations (Gap 2 fix) --
     if violations:
@@ -4245,10 +4253,9 @@ def _run_build(options: BuilderOptions) -> int:
     print(f"[code-graph] Supported source: {extensions}")
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
-    activate_user_parsers()   # a parser `wingbox add` installed since this process started
     dependency_issues = _dependency_issues(active_language_names)
     skipped = tuple(issue for issue in dependency_issues if issue.language.name in OPTIONAL_LANGUAGE_EXTRAS)
-    # Skip an opt-in language only when other source files remain to map; a
+    # Skip such a language only when other source files remain to map; a
     # project of that language alone stops with the install command below.
     skipped_names = frozenset(issue.language.name for issue in skipped)
     skipped_counts: list[tuple[str, int]] = []
@@ -4455,6 +4462,7 @@ def project_architecture(
         read_baseline_sexp(baseline_text),
         _node_capabilities(root, nodes, {os.path.relpath(r.path, root).replace(os.sep, "/"): r.content_hash for r in results}),
         read_capability_baseline(baseline_text),
+        read_baseline_terms(baseline_text),
     )
     return Ok((architecture, plan.value))
 

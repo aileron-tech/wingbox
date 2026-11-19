@@ -35,11 +35,7 @@
     wingbox update [--check] [--dry-run] [--sexp]
                                             Upgrade with the installer that installed Wingbox (pipx, uv
                                             or pip), then refresh what install put in place
-    wingbox add LANGUAGE [LANGUAGE ...] [--from PATH] [--sexp]
-                                            Install the parser of csharp, java, go, ruby, php or dart: the
-                                            pinned wheel, checked by sha256, into ~/.wingbox/parsers (--from:
-                                            a wheel file or folder instead of the network); --list shows
-                                            which are installed. The only command that downloads a parser
+    wingbox add [LANGUAGE ...] [--list]     Kept for compatibility with 0.12: every parser is in the package
     wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
     wingbox hook dirty                      The Claude Code PostToolUse hook on Edit and Write: marks the
                                             changed file so the graph is refreshed before its next use
@@ -54,11 +50,6 @@ Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
 ~/.agents/skills folder). Without --assistant, install uses those whose
 configuration folder exists in the home folder. Wingbox writes only into a
 project's .wingbox/ and your own settings in the home folder.
-
-Python, TypeScript, Rust and Pascal are parsed as installed. The parsers of
-C#, Java, Go, Ruby, PHP and Dart are added on demand: a build that meets such
-files without their parser skips them, says how many, and names
-`wingbox add <language>`. Nothing is downloaded unless you run that command.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -304,7 +295,7 @@ def _advice_command(args: list[str], cwd: str) -> int:
     """`wingbox advice [--sexp] [--learned]`, `wingbox advice accept|reject <id> [--reason TEXT]`."""
     load_script("architecture")
     from architecture.advice import to_sexp
-    from architecture.decisions import read_store, user_outcome, visible
+    from architecture.decisions import needs_reason, read_store, user_outcome, visible
     from architecture.sexp import q
 
     root = _find_root(cwd)
@@ -318,6 +309,11 @@ def _advice_command(args: list[str], cwd: str) -> int:
             print(f"[wingbox] ERROR: wingbox advice {args[0]} <id> [--reason TEXT]", file=sys.stderr)
             return 2
         reason = args[args.index("--reason") + 1] if "--reason" in args and args.index("--reason") + 1 < len(args) else ""
+        if args[0] == "reject" and not reason.strip() and needs_reason(store, args[1]):
+            # The finding stays in `boundaries`; its advice leaves the list only with the reason on record.
+            print(f"[wingbox] ERROR: advice {args[1]} is about a rule break: reject it with a reason, "
+                  f"wingbox advice reject {args[1]} --reason TEXT", file=sys.stderr)
+            return 2
         line = user_outcome(store, args[1], args[0] == "accept", reason, date.today().isoformat())
         if line is None:
             print(f"[wingbox] ERROR: no advice with id {args[1]} in {path}", file=sys.stderr)
@@ -395,6 +391,7 @@ def _align_command(args: list[str], cwd: str) -> int:
     from architecture import align
     from architecture.advice import PartRules
     from architecture.config import CONFIG_FILE, render_config
+    from architecture.baseline import terms_sexp
     from architecture.facts import BASELINE_FILE
     from architecture.library import load_library
     from architecture.plan import LayerFolder, RepositoryPlan
@@ -436,6 +433,12 @@ def _align_command(args: list[str], cwd: str) -> int:
     baseline_lines: list[str] = []
     bases: dict[str, object] = {}
     learn_context = _learn_context(root, library) if learn and target is None else None
+    # The owner, reason and end date a person wrote on an entry stay on it when the baseline is written again.
+    kept_terms = _baseline_terms(root) if learn and target is None else {}
+
+    def kept(*key: str) -> str:
+        return terms_sexp(kept_terms[key]) if key in kept_terms else ""
+
     for part in parts:
         if rest and part.path not in rest:
             continue
@@ -473,12 +476,14 @@ def _align_command(args: list[str], cwd: str) -> int:
         for entry in align.baseline(part, modules, dependencies, {i.folder: i.layer for i in learned}, project_baseline, type_only):
             baseline_lines.append(
                 f"(baseline {q(entry.part)} {_atom(entry.source)} {_atom(entry.target)} :rule {q(entry.rule)} "
-                f":from {_atom(entry.origin) if entry.origin == 'align' else q(entry.origin)})"
+                f":from {_atom(entry.origin) if entry.origin == 'align' else q(entry.origin)}"
+                f"{kept('baseline', entry.part, entry.source, entry.target)})"
             )
     if learn and target is None:
         # What files do that their layer may not (SQL in a service, ...) is accepted the same way.
         baseline_lines += [
-            f"(baseline-capability {q(item.part)} {_atom(item.module)} {item.capability} :line {item.line} :from align)"
+            f"(baseline-capability {q(item.part)} {_atom(item.module)} {item.capability} :line {item.line} :from align"
+            f"{kept('baseline-capability', item.part, item.module, item.capability)})"
             for item in search.capability_violations(graph, set(graph.nodes))
             if item.severity == "violation" and (not rest or item.part in rest)
         ]
@@ -488,6 +493,18 @@ def _align_command(args: list[str], cwd: str) -> int:
             return 1
     print("\n".join(facts) if sexp else _align_text(facts))
     return 0
+
+
+def _baseline_terms(root: str) -> dict:
+    """The terms (owner, reason, end date) stated in .wingbox/baseline.sexp, by entry; {} without the file."""
+    from architecture.baseline import read_baseline_terms
+    from architecture.facts import BASELINE_FILE
+
+    try:
+        with open(os.path.join(root, BASELINE_FILE), "r", encoding="utf-8") as handle:
+            return dict(read_baseline_terms(handle.read()))
+    except FileNotFoundError:
+        return {}
 
 
 def _align_text(facts: list[str]) -> str:
@@ -615,6 +632,9 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
             facts.append(f"(align-config-written {q(CONFIG_FILE)})")
         with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(f"; written by wingbox align --learn on {today}: rule breaks known at that time\n")
+            handle.write('; an entry may state who accepted it, why and until when: :owner "<who>" :reason "<why>" '
+                         ":expires YYYY-MM-DD\n")
+            handle.write("; (after that day the break is reported as a violation again); align --learn keeps them\n")
             handle.write("\n".join(baseline_lines) + ("\n" if baseline_lines else ""))
     except OSError as error:
         return str(error)
@@ -1487,7 +1507,7 @@ def _build_outputs(builder: ModuleType, status: int, options) -> int:
     print(f"[wingbox] Map     {relative}  (wingbox open shows it in a browser)")
     for display, name, files in _skipped_languages(builder, options.root):
         print(f"[wingbox] Skipped {files} {display} file{'' if files == 1 else 's'}: the {display} parser is not "
-              f"installed. Run {builder.add_command(name)}, then wingbox build")
+              f"installed. Run {builder.install_command(name)}, then wingbox build")
     return 0
 
 
@@ -1656,27 +1676,22 @@ def _update_command(rest: list[str]) -> int:
     return update.exit_status(facts)
 
 
-def _add_command(rest: list[str], cwd: str) -> int:
-    """`wingbox add LANGUAGE ...`: the one command that downloads a parser (wingbox/add.py)."""
-    from wingbox import add, freshness
+def _add_command(rest: list[str]) -> int:
+    """`wingbox add ...`: kept for scripts written for 0.12; it says there is nothing to add (wingbox/add.py)."""
+    from wingbox import add
     from wingbox.facts import render_sexp
 
     if any(argument in ("-h", "--help") for argument in rest):
         print(add.USAGE)
         return 0
     options = add.parse_arguments(rest)
-    if isinstance(options, add.UsageError):
-        print(f"[wingbox] add: {options.message}", file=sys.stderr)
-        return 2
-    machine, extensions = add.this_machine()
-    facts = add.add(options, machine)
-    if isinstance(facts, add.UsageError):
-        print(f"[wingbox] add: {facts.message}", file=sys.stderr)
-        return 2
-    if not options.listing:
-        facts = facts + add.project_facts(freshness.find_project(cwd), facts, extensions)
-    sys.stdout.write(render_sexp(facts) if options.sexp else add.render_text(facts, str(Path.home())))
-    return add.exit_status(facts)
+    listed = []
+    if options.listing:
+        registry = load_script("lang")
+        listed = add.listed(registry.LANGUAGES, add.installed_version, registry.PIP_EXTRA_LANGUAGES)
+    facts = listed + [add.NOTHING_TO_ADD]
+    sys.stdout.write(render_sexp(facts) if options.sexp else add.render_text(facts))
+    return 0
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -1719,7 +1734,7 @@ def _run(argv: Optional[list[str]] = None) -> int:
     if command == "update":
         return _update_command(rest)
     if command == "add":
-        return _add_command(rest, cwd)
+        return _add_command(rest)
     if command == "build":
         if any(argument in ("-h", "--help") for argument in rest):
             print(BUILD_USAGE)

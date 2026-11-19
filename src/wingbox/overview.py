@@ -472,7 +472,7 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
     ]
     lines += [
         f"- Not in this graph: {_plural(files, f'{display} file')} (the {display} parser is not installed). "
-        f"Run `wingbox add {name}`, then `wingbox build`."
+        f'Run `pip install "wingbox[{name}]"`, then `wingbox build`.'
         for display, name, files in view.skipped_languages
     ]
     lines += [

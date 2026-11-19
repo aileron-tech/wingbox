@@ -25,6 +25,10 @@ Usage::
                                                 --positions: every use with its line and column
     code_graph_search.py flow <id> <entity>     Trace data/call flow from entity
     code_graph_search.py search <pattern>       Safe pattern search across all facts
+    code_graph_search.py boundaries [scope] [--strict]
+                                                Check the layer rules of each part (default: all);
+                                                --strict: a boundaries-result line and exit 0 pass,
+                                                1 violation, 2 not fully checked, 3 no readable graph
     code_graph_search.py invariants [scope]     Check naming-convention violations (default: all)
     code_graph_search.py find_function <name>   Find function/method definitions by name
     code_graph_search.py find_type <name>       Find type/class/interface/enum definitions by name
@@ -64,6 +68,7 @@ and backslash escapes. Other regex operators are rejected.
 from __future__ import annotations
 
 import collections
+import datetime
 import functools
 import hashlib
 import os
@@ -75,6 +80,7 @@ from typing import Optional
 
 if __package__:
     from .architecture import advice as _advice
+    from .architecture import baseline as _baseline
     from .architecture.detect import Part
     from .architecture.labels import label_in_part
     from .architecture.library import load_library
@@ -86,6 +92,7 @@ if __package__:
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from architecture import advice as _advice
+    from architecture import baseline as _baseline
     from architecture.detect import Part
     from architecture.labels import label_in_part
     from architecture.library import load_library
@@ -576,6 +583,12 @@ class CodeGraph:
         self._layer_guesses: Optional[dict[str, str]] = None   # purpose -> layer the build stored, read on first need
         self.labels: dict[str, "ModuleLabel"] = {}   # module -> layer label written by the build
         self.known: dict[tuple[str, str], str] = {}   # (source, target) -> baseline file of the project
+        # The owner, reason and end date a baseline entry states; an entry past its end date is not in
+        # `known` (nor in `capability_known`): its finding is a violation again.
+        self.known_terms: dict[tuple[str, str], _baseline.Acceptance] = {}
+        self.known_expired: dict[tuple[str, str], _baseline.Acceptance] = {}
+        self.capability_terms: dict[tuple[str, str], _baseline.Acceptance] = {}
+        self.capability_expired: dict[tuple[str, str], _baseline.Acceptance] = {}
         self.arch_capabilities: dict[str, dict[str, CapabilityRuleFact]] = {}   # part -> capability -> rule
         self.arch_patterns: dict[str, set[str]] = {}          # part -> pattern checks of its style
         self.capabilities: dict[str, list[CapabilityFact]] = {}   # module -> what its file does
@@ -617,6 +630,11 @@ class CodeGraph:
         self._layer_guesses = None
         self.labels = {}
         self.known = {}
+        self.known_terms = {}
+        self.known_expired = {}
+        self.capability_terms = {}
+        self.capability_expired = {}
+        today = datetime.date.today().isoformat()
         self.arch_capabilities = {}
         self.arch_patterns = {}
         self.capabilities = {}
@@ -806,7 +824,16 @@ class CodeGraph:
                     values.get("present", ""), values.get("source", ""),
                 ))
             elif kind == "arch-known" and len(tokens) >= 5:
-                self.known[(_resolve(tokens[2]), _resolve(tokens[3]))] = tokens[4]
+                pair = (_resolve(tokens[2]), _resolve(tokens[3]))
+                terms = _baseline.terms_of(tokens[5:])
+                if terms.expired(today):
+                    if pair not in self.known:
+                        self.known_expired[pair] = terms
+                    continue
+                self.known[pair] = tokens[4]
+                self.known_expired.pop(pair, None)
+                if terms.stated():
+                    self.known_terms[pair] = terms
             elif kind == "arch-capability" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])
                 self.arch_capabilities.setdefault(tokens[1], {})[tokens[2]] = CapabilityRuleFact(
@@ -823,7 +850,14 @@ class CodeGraph:
             elif kind == "arch-declared-unread" and len(tokens) >= 3:
                 self.declared_unread.setdefault(tokens[1], []).append(tokens[2])
             elif kind == "capability-known" and len(tokens) >= 5:
-                self.capability_known[(_resolve(tokens[2]), tokens[3])] = tokens[4]
+                key = (_resolve(tokens[2]), tokens[3])
+                terms = _baseline.terms_of(tokens[5:])
+                if terms.expired(today):
+                    self.capability_expired[key] = terms
+                    continue
+                self.capability_known[key] = tokens[4]
+                if terms.stated():
+                    self.capability_terms[key] = terms
             elif kind == "layer" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])  # :learned-from <id> is part of the rule text as well
                 self.labels[_resolve(tokens[1])] = ModuleLabel(
@@ -2382,10 +2416,16 @@ def pattern_violations(g: CodeGraph, scope_mods: set[str]) -> list[PatternBreak]
 def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> int:
     """The capability and pattern facts of `boundaries`, and their summary; nothing when there is none.
     Returns 1 when a capability violation or a pattern break was found, else 0."""
+    violations, _known = _print_capability_findings(g, scope_mods)
+    return 1 if violations else 0
+
+
+def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int, int]:
+    """Print the capability and pattern facts; (capability violations and pattern breaks, known ones)."""
     breaks = capability_violations(g, scope_mods)
     patterns = pattern_violations(g, scope_mods)
     if not breaks and not patterns:
-        return 0
+        return 0, 0
     counts = {"capability-violation": 0, "capability-violation-known": 0, "capability-candidate": 0}
     for item in breaks:
         fact = "capability-candidate" if item.severity == "candidate" else (
@@ -2393,7 +2433,9 @@ def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> int:
         counts[fact] += 1
         allowed = f" :allowed ({' '.join(item.allowed)})" if item.allowed else ""
         forbidden = f" :forbidden ({' '.join(item.forbidden)})" if item.forbidden else ""
-        known = f" :known {_q(item.known)}" if item.known else ""
+        known = f" :known {_q(item.known)}{_known_terms(g.capability_terms, (item.module, item.capability))}" if item.known else ""
+        if fact == "capability-violation":
+            known = _expired_terms(g.capability_expired, (item.module, item.capability))
         pattern = f" :pattern {item.pattern}" if item.pattern else ""
         print(
             f"({fact} {_q(module_file(g, item.module))} :capability {item.capability} :layer {item.layer}{allowed}{forbidden} "
@@ -2409,7 +2451,19 @@ def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> int:
         f"(capability-summary :violations {counts['capability-violation']} :known {counts['capability-violation-known']} "
         f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {len(scope_mods)})"
     )
-    return 1 if counts["capability-violation"] or patterns else 0
+    return counts["capability-violation"] + len(patterns), counts["capability-violation-known"]
+
+
+def _known_terms(terms: dict[tuple[str, str], _baseline.Acceptance], key: tuple[str, str]) -> str:
+    """` :owner "<who>" :reason "<why>" :expires <date>` of an accepted finding, with the fields its entry states."""
+    stated = terms.get(key)
+    return _baseline.terms_sexp(stated) if stated is not None else ""
+
+
+def _expired_terms(expired: dict[tuple[str, str], _baseline.Acceptance], key: tuple[str, str]) -> str:
+    """` :expired <date> [:owner "<who>"]` of a finding whose baseline entry is past its end date."""
+    stated = expired.get(key)
+    return _baseline.expired_sexp(stated) if stated is not None else ""
 
 
 def is_type_only_import(g: CodeGraph, src_mod: str, tgt_mod: str) -> bool:
@@ -2470,7 +2524,61 @@ def not_checked_parts(g: CodeGraph, scope_mods: set[str]) -> list[NotChecked]:
     return found
 
 
-def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
+STRICT_EXIT = {"pass": 0, "fail": 1, "incomplete": 2, "error": 3}
+
+
+def boundaries_result_line(status: str, checked: int = 0, not_checked: int = 0, violations: int = 0, known: int = 0,
+                           reason: str = "") -> str:
+    """The one line a gate reads in strict mode; the counts are files (modules), violations and known breaks."""
+    return (f"(boundaries-result :status {status} :checked {checked} :not-checked {not_checked} "
+            f":violations {violations} :known {known}{' :reason ' + reason if reason else ''})")
+
+
+def _strict_error(reason: str) -> int:
+    """Strict mode could not run the check (no graph, a graph that cannot be read): say so and exit 3."""
+    print(boundaries_result_line("error", reason=reason))
+    return STRICT_EXIT["error"]
+
+
+def _strict_result(g: CodeGraph, scope_mods: set[str], unchecked: list[NotChecked], violations: int, known: int) -> int:
+    """The strict lines after the plain output: a fact per checked part, then the result; returns the exit status.
+
+    pass: every part with files was checked, at least one file was checked and nothing breaks a rule.
+    fail: a violation. incomplete: a part was not checked, for any reason, or no file was checked.
+    """
+    by_part: dict[str, int] = {}
+    for module in scope_mods:
+        part = module_label(g, module).part
+        by_part[part] = by_part.get(part, 0) + 1
+    left_out = {item.part for item in unchecked}
+    not_checked = sum(item.count for item in unchecked)
+    checked_lines: list[str] = []
+    for part, count in sorted(by_part.items()):
+        if part in left_out:
+            continue
+        if part not in g.arch_parts:
+            # Files outside every part of the plan have no rules: plain mode does not count them apart.
+            print(f"(boundaries-not-checked :part {_q(part)} :reason in-no-part :files-in-part {count})")
+            not_checked += count
+            continue
+        style = g.arch_parts[part].get("style", "-")
+        checked_lines.append(f"(boundaries-checked :part {_q(part)} :style {style} :modules {count})")
+    for line in checked_lines:
+        print(line)
+    checked = len(scope_mods) - not_checked
+    if violations:
+        status, reason = "fail", ""
+    elif not_checked:
+        status, reason = "incomplete", "part-not-checked"
+    elif checked == 0:
+        status, reason = "incomplete", "no-files-checked"
+    else:
+        status, reason = "pass", ""
+    print(boundaries_result_line(status, checked, not_checked, violations, known, reason))
+    return STRICT_EXIT[status]
+
+
+def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
     """Check the boundary rules of the style of each part (or of the rules the part declares).
 
     A pair is a violation when both layers come from rules (folders, file
@@ -2478,6 +2586,10 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
     file, the pair is a candidate. An import of types only is listed apart.
     Each line names the part, the style and the rule; `:known` names the
     project's own baseline when it already lists the pair.
+
+    With `strict` the same lines are followed by a `boundaries-checked` fact
+    per checked part and one `boundaries-result` line, and the exit status is
+    the one of that line (STRICT_EXIT): a part that was not checked is never a pass.
     """
     if module_id == "all":
         scope_mods = set(g.nodes.keys())
@@ -2485,7 +2597,7 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
         matches = g.resolve_module(module_id)
         if not matches:
             _print_no_match(g, module_id)
-            return
+            return _strict_result(g, set(), [], 0, 0) if strict else None
         scope_mods = set(matches)
 
     violations = boundary_violations(g, scope_mods)
@@ -2501,7 +2613,10 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
 
     if not violations:
         print(coverage or f"(boundaries-ok :checked {len(scope_mods)})")
-        return max(status, print_capability_findings(g, scope_mods))
+        broken, accepted = _print_capability_findings(g, scope_mods)
+        if strict:
+            return _strict_result(g, scope_mods, unchecked, broken, accepted)
+        return max(status, 1 if broken else 0)
     pairs: dict[str, set[tuple[str, str]]] = {
         "violation": set(), "violation-known": set(), "violation-type-only": set(), "violation-candidate": set(),
     }
@@ -2514,7 +2629,9 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
         else:
             fact = "violation-candidate"
         pairs[fact].add((item.source, item.target))
-        known = f" :known {_q(item.known)}" if item.known else ""
+        known = f" :known {_q(item.known)}{_known_terms(g.known_terms, (item.source, item.target))}" if item.known else ""
+        if fact == "violation":
+            known = _expired_terms(g.known_expired, (item.source, item.target))
         print(
             f"({fact} {item.source} {item.target} :src-layer {item.source_layer} :tgt-layer {item.target_layer} "
             f":via {item.kind} :lang {g.module_lang(item.source)} :part {_q(item.part)} :style {item.style} "
@@ -2528,8 +2645,11 @@ def cmd_boundaries(g: CodeGraph, module_id: str) -> int:
     )
     if coverage:
         print(coverage)
-    capability_status = print_capability_findings(g, scope_mods)
-    return status or (1 if pairs["violation"] else capability_status)
+    broken, accepted = _print_capability_findings(g, scope_mods)
+    if strict:
+        return _strict_result(g, scope_mods, unchecked, len(pairs["violation"]) + broken,
+                              len(pairs["violation-known"]) + accepted)
+    return status or (1 if pairs["violation"] or broken else 0)
 
 
 def cmd_layers(g: CodeGraph) -> None:
@@ -3752,17 +3872,29 @@ def find_sexp_file(start: Optional[str] = None) -> str:
 
     Without one, say so with the paths looked at and the --map and --root options, and exit 1.
     """
+    found, searched = _search_sexp_file(start)
+    if found is not None:
+        return found
+    _print_no_project(searched)
+    sys.exit(1)
+
+
+def _search_sexp_file(start: Optional[str] = None) -> tuple[Optional[str], list[str]]:
+    """The graph of the nearest folder at or above start, or None with the paths looked at."""
     current = os.path.abspath(start or os.getcwd())
     searched: list[str] = []
     while True:
         candidate = os.path.join(current, WINGBOX_DIRECTORY, INDEX_FILE)
         if os.path.isfile(candidate):
-            return candidate
+            return candidate, searched
         searched.append(candidate)
         parent = os.path.dirname(current)
         if parent == current:
-            break
+            return None, searched
         current = parent
+
+
+def _print_no_project(searched: list[str]) -> None:
     shown = searched[:6] + ([f"... {len(searched) - 6} more"] if len(searched) > 6 else [])
     print(
         f"{NO_PROJECT}\n"
@@ -3770,7 +3902,19 @@ def find_sexp_file(start: Optional[str] = None) -> str:
         "  or point at a graph: --map /path/to/project/.wingbox/index.sexp --root /path/to/project",
         file=sys.stderr,
     )
-    sys.exit(1)
+
+
+def _is_strict_boundaries(args: list[str]) -> bool:
+    """True for `boundaries ... --strict`: the command is the first argument besides --map, --root and their values."""
+    words: list[str] = []
+    index = 0
+    while index < len(args):
+        if args[index] in ("--map", "--root"):
+            index += 2
+            continue
+        words.append(args[index])
+        index += 1
+    return words[:1] == ["boundaries"] and "--strict" in words
 
 
 def _extract_query_paths(
@@ -3856,10 +4000,14 @@ def _load_focus(args: list[str]) -> Optional[str]:
 
 def main(args: Optional[list[str]] = None) -> int:
     raw_args = list(sys.argv[1:] if args is None else args)
+    # boundaries --strict: every way out prints a boundaries-result line; a check that could not run exits 3.
+    strict = _is_strict_boundaries(raw_args)
+    if strict:
+        raw_args = [argument for argument in raw_args if argument != "--strict"]
     args, explicit_map, explicit_root, option_error = _extract_query_paths(raw_args)
     if option_error is not None:
         print(f"(error invalid-argument {_q(option_error)})")
-        return 2
+        return _strict_error("invalid-argument") if strict else 2
     if not args or args[0] in ("-h", "--help", "help"):
         print(__doc__)
         return 0
@@ -3871,12 +4019,17 @@ def main(args: Optional[list[str]] = None) -> int:
         print(f"(error invalid-argument {_q(command_error)})")
         return 2
 
+    if strict and not explicit_map:
+        found, searched = _search_sexp_file(explicit_root)
+        if found is None:
+            _print_no_project(searched)
+            return _strict_error("no-graph")
     sexp_path = explicit_map or find_sexp_file(explicit_root)
     g = CodeGraph()
     load_result = g.load(sexp_path, explicit_root, focus=_load_focus(args))
     if isinstance(load_result, MapLoadErr):
         print(f"(error invalid-map {_q(load_result.error)})")
-        return 1
+        return _strict_error("invalid-graph") if strict else 1
 
     cmd = args[0]
     if cmd == "analyze" and len(args) >= 2:
@@ -3911,7 +4064,7 @@ def main(args: Optional[list[str]] = None) -> int:
         cmd_search(g, args[1], sexp_path)
     elif cmd == "boundaries":
         target = args[1] if len(args) >= 2 else "all"
-        return cmd_boundaries(g, target) or 0
+        return cmd_boundaries(g, target, strict=strict) or 0
     elif cmd == "layers":
         cmd_layers(g)
     elif cmd == "invariants":

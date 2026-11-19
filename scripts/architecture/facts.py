@@ -4,12 +4,14 @@
   (arch-deny <part> <from layer> <to layer> <reason> [:severity candidate] [:fix <prescribed fix>])
   (arch-rank <part> <layer> <rank>)                                  ; higher may import lower
   (arch-target <part> <layer> <folder> [:block <id>] :present <folder> | :proposed :source <citation>)
-  (arch-known <part> <source module> <target module> <file>)       ; listed in the project's own baseline
+  (arch-known <part> <source module> <target module> <file> [:owner <who>] [:reason <why>] [:expires <date>])
+                                                                     ; listed in a baseline, with the terms it states
   (arch-declared-unread <part> <file> :reason <why>)               ; a rule file of the part that was not read
   (arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix <text>])
   (arch-pattern <part> <pattern>)                                    ; a pattern check of the style
   (capability <module> <capability> :line <n> :evidence <text> [:suspect])
-  (capability-known <part> <module> <capability> <file>)            ; accepted in .wingbox/baseline.sexp
+  (capability-known <part> <module> <capability> <file> [:owner <who>] [:reason <why>] [:expires <date>])
+                                                                     ; accepted in .wingbox/baseline.sexp
   (layer <module> <layer> :part <part> :style <style> :rule <rule> :match <step>)
 
 `layer`, `capability` and `capability-known` facts are written by the code graph
@@ -20,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from .baseline import Acceptance, BaselineKey
 from .capabilities import Finding, merge_rules
 from .labels import Label, label_file, part_denies
 from .library import Library
@@ -69,6 +72,7 @@ class GraphArchitecture:
     known: tuple[tuple[str, str, str, str], ...]         # (part, source node, target node, baseline file)
     capabilities: Mapping[str, tuple[Finding, ...]] = None   # node id -> what its file does
     capability_known: tuple[tuple[str, str, str], ...] = ()   # (part, node, capability) accepted in the baseline
+    terms: Mapping[BaselineKey, Acceptance] = None   # owner, reason and end date of the entries that state them
 
 
 def graph_architecture(
@@ -77,6 +81,7 @@ def graph_architecture(
     baseline: tuple[tuple[str, str, str], ...] = (),
     capabilities: Mapping[str, tuple[Finding, ...]] | None = None,
     capability_baseline: tuple[tuple[str, str, str], ...] = (),
+    baseline_terms: Mapping[BaselineKey, Acceptance] | None = None,
 ) -> GraphArchitecture:
     """Facts of the plan and the label of every node (node id -> repository-relative file).
 
@@ -137,7 +142,8 @@ def graph_architecture(
         (part_path, node_id, capability) for part_path, node_id, capability in capability_baseline if node_id in node_paths
     }))
     return GraphArchitecture(part_lines=tuple(lines), labels=labels, known=tuple(sorted(set(known))),
-                             capabilities=capabilities or {}, capability_known=capability_known)
+                             capabilities=capabilities or {}, capability_known=capability_known,
+                             terms=baseline_terms or {})
 
 
 def _ranks(part, library: Library) -> list[tuple[str, int]]:

@@ -4,6 +4,17 @@
 
 ### Changes
 
+- `wingbox boundaries --strict`: a mode for gates. It prints the same lines as before, then one
+  `(boundaries-checked :part P :style S :modules N)` fact for each part that was checked and, as
+  the last line, `(boundaries-result :status pass|fail|incomplete|error :checked N :not-checked N
+  :violations N :known N [:reason R])`. The exit status follows the status: 0 only when every part
+  with files was checked, at least one file was checked and nothing breaks a rule; 1 for a
+  violation; 2 when a part was not checked for any reason (declared rules not read, a style that
+  is undetermined or has no layers, too few files, files in no part) or no file was checked; 3
+  when the check could not run (no graph, a graph that cannot be read, an invalid argument). A
+  script can now tell "checked and clean" from "nothing was checked" and a violation from a tool
+  error. Without `--strict` the output and the exit status are unchanged
+  ([#123](https://github.com/aileron-tech/wingbox/issues/123)).
 - The MCP server can be called from another machine. `wingbox mcp --http` serves the same tools
   over the Streamable HTTP transport of MCP at `http(s)://<host>:8765/mcp`, for Claude Code
   (`claude mcp add --transport http ... --header "Authorization: Bearer ..."`), Codex
@@ -23,6 +34,34 @@
   `diff_functions` is `changes`; `boundary` is gone, `impact` lists the files to read first. Every description says what the answer holds and
   when to take the neighbouring tool, and every parameter is described. The `wingbox` command
   keeps its command names.
+- The parsers of every language are installed with the package again. One `pipx install wingbox`,
+  `pip install wingbox` or `uvx wingbox` gives every language Wingbox reads; nothing has to be
+  added per language. **After upgrading from 0.12, run `wingbox build` once in a project whose
+  graph left a language out.** The Dart parser has no wheel for Windows on arm64: there the
+  package installs without it and a build skips `.dart` files with a warning.
+- The download of parsers is removed, and with it every network access of Wingbox: no code of the
+  package opens a network connection, and the test that proves it from the import statements has
+  no exception. `wingbox update` starts your package installer (pipx, uv or pip), as before.
+- `wingbox add` is kept as a command that does nothing, so that a script written for 0.12 still
+  runs: `wingbox add csharp`, `wingbox add --list` and `wingbox add php --from FILE` exit 0 and
+  say that every parser is in the package (`--list` shows the parser of each language as
+  installed or not). It downloads nothing and writes nothing. The extras `wingbox[csharp]`,
+  `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]` and `[all]` stay valid.
+- The per-user parser folder is no longer read: a parser is imported only from the environment
+  that runs Wingbox, and `WINGBOX_PARSERS_DIR` has no effect. Wingbox does not delete the folder
+  `~/.wingbox/parsers` that 0.12 may have filled; you can delete it.
+- A parser that is missing all the same (a broken install, Dart on Windows arm64) is handled as
+  in 0.12: the build maps the other languages and records one line that every reader of the graph
+  passes on. Its command is now the pip extra:
+  `(skipped-language dart :files 214 :add "pip install \"wingbox[dart]\"")`.
+- A baseline entry can say who accepted a rule break, why and until when. Add `:owner "<who>"
+  :reason "<why>" :expires YYYY-MM-DD` to a line of `.wingbox/baseline.sexp`; `wingbox boundaries`
+  prints the three fields on the `violation-known` (or `capability-violation-known`) line. From
+  the day after `:expires`, or when the date cannot be read, the entry no longer hides its
+  finding: it is a `violation` again, marked `:expired <date>`, `boundaries` exits 1 and `wingbox
+  advice` asks for the fix again. `wingbox align --learn` writes entries as before and keeps the
+  fields you added when it writes the file again. Entries without the fields behave as before
+  ([#125](https://github.com/aileron-tech/wingbox/issues/125)).
 
 ### Fixes
 
@@ -35,6 +74,15 @@
 - Windows: the functions changed since a git ref (`wingbox diff_functions <ref>`, the MCP tool
   `changes`) were not found, because the paths git prints and the paths of the graph were compared
   with different separators.
+- A recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) no longer
+  disappears from `wingbox advice`, REPORT.md and the map after three builds without a reaction.
+  It stays until the finding is fixed, accepted in the baseline, or rejected with `wingbox advice
+  reject <id> --reason TEXT`; for these recommendations `reject` now requires the reason (exit
+  status 2 without one). A recommendation of this kind that an earlier version hid is shown
+  again. Layout suggestions (`missing-folder`, `move`) are still hidden after three builds.
+- Rebuilding unchanged code no longer counts as a build in which a recommendation was ignored:
+  only a build whose graph differs from the previous one counts toward the three
+  ([#125](https://github.com/aileron-tech/wingbox/issues/125)).
 
 ## 0.12.2 - 2026-11-19
 

@@ -36,11 +36,6 @@ when uv or its copy of Wingbox is missing they fail without blocking the tool ca
 MCP server runs the same pinned release through `uvx` (`wingbox mcp --build-missing`: the first
 question in a repository without a graph builds it), so the Codex plugin needs uv too.
 
-Python, TypeScript, JavaScript, Rust and Pascal are parsed as installed. For a C#, Java, Go,
-Ruby, PHP or Dart repository add the parser once, `wingbox add csharp` (or `uvx wingbox add csharp`
-without the command): it goes into `~/.wingbox/parsers`, where the plugin finds it. Until then the
-answers say which files were left out; the plugin never downloads a parser by itself.
-
 ## Install
 
 Claude Code:
@@ -69,8 +64,7 @@ skill, the hook and the MCP server run the local `wingbox` command, which
 reads the files of your repository and writes the graph next to them
 (`.wingbox/`). The MCP server talks over stdio only.
 The only network access is the one-time download of the package from PyPI
-when you install it, or when uvx fetches it, and of a language parser when
-you run `wingbox add <language>` yourself. See
+when you install it, or when uvx fetches it. See
 https://github.com/aileron-tech/wingbox/blob/main/docs/store/PRIVACY.md.
 
 ## Security
