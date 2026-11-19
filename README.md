@@ -1222,6 +1222,7 @@ the repository or deletes anything.
 | Let the coding agent decide the folders a style cannot place | `wingbox learn --agent`, then `wingbox learn --apply < answer.sexp` |
 | Compare the architectures of the parts of a monorepo | `wingbox compare` |
 | Check architecture boundaries and what each layer may do (SQL, HTTP, framework; each line names part, style and rule) | `boundaries all` |
+| Gate on the layer rules: one result line, exit 0 pass, 1 violation, 2 not fully checked, 3 no readable graph | `boundaries all --strict` |
 | Show the layer of every module with its style and rule | `layers` |
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |
@@ -1238,6 +1239,29 @@ and `(boundaries-partial :checked N :not-checked M)` replaces `ok`. Exit
 status: 2 when a part's declared rules were not read, 1 when a violation was
 found, 0 otherwise; REPORT.md, `wingbox advice` and the MCP `boundaries` tool
 say the same.
+
+For a gate (CI, a pre-merge check) add `--strict`: `wingbox boundaries all
+--strict` prints the same lines, then one `(boundaries-checked :part P :style
+S :modules N)` fact for each part that was checked and, as the last line of
+standard output, the result:
+
+```
+(boundaries-result :status pass :checked 14 :not-checked 0 :violations 0 :known 0)
+```
+
+| `:status` | Exit status | Meaning |
+|---|---|---|
+| `pass` | 0 | Every part with files was checked, at least one file was checked, and nothing breaks a rule |
+| `fail` | 1 | A violation: a broken layer rule, a capability violation or a pattern break (whatever else was not checked) |
+| `incomplete` | 2 | No violation, but a part was not checked, for any reason (`:reason part-not-checked`), or no file was checked at all (`:reason no-files-checked`) |
+| `error` | 3 | The check could not run: `:reason no-graph` (no `.wingbox/`), `invalid-graph` (the graph cannot be read) or `invalid-argument` |
+
+`:checked` and `:not-checked` count files, `:violations` the breaks that are
+not accepted, `:known` the breaks accepted in a baseline (they do not fail the
+gate; read the number to fail on them). In strict mode a part without a
+determined style, without a layer style or with too few files to judge, and
+files that belong to no part, are never a pass. Without `--strict` the output
+and the exit status are as described above.
 
 Pass `--map` and `--root` (see [Running the scripts from a clone](#running-the-scripts-from-a-clone))
 when the graph is outside the current directory and its parents.

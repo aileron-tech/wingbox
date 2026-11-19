@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-19 - boundaries --strict: a result line and an exit status for gates (issue #123)
+
+### Changes
+- `scripts/code_graph_search.py`: `cmd_boundaries(g, module_id, strict=False)`. With `strict` the plain output is followed by `(boundaries-checked :part P :style S :modules N)` for each checked part of the scope and by one `(boundaries-result :status pass|fail|incomplete|error :checked N :not-checked N :violations N :known N [:reason R])` line (`boundaries_result_line`, `_strict_result`); the exit status is `STRICT_EXIT`: pass 0, fail 1, incomplete 2, error 3.
+  - pass: every part with files was checked, at least one file was checked, no violation. fail: a boundary violation, a capability violation or a pattern break; it outranks incomplete, and the line still carries `:not-checked`. incomplete: any part of `not_checked_parts` whatever its reason (plain mode exits 2 only for `declared-rules-not-read`), files whose part has no `arch-part` fact (printed in strict mode as `boundaries-not-checked ... :reason in-no-part`), a scope that matches no module, or a graph without files (`:reason part-not-checked` or `no-files-checked`). error: no `.wingbox/` (`no-graph`), a graph that `CodeGraph.load` refuses (`invalid-graph`), `--map`/`--root` without a usable value (`invalid-argument`).
+  - `:violations` counts the pairs printed as `violation` plus capability violations and pattern breaks; `:known` counts `violation-known` pairs plus `capability-violation-known`. Known breaks do not change the status.
+  - `main` recognises `boundaries ... --strict` before anything else (`_is_strict_boundaries`) so that every way out prints the result line. `find_sexp_file` is split into `_search_sexp_file` (returns None with the paths looked at) and `_print_no_project`; its own behaviour (message on standard error, exit 1) is the same.
+  - `print_capability_findings` keeps its signature and result; the counts come from `_print_capability_findings`.
+  - The usage text lists `boundaries [scope] [--strict]`.
+- `src/wingbox/cli.py` is not changed: the query arguments pass through to the script.
+- `README.md` (the contract table next to `boundaries`, one row in the command table), `SKILL.md` and `references/sexp-notation.md` (the two facts and the exit statuses), the plugin's copy of the skill (`tools/sync_plugin.py`), `CHANGELOG.md`.
+- Tests `tests/test_boundaries_strict.py`, REQ-BCOV-007..019, every command run as a process; all fail on `main` (`--strict` was read as nothing: no result line, the plain exit status). One of them fixes a case the issue does not list: source files outside every part of a configured architecture, which plain mode counts as checked (`boundaries-ok`), are `in-no-part` and incomplete in strict mode. `tests/test_boundaries_coverage.py` (REQ-BCOV-001..006) is unchanged and passes.
+
+### Motivation
+- Issue #123: a script that gates on `wingbox boundaries` could not tell "checked and clean" from "nothing was checked" (an undetermined style and a project without source files both exit 0), nor a violation from a tool error (no graph and a damaged graph both exit 1, as a violation does). The interactive behaviour is deliberate (REQ-BCOV-004), so the contract is opt-in: plain mode keeps its lines and exit statuses, strict mode never lets a part that was not checked read as a pass and gives the four outcomes four exit statuses.
+
 ## 2026-11-19 - The language parsers are dependencies of the package again; the download is removed
 
 ### Changes

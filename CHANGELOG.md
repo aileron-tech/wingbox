@@ -4,6 +4,17 @@
 
 ### Changes
 
+- `wingbox boundaries --strict`: a mode for gates. It prints the same lines as before, then one
+  `(boundaries-checked :part P :style S :modules N)` fact for each part that was checked and, as
+  the last line, `(boundaries-result :status pass|fail|incomplete|error :checked N :not-checked N
+  :violations N :known N [:reason R])`. The exit status follows the status: 0 only when every part
+  with files was checked, at least one file was checked and nothing breaks a rule; 1 for a
+  violation; 2 when a part was not checked for any reason (declared rules not read, a style that
+  is undetermined or has no layers, too few files, files in no part) or no file was checked; 3
+  when the check could not run (no graph, a graph that cannot be read, an invalid argument). A
+  script can now tell "checked and clean" from "nothing was checked" and a violation from a tool
+  error. Without `--strict` the output and the exit status are unchanged
+  ([#123](https://github.com/aileron-tech/wingbox/issues/123)).
 - The MCP server can be called from another machine. `wingbox mcp --http` serves the same tools
   over the Streamable HTTP transport of MCP at `http(s)://<host>:8765/mcp`, for Claude Code
   (`claude mcp add --transport http ... --header "Authorization: Bearer ..."`), Codex
