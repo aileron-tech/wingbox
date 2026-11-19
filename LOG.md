@@ -25,6 +25,21 @@
 - The extras `dart` and `all` carry no marker: on Windows arm64 they build the Dart grammar from its source package.
 - A graph that 0.12 built without a parser keeps its record, with the old command, until `wingbox build` runs in that project; `wingbox add` now answers with that command.
 
+## 2026-11-18 - MCP server: eleven tools named after their answers
+
+### Why
+- A tool directory grades an MCP server by four measures: one job per tool, one naming pattern, 3 to 15 tools, the whole life of the domain covered. The server had eighteen tools with overlapping jobs (`entity`, `usages`, `find_function`, `find_type`; `boundary` and `boundaries`; `analyze` and `quick`) and three naming styles. The owner decided to clean it up now, in one breaking change without aliases, while the server has few users.
+
+### Changes
+- `src/wingbox/mcp_server.py`: `TOOLS` is `build`, `impact`, `module`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`, `changes`, `query`. Tools that differed only by direction or kind are one tool with a parameter (`dependencies` `direction` out or in; `calls` `direction` in or out and `to` for a call path; `definitions` `kind` any, function or type); `module` analyzes a module or the best match of a keyword; `boundary` is removed, `impact` lists the files to read first. Every description says what the answer holds and when to take the neighbouring tool; every parameter is described; `enum` values are validated. The instructions given at `initialize` name the new tools.
+- The `wingbox` command keeps its command names.
+- `AGENTS.md`, section 5 "Changing the MCP server": the default is to keep the tool list; the checklist for a change and the tests that hold it.
+- README table "Use from an MCP client" and the changelog name the old tool for each new one.
+
+### Verification
+- `tests/test_mcp_tools.py` (REQ-MCP-021..030) and `tests/test_mcp_server.py`: pass.
+- The Windows cells of the first CI run failed on REQ-MCP-027 (`changes`): `(diff-functions-no-match :files 1)`. `cmd_diff_functions` compared the path git prints (`shop/pricing.py`) with the graph's path (`shop\pricing.py`); the diff path is now normalized to the system's separator before the comparison. A defect of the command on Windows since it exists; no test ran it there before.
+
 ## 2026-11-18 - Streamable HTTP transport for the MCP server, as the package wingbox-http
 
 ### Why
