@@ -35,11 +35,7 @@
     wingbox update [--check] [--dry-run] [--sexp]
                                             Upgrade with the installer that installed Wingbox (pipx, uv
                                             or pip), then refresh what install put in place
-    wingbox add LANGUAGE [LANGUAGE ...] [--from PATH] [--sexp]
-                                            Install the parser of csharp, java, go, ruby, php or dart: the
-                                            pinned wheel, checked by sha256, into ~/.wingbox/parsers (--from:
-                                            a wheel file or folder instead of the network); --list shows
-                                            which are installed. The only command that downloads a parser
+    wingbox add [LANGUAGE ...] [--list]     Kept for compatibility with 0.12: every parser is in the package
     wingbox hook pre-search                 The Claude Code PreToolUse hook (reads the hook input on stdin)
     wingbox hook dirty                      The Claude Code PostToolUse hook on Edit and Write: marks the
                                             changed file so the graph is refreshed before its next use
@@ -54,11 +50,6 @@ Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
 ~/.agents/skills folder). Without --assistant, install uses those whose
 configuration folder exists in the home folder. Wingbox writes only into a
 project's .wingbox/ and your own settings in the home folder.
-
-Python, TypeScript, Rust and Pascal are parsed as installed. The parsers of
-C#, Java, Go, Ruby, PHP and Dart are added on demand: a build that meets such
-files without their parser skips them, says how many, and names
-`wingbox add <language>`. Nothing is downloaded unless you run that command.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -1516,7 +1507,7 @@ def _build_outputs(builder: ModuleType, status: int, options) -> int:
     print(f"[wingbox] Map     {relative}  (wingbox open shows it in a browser)")
     for display, name, files in _skipped_languages(builder, options.root):
         print(f"[wingbox] Skipped {files} {display} file{'' if files == 1 else 's'}: the {display} parser is not "
-              f"installed. Run {builder.add_command(name)}, then wingbox build")
+              f"installed. Run {builder.install_command(name)}, then wingbox build")
     return 0
 
 
@@ -1685,27 +1676,22 @@ def _update_command(rest: list[str]) -> int:
     return update.exit_status(facts)
 
 
-def _add_command(rest: list[str], cwd: str) -> int:
-    """`wingbox add LANGUAGE ...`: the one command that downloads a parser (wingbox/add.py)."""
-    from wingbox import add, freshness
+def _add_command(rest: list[str]) -> int:
+    """`wingbox add ...`: kept for scripts written for 0.12; it says there is nothing to add (wingbox/add.py)."""
+    from wingbox import add
     from wingbox.facts import render_sexp
 
     if any(argument in ("-h", "--help") for argument in rest):
         print(add.USAGE)
         return 0
     options = add.parse_arguments(rest)
-    if isinstance(options, add.UsageError):
-        print(f"[wingbox] add: {options.message}", file=sys.stderr)
-        return 2
-    machine, extensions = add.this_machine()
-    facts = add.add(options, machine)
-    if isinstance(facts, add.UsageError):
-        print(f"[wingbox] add: {facts.message}", file=sys.stderr)
-        return 2
-    if not options.listing:
-        facts = facts + add.project_facts(freshness.find_project(cwd), facts, extensions)
-    sys.stdout.write(render_sexp(facts) if options.sexp else add.render_text(facts, str(Path.home())))
-    return add.exit_status(facts)
+    listed = []
+    if options.listing:
+        registry = load_script("lang")
+        listed = add.listed(registry.LANGUAGES, add.installed_version, registry.PIP_EXTRA_LANGUAGES)
+    facts = listed + [add.NOTHING_TO_ADD]
+    sys.stdout.write(render_sexp(facts) if options.sexp else add.render_text(facts))
+    return 0
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -1748,7 +1734,7 @@ def _run(argv: Optional[list[str]] = None) -> int:
     if command == "update":
         return _update_command(rest)
     if command == "add":
-        return _add_command(rest, cwd)
+        return _add_command(rest)
     if command == "build":
         if any(argument in ("-h", "--help") for argument in rest):
             print(BUILD_USAGE)

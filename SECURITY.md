@@ -29,12 +29,10 @@ In scope:
   `dirty`, `session-start`, `git`);
 - the plugins in `plugins/wingbox` (manifests, skill) and
   `wingbox install` / `uninstall` / `update`;
-- `wingbox add <language>`, the one command that downloads a parser: it may
-  fetch only a wheel listed in the package (`wingbox/assets/parsers.json`)
-  from `https://files.pythonhosted.org`, must refuse a file whose sha256
-  differs from the pinned one, and unpacks only inside `~/.wingbox/parsers`
-  (or `WINGBOX_PARSERS_DIR`). A download started by any other command, a
-  build, a refresh, a hook or the MCP server included, is a vulnerability;
+- any network connection opened by Wingbox itself: the package holds no code
+  that opens one, and a test fails on an import that could
+  (`tests/test_local_only.py`). `wingbox update` starts your package
+  installer (pipx, uv or pip), which reaches the package index;
 - any write outside the two places Wingbox writes to: the repository's
   `.wingbox/` folder and the user's own settings in the home folder (the
   assistants' files and `~/.wingbox/`). A test runs every command in a
