@@ -23,6 +23,26 @@
   `diff_functions` is `changes`; `boundary` is gone, `impact` lists the files to read first. Every description says what the answer holds and
   when to take the neighbouring tool, and every parameter is described. The `wingbox` command
   keeps its command names.
+- The parsers of every language are installed with the package again. One `pipx install wingbox`,
+  `pip install wingbox` or `uvx wingbox` gives every language Wingbox reads; nothing has to be
+  added per language. **After upgrading from 0.12, run `wingbox build` once in a project whose
+  graph left a language out.** The Dart parser has no wheel for Windows on arm64: there the
+  package installs without it and a build skips `.dart` files with a warning.
+- The download of parsers is removed, and with it every network access of Wingbox: no code of the
+  package opens a network connection, and the test that proves it from the import statements has
+  no exception. `wingbox update` starts your package installer (pipx, uv or pip), as before.
+- `wingbox add` is kept as a command that does nothing, so that a script written for 0.12 still
+  runs: `wingbox add csharp`, `wingbox add --list` and `wingbox add php --from FILE` exit 0 and
+  say that every parser is in the package (`--list` shows the parser of each language as
+  installed or not). It downloads nothing and writes nothing. The extras `wingbox[csharp]`,
+  `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]` and `[all]` stay valid.
+- The per-user parser folder is no longer read: a parser is imported only from the environment
+  that runs Wingbox, and `WINGBOX_PARSERS_DIR` has no effect. Wingbox does not delete the folder
+  `~/.wingbox/parsers` that 0.12 may have filled; you can delete it.
+- A parser that is missing all the same (a broken install, Dart on Windows arm64) is handled as
+  in 0.12: the build maps the other languages and records one line that every reader of the graph
+  passes on. Its command is now the pip extra:
+  `(skipped-language dart :files 214 :add "pip install \"wingbox[dart]\"")`.
 
 ### Fixes
 
