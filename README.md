@@ -1666,6 +1666,7 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 - [S-expression map format](https://github.com/aileron-tech/wingbox/blob/main/references/sexp-notation.md)
 - [Composable query language](https://github.com/aileron-tech/wingbox/blob/main/references/scheme-queries.md)
 - Benchmarks: [impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md), [find usages](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/usages/README.md), [comparison with other tools](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md), with charts on [wingbox.dev/benchmarks](https://wingbox.dev/benchmarks)
+- [Assurance material](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/README.md): the requirements with the test that verifies each, the verification plan, the known limits per language, and which wrong answer could hide a defect
 - [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md)
 - [Roadmap](https://github.com/aileron-tech/wingbox/blob/main/ROADMAP.md)
 - [Completion log](https://github.com/aileron-tech/wingbox/blob/main/LOG.md)
