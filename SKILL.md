@@ -194,7 +194,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `diff_functions [ref]` | Changed functions in git diff | `diff_functions HEAD~3` |
 | `query '<sexp>'` | Composable Scheme query | `query '(count (boundary "X"))'` |
 | `repl` | Interactive Scheme REPL | `repl` |
-| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`build`, `impact`, `usages`, `analyze`, `quick`, `boundary`, `deps`, ...) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
+| `wingbox mcp [--root DIR]` | Run these commands as tools of an MCP server on stdio (`graph`, `impact`, `modules`, `definitions`, `usages`, `dependencies`, `calls`, `layers`, `boundaries`, `changes`, `facts`) for MCP clients | `claude mcp add wingbox -- wingbox mcp` |
 
 `impact` accepts an ordinary file path. Without `--sexp` it prints readable text
 for people; agents pass `--sexp` to get the same facts in the compact

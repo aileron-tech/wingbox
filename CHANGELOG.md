@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Three MCP tools are renamed, so that all eleven are nouns named after their answer: `build` is
+  `graph`, `module` is `modules`, `query` is `facts`. **An MCP client that calls one of the three by
+  its old name must use the new one**; the other eight tools and every `wingbox` command keep their
+  names.
+- The description of every MCP tool is rewritten for an agent that reads nothing else: what the tool
+  does and what comes back, when to use it, which tool to use for the neighbouring question, that a
+  long list stops at 200 items unless `all` is true, and what an unknown name returns. `definitions`
+  now says that `name` may be a pattern (`parse_.*`).
+
+### Fixes
+
+- `wingbox query "(help)"`, and so the MCP tool `facts` with the expression `(help)`, lists the
+  functions of the query language, as the tool's description says. It answered "unknown function:
+  help" outside the interactive `wingbox repl`.
+
 ## 0.13.0 - 2026-11-19
 
 ### Changes

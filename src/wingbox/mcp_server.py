@@ -306,7 +306,7 @@ class Server:
             self._first_build_lock.close()
             self._first_build_lock = None
         if status != 0:
-            return f"The first build of the code graph of {self.root} failed (status {status}). Call the build tool to see why."
+            return f"The first build of the code graph of {self.root} failed (status {status}). Call the `graph` tool to see why."
         return None
 
     def _building_message(self) -> str:
@@ -333,20 +333,20 @@ class Server:
             if hook.source_repository(self.root, str(Path.home())) is None:
                 return GraphMissing(f"No repository here: {self.root} is in no source repository (no .git and no "
                                     "project manifest with source files), so Wingbox has nothing to map.")
-            return GraphMissing(f"No .wingbox/ in {self.root} or its parents: call the build tool first.")
+            return GraphMissing(f"No .wingbox/ in {self.root} or its parents: call the `graph` tool first.")
         path = freshness.graph_path(project)
         fresh = freshness.ensure_graph_fresh(project, freshness.refresh_wait())
         try:
             status = os.stat(path)
         except OSError as error:
-            return GraphMissing(f"Cannot read the code graph {path}: {error}. Call the build tool.")
+            return GraphMissing(f"Cannot read the code graph {path}: {error}. Call the `graph` tool.")
         key = (path, status.st_mtime_ns, status.st_size)
         if key != self._cache_key:
             search = self.search()
             graph = search.CodeGraph()
             loaded = graph.load(path, project)
             if isinstance(loaded, search.MapLoadErr):
-                return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the build tool.")
+                return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the `graph` tool.")
             self._cache_key, self._cache_graph = key, graph
         return GraphReady(self._cache_graph, path, freshness.notes(fresh, project))
 
@@ -484,11 +484,20 @@ def _calls_command(search: Any, graph: Any, _path: str, arguments: dict[str, Any
         search.cmd_find_callers(graph, arguments["function"], arguments.get("depth", 2))
 
 
+# What every description says, in this order: what the tool does (a verb first) and what comes back, when to use
+# it, which tool to use for the neighbouring question, and the two things an answer can do that a caller must
+# know: stop at ANSWER_LINE_LIMIT items, and answer an unknown name with an error.
+_CAP = f" A long list stops at {ANSWER_LINE_LIMIT} items unless `all` is true."
+_MISS = " A name the graph does not hold is answered with an error line, with suggestions when similar names exist."
+
 TOOLS: tuple[Tool, ...] = (
     Tool(
-        "build",
-        "Build or refresh the code graph of the repository (incremental; full=true reparses every file). "
-        "Call it first and after large edits: every other tool reads the graph it writes.",
+        "graph",
+        "Builds or refreshes the code graph of the repository and returns the build log: the files found per "
+        "language, the number of modules and dependencies, and where the graph was written. Use it first in a "
+        "repository and again after large edits: every other tool reads the graph it writes, and says so when the "
+        "graph is missing. Only changed files are parsed again; `full` parses every file. It writes the folder "
+        ".wingbox/ in the repository and nothing else.",
         {
             "full": {"type": "boolean", "default": False, "description": "Reparse every file instead of only changed ones."},
             "exclude_dirs": {
@@ -502,8 +511,10 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "impact",
-        "What a change to one file reaches: the files that depend on it by depth, why each is on the list, and the "
-        "files to read first. Take it before editing a file; for one function or type take usages.",
+        "Lists what a change to one file reaches: the files that depend on it, grouped by depth, with the reason "
+        "each one is on the list, then the files to read first. Use it before editing a file. For one function or "
+        "type use `usages`; for the bare import tree of a module use `dependencies`. Returns plain text."
+        + _CAP + _MISS,
         {
             "target": _string("File path relative to the repository root, or a module ID."),
             "depth": _depth(2),
@@ -513,17 +524,22 @@ TOOLS: tuple[Tool, ...] = (
         _run_impact,
     ),
     Tool(
-        "module",
-        "One module in full: what it defines, what it imports, who depends on it and its layer. Give a module ID, a "
-        "file path, or a keyword (the best matching module is analyzed). For the reach of a change take impact.",
+        "modules",
+        "Describes one module in full: what it defines (functions, types and constants with their lines), what it "
+        "imports, who depends on it and its architecture layer. Use it to understand a module before reading its "
+        "file, or to find where a feature lives: given a keyword instead of a module ID or a file path, it "
+        "describes the best matching module. For what a change reaches use `impact`. Returns one line per fact."
+        + _CAP + _MISS,
         {"module": _string("Module ID, file path, or a word from a module path, file name or entity name."), "all": _ALL},
         ("module",),
         _run_module,
     ),
     Tool(
         "definitions",
-        "Where a function, type or constant is defined: file and line. kind narrows the search to functions or to "
-        "types; without it constants are found too. For the places that use a name take usages.",
+        "Finds where a function, type or constant is defined and returns one line per definition, with its file "
+        "and line. Use it to locate a symbol, or to search names by pattern: `name` may hold `.*` wildcards, so "
+        "`parse_.*` lists every matching name. `kind` narrows the search to functions or to types; without it "
+        "constants are found too. For the places that use a name use `usages`." + _CAP + _MISS,
         {
             "name": _string("Name; literal text with optional .* wildcards."),
             "kind": {"type": "string", "enum": ["any", "function", "type"], "default": "any",
@@ -535,10 +551,12 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "usages",
-        "Every place that uses one function, class, type or constant, through re-exports and aliases: "
-        "by file, with line:column and the kind of use (import, re-export, call, type, extends, reference); "
-        "method calls whose receiver type is not in sight are marked unresolved. "
-        "For where a name is defined take definitions; for the reach of a whole file take impact.",
+        "Lists every place that uses one function, class, type or constant, followed through re-exports and "
+        "aliases: grouped by file, each use with its line:column and kind (import, re-export, call, type, extends, "
+        "reference). Use it before changing a symbol, and to see which tests reach it. A method call whose "
+        "receiver type cannot be seen is marked unresolved. For where a name is defined use `definitions`; for "
+        "the reach of a whole file use `impact`; for the call graph alone use `calls`. Returns plain text."
+        + _CAP + _MISS,
         {
             "symbol": _string("Name, <file>::Name or <file>::Class.method (a file path or module ID)."),
             "all": _ALL,
@@ -552,8 +570,10 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "dependencies",
-        "The dependency tree of a module, hop by hop: direction out is what it uses, in is who uses it. "
-        "For the files a change reaches, with the reason for each, take impact.",
+        "Lists the import tree of one module, hop by hop: `direction` out is what the module uses, in is who "
+        "uses it. Use it to see how modules are wired together. It gives no reasons and no reading order: before "
+        "an edit use `impact` instead. Returns one line per edge, `(dep A B :via imports :depth N)` or `(rdep A B "
+        "...)`, down to `depth` hops." + _CAP + _MISS,
         {"module": _MODULE, "direction": _direction("out", "out: what the module uses; in: who uses the module."), "depth": _depth(2), "all": _ALL},
         ("module",),
         _simple(
@@ -563,9 +583,12 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "calls",
-        "The call graph around one function, hop by hop: direction in is who calls it, out is what it calls; with "
-        "`to`, a call path from the function to another one (a module path when no call path exists). "
-        "For every use of a name, calls included, take usages.",
+        "Traces the call graph around one function, hop by hop: `direction` in lists who calls it, out lists "
+        "what it calls; with `to` it returns a call path from the function to that other one. Use it for "
+        "questions about calls only: for every kind of use of a name (imports, types, references and calls) use "
+        "`usages`. When the graph holds no call edge for the function, the answer gives the links between the "
+        "modules instead and says so. `depth` is 2 hops by default, 5 for a path. Returns one line per caller, "
+        "callee or step." + _CAP + _MISS,
         {
             "function": _FUNCTION,
             "direction": _direction("in", "in: who calls the function; out: what the function calls. Not used with `to`."),
@@ -579,15 +602,20 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "layers",
-        "The modules grouped by architecture layer. To check the rules between the layers take boundaries.",
+        "Lists the modules of the repository grouped by architecture layer, each with the rule that put it "
+        "there. Use it to see how the code is organized, or where new code belongs. To check the imports between "
+        "the layers use `boundaries`. Returns one line per layer and one per module." + _CAP,
         {"all": _ALL},
         (),
         _simple(lambda _a: ["layers"], lambda s, g, _p, _a: s.cmd_layers(g)),
     ),
     Tool(
         "boundaries",
-        "Check the architecture rules: the imports that cross a layer rule (e.g. domain importing infrastructure), "
-        "for one module or all, and the parts that could not be checked. To see the layers themselves take layers.",
+        "Checks the architecture rules and lists the imports that cross one (for example domain importing "
+        "infrastructure), for one module or for all, then the parts of the repository that could not be checked, "
+        "with the reason. Use it before a review, or after moving code between layers. A part that was not "
+        "checked is reported as not checked, never as passing. To see the layers themselves use `layers`. "
+        "Returns one line per finding and one per part." + _CAP,
         {"scope": {"type": "string", "minLength": 1, "default": "all", "description": "Module ID or \"all\"."}, "all": _ALL},
         (),
         _simple(
@@ -597,8 +625,10 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "changes",
-        "The functions changed in the working files against a git ref (default HEAD), to check before a review or "
-        "a commit. For who uses a changed function take usages.",
+        "Lists the functions changed in the working files against a git ref (HEAD by default): one line per "
+        "changed file and one per changed function, with its line. Use it before a review or a commit, to see "
+        "what a diff really touches; then use `usages` on a changed function to see who uses it. Needs a git "
+        "repository; when nothing changed it says so in one line." + _CAP,
         {"ref": {"type": "string", "minLength": 1, "default": "HEAD", "description": "Git ref, e.g. HEAD~3 or main."}, "all": _ALL},
         (),
         _simple(
@@ -607,9 +637,12 @@ TOOLS: tuple[Tool, ...] = (
         ),
     ),
     Tool(
-        "query",
-        "Evaluate a Scheme query on the graph when no other tool answers the question, e.g. "
-        "(files (intersect (deps \"A\" 2) (rdeps \"B\" 1))); (help) lists the functions.",
+        "facts",
+        "Evaluates one expression of the query language over the graph and returns the modules, the files or "
+        "the count it selects. Use it only for a question no other tool answers, such as the modules that depend "
+        "on A and are also used by B: (files (intersect (deps \"A\" 2) (rdeps \"B\" 1))). The expression "
+        "(help) returns the list of the functions. An expression that selects nothing returns an empty result, "
+        "not an error." + _CAP,
         {"expression": _string("A Scheme expression; (help) lists the functions."), "all": _ALL},
         ("expression",),
         _simple(lambda a: ["query", a["expression"]], lambda s, g, p, a: s.cmd_query(g, a["expression"], p)),
@@ -642,10 +675,10 @@ def _server_info() -> dict[str, str]:
 
 def _instructions(root: str) -> str:
     return (
-        f"Wingbox answers questions about the code graph of {root}. Call impact before editing a file: it lists "
-        "what the change reaches and the files to read first. Call module to understand a module or find a feature, "
-        "usages for every use of one function or type. "
-        "If a tool says the graph is missing, call build first; call build again after large edits."
+        f"Wingbox answers questions about the code graph of {root}. Call `impact` before editing a file: it lists "
+        "what the change reaches and the files to read first. Call `modules` to understand a module or find a "
+        "feature, `usages` for every use of one function or type. "
+        "If a tool says the graph is missing, call `graph` first; call `graph` again after large edits."
     )
 
 
@@ -669,12 +702,12 @@ def _modern_version(params: dict[str, Any]) -> Optional[str]:
 
 
 # MCP ToolAnnotations: a human title per tool; every tool only reads the code
-# graph except `build`, which writes .wingbox/ (the graph, its cache, REPORT.md, map.html)
+# graph except `graph`, which writes .wingbox/ (the graph, its cache, REPORT.md, map.html)
 # in the repository (never deletes) and gives the same result when repeated.
 TOOL_TITLES = {
-    "build": "Build the code graph",
+    "graph": "Build the code graph",
     "impact": "Impact of changing a file",
-    "module": "One module in full",
+    "modules": "One module in full",
     "definitions": "Where a name is defined",
     "usages": "Find every use of a symbol",
     "dependencies": "Dependencies of a module",
@@ -682,9 +715,9 @@ TOOL_TITLES = {
     "layers": "Architecture layers",
     "boundaries": "Architecture boundaries",
     "changes": "Functions changed in a diff",
-    "query": "Query the code graph",
+    "facts": "Query the code graph",
 }
-WRITING_TOOLS = frozenset({"build"})
+WRITING_TOOLS = frozenset({"graph"})
 
 
 def tool_annotations(name: str) -> dict[str, Any]:

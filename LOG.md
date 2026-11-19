@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-19 - MCP tools: three names become nouns, every description rewritten
+
+### Why
+- The directory that grades the server scored release 0.13.0 on 2026-11-19: A, 4 of 5 across 11 tools (it was B, 3.4, on 18 tools). What kept it from 5: Naming Consistency 4 of 5 ("two verbs (query, build) among noun-like names, and module is singular"); Disambiguation 4 of 5 (overlap of impact and dependencies, of usages and calls; query as a catch-all); Completeness 4 of 5 ("no name-pattern/symbol search", which `definitions` has and did not say). Per tool the average was 4.1: `calls`, `changes`, `dependencies` and `layers` got 3.6, each for the same reasons: no verb at the start, nothing about the shape of the answer, the 200-item cap or an unknown name, and the telegraphic "take X". The maintainer asked to go for 5 of 5 and chose to rename the three tools now.
+
+### Changes
+- `src/wingbox/mcp_server.py`: `build` -> `graph`, `module` -> `modules`, `query` -> `facts` (no aliases); the eleven descriptions rewritten in one form (a verb and what comes back, "Use it ...", the neighbour as "use `name`", the cap, the unknown name), with the two shared sentences `_CAP` and `_MISS`; the instructions and the "graph is missing" answers name `graph`. Titles and the read-only hint follow the names.
+- `scripts/code_graph_search.py`, `cmd_query`: `(help)` prints the functions of the query language. The description of the tool promised it; only `wingbox repl` did it.
+- Tests: `tests/test_mcp_tools.py` REQ-MCP-021 rewritten for the new form of a description (its old expectation, "take <name>" and 400 characters, was the form this change replaces), REQ-MCP-029 and 030 for the new names, new REQ-MCP-031 (`(help)`) and REQ-MCP-032 (the three tools under their new names, the old names unknown). The other tests that call the three tools use the new names; their assertions are unchanged except the quoted answer "call the `graph` tool first".
+- README table, `SKILL.md` (and the plugin copies through `tools/sync_plugin.py`), the plugin README, `AGENTS.md` section 5 (names are nouns; the form of a description; the directory's linter before a pull request; how to get a new score).
+
+### Verification
+- `python -m unittest tests.test_mcp_tools tests.test_mcp_server tests.test_skipped_language_notice tests.test_http_transport tests.test_mcpb tests.test_mcp_registry`: 63 tests pass.
+- `npx mcp-tdqs lint --command "python -m wingbox mcp"` on the branch: see the pull request.
+- The graded score is the directory's and is read after the release.
+
 ## 2026-11-19 - AGENTS.md: what follows every release
 
 ### Why
