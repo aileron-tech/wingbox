@@ -4,6 +4,14 @@
 
 ### Changes
 
+- A baseline entry can say who accepted a rule break, why and until when. Add `:owner "<who>"
+  :reason "<why>" :expires YYYY-MM-DD` to a line of `.wingbox/baseline.sexp`; `wingbox boundaries`
+  prints the three fields on the `violation-known` (or `capability-violation-known`) line. From
+  the day after `:expires`, or when the date cannot be read, the entry no longer hides its
+  finding: it is a `violation` again, marked `:expired <date>`, `boundaries` exits 1 and `wingbox
+  advice` asks for the fix again. `wingbox align --learn` writes entries as before and keeps the
+  fields you added when it writes the file again. Entries without the fields behave as before
+  ([#125](https://github.com/aileron-tech/wingbox/issues/125)).
 - The MCP server can be called from another machine. `wingbox mcp --http` serves the same tools
   over the Streamable HTTP transport of MCP at `http(s)://<host>:8765/mcp`, for Claude Code
   (`claude mcp add --transport http ... --header "Authorization: Bearer ..."`), Codex
@@ -26,6 +34,15 @@
 
 ### Fixes
 
+- A recommendation to fix a finding (`fix-violation`, `fix-capability`, `fix-pattern`) no longer
+  disappears from `wingbox advice`, REPORT.md and the map after three builds without a reaction.
+  It stays until the finding is fixed, accepted in the baseline, or rejected with `wingbox advice
+  reject <id> --reason TEXT`; for these recommendations `reject` now requires the reason (exit
+  status 2 without one). A recommendation of this kind that an earlier version hid is shown
+  again. Layout suggestions (`missing-folder`, `move`) are still hidden after three builds.
+- Rebuilding unchanged code no longer counts as a build in which a recommendation was ignored:
+  only a build whose graph differs from the previous one counts toward the three
+  ([#125](https://github.com/aileron-tech/wingbox/issues/125)).
 - Python projects that keep their package under `src/`: a test, a script or any file outside
   `src/` that imports the package by its name (`from shop.pricing import total` with
   `src/shop/pricing.py`) now depends on that module. Before, `wingbox impact` and `wingbox usages`

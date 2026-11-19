@@ -17,11 +17,15 @@ Every build (and init with a graph) compares the open advice with the
 current advice and files: advice that is gone is followed (the folder exists,
 the file sits in the advised folder, the violation is gone with its source in
 place) or done differently (the file moved elsewhere: that folder is learned
-as the advised layer for the part); advice still open counts one ignored run.
+as the advised layer for the part); advice still open counts one ignored run
+when the graph differs from the one of the run before (a rebuild of the same
+code is not a run in which the project left the advice aside).
 An item rejected, or ignored for IGNORED_RUNS runs, is no longer shown; the
 advice of the same kind and rule in the same part is ranked lower, and ranked
-higher after a followed item. Pure functions; the command line reads and
-appends the file.
+higher after a followed item. Advice to fix a finding (NEVER_HIDDEN) is not
+hidden by inaction: it stays until the finding is fixed, accepted in the
+baseline, or rejected with a reason. Pure functions; the command line reads
+and appends the file.
 """
 from __future__ import annotations
 
@@ -34,6 +38,8 @@ from .sexp import keyword, parse, q
 
 STORE_FILE = ".wingbox/decisions.sexp"
 IGNORED_RUNS = 3
+# A finding that `boundaries` still reports keeps its advice: only layout suggestions are hidden by inaction.
+NEVER_HIDDEN = ("fix-violation", "fix-capability", "fix-pattern")
 _TERMINAL = ("followed", "done-differently", "rejected")
 
 
@@ -62,7 +68,8 @@ class Store:
     outcomes: dict[str, str] = field(default_factory=dict)       # id -> last outcome
     ignored_runs: dict[str, int] = field(default_factory=dict)
     learned: list[Learned] = field(default_factory=list)
-    runs: int = 0                                                 # (build-run ...) lines so far
+    runs: int = 0                                                 # builds so far, a rebuild of the same graph counted once
+    last_graph: str = ""                                          # the graph hash of the last (build-run ...) line
     given_at_run: dict[str, int] = field(default_factory=dict)    # id -> runs when it was given
 
 
@@ -74,7 +81,10 @@ def read_store(text: str) -> Store:
             continue
         head = tokens[0]
         if head == "build-run":
-            store.runs += 1
+            graph = keyword(tokens, "graph", "") or ""
+            if _counts(store, graph):
+                store.runs += 1
+            store.last_graph = graph
         elif head == "advice-given" and len(tokens) > 1:
             store.given_at_run[tokens[1]] = store.runs
             store.given[tokens[1]] = Given(
@@ -108,6 +118,17 @@ def given_line(advice: Advice, today: str, graph_hash: str) -> str:
     )
 
 
+def _counts(store: Store, graph_hash: str) -> bool:
+    """True when a build of this graph is a new run: the first one, or a graph unlike the one before."""
+    return store.runs == 0 or not graph_hash or graph_hash != store.last_graph
+
+
+def needs_reason(store: Store, advice_id: str) -> bool:
+    """True for advice that only a stated reason may reject: the advice to fix a finding."""
+    given = store.given.get(advice_id)
+    return given is not None and given.kind in NEVER_HIDDEN
+
+
 def _is_open(store: Store, advice_id: str) -> bool:
     return store.outcomes.get(advice_id) not in _TERMINAL
 
@@ -124,7 +145,7 @@ def reconcile(store: Store, current: Iterable[Advice], paths: tuple[str, ...], t
     folders = {path.rsplit("/", 1)[0] for path in paths if "/" in path}
     # Only changes of state are logged: one run line, new advice, outcomes, and the run in which an
     # open item has been ignored IGNORED_RUNS times (it is hidden from then on).
-    this_run = store.runs + 1
+    this_run = store.runs + (1 if _counts(store, graph_hash) else 0)
     lines: list[str] = [f"(build-run :graph {graph_hash} :at {today})"]
     for item in current:
         if item.id not in store.given:
@@ -135,7 +156,7 @@ def reconcile(store: Store, current: Iterable[Advice], paths: tuple[str, ...], t
         if advice_id in now:
             outcome = store.outcomes.get(advice_id)
             runs = this_run - store.given_at_run.get(advice_id, this_run)
-            if outcome not in ("accepted", "ignored") and runs >= IGNORED_RUNS:
+            if outcome not in ("accepted", "ignored") and runs >= IGNORED_RUNS and given.kind not in NEVER_HIDDEN:
                 lines.append(f"(advice-outcome {advice_id} :ignored :runs {runs} :at {today})")
             continue
         lines.extend(_gone(given, files, folders, today))
@@ -180,8 +201,9 @@ def user_outcome(store: Store, advice_id: str, accepted: bool, reason: str, toda
 
 
 def visible(store: Store, current: Iterable[Advice]) -> list[Advice]:
-    """Advice still worth showing, best first: rejected and long-ignored items are dropped; the advice of
-    a kind and rule that the project rejected or ignored in a part is ranked lower, followed higher."""
+    """Advice still worth showing, best first: rejected and long-ignored items are dropped (advice to fix
+    a finding is dropped only when rejected); the advice of a kind and rule that the project rejected or
+    ignored in a part is ranked lower, followed higher."""
     weight: Counter[tuple[str, str, str]] = Counter()
     for advice_id, outcome in store.outcomes.items():
         given = store.given.get(advice_id)
@@ -190,9 +212,12 @@ def visible(store: Store, current: Iterable[Advice]) -> list[Advice]:
         key = (given.part, given.kind, _rule_kind(given.rule))
         if outcome == "followed" or outcome == "accepted":
             weight[key] += 1
-        elif outcome == "rejected" or (outcome == "ignored" and store.ignored_runs.get(advice_id, 0) >= IGNORED_RUNS):
+        elif outcome == "rejected" or (outcome == "ignored" and given.kind not in NEVER_HIDDEN
+                                       and store.ignored_runs.get(advice_id, 0) >= IGNORED_RUNS):
             weight[key] -= 1
-    shown = [item for item in current if store.outcomes.get(item.id) not in ("rejected", "ignored")]
+    # A store written before fix advice stopped being hidden may hold `:ignored` for it: it is shown again.
+    shown = [item for item in current if store.outcomes.get(item.id) != "rejected"
+             and (store.outcomes.get(item.id) != "ignored" or item.kind in NEVER_HIDDEN)]
     order = {item.id: index for index, item in enumerate(shown)}
     return sorted(shown, key=lambda item: (-weight[(item.part, item.kind, _rule_kind(item.rule))], order[item.id]))
 

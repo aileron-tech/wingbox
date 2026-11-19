@@ -154,6 +154,7 @@ try:
         )
         from . import layer_guess, portable
         from .architecture.config import ConfigErr, plan_from_config, read_config
+        from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
         )
@@ -191,6 +192,7 @@ try:
         import layer_guess
         import portable
         from architecture.config import ConfigErr, plan_from_config, read_config
+        from architecture.baseline import read_baseline_terms, terms_sexp
         from architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
         )
@@ -3644,10 +3646,14 @@ def render_sexp(
                 f':rule "{_sexp_escape(label.rule)}" :match {label.match}{" :composition-root" if label.root else ""}'
                 f'{_learned_from(label.rule)})'
             )
+        terms = architecture.terms or {}
         for part, source, target, baseline in architecture.known:
             if source in path_to_sid and target in path_to_sid:
+                # Owner, reason and end date of an entry of .wingbox/baseline.sexp: a query decides by its own day.
+                stated = terms.get(("baseline", part, source, target)) if baseline == BASELINE_FILE else None
                 lines.append(
-                    f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}")'
+                    f'(arch-known "{_sexp_escape(part)}" {path_to_sid[source]} {path_to_sid[target]} "{_sexp_escape(baseline)}"'
+                    f'{terms_sexp(stated) if stated else ""})'
                 )
         for node in sorted_nodes:
             for finding in (architecture.capabilities or {}).get(node["id"], ()):
@@ -3657,7 +3663,9 @@ def render_sexp(
                 )
         for part, node_id, capability in architecture.capability_known:
             if node_id in path_to_sid:
-                lines.append(f'(capability-known "{_sexp_escape(part)}" {path_to_sid[node_id]} {capability} "{BASELINE_FILE}")')
+                stated = terms.get(("baseline-capability", part, node_id, capability))
+                lines.append(f'(capability-known "{_sexp_escape(part)}" {path_to_sid[node_id]} {capability} "{BASELINE_FILE}"'
+                             f'{terms_sexp(stated) if stated else ""})')
 
     # -- Violations (Gap 2 fix) --
     if violations:
@@ -4455,6 +4463,7 @@ def project_architecture(
         read_baseline_sexp(baseline_text),
         _node_capabilities(root, nodes, {os.path.relpath(r.path, root).replace(os.sep, "/"): r.content_hash for r in results}),
         read_capability_baseline(baseline_text),
+        read_baseline_terms(baseline_text),
     )
     return Ok((architecture, plan.value))
 
