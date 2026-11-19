@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-19 - Release 0.12.2
+
+### Changes
+- Version 0.12.2: every Python that Wingbox starts itself gets `-P`, so a folder of the project is never imported in place of an installed module (#134). The map-request workflow builds with 0.12.2.
+
+### Motivation
+- A fix of what Wingbox promises (code is read, never run) goes out on its own, at once.
+
 ## 2026-11-19 - A Python started by Wingbox never imports from the project folder (issue #134)
 
 ### Changes
