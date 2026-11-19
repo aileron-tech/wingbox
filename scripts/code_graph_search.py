@@ -4176,10 +4176,17 @@ def main(args: Optional[list[str]] = None, graph_stale: Optional[int] = None) ->
         status, _document = _answer(raw_args, form, form_error, graph_stale)
         return status
     # JSON: one document. `impact` and `usages` build theirs; the fact lines of any other answer become objects.
+    # A call that fails as a whole says so in one place: `error` is the first key of the document.
     lines = io.StringIO()
-    with contextlib.redirect_stdout(lines):
-        status, document = _answer(raw_args, form, form_error, graph_stale)
-    print(fact_json.render(document if document is not None else {"facts": fact_json.facts_json(lines.getvalue())}))
+    document: Optional[dict] = None
+    try:
+        with contextlib.redirect_stdout(lines):
+            status, document = _answer(raw_args, form, form_error, graph_stale)
+    except SystemExit as stop:       # no graph to read: the message for people went to standard error
+        status = stop.code if isinstance(stop.code, int) else 1
+    if document is None:
+        document = {"facts": fact_json.facts_json(lines.getvalue())}
+    print(fact_json.render(fact_json.with_error(document, ("no-graph", NO_PROJECT) if status else None)))
     return status
 
 

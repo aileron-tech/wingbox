@@ -44,6 +44,12 @@
   `impact --json` prints `{"graph": {...}, "impact": [{"file", "direct", "total", "rows",
   "read_first", "advice"}, ...]}` and `usages --json` `{"usages": {..., "rows": [...]}}`; every
   other command prints `{"facts": [...]}`, one object per fact line.
+- A `--json` call that fails as a whole says so in one place: the document starts with `"error":
+  {"code", "message"}` on standard output, for a folder without a graph (`no-graph`), an argument
+  that is not valid (`invalid-argument`), a name nothing matches (`no-match`) and a git reference
+  that does not exist (`git-diff-failed`). Code checks `answer.error` and nothing else. A file of
+  an `impact` call that is not in the graph carries its own `error` and the other files are
+  answered.
 - `--sexp` stays where 0.13 had it and prints exactly what 0.13.0 printed with it: for `impact`
   and `usages` the flat facts, one per line (`impact-root`, `(impact <root> <dependent> :lang ..
   :via .. :depth N ...)`, `impact-summary`, `read-first`; `usages-target`, `usage`,

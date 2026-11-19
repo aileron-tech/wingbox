@@ -50,6 +50,11 @@ The call for ten files is the ten answers plus the graph fact (56 or 57 characte
 ### Verification
 - The two new test files failed on `main` before the change (import of `scripts.fact_json`), then passed. The whole suite: see the pull request.
 - Run by hand in this checkout after `wingbox build .`: `wingbox impact scripts/lang/treesitter.py` (one form, 13 direct, 25 in all), `wingbox impact scripts/lang/treesitter.py scripts/impact_forms.py nowhere.py 1` (the graph fact with `:stale 0`, two forms, `(error no-match nowhere.py)`, exit 1), `--json` of the same, `wingbox usages scripts/fact_json.py::atom` and its `--json`.
+### The JSON form for code: one error object
+- `scripts/fact_json.py`: `with_error(document, fallback)` puts `error: {code, message}` first in a document whose call failed as a whole (the first error fact, the error of a `usages` answer, or the fallback for an empty answer); `facts_json` keeps a fact whose quoted text holds line breaks as one object.
+- `scripts/code_graph_search.py` `main`: in the JSON form a missing graph (the search stops the process) is caught and answered as `{"error": {"code": "no-graph", ...}}` on standard output with the same exit status; `src/wingbox/cli.py` `_answer_command` does the same for the architecture commands.
+- Tests `tests/test_json_errors.py`, REQ-CLI-044..046; all three failed before the change. Found by calling every query command with `--json` in its failing cases while writing the code a script uses: without a graph nothing was printed on standard output, and the message of a failed git command became one object per line.
+
 ## 2026-11-19 - MCP tools: three names become nouns, every description rewritten
 
 ### Why

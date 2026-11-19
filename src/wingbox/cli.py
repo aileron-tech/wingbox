@@ -1806,7 +1806,8 @@ def _answer_command(command: str, rest: list[str], cwd: str) -> int:
     lines = io.StringIO()
     with contextlib.redirect_stdout(lines):
         status = _ARCHITECTURE_COMMANDS[command](rest, cwd)
-    print(fact_json.render({"facts": fact_json.facts_json(lines.getvalue())}))
+    document = {"facts": fact_json.facts_json(lines.getvalue())}
+    print(fact_json.render(fact_json.with_error(document, ("failed", f"wingbox {command} exited {status}") if status else None)))
     return status
 
 

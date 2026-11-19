@@ -172,9 +172,56 @@ def _tagged(item: object) -> bool:
     return isinstance(item, list) and bool(item) and _is_keyword(item[0])
 
 
+def _whole_facts(text: str) -> list[str]:
+    """The lines of an answer, a fact whose quoted text holds line breaks (the message of a failed command)
+    kept as one: a line continues while a quote is open."""
+    found: list[str] = []
+    held = ""
+    for line in text.splitlines():
+        held = f"{held}\n{line}" if held else line
+        if _quotes_closed(held):
+            found.append(held)
+            held = ""
+    if held:
+        found.append(held)
+    return found
+
+
+def _quotes_closed(text: str) -> bool:
+    inside, j = False, 0
+    while j < len(text):
+        if text[j] == "\\" and inside:
+            j += 2
+            continue
+        if text[j] == '"':
+            inside = not inside
+        j += 1
+    return not inside
+
+
 def facts_json(text: str) -> list[dict[str, Any]]:
-    """Every non-empty line of an answer as a JSON object, in the order printed."""
-    return [fact_json(line) for line in text.splitlines() if line.strip()]
+    """Every fact of an answer as a JSON object, in the order printed."""
+    return [fact_json(line) for line in _whole_facts(text) if line.strip()]
+
+
+def with_error(document: dict[str, Any], fallback: Optional[tuple[str, str]]) -> dict[str, Any]:
+    """The document of a call, with `error` as its first key when the call failed as a whole: the first error
+    fact of its facts, the error of a `usages` answer, or the fallback (code, message) when the answer is
+    empty. A file of an `impact` call that is not in the graph carries its own error and is not one of these.
+    Code checks `answer.error` and nothing else."""
+    error: Optional[dict[str, str]] = None
+    facts = document.get("facts")
+    if isinstance(facts, list):
+        first = next((fact for fact in facts if isinstance(fact, dict) and fact.get("fact") == "error"), None)
+        if first is not None:
+            args = [str(arg) for arg in first.get("args", [])]
+            error = {"code": args[0] if args else "error", "message": " ".join(args[1:])}
+        elif not facts and fallback is not None:
+            error = {"code": fallback[0], "message": fallback[1]}
+    usages = document.get("usages")
+    if error is None and isinstance(usages, dict) and "error" in usages:
+        error = {"code": str(usages["error"]), "message": str(usages.get("symbol", ""))}
+    return document if error is None else {"error": error, **document}
 
 
 def render(document: dict[str, Any]) -> str:
