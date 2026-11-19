@@ -1,5 +1,35 @@
 # Completion Log
 
+## 2026-11-19 - docs/assurance: requirements, verification plan, known limits, tool errors (#153, part 2)
+
+### Why
+- Issue #153: the material a team needs to justify the tool exists in pieces. Every test names a requirement, and no document lists them; limits are spread over the README, the changelog and the log; nothing says which wrong answer could hide a defect and what catches it. This change puts that in one folder, from the repository alone: no benchmark was run and no number is new.
+
+### Changes
+- `tools/requirements_index.py` (new, standard library): reads the docstring `/* REQ-<AREA>-<n>: text */` of every function under `tests/` with `ast` (nothing is imported or run) and writes `docs/assurance/requirements.md`: a summary table, then one table per area (the id without its number) with the id, the text on one line and the test as `file::Class::method`; rows by number, then test. Markup is escaped outside code, every pipe everywhere. A test without an id is named at the top. `--check` exits 1 when the file is stale and writes nothing.
+- `docs/assurance/requirements.md` (generated): 764 tests, 751 ids, 43 areas; every test carries an id.
+- `docs/assurance/verification-plan.md`: the claims of the README's first screen and of the seven benchmark pages, each with the file its number comes from, the test class or benchmark that answers it and the command that reruns it; what keeps a published number from drifting; the missed-edge assessment per language as planned work, in three lines.
+- `docs/assurance/known-limits.md`: per language (and for every language, layers, installing), what the graph does not see and what that means for an answer, each line with its source: README sections, `docs/edge-model.md`, the benchmark pages, the changelog, the two "Not covered" entries of this log, and test docstrings.
+- `docs/assurance/tool-errors.md`: six kinds of wrong answer (a missing edge, an extra edge, a stale graph, a skipped language, a part that was not checked, a wrong layer): whether each can hide a defect, the fact and exit status Wingbox prints today with the command and the test, and the independent check.
+- `docs/assurance/README.md`: what the folder is, how to regenerate the generated page, and what the material is not.
+- `tests/test_assurance_docs.py` (new): REQ-DOC-004 (the committed index equals the generator's output), REQ-DOC-005 (tables, rows, order and escaping on a stand-in tree), REQ-DOC-006 (`--check` names a stale index, a run repairs it), REQ-DOC-007 (every relative link and every `tests/<file>.py::<Class>` of the folder exists).
+- `.github/workflows/docs.yml`: the documentation job also runs `tests.test_assurance_docs`, so a change of a page alone is checked. `AGENTS.md`, section 2: run the generator after a test changes. `README.md`, "Project resources": one line. `CHANGELOG.md`: one entry.
+
+### Written "not assessed", because the sources do not say
+- Verification plan: "no missed files" for C#, Java, Go, Ruby, Dart and Pascal (no benchmark result for them) and for questions other than the importers of a file and the uses of a symbol; the result file and the rule behind the line "Up to 5x faster, up to 8.8x fewer tokens, up to $484 saved per 1,000 questions" of the README; a session inside each assistant; a rerun of the time "about a second on a 1,200-file project".
+- Known limits: how complete the call commands are without `--lsp`; other limits of the Python and TypeScript graphs; Rust code that build scripts and procedural macros generate; what else the C#, Java and Go graphs miss; how often the Ruby and the Pascal limits occur; Pascal beyond "no LSP enrichment"; a public Dart project against its imports; the infrastructure map.
+- Tool errors: whether `boundaries --strict` counts a skipped language as not checked. A test of the `wingbox-graph-stale` line at the start of an MCP answer was not found.
+
+### Seen while writing, not changed here
+- A stale graph and a skipped language leave the exit status of a query at 0; a script has to read `graph.stale` or standard error, and a gate the file `.wingbox/graph-skipped.sexp`.
+- For a language Wingbox does not parse, the build prints the suffixes it reads and no count of the other source files.
+- Twelve requirement ids are carried by more than one test, each test with its own text (REQ-CLI-008, REQ-CLI-009, REQ-CS-060, REQ-CS-077, REQ-MCP-011, REQ-PY-001 to REQ-PY-005, REQ-RUST-031, REQ-UPDATE-008); the index lists one row per test.
+- One list of the defects that changed an answer, across versions, is not written; `known-limits.md` says where they are recorded.
+
+### Verification
+- The statements "how it is reported" of `tool-errors.md` were run once on two small projects with this checkout: `impact` of an unknown file (`(error no-match ...)`, exit 1), a changed file with `WINGBOX_AUTO_REFRESH=0` (the warning on standard error, `"stale": 1` with `--json`, exit 0), a build without the Dart parser (the warning, `.wingbox/graph-skipped.sexp`, exit 0, the note at the next query), `boundaries all` and `--strict` on a part with too few files (exit 0 and 2), `layers`, `module --lines`, a `.swift` file.
+- `tests.test_assurance_docs`, `tests.test_english_only`, `tests.test_readme_numbers`: pass. The whole suite: see the pull request.
+
 ## 2026-11-19 - Release integrity: actions at a commit, checksums and SBOM, a build that repeats (#153, part 1)
 
 ### Why

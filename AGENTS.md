@@ -55,6 +55,13 @@ this file applies to you.
   ```
 
   Add `--python 3.11` to check the oldest supported version.
+- After a test is added, removed or reworded, run
+  `python3 tools/requirements_index.py`: it writes
+  `docs/assurance/requirements.md`, the list of every requirement with the
+  test that verifies it, and a test fails while the committed file differs
+  from that output (REQ-DOC-004). The other pages of `docs/assurance/` are
+  written by hand and cite their sources; a statement the sources do not
+  support is written "not assessed".
 - This repository is public. Code, tests, documentation, commit messages and
   pull request texts contain no names of real clients, employers, internal
   projects, repositories, hosts or people; examples use invented paths. Check
