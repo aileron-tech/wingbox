@@ -15,6 +15,15 @@
   call such as `build` is answered as an event stream with keep-alive lines. See "Over HTTP, from
   another machine" in the README.
 
+### Fixes
+
+- Python projects that keep their package under `src/`: a test, a script or any file outside
+  `src/` that imports the package by its name (`from shop.pricing import total` with
+  `src/shop/pricing.py`) now depends on that module. Before, `wingbox impact` and `wingbox usages`
+  did not name the tests of such a project. Each part of a monorepo reaches its own `src/`; a
+  package beside the importing file or at the root of the repository still comes first. Rebuild
+  the graph once (`wingbox build --full`) to get the new dependencies.
+
 ## 0.12.2 - 2026-11-19
 
 ### Fixes
