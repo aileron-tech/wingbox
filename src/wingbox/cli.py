@@ -96,6 +96,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Optional
 
+from wingbox.launch import module_command, without_starting_folder
+
 _PATH_OPTIONS = ("--root", "--map")
 _VALUE_OPTIONS = _PATH_OPTIONS + ("--lsp-timeout", "--exclude-dir")
 _PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -196,7 +198,7 @@ def global_hook_program(argv0: str, python: str) -> tuple[str, ...]:
     name = os.path.basename(argv0).lower()
     program = os.path.abspath(argv0) if name in ("wingbox", "wingbox.exe") and os.path.isfile(argv0) else None
     program = program or shutil.which("wingbox")
-    return (program,) if program else (python, "-m", "wingbox.cli")
+    return (program,) if program else module_command(python, "wingbox.cli")
 
 
 def _platform() -> ModuleType:
@@ -1679,6 +1681,11 @@ def _add_command(rest: list[str], cwd: str) -> int:
 
 def main(argv: Optional[list[str]] = None) -> int:
     """Run a command; a reader that closes the pipe (`| head`) ends it quietly."""
+    if argv is None:
+        # Started as `python -m wingbox`, the folder of the project being read is first on the module search
+        # path. It comes off before a parser, a script or any other module is loaded: a file of the project
+        # is read, never imported.
+        sys.path[:] = without_starting_folder(sys.path, os.getcwd(), os.path.dirname(_PACKAGE_DIR))
     # A Windows console with a legacy code page must never stop a command on a character it cannot show.
     _platform().utf8_streams()
     try:

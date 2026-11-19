@@ -113,7 +113,7 @@ class MethodDetectionTest(unittest.TestCase):
 
         method = update.choose_method(update.FromIndex(), "/envs/w/bin/python", "/envs/w", update.run_installer)
         assert isinstance(method, update.Method)
-        self.assertEqual(("/envs/w/bin/python", "-m", "pip", "install", "--upgrade", "wingbox"), method.upgrade)
+        self.assertEqual(("/envs/w/bin/python", "-P", "-m", "pip", "install", "--upgrade", "wingbox"), method.upgrade)
 
         stubs.remove("pipx")
         stubs.remove("uv")
