@@ -24,6 +24,14 @@
 - `tests.test_local_only`, `tests.test_mcp_server`, `tests.test_english_only`, `tests.test_mcp_registry`: pass; REQ-SEC-001 is unchanged and still scans `src/` and `scripts/`.
 - Run for real in a clean environment (wheel of the package built with `uv build packages/wingbox-http`, installed beside the core): `wingbox mcp --http --host 0.0.0.0` without a token refuses to start; with a token file, curl got 401 without the token, 405 for GET, 403 for a foreign Origin, the `initialize` result, the `build` answer as an event stream, and `impact` over HTTPS with `--cacert`. Claude Code, with the server added by `--transport http` and the Authorization header, called `impact` and reported the 14 direct dependents the tool printed.
 
+## 2026-11-19 - Release 0.12.2
+
+### Changes
+- Version 0.12.2: every Python that Wingbox starts itself gets `-P`, so a folder of the project is never imported in place of an installed module (#134). The map-request workflow builds with 0.12.2.
+
+### Motivation
+- A fix of what Wingbox promises (code is read, never run) goes out on its own, at once.
+
 ## 2026-11-19 - A Python started by Wingbox never imports from the project folder (issue #134)
 
 ### Changes
