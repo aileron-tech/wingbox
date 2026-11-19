@@ -724,12 +724,15 @@ def _package_parent() -> str:
 
 
 def start_refresh(root: str) -> "subprocess.Popen":
-    """Start `python -m wingbox.refresh root` detached: its own session, output to .wingbox/refresh.log.
+    """Start `python -P -m wingbox.refresh root` detached: its own session, output to .wingbox/refresh.log.
+    -P: the refresh runs in the project folder and must import the installed Wingbox, never a folder of
+    the project (wingbox/launch.py).
 
     The hook's stdout and stderr are not inherited, so Claude Code does not wait
     for the refresh when the hook returns before it ends.
     """
     import subprocess  # here: the fast path of the hooks starts nothing
+    from wingbox.launch import module_command
     os.makedirs(state_directory(root), exist_ok=True)
     environment = dict(os.environ)
     parent = _package_parent()
@@ -738,7 +741,7 @@ def start_refresh(root: str) -> "subprocess.Popen":
     )
     with open(refresh_log_path(root), "ab") as log:
         return subprocess.Popen(
-            [sys.executable, "-m", "wingbox.refresh", root],
+            [*module_command(sys.executable, "wingbox.refresh"), root],
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,
