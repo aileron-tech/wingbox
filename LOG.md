@@ -24,6 +24,27 @@
 - The commands of step 7 and of the new 6.1 row were run on a folder built from this checkout: `shasum -a 256 -c SHA256SUMS` answered OK for the six files (the two of `wingbox`, the two of `wingbox-http`, the extension, the SBOM).
 - The whole suite: see the pull request.
 
+## 2026-11-19 - MCP tools named verb_noun; `files` and `source`; parameters explained
+
+### Why
+- The directory scored release 0.14.0: A, 4.6 of 5 across 11 tools (0.13.0: 4.0). What it still named: Naming Consistency 4 of 5 ("'graph' and 'facts' lean action/verb-ish while the rest are nouns"); Completeness 4 of 5 ("no direct file listing or raw source retrieval"); per tool, "Parameters" 3 on four tools and 4 on the rest (the description added nothing to the schema about the parameters), "Usage Guidelines" 4 on two. The maintainer asked to rename again while the server has no clients, and to fix what is named.
+
+### Decisions
+- Names: verb_noun for every tool. A tool that builds has no good plural noun, and the one-word pattern was read as broken three times (`build`/`query`, `module`, then `graph`/`facts`); verb_noun is the form the directory's own examples use.
+- Completeness: two tools for the two gaps named, each over a new command, so that the rule "a tool returns the output of the command behind it" holds: `files` and `source`. `source` is useful where the agent cannot open the file itself: over the HTTP transport.
+- `source` reads only what the graph holds: the target must be a module of the graph, a file of one, or a definition in one; a path with `..`, an absolute path outside the root and a file that is not source are refused with `(error no-match ...)`. 400 lines a call (`SOURCE_LINE_LIMIT`), with `:more` and `:next`.
+- Hardening from the security review of the pull request, each with a test (REQ-CS-131..134): the file is read only when its real path equals the root's real path joined with the path the graph holds (`_source_file`), so a source file replaced by a symbolic link after the build is refused wherever the link points. The review's probe by file path was refused by accident; by module ID and by definition name the first version printed the link's target, a `.env` of the repository: found by writing the test for every form of the target. Without a root nothing is read. One answer holds at most 100,000 characters and a line is cut at 2,000 (`:cut N`). `cmd_source` checks `first` and `last` itself, and a read error prints the reason without the server's folder.
+
+### Changes
+- `scripts/code_graph_search.py`: `cmd_files`, `cmd_source` (`_source_module`, `_source_target`), their validation, dispatch and usage lines.
+- `src/wingbox/mcp_server.py`: thirteen tools `build_graph`, `analyze_impact`, `describe_module`, `list_files`, `read_source`, `find_definitions`, `find_usages`, `list_dependencies`, `trace_calls`, `list_layers`, `check_boundaries`, `list_changes`, `query_graph`; every description names its parameters in backticks; `build_graph` says when it is not needed, `list_changes` what it does not compare.
+- Tests: `tests/test_files_source.py` (REQ-CS-124..130, written first); `tests/test_mcp_tools.py`: REQ-MCP-029 (thirteen verb_noun names; the old expectation, eleven one-word nouns, is what this change replaces on the maintainer's word), REQ-MCP-021 (also: every parameter named; 900 characters), REQ-MCP-030 and 032 for the names, new REQ-MCP-034 (files and source through the server, refusals included) and REQ-MCP-035 (one line limit). Every other test that calls a tool uses the new name; assertions unchanged except the quoted tool names.
+- README (tool table, "Common code searches", what a token holder can read over HTTP), `packages/wingbox-http/README.md`, `SKILL.md` and its copies, `references/sexp-notation.md` (`files`, `source`), the plugin README, `AGENTS.md` section 5.
+
+### Verification
+- 104 tests of the MCP server, the HTTP transport and the new commands pass; the directory's linter `npx mcp-tdqs lint` on the branch: see the pull request.
+- The graded score is the directory's and is read after the release.
+
 ## 2026-11-19 - Release 0.14.0
 
 ### Changes

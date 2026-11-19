@@ -14,7 +14,8 @@ MCP_PATH = SOURCE / "wingbox" / "mcp_server.py"
 
 LEGACY_VERSION = "2025-11-25"
 MODERN_VERSION = "2026-07-28"
-EXPECTED_TOOLS = {"graph", "impact", "modules", "definitions", "usages", "dependencies", "calls", "layers", "boundaries", "changes", "facts"}
+EXPECTED_TOOLS = {"build_graph", "analyze_impact", "describe_module", "list_files", "read_source", "find_definitions", "find_usages",
+                  "list_dependencies", "trace_calls", "list_layers", "check_boundaries", "list_changes", "query_graph"}
 
 
 def _load_mcp_module():
@@ -120,7 +121,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual(LEGACY_VERSION, first["protocolVersion"])
         self.assertIn("tools", first["capabilities"])
         self.assertEqual("wingbox", first["serverInfo"]["name"])
-        self.assertIn("`graph`", first["instructions"])
+        self.assertIn("`build_graph`", first["instructions"])
         self.assertEqual("2025-06-18", session.reply(2)["result"]["protocolVersion"])
         self.assertEqual(LEGACY_VERSION, session.reply(3)["result"]["protocolVersion"])
         self.assertEqual({}, session.reply(4)["result"])
@@ -155,7 +156,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual(-32602, session.reply(4)["error"]["code"])
 
     def test_tools_list_describes_every_tool_for_an_agent(self) -> None:
-        """/* REQ-MCP-003: `tools/list` must name the tool that builds the graph (`graph`) and the read commands, each with a one-line description and a JSON object input schema. */"""
+        """/* REQ-MCP-003: `tools/list` must name the tool that builds the graph (`build_graph`) and the read commands, each with a one-line description and a JSON object input schema. */"""
         session = McpSession(self.root, [_initialize(), _request(2, "tools/list")])
         tools = session.reply(2)["result"]["tools"]
         self.assertEqual(EXPECTED_TOOLS, {tool["name"] for tool in tools})
@@ -164,7 +165,7 @@ class McpProtocolTest(unittest.TestCase):
             self.assertNotIn("\n", tool["description"], tool["name"])
             self.assertEqual("object", tool["inputSchema"]["type"], tool["name"])
             self.assertFalse(tool["inputSchema"].get("additionalProperties", True), tool["name"])
-        impact = next(tool for tool in tools if tool["name"] == "impact")
+        impact = next(tool for tool in tools if tool["name"] == "analyze_impact")
         self.assertNotIn("required", impact["inputSchema"])   # target or targets: the tool says which is missing
         self.assertEqual("array", impact["inputSchema"]["properties"]["targets"]["type"])
         self.assertEqual("string", impact["inputSchema"]["properties"]["target"]["type"])
@@ -179,7 +180,7 @@ class McpProtocolTest(unittest.TestCase):
             annotations = tool["annotations"]
             self.assertTrue(annotations["title"].strip(), tool["name"])
             self.assertLessEqual(len(annotations["title"]), 40, tool["name"])
-            self.assertIs(annotations["readOnlyHint"], tool["name"] != "graph", tool["name"])
+            self.assertIs(annotations["readOnlyHint"], tool["name"] != "build_graph", tool["name"])
             self.assertIs(annotations["destructiveHint"], False, tool["name"])
             self.assertIs(annotations["idempotentHint"], True, tool["name"])
             self.assertIs(annotations["openWorldHint"], False, tool["name"])
@@ -192,15 +193,15 @@ class McpProtocolTest(unittest.TestCase):
             self.assertRegex(tool["name"], r"^[A-Za-z0-9_-]+$")
 
     def test_build_then_impact_return_text_and_s_expressions(self) -> None:
-        """/* REQ-MCP-004: the `graph` tool must build the code graph of --root, and `impact` must then return the answer of `wingbox impact` (its default S-expression form, REQ-MCP-033) only, as one text item. */"""
+        """/* REQ-MCP-004: the `build_graph` tool must build the code graph of --root, and `analyze_impact` must then return the answer of `wingbox impact` (its default S-expression form, REQ-MCP-033) only, as one text item. */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,
             [
                 _initialize(),
-                _call(2, "graph", {}),
-                _call(3, "impact", {"target": "shop/pricing.py"}),
-                _call(4, "dependencies", {"module": "shop/checkout", "depth": 1}),
+                _call(2, "build_graph", {}),
+                _call(3, "analyze_impact", {"target": "shop/pricing.py"}),
+                _call(4, "list_dependencies", {"module": "shop/checkout", "depth": 1}),
             ],
         )
         build = session.reply(2)["result"]
@@ -218,7 +219,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertIn("(dep shop/checkout shop/pricing", _texts(session.reply(4))[0])
 
     def test_module_states_validation_only_with_the_evidence_of_the_stored_fact(self) -> None:
-        """/* REQ-MCP-020: after `graph`, the `modules` tool (the `analyze` command) prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
+        """/* REQ-MCP-020: after `build_graph`, the `describe_module` tool (the `analyze` command) prints the validation mark of a data-flow fact with its evidence for a module that imports a pydantic model, and no data-flow line for a module that imports a file whose comment only names a validator; no answer holds the retired mark `:validated`. */"""
         _make_shop(self.root)
         shop = self.root / "shop"
         (shop / "forms.py").write_text(
@@ -231,9 +232,9 @@ class McpProtocolTest(unittest.TestCase):
             self.root,
             [
                 _initialize(),
-                _call(2, "graph", {}),
-                _call(3, "modules", {"module": "shop/api"}),
-                _call(4, "modules", {"module": "shop/report"}),
+                _call(2, "build_graph", {}),
+                _call(3, "describe_module", {"module": "shop/api"}),
+                _call(4, "describe_module", {"module": "shop/report"}),
             ],
         )
         self.assertFalse(session.reply(2)["result"]["isError"], session.reply(2))
@@ -249,11 +250,11 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn(":validated", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_usages_returns_the_text_answer(self) -> None:
-        """/* REQ-MCP-011: the `usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
+        """/* REQ-MCP-011: the `find_usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,
-            [_initialize(), _call(2, "graph", {}), _call(3, "usages", {"symbol": "shop/pricing.py::total"})],
+            [_initialize(), _call(2, "build_graph", {}), _call(3, "find_usages", {"symbol": "shop/pricing.py::total"})],
         )
         answer = session.reply(3)["result"]
         self.assertFalse(answer["isError"], answer)
@@ -264,17 +265,17 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn("(usage ", texts[0])
 
     def test_a_query_without_a_graph_asks_for_build(self) -> None:
-        """/* REQ-MCP-005: a query tool called before any graph exists must return a tool error that tells the agent to call `graph` first. */"""
+        """/* REQ-MCP-005: a query tool called before any graph exists must return a tool error that tells the agent to call `build_graph` first. */"""
         _make_shop(self.root)
-        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
+        session = McpSession(self.root, [_initialize(), _call(2, "analyze_impact", {"target": "shop/pricing.py"})])
         result = session.reply(2)["result"]
         self.assertTrue(result["isError"])
-        self.assertIn("call the `graph` tool first", _texts(session.reply(2))[0])
+        self.assertIn("call the `build_graph` tool first", _texts(session.reply(2))[0])
 
     def test_with_build_missing_the_first_query_builds_the_graph(self) -> None:
         """/* REQ-MCP-015: `wingbox mcp --root DIR --build-missing` (what the Claude Desktop extension starts) builds the graph of DIR in the background when it has none; a tool call waits for that build up to WINGBOX_FIRST_BUILD_WAIT seconds (default 45) and then answers from the new graph. */"""
         _make_shop(self.root)
-        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})], ("--build-missing",))
+        session = McpSession(self.root, [_initialize(), _call(2, "analyze_impact", {"target": "shop/pricing.py"})], ("--build-missing",))
         result = session.reply(2)["result"]
         self.assertFalse(result["isError"], _texts(session.reply(2)))
         self.assertIn("shop/checkout", _texts(session.reply(2))[0])
@@ -283,7 +284,7 @@ class McpProtocolTest(unittest.TestCase):
     def test_a_first_build_longer_than_the_wait_is_reported_not_hung(self) -> None:
         """/* REQ-MCP-016: when the first build takes longer than WINGBOX_FIRST_BUILD_WAIT seconds (a large repository), a tool call returns at once with a tool error that says the graph of DIR is being built for the first time and to call again shortly; the build goes on in the background. */"""
         _make_shop(self.root)
-        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})], ("--build-missing",),
+        session = McpSession(self.root, [_initialize(), _call(2, "analyze_impact", {"target": "shop/pricing.py"})], ("--build-missing",),
                              {"WINGBOX_FIRST_BUILD_WAIT": "0"})
         result = session.reply(2)["result"]
         self.assertTrue(result["isError"])
@@ -293,7 +294,7 @@ class McpProtocolTest(unittest.TestCase):
     def test_without_build_missing_nothing_is_built(self) -> None:
         """/* REQ-MCP-017: without --build-missing the server never builds on its own (the plugin starts it in whatever folder the session runs in); an unknown argument exits 2 with the usage. */"""
         _make_shop(self.root)
-        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
+        session = McpSession(self.root, [_initialize(), _call(2, "analyze_impact", {"target": "shop/pricing.py"})])
         self.assertTrue(session.reply(2)["result"]["isError"])
         self.assertFalse((self.root / ".wingbox").exists())
         self.assertEqual(2, McpSession(self.root, [], ("--bogus",)).returncode)
@@ -302,7 +303,7 @@ class McpProtocolTest(unittest.TestCase):
         """/* REQ-MCP-018: two `wingbox mcp --build-missing` started at the same moment on a repository without a graph (Claude Desktop starts its server twice) run one build: the other server says `[wingbox] a build is already running: waiting for it`, no line contains ERROR, and both answer impact from the graph. */"""
         _make_shop(self.root)
         environment = dict(os.environ, PYTHONPATH=str(SOURCE) + os.pathsep + os.environ.get("PYTHONPATH", ""))
-        lines = "".join(line + "\n" for line in [_initialize(), _call(2, "impact", {"target": "shop/pricing.py"})])
+        lines = "".join(line + "\n" for line in [_initialize(), _call(2, "analyze_impact", {"target": "shop/pricing.py"})])
         servers = [
             subprocess.Popen([sys.executable, "-m", "wingbox", "mcp", "--root", str(self.root), "--build-missing"],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment, cwd=str(self.root))
@@ -321,7 +322,7 @@ class McpProtocolTest(unittest.TestCase):
     def test_a_folder_that_is_no_repository_is_never_built(self) -> None:
         """/* REQ-MCP-019: started with --build-missing in a folder that is in no source repository (no .git or project manifest with source files, as when an app starts the server in the home folder), the server builds nothing and every tool answers that there is no repository here. */"""
         (self.root / "notes.txt").write_text("hello\n", encoding="utf-8")
-        session = McpSession(self.root, [_initialize(), _call(2, "impact", {"target": "notes.txt"}), _call(3, "graph", {})], ("--build-missing",))
+        session = McpSession(self.root, [_initialize(), _call(2, "analyze_impact", {"target": "notes.txt"}), _call(3, "build_graph", {})], ("--build-missing",))
         for identifier in (2, 3):
             text = _texts(session.reply(identifier))[0]
             self.assertIn("No repository here", text)
@@ -355,9 +356,9 @@ class McpProtocolTest(unittest.TestCase):
                 _initialize(),
                 _request(2, "resources/read", {"uri": "file:///etc/passwd"}),
                 _call(3, "no_such_tool", {}),
-                _call(4, "impact", {"depth": 2}),
-                _call(5, "impact", {"target": "a.py", "depth": "deep"}),
-                _call(6, "impact", {"target": "a.py", "colour": "red"}),
+                _call(4, "analyze_impact", {"depth": 2}),
+                _call(5, "analyze_impact", {"target": "a.py", "depth": "deep"}),
+                _call(6, "analyze_impact", {"target": "a.py", "colour": "red"}),
                 _request(7, "tools/call", {"arguments": {}}),
             ],
         )
@@ -376,7 +377,7 @@ class McpProtocolTest(unittest.TestCase):
         _make_shop(self.root)
         session = McpSession(
             self.root,
-            [_initialize(), _call(2, "graph", {"full": True}), _call(3, "layers", {}), "garbage"],
+            [_initialize(), _call(2, "build_graph", {"full": True}), _call(3, "list_layers", {}), "garbage"],
         )
         self.assertEqual(0, session.returncode, session.stderr)
         lines = [line for line in session.stdout.split("\n") if line]

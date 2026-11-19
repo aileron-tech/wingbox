@@ -158,7 +158,7 @@ class McpImpactTest(BuiltProjectTest):
         followed by the advice that concerns the file), the error form in place of a file that is not in the
         graph; with neither argument the answer is an error. `all` is still accepted and changes nothing. */"""
         server = mcp_server.Server(str(self.root))
-        tool = mcp_server.TOOLS_BY_NAME["impact"]
+        tool = mcp_server.TOOLS_BY_NAME["analyze_impact"]
         self.assertEqual([], mcp_server.argument_errors(tool.input_schema(), {"targets": ["a.ts", "b.ts"], "depth": 1}))
         self.assertEqual([], mcp_server.argument_errors(tool.input_schema(), {"target": "a.ts", "all": True}))
         self.assertEqual(1, len(mcp_server.argument_errors(tool.input_schema(), {"targets": "a.ts"})))
