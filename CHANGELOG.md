@@ -14,6 +14,18 @@
   (`WINGBOX_HTTP_TOKEN` or `--token-file`), `--tls-cert` and `--tls-key` serve HTTPS, and a long
   call such as `build` is answered as an event stream with keep-alive lines. See "Over HTTP, from
   another machine" in the README.
+## 0.12.1 - 2026-11-18
+
+### Fixes
+
+- In a project with a part in the layered style, `wingbox impact` no longer guesses the layer of a
+  file from its role on every call. The guess depends only on the graph, so the build now works it
+  out once per role and stores it beside the graph (`.wingbox/cache.layer-guess.json`, ignored by
+  git like the other caches); a partial update adds only the roles that are new. A query reads the
+  stored guess and compares words only for a role the file does not hold, so a graph built by an
+  earlier version, or a file that is missing or unreadable, gives the same answer as before. The
+  output of every command is unchanged. Thanks to @just4just2 for measuring what was left
+  ([#106](https://github.com/aileron-tech/wingbox/issues/106)).
 
 ## 0.12.0 - 2026-11-18
 

@@ -987,6 +987,7 @@ project root.
 | `index.uses.sexp` | AI coding agents | Module-level variables and the files that use each definition; `usages` adds every use position on its first call |
 | `index.uses-cache.json` | Wingbox | The use walk of each file by content hash, so that `usages` after a change reads only the changed files |
 | `cache.json` | Wingbox | The parse of each file by content hash, so that a build reads only changed files |
+| `cache.layer-guess.json` | Wingbox | The layer that the role of a file suggests, worked out once per role when the graph is built, so that a query reads it instead of comparing words |
 | `REPORT.md` | People | Key findings, the most depended-on files, architecture layers, boundary violations, where to start reading |
 | `map.html` | People | An interactive map of the code graph: one file, opens in a browser (`wingbox open`), works without a network connection |
 | `graph-*`, `refresh.*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the folder it was built from, the files changed since (see "Keeping the graph fresh") |

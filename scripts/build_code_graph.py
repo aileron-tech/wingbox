@@ -152,7 +152,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
-        from . import portable
+        from . import layer_guess, portable
         from .architecture.config import ConfigErr, plan_from_config, read_config
         from .architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -188,6 +188,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        import layer_guess
         import portable
         from architecture.config import ConfigErr, plan_from_config, read_config
         from architecture.facts import (
@@ -4372,6 +4373,7 @@ def _run_build(options: BuilderOptions) -> int:
     )
     _atomic_write_text(options.output_path, map_content)
     _atomic_write_text(uses_path(options.output_path), uses_content)
+    publish_layer_guesses(root, nodes, again=options.full_rebuild)
     _publish_skipped(root, skipped_counts)
     if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
@@ -4508,6 +4510,33 @@ def _node_capabilities(root: str, nodes: Sequence[dict], hashes: Mapping[str, st
 def _file_digest(path: str) -> str:
     with open(path, "rb") as handle:
         return hashlib.sha256(handle.read()).hexdigest()[:16]
+
+
+LAYER_GUESS_FILE = layer_guess.FILE_NAME   # in .wingbox/, ignored with the other caches
+
+
+def publish_layer_guesses(root: str, nodes: Sequence[Mapping[str, Any]], again: bool = False) -> None:
+    """Store, with a graph that is being published, the layer each distinct purpose of its modules suggests
+    (.wingbox/cache.layer-guess.json), so that a query reads the guess instead of matching words.
+
+    The guess is a pure function of the purpose (layer_guess.classify) and the file carries the key of that
+    function: what a file with the current key already holds is kept unless `again` is set (a full build),
+    so a rebuild or a partial update matches only the purposes that are new. A query that does not find a
+    purpose here works it out itself, so a file that could not be written costs time, never an answer.
+    """
+    path = os.path.join(wingbox_directory(root), LAYER_GUESS_FILE)
+    try:
+        current = portable.read_text(path)
+    except (OSError, ValueError):   # unreadable, or bytes that are not UTF-8: written anew
+        current = None
+    known = layer_guess.parse(current) if current is not None and not again else {}
+    content = layer_guess.serialise(layer_guess.guesses((node.get("purpose", "") for node in nodes), known))
+    if content == current:
+        return
+    try:
+        _atomic_write_text(path, content)
+    except OSError as error:
+        print(f"[code-graph] WARNING: layer guess cache not written: {error}", file=sys.stderr)
 
 
 def architecture_plan(
