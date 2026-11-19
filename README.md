@@ -1101,7 +1101,7 @@ client starts the command, sends JSON-RPC requests on its standard input and
 reads the answers on its standard output. This command uses stdio only: no
 port, no network. To call the server from another machine, see
 [Over HTTP, from another machine](#over-http-from-another-machine). Logs go to standard error. Every tool carries MCP
-annotations: a title, and read-only for every tool except `build`, which
+annotations: a title, and read-only for every tool except `graph`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
 ```bash
@@ -1227,12 +1227,12 @@ library, listens and answers, and opens no connection of its own.
 - A browser request from a foreign origin is answered 403 (`--allow-origin`
   adds one). `GET` and `DELETE` are answered 405: the server keeps no session
   and opens no stream of its own.
-- A call that runs longer than a second, such as `build` on a large
+- A call that runs longer than a second, such as `graph` on a large
   repository, is answered as an event stream with a keep-alive line every ten
   seconds, so an idle timeout on the way does not cut it.
 
-Whoever holds the token can read the code graph of the repository and start a
-`build`, which writes `.wingbox/` there; no tool runs a command, reads outside
+Whoever holds the token can read the code graph of the repository and rebuild
+it (the tool `graph`), which writes `.wingbox/` there; no tool runs a command, reads outside
 the repository or deletes anything.
 
 ## Common code searches
