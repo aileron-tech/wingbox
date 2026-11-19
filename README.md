@@ -1077,6 +1077,23 @@ python3 scripts/code_graph_search.py \
 The code graph is written to `.wingbox/index.sexp`. Wingbox does not modify the
 source files it analyzes.
 
+The graph says what it was built from and where its facts come from. The line
+after its header, `(built-from :tree <digest> [:commit <sha>] [:wingbox
+<version>])`, carries a digest of the paths and the text of the source files
+in the graph (the same files give the same digest on any machine), the commit
+when Git reported a clean working tree at build time, and the Wingbox version.
+An `imports` or `refs` fact read from import statements carries the line where
+each statement starts (`:line 7`, or `:lines 3 9` for two statements), so a
+fact can be opened at its file and line; a fact that no single statement
+states carries no line. The query commands print what they printed before;
+`wingbox module <id> --lines` shows the lines of one module's edges:
+
+```
+$ wingbox module src/orders/service --lines
+(imports src/orders/service src/orders/repository :line 3)
+(imports src/orders/service src/shared/money :lines 4 27)
+```
+
 ## Use from an MCP client
 
 `wingbox mcp` runs Wingbox as an MCP (Model Context Protocol) server: the
@@ -1224,6 +1241,7 @@ the repository or deletes anything.
 |---|---|
 | Find and analyze a feature | `quick "payments"` |
 | Search for a module | `search "payment.*service"` |
+| See which line each import of a module comes from | `module src/orders/service --lines` |
 | See full module context | `analyze path/to/module` |
 | Find files needed for a change | `boundary path/to/module --files-only` |
 | Trace dependencies | `deps path/to/module 2` |

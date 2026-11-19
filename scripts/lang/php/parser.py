@@ -16,7 +16,7 @@ from tree_sitter import Node, Parser
 
 from ..interface import Entity, FileResult, ImportedName, SourceRelationPayload
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
 from .validation import validation_evidence
 
@@ -339,6 +339,17 @@ def _collect_uses(root: Node) -> list[tuple[str, str]]:
                 seen.add(entry)
                 uses.append(entry)
     return uses
+
+
+def _use_lines(root: Node) -> dict[str, list[int]]:
+    """Class name of a `use` declaration -> the 1-based lines of the declarations that name it."""
+    lines: dict[str, list[int]] = {}
+    for node in walk_named(root):
+        if node.type != "namespace_use_declaration":
+            continue
+        for _alias, fqcn in _use_entries(node):
+            add_import_line(lines, fqcn, node.start_point[0] + 1)
+    return lines
 
 
 def _scoped_receiver(node: Node) -> str:
@@ -698,12 +709,21 @@ def parse_php_treesitter(
 
     uses = _collect_uses(root)
     validation = validation_evidence(root, content, uses)
+    # Only a `use` declaration is an import statement with a line of its own: a class named in the code is a
+    # use, a view or a route name a convention.
+    use_lines = _use_lines(root)
+    import_lines: dict[str, list[int]] = {}
     for alias, fqcn in uses:
         add_import(f"php-class:{fqcn}")
+        stated = use_lines.get(fqcn, [])
+        if f"php-class:{fqcn}" in seen_imports:
+            for line in stated:
+                add_import_line(import_lines, f"php-class:{fqcn}", line)
         imported_names.append(ImportedName(
             local_name=alias,
             original_name=_last_segment(fqcn),
             module=f"php-class:{fqcn}",
+            line=stated[0] if stated else 0,
         ))
 
     references, relations = _walk_dependencies(root, own_full, own_short)
@@ -738,6 +758,7 @@ def parse_php_treesitter(
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[info.declaration.name for info in declarations],
         relations=relations,
+        import_lines=import_lines,
         validation_evidence=validation,
     )
 

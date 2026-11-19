@@ -60,6 +60,8 @@ class BoundPythonLanguage:
     root: str
     path_to_id: Mapping[str, str]
     _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
+    # The build asks for the submodules of a file twice (the targets, then their lines): one answer per file.
+    _additional: dict[tuple[str, str], dict[str, list[int]]] = field(default_factory=dict, compare=False, repr=False)
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         # One build asks the same (specifier, file) pairs many times (imports, imported names,
@@ -82,7 +84,18 @@ class BoundPythonLanguage:
         return None
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
-        extra_imports: list[str] = []
+        return tuple(self.additional_import_lines(result))
+
+    def additional_import_lines(self, result: FileResult) -> dict[str, list[int]]:
+        """The modules that `from package import module` statements import, each with the lines of those
+        statements (ascending; empty when the parse result carries none), in the order they are first named."""
+        key = (result.path, result.content_hash)
+        if key not in self._additional:
+            self._additional[key] = self._additional_import_lines(result)
+        return self._additional[key]
+
+    def _additional_import_lines(self, result: FileResult) -> dict[str, list[int]]:
+        extra_imports: dict[str, list[int]] = {}
         for imported_name in result.imported_names:
             module = imported_name.get("module", "")
             original_name = imported_name.get("original", "")
@@ -96,8 +109,11 @@ class BoundPythonLanguage:
                 )
                 target_id = self.path_to_id.get(submodule_path)
                 if target_id is not None:
-                    if target_id not in extra_imports:
-                        extra_imports.append(target_id)
+                    lines = extra_imports.setdefault(target_id, [])
+                    line = imported_name.get("line", 0)
+                    if line and line not in lines:
+                        lines.append(line)
+                        lines.sort()
                     break
 
-        return tuple(extra_imports)
+        return extra_imports

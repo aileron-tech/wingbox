@@ -6,7 +6,7 @@ from tree_sitter import Node, Parser
 
 from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
 from .validation import validation_evidence
 
@@ -22,15 +22,16 @@ def _field_children(node: Node, field_name: str) -> list[Node]:
     ]
 
 
-def _import_specs(root: Node) -> list[tuple[str, str]]:
-    imports: list[tuple[str, str]] = []
+def _import_specs(root: Node) -> list[tuple[str, str, int]]:
+    """(import path, alias, 1-based line of the import spec) of every import of the file."""
+    imports: list[tuple[str, str, int]] = []
     for node in walk_named(root):
         if node.type != "import_spec":
             continue
         import_path = node_text(node.child_by_field_name("path")).strip('"`')
         alias = node_text(node.child_by_field_name("name"))
         if import_path:
-            imports.append((import_path, alias))
+            imports.append((import_path, alias, node.start_point[0] + 1))
     return imports
 
 
@@ -143,7 +144,11 @@ def parse_go_treesitter(
     mtime: float,
 ) -> FileResult:
     root = Parser(_GO_LANGUAGE).parse(content.encode("utf-8")).root_node
-    import_specs = _import_specs(root)
+    located_specs = _import_specs(root)
+    import_specs = [(import_path, alias) for import_path, alias, _line in located_specs]
+    import_lines: dict[str, list[int]] = {}
+    for import_path, _alias, line in located_specs:
+        add_import_line(import_lines, import_path, line)
     entities = [
         *_type_entities(root),
         *_value_entities(root),
@@ -156,8 +161,9 @@ def parse_go_treesitter(
             local_name=alias or import_path.rsplit("/", 1)[-1],
             original_name=import_path.rsplit("/", 1)[-1],
             module=import_path,
+            line=line,
         )
-        for import_path, alias in import_specs
+        for import_path, alias, line in located_specs
         if alias != "_"
     ]
     entity_payloads = [entity.to_dict() for entity in entities]
@@ -180,5 +186,6 @@ def parse_go_treesitter(
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[entity.name for entity in entities],
+        import_lines=import_lines,
         validation_evidence=validation,
     )

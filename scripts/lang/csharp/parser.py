@@ -10,7 +10,7 @@ from tree_sitter import Node, Parser
 
 from ..interface import Entity, FileResult, ImportedName
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings, walk_named
 from .validation import validation_evidence
 
@@ -42,6 +42,7 @@ class CSharpUsing:
     target: str
     alias: str | None
     is_static: bool
+    line: int = 0   # the 1-based line of the using directive
 
 
 def _simple_type_name(node: Node) -> str:
@@ -171,6 +172,7 @@ def _parse_using(node: Node) -> CSharpUsing | None:
         target=target,
         alias=alias,
         is_static=bool(re.search(r"\busing\s+static\b", text)),
+        line=node.start_point[0] + 1,
     )
 
 
@@ -214,23 +216,30 @@ def parse_csharp_treesitter(
 
     imports: list[str] = []
     imported_names: list[ImportedName] = []
+    # A using directive has a line, and so has a type it brings in; a type of the file's own namespace is
+    # not stated by any statement.
+    import_lines: dict[str, list[int]] = {}
     for using in usings:
         imports.append(using.target)
+        add_import_line(import_lines, using.target, using.line)
         if using.alias is not None or using.is_static:
             original = using.target.rsplit(".", 1)[-1]
             imported_names.append(ImportedName(
                 local_name=using.alias or original,
                 original_name=original,
                 module=using.target,
+                line=using.line,
             ))
             continue
         for type_name in referenced_types:
             candidate = f"{using.target}.{type_name}"
             imports.append(candidate)
+            add_import_line(import_lines, candidate, using.line)
             imported_names.append(ImportedName(
                 local_name=type_name,
                 original_name=type_name,
                 module=candidate,
+                line=using.line,
             ))
 
     if namespace:
@@ -278,5 +287,6 @@ def parse_csharp_treesitter(
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
         exported_names=[entity.name for entity in entities],
+        import_lines=import_lines,
         validation_evidence=validation,
     )

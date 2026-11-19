@@ -362,7 +362,8 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     built = builder.project_architecture(root, exclusions, new_list, graph.nodes)
     if isinstance(built, builder.Err):
         return NotApplicable(built.error)
-    content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list), built.value[0])
+    content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list), built.value[0],
+                                  builder.built_from(root, new_list))
     new_key = builder.symbol_index_key(new_list, fingerprint, _MODE)
     uses = builder.render_uses_sexp(graph.nodes, new_key, content)
     _write_cache(root, fingerprint, new_list)

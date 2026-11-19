@@ -28,6 +28,16 @@ def file_hash(path: str) -> str:
         return ""
 
 
+def add_import_line(lines: dict[str, list[int]], module: str, line: int) -> None:
+    """Record that a statement on `line` (1-based) imports `module` as written: each line once, ascending."""
+    if not module or line <= 0:
+        return
+    known = lines.setdefault(module, [])
+    if line not in known:
+        known.append(line)
+        known.sort()
+
+
 def detect_naming(filename: str) -> str:
     stem = Path(filename).stem
     # A Blade template keeps ".blade" in its stem (home.blade.php); the name
