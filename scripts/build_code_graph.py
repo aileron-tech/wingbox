@@ -152,7 +152,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
-        from . import layer_guess, portable
+        from . import graph_snapshot, layer_guess, portable
         from .architecture.config import ConfigErr, plan_from_config, read_config
         from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
@@ -188,6 +188,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        import graph_snapshot
         import layer_guess
         import portable
         from architecture.config import ConfigErr, plan_from_config, read_config
@@ -295,7 +296,9 @@ def prepare_wingbox_directory(root: str) -> None:
         _atomic_write_text(path, GITIGNORE_TEXT)
 # 2: purposes come from the path inside the repository; TypeScript results carry import_forms.
 # 3: Python results carry module_loads and registry_calls.
-CACHE_SCHEMA_VERSION = 6  # 6: validation is read from the syntax tree and stored with its evidence
+# 6: validation is read from the syntax tree and stored with its evidence.
+# 7: results carry the lines of their import statements (import_lines, line of a name) and text_hash.
+CACHE_SCHEMA_VERSION = 7
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -403,7 +406,10 @@ def parse_file(args: tuple[str, ...]) -> FileResult:
     with open(path, "r", encoding=SOURCE_ENCODING, errors="replace") as source_file:
         content = source_file.read()
     with scan_root(rest[0] if rest else ""):
-        return language_for_name(language_name).parse(path, content, repo, mtime)
+        result = language_for_name(language_name).parse(path, content, repo, mtime)
+    # What the graph is built from is this text: a byte order mark or CRLF line endings give the same graph.
+    result.text_hash = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -859,6 +865,8 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
         return Err("cache result field has_validation must be boolean")
     if not isinstance(raw_result.get("validation_evidence", ""), str):
         return Err("cache result field validation_evidence must be a string")
+    if not isinstance(raw_result.get("text_hash", ""), str):
+        return Err("cache result field text_hash must be a string")
     list_fields = (
         "imports",
         "exports_abstract",
@@ -878,6 +886,8 @@ def decode_cache_entry(entry: object) -> Result[FileResult, str]:
             return Err(f"cache result field {field_name} must be a list")
     if not isinstance(raw_result.get("import_forms", {}), dict):
         return Err("cache result field import_forms must be an object")
+    if not isinstance(raw_result.get("import_lines", {}), dict):
+        return Err("cache result field import_lines must be an object")
     for field_name in ("bindings", "uses"):
         if not isinstance(raw_result.get(field_name, []), list):
             return Err(f"cache result field {field_name} must be a list")
@@ -1223,6 +1233,11 @@ class _TracedLanguage:
             self._trace.specs.add(str(imported_name.get("original", "")))
         return self._bound.resolve_additional_imports(result)
 
+    def additional_import_lines(self, result: FileResult) -> Mapping[str, Sequence[int]]:
+        # The same question as resolve_additional_imports, which has recorded what it reads.
+        stated = getattr(self._bound, "additional_import_lines", None)
+        return stated(result) if stated is not None else {}
+
     def resolve_named_imports(
         self, result: FileResult, results: Mapping[str, FileResult]
     ) -> tuple[Mapping[str, frozenset[str]], int, Mapping[str, tuple[tuple[str, str, tuple[str, ...]], ...]]]:
@@ -1410,6 +1425,16 @@ def _edge_names_sexp(names: Any) -> str:
     return "".join(parts)
 
 
+def _edge_lines_sexp(edge: Mapping[str, Any]) -> str:
+    """` :line 7` or ` :lines 3 9`: the lines of the statements an imports or refs fact is read from; "" for a
+    fact no single statement states. It is the last mark of the fact (the lists of names of an imports fact
+    follow it), so the fact starts as it always did."""
+    lines = edge.get("lines") or ()
+    if not lines:
+        return ""
+    return f" :line {lines[0]}" if len(lines) == 1 else f" :lines {' '.join(str(line) for line in lines)}"
+
+
 def _module_facts(
     node_id: str,
     r: FileResult,
@@ -1445,14 +1470,22 @@ def _module_facts(
     # Resolve all module dependencies before emission so relationship
     # metadata is merged onto one deterministic import edge.
     resolved_imports: dict[str, set[str]] = {}
+    # The lines of the statements that import each target; a target no single statement names has none.
+    import_lines: dict[str, set[int]] = {}
     additional_targets = set(bound_language.resolve_additional_imports(r))
     for target_id in sorted(additional_targets):
         if target_id != node_id:
             resolved_imports.setdefault(target_id, set())
+    stated_lines = getattr(bound_language, "additional_import_lines", None)
+    for target_id, lines in (stated_lines(r) if stated_lines is not None else {}).items():
+        if target_id != node_id and lines:
+            import_lines.setdefault(target_id, set()).update(lines)
     for imp in r.imports:
         target_id = bound_language.resolve_import(imp, r.path)
         if target_id and target_id != node_id:
             resolved_imports.setdefault(target_id, set())
+            if imp in r.import_lines:
+                import_lines.setdefault(target_id, set()).update(r.import_lines[imp])
     for relation in r.relations:
         target_id = bound_language.resolve_import(
             relation["target"],
@@ -1534,6 +1567,8 @@ def _module_facts(
             edge["type_only"] = True
         if target_id in followed_names:
             edge["names"] = followed_names[target_id]
+        if target_id in import_lines:
+            edge["lines"] = sorted(import_lines[target_id])
         edges.append(edge)
 
     # -- CALLS_API edges (implements/extends + entity :bases) --
@@ -1598,6 +1633,7 @@ def _module_facts(
 
     # -- entity-level REFERENCES edges --
     # For each imported name, link source_entity -> target_entity
+    module_references: dict[tuple, dict[str, Any]] = {}   # the module-level ones of this loop, to add their lines
     for imp_name in r.imported_names:
         target_id = bound_language.resolve_import(
             imp_name["module"],
@@ -1647,17 +1683,23 @@ def _module_facts(
                         }
                     )
         else:
-            # Module-level reference (not inside a specific entity)
+            # Module-level reference (not inside a specific entity): the import statement states it.
             edge_key = (node_id, f"{target_id}::{target_entity}", "REFERENCES")
+            line = imp_name.get("line", 0)
             if edge_key not in seen_edges:
                 seen_edges.add(edge_key)
-                edges.append(
-                    {
-                        "source": node_id,
-                        "target": f"{target_id}::{target_entity}",
-                        "type": "REFERENCES",
-                    }
-                )
+                module_reference: dict[str, Any] = {
+                    "source": node_id,
+                    "target": f"{target_id}::{target_entity}",
+                    "type": "REFERENCES",
+                }
+                module_references[edge_key] = module_reference
+                edges.append(module_reference)
+            if line and edge_key in module_references:
+                known_lines = module_references[edge_key].setdefault("lines", [])
+                if line not in known_lines:
+                    known_lines.append(line)
+                    known_lines.sort()
     return node, edges
 
 
@@ -3458,9 +3500,12 @@ def render_sexp(
     mode: str,
     total_files: int,
     architecture: Optional[GraphArchitecture] = None,
+    snapshot: Optional[graph_snapshot.Snapshot] = None,
 ) -> str:
     """
     Write the code graph as flat S-expression facts with path-map compression.
+
+    With `snapshot`, a `(built-from ...)` fact after the header names what the graph was built from.
 
     The file starts with ``(def <id> <full-path>)`` bindings that assign short
     numeric IDs to every module path. All subsequent lines use these IDs instead
@@ -3517,6 +3562,8 @@ def render_sexp(
         f":nodes {len(sorted_nodes)} :edges {len(real_edges)} "
         f":violations {len(violations)})"
     )
+    if snapshot is not None:
+        lines.append(graph_snapshot.snapshot_fact(snapshot))
     lines.append("")
 
     # -- Path tree (compressed trie) --
@@ -3601,7 +3648,10 @@ def render_sexp(
                 f" :{relation}" for relation in sorted(edge.get("relations", []))
             )
             lsp = " :lsp" if edge.get("lsp_verified") else ""
-            lines.append(f"(imports {src} {tgt}{flags}{relation_flags}{lsp}{_edge_names_sexp(edge.get('names'))})")
+            lines.append(
+                f"(imports {src} {tgt}{flags}{relation_flags}{lsp}{_edge_lines_sexp(edge)}"
+                f"{_edge_names_sexp(edge.get('names'))})"
+            )
         elif etype == "CALLS_API":
             lsp = " :lsp" if edge.get("lsp_verified") else ""
             lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
@@ -3620,7 +3670,7 @@ def render_sexp(
                 f" :{relation}" for relation in sorted(edge.get("relations", []))
             )
             lsp = " :lsp" if edge.get("lsp_verified") else ""
-            lines.append(f"(refs {src} {tgt}{relation_flags}{lsp})")
+            lines.append(f"(refs {src} {tgt}{relation_flags}{lsp}{_edge_lines_sexp(edge)})")
         elif etype == "CALLS":
             fl = edge.get("from_lines", [])
             lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
@@ -3687,6 +3737,20 @@ USES_SCHEMA_VERSION = 1
 def uses_path(map_path: str) -> str:
     """The use-position file that goes with a code graph: index.sexp -> index.uses.sexp."""
     return (map_path[: -len(".sexp")] if map_path.endswith(".sexp") else map_path) + ".uses.sexp"
+
+
+def built_from(root: str, results: Sequence[FileResult]) -> graph_snapshot.Snapshot:
+    """What a graph of these parse results is built from: the digest of its source files, the commit when
+    Git reports a clean tree, and the Wingbox version. A build and a partial update both call it."""
+    files = (
+        (os.path.relpath(result.path, root).replace(os.sep, "/"), result.text_hash or result.content_hash)
+        for result in results
+    )
+    try:
+        version = importlib.metadata.version("wingbox")
+    except importlib.metadata.PackageNotFoundError:
+        version = ""   # run as a skill, from a checkout: no installed package to name
+    return graph_snapshot.Snapshot(graph_snapshot.tree_digest(files), graph_snapshot.clean_commit(root), version)
 
 
 def text_digest(text: str) -> str:
@@ -4204,6 +4268,8 @@ def _serialize_file_result(result: FileResult) -> dict:
             "imported_names": result.imported_names,
             "exported_names": result.exported_names,
             "relations": result.relations,
+            "import_lines": result.import_lines,
+            "text_hash": result.text_hash,
             "import_forms": result.import_forms,
             "bindings": result.bindings,
             "uses": result.uses,
@@ -4368,7 +4434,8 @@ def _run_build(options: BuilderOptions) -> int:
             file=sys.stderr,
         )
         return 1
-    map_content = render_sexp(nodes, edges, root, mode, len(all_results), architecture)
+    map_content = render_sexp(nodes, edges, root, mode, len(all_results), architecture,
+                              built_from(root, all_results))
     uses_content = (
         render_uses_sexp(nodes, symbol_key, map_content) if reused is None else reused_uses_text(reused, map_content)
     )

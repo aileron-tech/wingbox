@@ -15,7 +15,7 @@ from ..interface import (
 )
 from .dynamic import find_module_loads, find_registry_calls
 from ..purpose import infer_purpose
-from ..source import detect_naming, file_hash
+from ..source import add_import_line, detect_naming, file_hash
 from .symbols import module_bindings, module_variables, use_sites
 from .validation import validation_evidence
 
@@ -30,6 +30,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     extends: list[str] = []
     entities: list[Entity] = []
     imported_names: list[ImportedName] = []
+    import_lines: dict[str, list[int]] = {}
     exported_names: list[str] = []
     variables: list[Entity] = []
     bindings: list[BindingPayload] = []
@@ -50,11 +51,13 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     imports.append(alias.name)
+                    add_import_line(import_lines, alias.name, node.lineno)
                     local = alias.asname or alias.name.split(".")[-1]
                     imported_names.append(ImportedName(
                         local_name=local,
                         original_name=alias.name,
                         module=alias.name,
+                        line=node.lineno,
                     ))
                     if alias.asname:
                         module_of_name[alias.asname] = alias.name
@@ -67,12 +70,14 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
                 mod = ("." * node.level) + (node.module or "")
                 if mod:
                     imports.append(mod)
+                    add_import_line(import_lines, mod, node.lineno)
                 for alias in node.names:
                     local = alias.asname or alias.name
                     imported_names.append(ImportedName(
                         local_name=local,
                         original_name=alias.name,
                         module=mod,
+                        line=node.lineno,
                     ))
                     if mod and alias.name != "*":
                         module_of_name[local] = _submodule(mod, alias.name)
@@ -171,6 +176,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         entities=[e.to_dict() for e in (*entities, *variables)],
         imported_names=[n.to_dict() for n in imported_names],
         exported_names=exported_names,
+        import_lines=import_lines,
         bindings=bindings,
         uses=uses,
         module_loads=module_loads,

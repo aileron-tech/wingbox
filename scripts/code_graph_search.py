@@ -13,7 +13,10 @@ Usage::
     code_graph_search.py analyze <id>           Full analysis in one step
     code_graph_search.py boundary <id>          File paths for change boundary
     code_graph_search.py quick <keyword>        Search + analyze in one step
-    code_graph_search.py module <id>            Show module with entities and edges
+    code_graph_search.py module <id> [--lines]  Show module with entities and edges; --lines: imports and
+                                                refs name the lines of the statements they are read from
+                                                (search <pattern> --lines: the facts as stored, with
+                                                their lines and the built-from fact)
     code_graph_search.py deps <id> [depth]      Outgoing dependency tree (default depth 2)
     code_graph_search.py rdeps <id> [depth]     Reverse dependency tree (default depth 2)
     code_graph_search.py impact <file|id> [depth] [--sexp]  Blast radius of a change: dependents by depth and files to read first
@@ -223,6 +226,9 @@ class Edge:
     flags: list[str] = field(default_factory=list)
     names: tuple[NameRoute, ...] = ()   # imports: the names followed to the target, by the way they arrive
     evidence: str = ""   # data-flow: the text of :evidence, what makes the target a validation module
+    # imports, refs: the lines of the statements the fact is read from (:line, :lines); () when no single
+    # statement states it, and in a graph built before the lines were stored.
+    lines: tuple[int, ...] = ()
 
 
 def parse_search_pattern(raw: str) -> SearchPatternResult:
@@ -552,6 +558,8 @@ class CodeGraph:
     """In-memory code graph built from S-expression facts."""
 
     def __init__(self) -> None:
+        # What the graph was built from (built-from fact): tree, commit, wingbox; {} in a graph without it.
+        self.built_from: dict[str, str] = {}
         self.nodes: dict[str, Node] = {}
         self.entities: dict[str, list[EntityFact]] = {}  # module -> entities
         self.entity_by_name: dict[str, list[EntityFact]] = {}  # name -> entities
@@ -599,6 +607,7 @@ class CodeGraph:
     def load(self, path: str, root: Optional[str] = None, focus: Optional[str] = None) -> MapLoadResult:
         """Read a code graph. With focus (a name), only the entity and edge facts that mention it are
         read, besides the paths and the nodes: what a question about that one name needs."""
+        self.built_from = {}
         self.nodes = {}
         self.entities = {}
         self.entity_by_name = {}
@@ -749,6 +758,10 @@ class CodeGraph:
             if kind in ("code-graph", "paths", "def", ")"):
                 continue
 
+            if kind == "built-from":
+                self.built_from = _keywords(tokens[1:])
+                continue
+
             if kind == "node" and len(tokens) >= 4:
                 nid = _resolve(tokens[1])
                 lang, purpose = tokens[2], tokens[3]
@@ -784,10 +797,15 @@ class CodeGraph:
                 routes = tuple(route for route in map(parse_name_route, tokens[3:]) if route is not None) \
                     if kind == "imports" else ()
                 evidence = ""
+                stated_lines: tuple[int, ...] = ()
                 if kind == "data-flow":
                     flags = [flag for flag in flags if flag != _RETIRED_VALIDATION_MARK]
                     evidence = _keywords(tokens[3:]).get("evidence", "")
-                edge = Edge(kind, source, target, flags, routes, evidence)
+                elif kind in ("imports", "refs") and (":line" in flags or ":lines" in flags):
+                    # The lines are not a mark of the edge: every output prints the marks as it did before.
+                    stated_lines = _read_edge_lines(tokens[3:])
+                    flags = [flag for flag in flags if flag not in (":line", ":lines")]
+                edge = Edge(kind, source, target, flags, routes, evidence, stated_lines)
                 self.all_edges.append(edge)
                 if kind == "data-flow" and ":pipeline" in flags:
                     # The next step of a pipeline consumes the output of this one; it is
@@ -1236,12 +1254,45 @@ def _edge_marks(e: Edge) -> str:
     )
 
 
-def _edge_sexp(e: Edge) -> str:
-    """Format an edge as an S-expression fact."""
-    return f"({e.etype} {e.source} {e.target}{_edge_marks(e)})"
+def _edge_sexp(e: Edge, lines: bool = False) -> str:
+    """Format an edge as an S-expression fact; with `lines`, an imports or refs fact names its source lines."""
+    return f"({e.etype} {e.source} {e.target}{_edge_marks(e)}{_edge_lines(e) if lines else ''})"
 
 
-def cmd_module(g: CodeGraph, module_id: str) -> None:
+def _edge_lines(e: Edge) -> str:
+    """` :line 7` or ` :lines 3 9` as the graph stores them; "" for an edge without stored lines."""
+    if not e.lines:
+        return ""
+    return f" :line {e.lines[0]}" if len(e.lines) == 1 else f" :lines {' '.join(str(line) for line in e.lines)}"
+
+
+_LINE_MARK = re.compile(r" :lines?(?: \d+)+")
+_LINED_FACTS = ("(imports ", "(refs ")
+_SNAPSHOT_FACT = "(built-from "
+
+
+def _fact_without_lines(line: str) -> Optional[str]:
+    """A line of the graph file as it read before edges carried lines and the header named the snapshot:
+    imports and refs without their line mark; None for the built-from fact."""
+    if line.startswith(_LINED_FACTS):
+        return _LINE_MARK.sub("", line, count=1)
+    return None if line.startswith(_SNAPSHOT_FACT) else line
+
+
+def _read_edge_lines(tokens: list[str]) -> tuple[int, ...]:
+    """The numbers after :line or :lines among the tokens of an edge fact."""
+    for index, token in enumerate(tokens):
+        if token in (":line", ":lines"):
+            found: list[int] = []
+            for value in tokens[index + 1:]:
+                if not value.isdigit():
+                    break
+                found.append(int(value))
+            return tuple(found)
+    return ()
+
+
+def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> None:
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
@@ -1255,10 +1306,10 @@ def cmd_module(g: CodeGraph, module_id: str) -> None:
         for e in sorted(g.entities.get(nid, []), key=lambda x: x.line):
             print(_entity_sexp(e, mod_lang))
         for e in sorted(g.edges_from.get(nid, []), key=lambda x: (x.etype, x.target)):
-            print(_edge_sexp(e))
+            print(_edge_sexp(e, lines))
         for e in sorted(g.edges_to.get(nid, []), key=lambda x: (x.etype, x.source)):
             if e.source.split("::")[0] != nid:
-                print(_edge_sexp(e))
+                print(_edge_sexp(e, lines))
 
 
 def cmd_deps(g: CodeGraph, module_id: str, max_depth: int) -> None:
@@ -2170,8 +2221,9 @@ def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str, show_all: bool = False
     seen_modules: list[str] = []
     seen_set: set[str] = set()
     with open(sexp_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if not regex.search(line):
+        for stored in f:
+            line = _fact_without_lines(stored)
+            if line is None or not regex.search(line):
                 continue
             tokens = tokenize(line)
             if not tokens:
@@ -2191,8 +2243,11 @@ def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str, show_all: bool = False
     cmd_analyze(g, seen_modules[0], show_all)
 
 
-def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
-    """Search module IDs first, then fall back to raw fact grep."""
+def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str, lines: bool = False) -> None:
+    """Search module IDs first, then fall back to raw fact grep.
+
+    The facts print as they did before edges carried lines; with `lines` they print as stored: imports and
+    refs with :line or :lines, and the built-from fact of the header."""
     parsed_pattern = parse_search_pattern(pattern)
     if isinstance(parsed_pattern, SearchPatternErr):
         _print_invalid_pattern(pattern, parsed_pattern.error)
@@ -2207,8 +2262,9 @@ def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str) -> None:
     count = 0
     try:
         with open(sexp_path, "r", encoding="utf-8") as code_graph:
-            for line in code_graph:
-                if search_pattern_matches(parsed_pattern.value, line):
+            for stored in code_graph:
+                line = stored if lines else _fact_without_lines(stored)
+                if line is not None and search_pattern_matches(parsed_pattern.value, line):
                     print(line.rstrip())
                     count += 1
     except OSError as error:
@@ -4041,7 +4097,11 @@ def main(args: Optional[list[str]] = None) -> int:
     elif cmd == "quick" and len(args) >= 2:
         cmd_quick(g, args[1], sexp_path, show_all=show_all)
     elif cmd == "module" and len(args) >= 2:
-        cmd_module(g, args[1])
+        module_args = [argument for argument in args[1:] if argument != "--lines"]
+        if not module_args:
+            print(f"(error invalid-argument {_q('module requires a module ID')})")
+            return 2
+        cmd_module(g, module_args[0], lines="--lines" in args)
     elif cmd == "deps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
         cmd_deps(g, args[1], depth)
@@ -4061,7 +4121,11 @@ def main(args: Optional[list[str]] = None) -> int:
     elif cmd == "flow" and len(args) >= 3:
         cmd_flow(g, args[1], args[2])
     elif cmd == "search" and len(args) >= 2:
-        cmd_search(g, args[1], sexp_path)
+        search_args = [argument for argument in args[1:] if argument != "--lines"]
+        if not search_args:
+            print(f"(error invalid-argument {_q('search requires a pattern')})")
+            return 2
+        cmd_search(g, search_args[0], sexp_path, lines="--lines" in args)
     elif cmd == "boundaries":
         target = args[1] if len(args) >= 2 else "all"
         return cmd_boundaries(g, target, strict=strict) or 0
