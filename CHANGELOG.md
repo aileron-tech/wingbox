@@ -33,6 +33,14 @@
   `all` is needed, which tool answers the neighbouring question. The example of `query_graph`
   was described the wrong way round and is corrected: `(deps "A" 2)` is what A uses.
 
+### Fixes
+
+- The search hook (`wingbox hook pre-search`) could end with a segmentation fault instead of exit
+  code 0, seen on macOS: the thread of its time limit was still running while Python shut down.
+  The hook now waits for that thread to end before it returns. Nothing was blocked by it (a hook
+  that fails lets the tool call go ahead), but the session showed a failed hook.
+
+
 ## 0.15.0 - 2026-11-19
 
 ### Changes

@@ -1,5 +1,16 @@
 # Completion Log
 
+## 2026-11-19 - The search hook waits for its timer thread before it returns
+
+### Changes
+- `src/wingbox/hook.py` `main`: after `out_of_time.cancel()` the timer thread is joined. Test REQ-INSTALL-047 (`tests/test_hook.py`): after `hook.main(["pre-search"])` returns, with an answer, without one and after an error, no thread but the caller's is alive; it failed before the change with the daemon timer still listed.
+
+### Motivation
+- Three failures of the test matrix on macOS in two days, each a `hook pre-search` child process that returned -11 (SIGSEGV) with nothing on stderr: REQ-FRESH-025 on Python 3.12 once, then REQ-INSTALL-020 on 3.12 and a freshness test on 3.13 in one run. The common part is the daemon `threading.Timer` added in 0.10.2 for the hook's time limit; a daemon thread that is still running during interpreter shutdown is a known way for CPython to crash. Not reproduced locally in 400 runs, so the proof is the deterministic test plus the matrix.
+
+### Not covered
+- Whether the crash is gone can only be seen over many runs of the macOS cells.
+
 ## 2026-11-19 - Code Mode text: an instruction first
 
 ### Changes
