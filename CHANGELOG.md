@@ -4,6 +4,17 @@
 
 ### Fixes
 
+- Python projects that keep their package under `src/`: a test, a script or any file outside
+  `src/` that imports the package by its name (`from shop.pricing import total` with
+  `src/shop/pricing.py`) now depends on that module. Before, `wingbox impact` and `wingbox usages`
+  did not name the tests of such a project. Each part of a monorepo reaches its own `src/`; a
+  package beside the importing file or at the root of the repository still comes first. Rebuild
+  the graph once (`wingbox build --full`) to get the new dependencies.
+
+## 0.12.2 - 2026-11-19
+
+### Fixes
+
 - A Python that Wingbox starts itself no longer imports from the folder it is started in. The
   refresh the hooks start, the first build of the MCP server, the hooks of an install without the
   `wingbox` program and the steps of `wingbox update` ran `python -m ...` inside the project, and
@@ -13,12 +24,6 @@
   before it loads a parser. Code of a project is read, never run. An install whose hooks use the
   `python -m wingbox.cli` form is rewritten by `wingbox update`, or by one `wingbox install`
   ([#134](https://github.com/aileron-tech/wingbox/issues/134)).
-- Python projects that keep their package under `src/`: a test, a script or any file outside
-  `src/` that imports the package by its name (`from shop.pricing import total` with
-  `src/shop/pricing.py`) now depends on that module. Before, `wingbox impact` and `wingbox usages`
-  did not name the tests of such a project. Each part of a monorepo reaches its own `src/`; a
-  package beside the importing file or at the root of the repository still comes first. Rebuild
-  the graph once (`wingbox build --full`) to get the new dependencies.
 
 ## 0.12.1 - 2026-11-18
 

@@ -13,6 +13,14 @@
 - This repository, before and after: `usages TOOLS_BY_NAME` 1 use in 1 file -> 7 uses in 3 files (`tests/test_freshness.py`, `tests/test_skipped_language_notice.py`); `impact src/wingbox/mcp_server.py 1` 1 direct dependent -> 4.
 - Not changed: the Python reference of the benchmarks (`benchmarks/*/tools/py_edges.py`) resolves an absolute name from the folder of the file and from the repository roots only. On a benchmark repository with a src layout Wingbox now reports dependencies the reference does not count; the reference needs the same rule before those benchmarks are run again, and no published figure changes until then.
 
+## 2026-11-19 - Release 0.12.2
+
+### Changes
+- Version 0.12.2: every Python that Wingbox starts itself gets `-P`, so a folder of the project is never imported in place of an installed module (#134). The map-request workflow builds with 0.12.2.
+
+### Motivation
+- A fix of what Wingbox promises (code is read, never run) goes out on its own, at once.
+
 ## 2026-11-19 - A Python started by Wingbox never imports from the project folder (issue #134)
 
 ### Changes
