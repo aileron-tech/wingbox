@@ -548,7 +548,7 @@ TOOLS: tuple[Tool, ...] = (
             "depth": _depth(2),
             "only": {
                 "type": "string", "enum": ["all", "tests"], "default": "all",
-                "description": "`tests` lists only the dependents that are test files: the tests to run for the change.",
+                "description": "`tests` lists only the dependents that are test files: the tests to run for the change. Where the CMake files state build targets and tests, the answer then also names the affected targets and tests.",
             },
             "all": {
                 "type": "boolean",

@@ -511,13 +511,19 @@ Three options narrow or widen what `impact` answers:
 
 - `wingbox impact <file> ... --only tests` keeps the dependents that are test
   files: the tests to run for the change. `:direct` and `:total` count them and
-  the form says `:only tests`.
+  the form says `:only tests`. In a repository whose CMake files state build
+  targets and tests, two more facts follow: `(affected-targets <file> <target>
+  ...)`, the targets that compile the file or one of its listed dependents,
+  and `(affected-tests <file> <test> ...)`, the names to give to `ctest -R`
+  (`targets` and `tests` in JSON); see
+  [C and C++ dependency search](#c-and-c-dependency-search).
 - `wingbox impact --diff [ref]` answers for every file a diff changes (`ref`
   defaults to `HEAD`: the changes of the working tree) and adds one
   `(changed <file>::<name> :line N :used-by (<file> ...))` fact per changed
   function with the other files that use it. For a C or C++ function the files
   that use it through the declaration in its header are included. Both options
-  go together: `wingbox impact --diff --only tests`.
+  go together: `wingbox impact --diff --only tests`, where each changed
+  function also names the CMake targets and tests of the files that use it.
 - A C or C++ source file is answered through its header, see
   [C and C++ dependency search](#c-and-c-dependency-search).
 
@@ -1677,6 +1683,37 @@ usages <file>::<name>` for a function it defines.
 macro or an enum in the files that include the header directly or through
 other headers, with their lines; `Type::member` and `Enum::Value` are uses of
 that member. Comments and strings are not uses.
+
+Build targets and tests. A build also reads what the CMake files state
+literally: `add_executable` and `add_library` with their source files,
+`target_sources`, and `add_test` in both forms. The graph holds one
+`(target <name> :kind executable|library :in "<CMake file>" <module> ...)`
+fact per target and one `(ctest <name> :target <target> ...)` or
+`(ctest <name> :runs ... <module> ...)` fact per test: the target the test
+runs (its command, or a `$<TARGET_FILE:<target>>` among its words) and the
+files of the repository its command names, a Python script for one.
+`wingbox impact <file> --only tests` then answers which of them a change
+reaches:
+
+```text
+(impact native/src/scene/stage.cpp :direct 1 :total 1 :only tests
+ (1 native/tests/test_stage.cpp :basis paired-header)
+ (read-first native/src/scene/stage.cpp native/src/scene/stage.h native/tests/test_stage.cpp))
+(affected-targets native/src/scene/stage.cpp round_app stage stage_tests)
+(affected-tests native/src/scene/stage.cpp round_smoke stage_run)
+```
+
+A target is affected when the file or one of the dependents of the whole list
+(every row within the depth asked, not the test files alone) is among its
+sources; a test, when it runs such a target or names such a file. Linking is
+not followed: a test of an executable that links a library and includes none
+of its headers is not named for a change inside that library. With `--diff
+--only tests` each `(changed ...)` fact carries `:targets (...) :tests (...)`
+as well: those of the file and of the files that use the changed function,
+usually far fewer than those of every dependent of the file. Not read: a
+target or a test whose name is written with a variable, what a function or a
+macro of the project adds, a command kept in a variable, an alias and an
+imported target.
 
 What is not read: the preprocessor is not run, so every branch of an `#if` is
 read and an include whose name is a macro is skipped; a header that a build

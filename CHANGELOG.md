@@ -29,6 +29,12 @@
   files that depend on each other, the files with ten or more dependents and dependencies, the
   top-level folders that depend on each other, and the order of the folders from dependents to
   dependencies. It reads the import graph alone and needs no configuration.
+- Build targets and tests of CMake files are facts of the graph (`add_executable`, `add_library`,
+  `target_sources`, `add_test`, read literally), and `wingbox impact <file> --only tests` names
+  the ones a change reaches: `(affected-targets <file> ...)` and `(affected-tests <file> ...)`,
+  `targets` and `tests` in JSON. With `--diff --only tests` every changed function names the
+  targets and tests of the files that use it. The MCP tool `analyze_impact` answers the same with `only` set to
+  `tests`; the tool list is unchanged.
 
 ## 0.17.0 - 2026-11-23
 

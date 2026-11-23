@@ -688,6 +688,10 @@ class CodeGraph:
         # of the fact (:by or :from, :declared or :inferred); and the paths a generation link names in vain.
         self.generated_from_files: dict[str, list[tuple[str, list[str]]]] = {}
         self.generation_unresolved: list[tuple[str, dict[str, str], list[str]]] = []
+        # Build targets (name -> the modules among its sources) and tests (name -> the target it runs, the
+        # modules its command names), as the CMake files state them.
+        self.build_targets: dict[str, tuple[str, ...]] = {}
+        self.build_tests: dict[str, tuple[str, tuple[str, ...]]] = {}
         self._name_positions: dict[str, list[str]] = {}   # name -> its use lines read before the use file has positions
         self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
         self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
@@ -740,6 +744,8 @@ class CodeGraph:
         self.arch_parts = {}
         self.generated_from_files = {}
         self.generation_unresolved = []
+        self.build_targets = {}
+        self.build_tests = {}
         self.arch_denies = {}
         self.candidate_rules = set()
         self.entry_roots = {}
@@ -939,6 +945,14 @@ class CodeGraph:
                 # A generated file depends on a file of the repository that is not in the graph (a schema, a template).
                 flags = [token for token in tokens[3:] if token.startswith(":")]
                 self.generated_from_files.setdefault(tokens[2], []).append((_resolve(tokens[1]), flags))
+            elif kind in ("target", "ctest") and len(tokens) >= 2:
+                values = _keywords(tokens[2:])
+                taken = {":runs"} | {token for key in ("kind", "in", "target") if key in values for token in (f":{key}", values[key])}
+                modules = tuple(_resolve(token) for token in tokens[2:] if token not in taken and token.strip('"') not in taken)
+                if kind == "target":
+                    self.build_targets[tokens[1]] = modules
+                else:
+                    self.build_tests[tokens[1]] = (values.get("target", ""), modules)
             elif kind == "generation-unresolved" and len(tokens) >= 2:
                 self.generation_unresolved.append((tokens[1], _keywords(tokens[2:]), [t for t in tokens[2:] if t in (":declared", ":inferred")]))
             elif kind == "arch-part" and len(tokens) >= 2:
@@ -1920,6 +1934,17 @@ def _source_file_note(g: CodeGraph, root_id: str, root_file: str, has_rows: bool
     return "", ""
 
 
+def _affected_build(g: CodeGraph, modules: set[str]) -> Optional[impact_forms.Affected]:
+    """The build targets that hold one of the modules among their sources, and the tests that run one of
+    those targets or one of the modules; None in a graph without build targets and tests."""
+    if not g.build_targets and not g.build_tests:
+        return None
+    targets = sorted(name for name, sources in g.build_targets.items() if modules.intersection(sources))
+    reached = set(targets)
+    tests = sorted(name for name, (target, runs) in g.build_tests.items() if target in reached or modules.intersection(runs))
+    return impact_forms.Affected(tuple(targets), tuple(tests))
+
+
 def impact_answer(
     g: CodeGraph, target: str, max_depth: int, advice: Optional[Sequence] = None, only: str = "",
 ) -> impact_forms.ImpactAnswer:
@@ -1940,6 +1965,8 @@ def impact_answer(
         return impact_forms.ImpactMissing(target, tuple(_impact_file(g, module) for module in suggestions), _no_match_fact(pattern, suggestions))
     root_id, others = matches[0], matches[1:]
     root_file = _impact_file(g, root_id)
+    whole = _impact_rows(g, root_id, max_depth)
+    affected = _affected_build(g, {root_id, *(row.module for level in whole for row in level)}) if only == "tests" else None
     levels = tuple(
         tuple(
             impact_forms.ImpactLine(
@@ -1953,7 +1980,7 @@ def impact_answer(
             )
             for row in level
         )
-        for depth, level in enumerate(_only_rows(g, _impact_rows(g, root_id, max_depth), only), start=1)
+        for depth, level in enumerate(_only_rows(g, whole, only), start=1)
     )
     while levels and not levels[-1]:
         levels = levels[:-1]   # the depths below the last kept row
@@ -1963,12 +1990,12 @@ def impact_answer(
     said = tuple(impact_forms.Advice(advice_sexp(item), f"  {item.reason} [{item.style}: {item.rule}]") for item in related)
     if not others:
         note_fact, note_text = _source_file_note(g, root_id, root_file, bool(levels))
-        return impact_forms.ImpactFound(root_file, max_depth, levels, read_first, note_fact, note_text, said, only)
+        return impact_forms.ImpactFound(root_file, max_depth, levels, read_first, note_fact, note_text, said, only, affected)
     return impact_forms.ImpactFound(
         root_file, max_depth, levels, read_first,
         f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})",
         f"Note: {len(matches)} modules match {pattern}; showing {root_id}. Others: {', '.join(others)}",
-        said, only,
+        said, only, affected,
     )
 
 
@@ -2125,10 +2152,13 @@ def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[lis
         for owner in (module, *paired_headers(g, module)):
             users |= g.use_pairs.get(f"{owner}::{name}", set())
         users -= {module, *paired_headers(g, module)}
+        # The targets and tests of the file and of the files that use the function: narrower than those of
+        # every dependent of the file.
+        affected = _affected_build(g, users | {module}) if only == "tests" else None
         if only == "tests":
             users = {user for user in users if module_layer(g, user) == "test"}
         changed.append(impact_forms.Changed(
-            f"{_impact_file(g, module)}::{name}", entity.line, tuple(sorted(_impact_file(g, user) for user in users)),
+            f"{_impact_file(g, module)}::{name}", entity.line, tuple(sorted(_impact_file(g, user) for user in users)), affected,
         ))
     return files, changed
 
@@ -2168,6 +2198,8 @@ def cmd_impact(
             print("\nChanged functions and the files that use them")
             for item in changed:
                 used = ", ".join(item.used_by) if item.used_by else "no other file"
+                if item.affected is not None:
+                    used += f"; tests to run: {', '.join(item.affected.tests) if item.affected.tests else 'none'}"
                 print(f"  {item.symbol:<{width}}   line {item.line}: {used}")
     else:
         # The graph fact stands before the answers of several files, and before one answer when files of

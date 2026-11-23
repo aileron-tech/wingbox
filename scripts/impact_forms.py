@@ -72,6 +72,14 @@ class Advice:
 
 
 @dataclass(frozen=True)
+class Affected:
+    """The build targets and the tests of the build files that the file and its listed dependents reach."""
+
+    targets: tuple[str, ...]
+    tests: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ImpactFound:
     file: str                                   # the asked file, relative to the graph root
     max_depth: int
@@ -81,6 +89,7 @@ class ImpactFound:
     note_text: str = ""
     advice: tuple[Advice, ...] = ()
     only: str = ""                              # "tests": the rows are the test files of the whole list
+    affected: Optional[Affected] = None         # with only "tests", in a graph that has build targets or tests
 
     @property
     def direct(self) -> int:
@@ -156,7 +165,11 @@ def found_sexp(answer: ImpactFound) -> str:
             out.append(f"  (:through {atom(through)}\n   " + "\n   ".join(_row(line) for line in members) + ")")
         out[-1] += ")"
     out.append(" (read-first " + " ".join(atom(path) for path in answer.read_first) + "))")
-    lines = ([answer.note_fact] if answer.note_fact else []) + out + [item.fact for item in answer.advice]
+    lines = ([answer.note_fact] if answer.note_fact else []) + out
+    if answer.affected is not None:
+        for fact, names in (("affected-targets", answer.affected.targets), ("affected-tests", answer.affected.tests)):
+            lines.append("(" + " ".join([fact, atom(answer.file), *(atom(name) for name in names)]) + ")")
+    lines += [item.fact for item in answer.advice]
     return "\n".join(lines) + "\n"
 
 
@@ -211,6 +224,9 @@ def answer_json(answer: ImpactAnswer) -> dict[str, Any]:
         document["note"] = fact_json(answer.note_fact)
     if answer.only:
         document["only"] = answer.only
+    if answer.affected is not None:
+        document["targets"] = list(answer.affected.targets)
+        document["tests"] = list(answer.affected.tests)
     return document
 
 
@@ -230,10 +246,23 @@ class Changed:
     symbol: str                 # <file>::<name>
     line: int
     used_by: tuple[str, ...]
+    affected: Optional[Affected] = None   # with only "tests": the targets and tests of its file and its users
 
 
 def changed_fact(item: Changed) -> str:
-    return f"(changed {atom(item.symbol)} :line {item.line} :used-by ({' '.join(atom(path) for path in item.used_by)}))"
+    built = ""
+    if item.affected is not None:
+        built = (f" :targets ({' '.join(atom(name) for name in item.affected.targets)})"
+                 f" :tests ({' '.join(atom(name) for name in item.affected.tests)})")
+    return f"(changed {atom(item.symbol)} :line {item.line} :used-by ({' '.join(atom(path) for path in item.used_by)}){built})"
+
+
+def changed_json(item: Changed) -> dict[str, Any]:
+    document: dict[str, Any] = {"symbol": item.symbol, "line": item.line, "used_by": list(item.used_by)}
+    if item.affected is not None:
+        document["targets"] = list(item.affected.targets)
+        document["tests"] = list(item.affected.tests)
+    return document
 
 
 def impact_json(
@@ -243,7 +272,7 @@ def impact_json(
     same keys, and nothing is cut. With changed (`impact --diff`), "changed" lists the changed functions."""
     document: dict[str, Any] = {"graph": header_json(header), "impact": [answer_json(answer) for answer in answers]}
     if changed is not None:
-        document["changed"] = [{"symbol": item.symbol, "line": item.line, "used_by": list(item.used_by)} for item in changed]
+        document["changed"] = [changed_json(item) for item in changed]
     return document
 
 
@@ -267,11 +296,17 @@ def found_text(answer: ImpactFound, show_all: bool) -> str:
     lines.append(f"  {'direct dependents':<20}{answer.direct}")
     lines.append(f"  {f'within {answer.max_depth} {hops}':<20}{answer.total}")
     lines.append("")
+    built: list[str] = []
+    if answer.affected is not None:
+        for title, names in (("Build targets", answer.affected.targets), ("Tests to run", answer.affected.tests)):
+            shown_names = names if show_all else names[:ANSWER_FILE_LIMIT]
+            rest = f" ... {len(names) - len(shown_names)} more: rerun with --all" if len(names) > len(shown_names) else ""
+            built.append(f"{title}: {', '.join(shown_names) if names else 'none'}{rest}")
     if not answer.levels:
         # A note already says what the empty list means (a source file nothing includes).
         if not answer.note_text:
             lines.append(f"No {'test file' if answer.only else 'other module'} depends on it.")
-        return "\n".join(lines) + "\n"
+        return "\n".join(lines + ([""] + built if built else [])) + "\n"
     # Nearest dependents first: the limit is spent on depth 1 before depth 2.
     budget = answer.total if show_all else ANSWER_FILE_LIMIT
     shown = 0
@@ -289,6 +324,8 @@ def found_text(answer: ImpactFound, show_all: bool) -> str:
     lines += _block(f"Read first ({count} {'file' if count == 1 else 'files'})", [(path, "") for path in read_first])
     if count > len(read_first):
         lines.append(f"  ... {count - len(read_first)} more: the other files of Depth 1")
+    if built:
+        lines += [""] + built
     if answer.advice:
         lines += ["", "Advice"] + [item.text for item in answer.advice]
     return "\n".join(lines) + "\n"
