@@ -2021,6 +2021,17 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
   a large project
   ([issue #106](https://github.com/aileron-tech/wingbox/issues/106)), which
   made it faster in 0.10.2 and again in 0.12.1.
+- [X7Becka](https://github.com/X7Becka) evaluated Wingbox on a large
+  repository of C++ and Python and wrote down everything that stood in the way
+  of using it every day, twice. The first report
+  ([issue #177](https://github.com/aileron-tech/wingbox/issues/177)) found a
+  Python import that was resolved to the wrong file (fixed in 0.16.1) and is
+  the reason Wingbox reads C and C++, follows generated files to their
+  generators and says which files a graph does not cover (0.17.0). The second
+  ([issue #188](https://github.com/aileron-tech/wingbox/issues/188)) is behind
+  0.18.0: `impact` of a `.cpp` file through its header, `impact --only tests`
+  and `impact --diff` with the CMake targets and CTest tests a change reaches,
+  a first `usages` that answers in seconds, and `wingbox cycles`.
 
 ## License
 
