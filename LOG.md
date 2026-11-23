@@ -1,5 +1,26 @@
 # Completion Log
 
+## 2026-11-23 - Layers a project names itself; wingbox init --from-folders (#188)
+
+### Why
+- Issue #188, point 3, second proposal and third of the reporter's priorities: infer a draft configuration from the directory graph, so that a repository that fits no style gets layer rules in a minute. It was left out of 0.18.0 on the implementer's own judgement that it was a design of its own, and the report said "not done"; the maintainer had asked for every point.
+- It was smaller than judged: the rules of a part with `style: declared` already work from end to end for a layer table of the project (layers, boundary violations, the baseline of `align --learn`, `place`). What was missing was a way to state such a table without a dependency-cruiser module, and a command that writes it.
+
+### Changes
+- `scripts/architecture/config.py`: a part with `style: declared` may state `order:`, a list of `<layer>: [<folder>, ...]`, lowest first (`_order`, `PartConfig.order`); `plan_from_config` turns it into the layer table of the part; `render_config` writes it back; the header of the config file explains it. `scripts/architecture/declared.py`: `layers_from_order`, `DeclaredLayer.folders`.
+- `scripts/code_graph_search.py`: `folder_layers(g, part)` -> `FolderLayers`: one layer per folder with source files, test files left out; groups of folders by their dependencies (lowest first), and inside a group of folders that depend on each other the folder the others depend on most and that depends on them least is placed lowest; the imports that go upward under the order. `_import_edges` is what it shares with `cmd_cycles`.
+- `src/wingbox/cli.py`: `wingbox init --from-folders PART [--force] [--sexp]` writes the part into the config (a folder that is no part yet becomes one), keeps a part that has rules unless `--force`, and says what to run next.
+- `scripts/architecture/detect.py`: the C and C++ extensions are source extensions. Found with the command on the repository of #177: a part of C++ files was dropped by `split_parts`, so nothing in it was checked. Style detection on that repository and on fmt, leveldb and libuv still answers `none`.
+- `README.md` ("Layers from the folders"), `SKILL.md`.
+- Tests written first, `tests/test_layers_from_folders.py`: REQ-ARCH-057 (`order:` by hand), REQ-ARCH-058 (the command), REQ-ARCH-059 (checked, and today's breaks accepted), REQ-ARCH-060 (a part of C++ files).
+
+### On the repository of #177
+- `wingbox init --from-folders` on the source folder of the engine: 14 layers, 770 source files, 102 imports that go upward under the order, in 22 pairs of folders. After a build `wingbox boundaries` checks 770 files and reports 102 violations; after `wingbox align --learn` and a build, 0 violations and 102 known.
+
+### Not done
+- The order is a proposal: where two folders depend on each other, which of them is the lower layer is a decision of the project, made by reordering the entries.
+- One level of folders: a folder is one layer with everything below it.
+
 ## 2026-11-23 - impact --summary; the MCP tool refused only tests in 0.18.0 (#188)
 
 ### Why

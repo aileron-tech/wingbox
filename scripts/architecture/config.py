@@ -15,6 +15,9 @@ reads it. Format:
           sql: {allowed_in: [infra]}
         overlays: [cqrs]                  # overlays found next to the style
         declared: [platform/backend/layers.mjs]   # declared only: the rule files
+        order:                            # declared only: the layers of the part, lowest first
+          - core: [core, platform]        #   <layer>: folders of the part ("." = the files directly in it)
+          - game: [game, ui]              #   a file may depend on its own layer and on the layers below
         target:                           # written by init: the full layout of the style, present or proposed
           - {layer: domain, block: entities, folder: src/domain/entities, proposed: true}
 
@@ -29,6 +32,7 @@ from typing import Any, Optional
 
 
 from .capabilities import CAPABILITIES, CapabilityRule, rules_from_toml
+from .declared import layers_from_order
 from .detect import DeclaredFile, ReadText, judge, part_kind, split_parts, c4_level
 from .target import target_layout
 from .library import Library
@@ -58,6 +62,7 @@ class PartConfig:
     overlays: tuple[str, ...] = ()
     target: tuple["TargetEntry", ...] = ()
     capabilities: tuple[CapabilityRule, ...] = ()   # `capabilities:` of the part, over the style's rules
+    order: tuple[tuple[str, tuple[str, ...]], ...] = ()   # `order:` of a declared part: (layer, folders), lowest first
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,33 @@ def _names(value: Any, where: str) -> tuple[str, ...] | str:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return tuple(value)
     return f"{where} must be a folder name or a list of folder names"
+
+
+def _order(value: Any, where: str) -> tuple[tuple[str, tuple[str, ...]], ...] | str:
+    """`order:` of a declared part: a list of one-key mappings `<layer>: [<folder>, ...]`, lowest layer first."""
+    if not isinstance(value, list) or not value:
+        return f"{where}: `order` must be a list of `<layer>: [<folder>, ...]` entries, lowest layer first"
+    order: list[tuple[str, tuple[str, ...]]] = []
+    seen_layers: set[str] = set()
+    seen_folders: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or len(item) != 1 or not isinstance(next(iter(item)), str):
+            return f"{where}: every entry of `order` is one `<layer>: [<folder>, ...]`"
+        layer, folders = next(iter(item.items()))
+        names = _names(folders, f"{where}: order.{layer}")
+        if isinstance(names, str):
+            return names
+        if not names:
+            return f"{where}: `order` layer {layer} names no folder"
+        if layer in seen_layers:
+            return f"{where}: `order` names the layer {layer} twice"
+        twice = [name for name in names if name.strip("/") in seen_folders]
+        if twice or len({name.strip("/") for name in names}) != len(names):
+            return f"{where}: `order` names the folder {(twice or list(names))[0]} twice"
+        seen_layers.add(layer)
+        seen_folders.update(name.strip("/") for name in names)
+        order.append((layer, names))
+    return tuple(order)
 
 
 def parse_config(text: str, library: Library) -> ConfigResult:
@@ -163,6 +195,13 @@ def parse_config(text: str, library: Library) -> ConfigResult:
             return ConfigErr(routing)
         if isinstance(declared, str):
             return ConfigErr(declared)
+        order: tuple[tuple[str, tuple[str, ...]], ...] | str = ()
+        if entry.get("order") is not None:
+            if style != DECLARED:
+                return ConfigErr(f"{where}: `order` states the layers of a part with `style: declared`")
+            order = _order(entry["order"], where)
+            if isinstance(order, str):
+                return ConfigErr(order)
         parts.append(PartConfig(
             path=path.strip("/") or ".", style=style_id, level=str(entry.get("level", "")),
             layers=tuple(layers), routing_root=routing, declared=declared, overlays=overlays, capabilities=capabilities,
@@ -171,6 +210,7 @@ def parse_config(text: str, library: Library) -> ConfigResult:
                             bool(item.get("proposed", False)))
                 for item in target
             ),
+            order=order,
         ))
     return ConfigOk(tuple(parts))
 
@@ -240,6 +280,8 @@ def plan_from_config(
                 and (root == "" or path.startswith(root + "/"))
             )
             rules = declared_rules(files + exceptions, read_text)
+            if entry.order:   # the layers stated in this file stand for a layer table of the project
+                rules = replace(rules, layers=layers_from_order(CONFIG_FILE, root, entry.order))
             plans.append(replace(base, declared=rules, origin="declared",
                                  state="declared" if rules.layers is not None else "declared-unread"))
         elif style is None:
@@ -290,6 +332,10 @@ def config_header(library: Library, generated: str) -> list[str]:
         f"# - style: {styles};",
         "#   declared (the project's own rule files, listed under `declared`, decide),",
         "#   none or undetermined (no layers and no rules for the part).",
+        "# - order (style declared only): the layers of the part, lowest first, each `- <layer>: [folders]`,",
+        "#   the folders relative to the part (\".\": the files directly in it). A file may depend on its",
+        "#   own layer and on the layers below it. `wingbox init --from-folders <part>` writes it from",
+        "#   the graph; reorder the entries or move a folder to another entry by hand.",
         "# - layers: layer -> folders. A name (services) matches a folder of that name at any depth; a",
         "#   path (lib/hooks) matches that folder and everything below it. Only the style's layers.",
         "# - The layer of a file, first rule that applies: a test file is in no layer; the longest folder",
@@ -340,7 +386,13 @@ def render_config(
             lines.append(f"    # candidates: {names}; choose one, or keep undetermined (no layers, no rules)")
         if part.declared is not None:
             rules = tuple(item.path for item in part.declared.files if item.kind != "exceptions")
-            lines.append(f"    declared: {_flow(rules)}")
+            table = part.declared.layers
+            if rules or table is None or table.file != CONFIG_FILE:
+                lines.append(f"    declared: {_flow(rules)}")
+            if table is not None and table.file == CONFIG_FILE:
+                lines.append("    order:   # lowest first: a file may depend on its own layer and on the layers below it")
+                for layer in table.layers:
+                    lines.append(f"      - {_quote(layer.name)}: {_flow(layer.folders)}")
             for item in part.declared.not_read:
                 lines.append(f"    # {item.file}: not read ({item.reason})")
         if part.overlays:
