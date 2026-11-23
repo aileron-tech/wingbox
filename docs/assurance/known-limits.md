@@ -96,7 +96,10 @@ Measured: [benchmarks/php/README.md](../../benchmarks/php/README.md) (60 of 60 q
 | The type of an object, overload resolution, templates, namespaces | A method called on an object is listed by `usages Class.method` as an unresolved call; overloads share one name; `a::b::name` is looked up as `name` and as the member `name` of `b` | the same section; `tests/test_cpp_language.py::CppUsagesTest` |
 | A name that two headers declare, in a file that reaches both through its includes | The use is attributed to neither header: `usages` of each lists the files that reach only that one | `tests/test_cpp_language.py::CppUsagesTest` |
 | A `.h` file written in C | Read with the C++ grammar; a C++ keyword used as a name gives a parse error around that name, and the includes and the other declarations of the file are still read | `tests/test_cpp_language.py::CppParserTest` |
-| How the graph compares with the includes of public C and C++ projects | not assessed: no benchmark result for C and C++ is in the repository | - |
+| C++20 modules: `import name;` and `export module name;` | No edge: an import of a module is not an include. One such dependency in the three repositories of the benchmark, found by the comparison with Doxygen | [benchmarks/cpp/README.md](../../benchmarks/cpp/README.md), Test 4 |
+| The uses of C and C++ names (`usages`) against a compiler | not assessed: the include edges are measured, the uses are not; Doxygen's cross references attribute a call by its name and are no reference for them | [benchmarks/cpp/README.md](../../benchmarks/cpp/README.md), "Scope" |
+
+Measured: [benchmarks/cpp/README.md](../../benchmarks/cpp/README.md) (60 of 60 questions on three public repositories; 1,345 reference include edges with 0 wrong and 0 missing; the reference checked against `clang -MM`), without a compilation database.
 
 ## Dart and Flutter
 

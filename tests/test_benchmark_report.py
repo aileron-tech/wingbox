@@ -188,7 +188,7 @@ class BenchmarkInstallTest(unittest.TestCase):
         """/* REQ-BENCH-019: the 0.12 releases install the parsers of C#, Java, Go, Ruby, PHP and Dart only with the extra `all`, which later versions keep, so every benchmark script installs the Wingbox under test (and the one it compares with) with the extra `all`: a release spec becomes wingbox[all]==X.Y.Z, a checkout or a file its path with [all]. */"""
         scripts = sorted((Path(__file__).resolve().parents[1] / "benchmarks").glob("*/run.sh"))
         installing = [path for path in scripts if "WINGBOX_SPEC" in path.read_text(encoding="utf-8")]
-        self.assertEqual(["graphify", "impact", "php", "tocs", "usages"], [path.parent.name for path in installing])
+        self.assertEqual(["cpp", "graphify", "impact", "php", "tocs", "usages"], [path.parent.name for path in installing])
         for path in installing:
             text = path.read_text(encoding="utf-8")
             with self.subTest(benchmark=path.parent.name):

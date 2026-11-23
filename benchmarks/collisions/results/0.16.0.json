@@ -1,0 +1,90 @@
+{
+ "wingbox": "wingbox 0.16.0",
+ "python": "3.14.3",
+ "projects": 7,
+ "files": 42,
+ "imports_loaded_by_the_interpreter": 64,
+ "required_edges": 51,
+ "graph_edges": 48,
+ "wrong": [
+  [
+   "nested_tool/apps/stock/audit.py",
+   "nested_tool/apps/stock/depot.py"
+  ],
+  [
+   "nested_tool/apps/stock/depot/label.py",
+   "nested_tool/apps/stock/depot.py"
+  ],
+  [
+   "nested_tool/apps/stock/depot/shelf.py",
+   "nested_tool/apps/stock/depot.py"
+  ],
+  [
+   "package_under_src/src/depot/label.py",
+   "package_under_src/src/depot.py"
+  ],
+  [
+   "package_under_src/src/depot/shelf.py",
+   "package_under_src/src/depot.py"
+  ],
+  [
+   "tool_beside_package/depot/label.py",
+   "tool_beside_package/depot.py"
+  ],
+  [
+   "tool_beside_package/depot/shelf.py",
+   "tool_beside_package/depot.py"
+  ],
+  [
+   "tool_beside_package/tests/test_depot.py",
+   "tool_beside_package/depot.py"
+  ]
+ ],
+ "missing": [
+  [
+   "nested_tool/apps/stock/audit.py",
+   "nested_tool/apps/stock/depot/__init__.py"
+  ],
+  [
+   "nested_tool/apps/stock/depot.py",
+   "nested_tool/apps/stock/depot/__init__.py"
+  ],
+  [
+   "nested_tool/apps/stock/depot/label.py",
+   "nested_tool/apps/stock/depot/__init__.py"
+  ],
+  [
+   "nested_tool/apps/stock/depot/shelf.py",
+   "nested_tool/apps/stock/depot/__init__.py"
+  ],
+  [
+   "package_under_src/src/depot.py",
+   "package_under_src/src/depot/__init__.py"
+  ],
+  [
+   "package_under_src/src/depot/label.py",
+   "package_under_src/src/depot/__init__.py"
+  ],
+  [
+   "package_under_src/src/depot/shelf.py",
+   "package_under_src/src/depot/__init__.py"
+  ],
+  [
+   "tool_beside_package/depot.py",
+   "tool_beside_package/depot/__init__.py"
+  ],
+  [
+   "tool_beside_package/depot/label.py",
+   "tool_beside_package/depot/__init__.py"
+  ],
+  [
+   "tool_beside_package/depot/shelf.py",
+   "tool_beside_package/depot/__init__.py"
+  ],
+  [
+   "tool_beside_package/tests/test_depot.py",
+   "tool_beside_package/depot/__init__.py"
+  ]
+ ],
+ "accepted_and_not_required": 0
+}

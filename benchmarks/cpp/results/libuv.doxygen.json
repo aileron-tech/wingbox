@@ -1,0 +1,113 @@
+{
+ "doxygen": "1.11.0",
+ "files": 354,
+ "edges_of_doxygen": 731,
+ "edges_of_the_list": 696,
+ "in_both": 672,
+ "only_doxygen_count": 59,
+ "only_doxygen_by_form": {
+  "angle": 59,
+  "quoted": 0,
+  "other": 0
+ },
+ "only_doxygen_not_written_in_angle_brackets": [],
+ "only_the_list_count": 24,
+ "only_the_list": [
+  [
+   "include/uv.h",
+   "include/uv/win.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/aix.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/bsd.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/darwin.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/linux.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/os390.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/posix.h"
+  ],
+  [
+   "include/uv/unix.h",
+   "include/uv/sunos.h"
+  ],
+  [
+   "src/fs-poll.c",
+   "src/win/handle-inl.h"
+  ],
+  [
+   "src/fs-poll.c",
+   "src/win/internal.h"
+  ],
+  [
+   "src/random.c",
+   "src/win/internal.h"
+  ],
+  [
+   "src/unix/fsevents.c",
+   "src/unix/darwin-stub.h"
+  ],
+  [
+   "src/unix/internal.h",
+   "src/unix/os390-syscalls.h"
+  ],
+  [
+   "test/runner.h",
+   "test/runner-win.h"
+  ],
+  [
+   "test/test-error.c",
+   "src/win/winapi.h"
+  ],
+  [
+   "test/test-fs-fd-hash.c",
+   "include/uv.h"
+  ],
+  [
+   "test/test-fs-fd-hash.c",
+   "src/win/fs-fd-hash-inl.h"
+  ],
+  [
+   "test/test-fs-fd-hash.c",
+   "test/task.h"
+  ],
+  [
+   "test/test-fs-open-flags.c",
+   "include/uv.h"
+  ],
+  [
+   "test/test-fs-open-flags.c",
+   "test/task.h"
+  ],
+  [
+   "test/test-tty-duplicate-key.c",
+   "include/uv.h"
+  ],
+  [
+   "test/test-tty-duplicate-key.c",
+   "test/task.h"
+  ],
+  [
+   "test/test-tty-escape-sequence-processing.c",
+   "include/uv.h"
+  ],
+  [
+   "test/test-tty-escape-sequence-processing.c",
+   "test/task.h"
+  ]
+ ]
+}

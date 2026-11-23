@@ -1,5 +1,47 @@
 # Completion Log
 
+## 2026-11-23 - After the release 0.17.0
+
+### Checks (AGENTS.md section 6)
+- 6.1 PyPI: `wingbox` and `wingbox-http` 0.17.0 list two files each. `uvx --refresh --from "wingbox[http]==0.17.0" wingbox --version` answers `wingbox 0.17.0`; `wingbox mcp --http --help` runs. For some minutes after the upload an index without the new version was served: `uvx` without `--refresh` and one job of the pull request check on Windows did not find 0.17.0.
+- 6.1 GitHub release `v0.17.0`: assets `SHA256SUMS`, `wingbox-0.17.0.cdx.json`, `wingbox-0.17.0.mcpb`, `wingbox.mcpb`; the two digests PyPI answers for `wingbox` (wheel `eead7fe9...`, sdist `4ac59b63...`) are lines of `SHA256SUMS`; the extension link answers 200.
+- 6.1 Workflows: `publish-mcp` succeeded; the registry answers 0.17.0, `active`. `tests` of the commit of #183 on `main` had one macOS job cancelled without steps (no runner): restarted with `gh run rerun --failed`.
+- 6.1 Plugin pin: #185. Homebrew: `bump.yml` started for the release; the package has one more dependency (`tree-sitter-cpp`), which the formula must name as a resource.
+- 6.1 Clean install, before the upload: the built wheel in a new environment gave every number below on the repository of issue #177; after it, the same with `uvx --from wingbox==0.17.0`.
+- 6.2 Descriptions: the README and the store texts name C and C++ (#181). GitHub "About": the description names C and C++; the topics `c` and `cpp` were not added, the repository has the twenty topics GitHub allows. `pyproject.toml` `description` names no language.
+- 6.3 Listings: the tool list and the tool descriptions did not change; not applicable.
+- 6.4 The pull request check: `aileron-tech/wingbox-action` pull request 38 sets the default to 0.17.0 (its unit tests pass; its tag follows the green fixture job).
+- 6.5 The sites: not done. The benchmark pages of this change hold new numbers, which are shown to the maintainer before a site names them.
+
+### The repository of issue #177 with 0.17.0 from PyPI (commit of the issue, built from nothing, one worker)
+- Python: 1,296 required import edges, 0 wrong, 0 missing; the module of the issue has 31 direct dependents and 66 within two steps (0.16.0: 292).
+- C and C++: the header of the issue has 193 direct dependents, the 193 files a search of the include lines finds; 6,043 reference include edges, 0 missing, 1 more in the graph, confirmed by the compile command in that file. Doxygen 1.11.0 on the same tree: 6,042 edges, 6,038 of them in the graph; its other 4 are `<time.h>` and `<math.h>` taken for files of the repository.
+- Generation: the generator has 2 direct dependents and 33 within two steps, the schema 3 and 34, with no configuration. 43 launch links.
+- Coverage: 686 CMake, 9 Shell, 4 PowerShell and 2 Lua files counted as not parsed; a CMake file answers `not-in-graph`; the report says "not checked" for the boundaries.
+- Build: 69 s (2,281 files).
+
+## 2026-11-23 - Benchmarks: C and C++ includes, colliding Python names (#177)
+
+### Why
+- Issue #177 asks for independent benchmarks with mixed languages, generated files and package and module name collisions; the maintainer asked for the benchmarks to be taken after the fixes, and proposed Doxygen as a further check for C and C++.
+
+### Changes
+- `benchmarks/cpp/`: `run.sh` fetches fmt 11.0.2, leveldb 1.23 and libuv v1.48.0 and runs four tests. `tools/cpp_reference.py`: a reference of the include edges from the text of the files, with the include roots of each project given by hand. `tools/clang_check.py`: every file of the repository that `clang -MM -MG` reads for a translation unit must be reached over the reference edges. `questions.py`: the edges of the graph against the reference, and 20 impact questions per repository. `tools/doxygen_check.py`: the includes Doxygen resolves (`GENERATE_XML`) against the edges of the graph. `make_report.py` writes the page from `results/`.
+- `benchmarks/collisions/run.py`: a corpus of seven small Python projects with names that collide; the reference is the interpreter (a hook on `__import__` records the file each statement of a file loads, the functions of the file are called so that their imports run); `--report` writes the page from `results/`.
+- `tests/test_benchmark_cpp_collisions.py`: REQ-BENCH-021 to REQ-BENCH-024 (the reference on a small tree, the compiler check with an edge taken out, the corpus against this checkout, the two pages equal to their results).
+- `docs/assurance/verification-plan.md`, `known-limits.md`, `README.md`: the rows and links of the two pages; the limit of C++20 module imports.
+
+### Results (Wingbox 0.17.0 from PyPI)
+- C and C++: 60 of 60 questions complete with nothing extra; 1,345 reference edges, 0 wrong, 0 missing; 3,699 files read by the compiler for 435 translation units, all reached by the reference (2 translation units stopped by the compiler). Doxygen: 1,316 of its 1,376 edges are in the graph; 59 of the others are system headers it took for a file of the repository of the same name, 1 is a C++20 module import, which Wingbox does not read.
+- Colliding names: 51 required edges from 64 loads; 0.16.0 has 8 wrong and 11 missing, 0.16.1 and 0.17.0 none.
+
+### What the benchmarks changed before the release
+- Three defects of the new code were found by these runs and fixed in #183: a generation marker read from a sentence that only contains the words, interface-call edges from C++ base class names, and `not-in-graph` for the path of a file that is a module of the graph.
+
+### Not measured
+- The uses of C and C++ names (`usages`): Doxygen's cross references attribute a call by its name (of 60 sampled functions of the repository of the issue it agreed with Wingbox on the files of 5; in the cases read by hand it named a function of another header with the same name, or passed over a function the file defines itself), so they are no reference. A compiler index (clangd) would be one.
+- C and C++ with a compilation database on a public repository: the benchmark gives Wingbox none.
+
 ## 2026-11-23 - Release 0.17.0
 
 ### Changes

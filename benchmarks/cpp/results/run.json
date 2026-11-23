@@ -1,0 +1,14 @@
+{
+ "wingbox": "Wingbox 0.17.0",
+ "date": "2026-11-23",
+ "commits": {
+  "fmt": "0c9fce2ffefecfdce794e1859584e25877b7b592",
+  "leveldb": "99b3c03b3284f5886f9ef9a4ef703d57373e61be",
+  "libuv": "e9f29cb984231524e3931aa0ae2c5dae1a32884e"
+ },
+ "tags": {
+  "fmt": "11.0.2",
+  "leveldb": "1.23",
+  "libuv": "v1.48.0"
+ }
+}

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Two benchmark pages: `benchmarks/cpp` (C and C++ include dependencies of three public
+  repositories against a text reference, with that reference checked against `clang -MM` and the
+  graph against Doxygen) and `benchmarks/collisions` (Python names that collide, against what the
+  interpreter loads). The README names one limit the comparison with Doxygen found: a C++20
+  `import` of a module gives no edge.
+
 ## 0.17.0 - 2026-11-23
 
 ### Changes

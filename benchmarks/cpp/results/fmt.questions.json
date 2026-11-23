@@ -1,0 +1,201 @@
+{
+ "tree": "fmt",
+ "include_roots": [
+  "include",
+  "test",
+  "test/gtest"
+ ],
+ "files": 69,
+ "edges": {
+  "reference": 161,
+  "graph": 161,
+  "wrong": [],
+  "wrong_count": 0,
+  "missing": [],
+  "missing_count": 0
+ },
+ "questions": [
+  {
+   "file": "include/fmt/args.h",
+   "gold": 3,
+   "named": 3,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 3,
+   "tokens": 186
+  },
+  {
+   "file": "include/fmt/base.h",
+   "gold": 35,
+   "named": 35,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 18,
+   "tokens": 1207
+  },
+  {
+   "file": "include/fmt/chrono.h",
+   "gold": 15,
+   "named": 15,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 13,
+   "tokens": 606
+  },
+  {
+   "file": "include/fmt/compile.h",
+   "gold": 6,
+   "named": 6,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 6,
+   "tokens": 300
+  },
+  {
+   "file": "include/fmt/format-inl.h",
+   "gold": 27,
+   "named": 27,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 14,
+   "tokens": 915
+  },
+  {
+   "file": "include/fmt/format.h",
+   "gold": 53,
+   "named": 53,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 40,
+   "tokens": 1808
+  },
+  {
+   "file": "include/fmt/ranges.h",
+   "gold": 11,
+   "named": 11,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 10,
+   "tokens": 458
+  },
+  {
+   "file": "include/fmt/std.h",
+   "gold": 3,
+   "named": 3,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 3,
+   "tokens": 182
+  },
+  {
+   "file": "include/fmt/xchar.h",
+   "gold": 5,
+   "named": 5,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 5,
+   "tokens": 259
+  },
+  {
+   "file": "src/os.cc",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 139
+  },
+  {
+   "file": "test/fuzzing/fuzzer-common.h",
+   "gold": 7,
+   "named": 7,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 317
+  },
+  {
+   "file": "test/gtest-extra.h",
+   "gold": 14,
+   "named": 14,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 494
+  },
+  {
+   "file": "test/gtest/gmock/gmock.h",
+   "gold": 21,
+   "named": 21,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 10,
+   "tokens": 743
+  },
+  {
+   "file": "test/gtest/gtest/gtest-spi.h",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 1,
+   "tokens": 129
+  },
+  {
+   "file": "test/gtest/gtest/gtest.h",
+   "gold": 21,
+   "named": 21,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 20,
+   "tokens": 815
+  },
+  {
+   "file": "test/mock-allocator.h",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 118
+  },
+  {
+   "file": "test/posix-mock.h",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 118
+  },
+  {
+   "file": "test/scan.h",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 112
+  },
+  {
+   "file": "test/test-assert.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 147
+  },
+  {
+   "file": "test/util.h",
+   "gold": 11,
+   "named": 11,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 406
+  }
+ ],
+ "complete_and_nothing_extra": 20,
+ "with_a_missing_file": 0
+}

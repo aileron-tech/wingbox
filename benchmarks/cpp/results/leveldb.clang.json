@@ -1,0 +1,9 @@
+{
+ "compiler": "Apple clang version 16.0.0 (clang-1600.0.26.6)",
+ "translation_units": 76,
+ "stopped": 0,
+ "files_read_by_the_compiler": 913,
+ "reached_by_the_reference": 913,
+ "not_reached": 0,
+ "examples": []
+}
