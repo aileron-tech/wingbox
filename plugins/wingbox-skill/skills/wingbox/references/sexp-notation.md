@@ -623,7 +623,8 @@ is followed by `(affected-targets <file> <target> ...)` and `(affected-tests
 source file stands `(impact-paired-header <file> <header>)` (the rows marked
 `:basis paired-header` include that header) or `(impact-no-includers <file>)`.
 `impact --diff [ref]` ends with one `(changed <file>::<name> :line N :used-by
-(<file> ...))` fact per changed function. The form is complete: nothing is cut.
+(<file> ...))` fact per changed function, with `:targets (...) :tests (...)`
+after `:used-by` under `--only tests` in a graph with build facts. The form is complete: nothing is cut.
 The `(advice ...)` facts that concern a file follow its form.
 
 `graph` says when the graph file was written (UTC), how many files it holds

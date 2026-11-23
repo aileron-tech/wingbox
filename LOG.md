@@ -22,6 +22,7 @@
 ### On the repository of #177
 - 767 targets, and 1,671 of the 1,706 names of `add_test`; of the other 35, 8 names are written with a variable and 27 tests run a command kept in a variable.
 - `impact <central header> 2 --only tests`: 308 test files, 307 targets, 1,019 tests. Its source file at depth 1: 146 test files, 148 targets.
+- `impact --diff --only tests` after a change inside one function of that source file: the file 308 test files and 1,019 tests; the changed function 11 test files, 12 targets, 16 tests. This is the list to run, and the reason each `(changed ...)` fact got `:targets` and `:tests` of its own (`Changed.affected`): the file's own targets and those of the files that use the function.
 - Build time unchanged within the noise (60 to 64 s, one worker). A change of a CMake file is seen by the next query, which refreshes the graph.
 
 ### Not done

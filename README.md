@@ -522,7 +522,8 @@ Three options narrow or widen what `impact` answers:
   `(changed <file>::<name> :line N :used-by (<file> ...))` fact per changed
   function with the other files that use it. For a C or C++ function the files
   that use it through the declaration in its header are included. Both options
-  go together: `wingbox impact --diff --only tests`.
+  go together: `wingbox impact --diff --only tests`, where each changed
+  function also names the CMake targets and tests of the files that use it.
 - A C or C++ source file is answered through its header, see
   [C and C++ dependency search](#c-and-c-dependency-search).
 
@@ -1706,7 +1707,10 @@ A target is affected when the file or one of the dependents of the whole list
 (every row within the depth asked, not the test files alone) is among its
 sources; a test, when it runs such a target or names such a file. Linking is
 not followed: a test of an executable that links a library and includes none
-of its headers is not named for a change inside that library. Not read: a
+of its headers is not named for a change inside that library. With `--diff
+--only tests` each `(changed ...)` fact carries `:targets (...) :tests (...)`
+as well: those of the file and of the files that use the changed function,
+usually far fewer than those of every dependent of the file. Not read: a
 target or a test whose name is written with a variable, what a function or a
 macro of the project adds, a command kept in a variable, an alias and an
 imported target.

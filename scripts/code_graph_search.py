@@ -2152,10 +2152,13 @@ def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[lis
         for owner in (module, *paired_headers(g, module)):
             users |= g.use_pairs.get(f"{owner}::{name}", set())
         users -= {module, *paired_headers(g, module)}
+        # The targets and tests of the file and of the files that use the function: narrower than those of
+        # every dependent of the file.
+        affected = _affected_build(g, users | {module}) if only == "tests" else None
         if only == "tests":
             users = {user for user in users if module_layer(g, user) == "test"}
         changed.append(impact_forms.Changed(
-            f"{_impact_file(g, module)}::{name}", entity.line, tuple(sorted(_impact_file(g, user) for user in users)),
+            f"{_impact_file(g, module)}::{name}", entity.line, tuple(sorted(_impact_file(g, user) for user in users)), affected,
         ))
     return files, changed
 
@@ -2195,6 +2198,8 @@ def cmd_impact(
             print("\nChanged functions and the files that use them")
             for item in changed:
                 used = ", ".join(item.used_by) if item.used_by else "no other file"
+                if item.affected is not None:
+                    used += f"; tests to run: {', '.join(item.affected.tests) if item.affected.tests else 'none'}"
                 print(f"  {item.symbol:<{width}}   line {item.line}: {used}")
     else:
         # The graph fact stands before the answers of several files, and before one answer when files of

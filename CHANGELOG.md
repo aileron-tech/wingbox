@@ -32,7 +32,8 @@
 - Build targets and tests of CMake files are facts of the graph (`add_executable`, `add_library`,
   `target_sources`, `add_test`, read literally), and `wingbox impact <file> --only tests` names
   the ones a change reaches: `(affected-targets <file> ...)` and `(affected-tests <file> ...)`,
-  `targets` and `tests` in JSON. The MCP tool `analyze_impact` answers the same with `only` set to
+  `targets` and `tests` in JSON. With `--diff --only tests` every changed function names the
+  targets and tests of the files that use it. The MCP tool `analyze_impact` answers the same with `only` set to
   `tests`; the tool list is unchanged.
 
 ## 0.17.0 - 2026-11-23

@@ -82,7 +82,7 @@ class BuildTargetsTest(unittest.TestCase):
         self.assertIn("(ctest tool_run :target tool_app", tests[3])
 
     def test_only_tests_names_the_targets_and_tests_a_change_reaches(self) -> None:
-        """/* REQ-CS-165: `wingbox impact <file> --only tests` in a repository with such facts also names the build targets that hold the file or one of its dependents among their sources, `(affected-targets <file> <target> ...)`, and the tests that run one of those targets or a file of the list, `(affected-tests <file> <test> ...)` (`targets` and `tests` in JSON, two lines in the text); a file no target holds names none, and without `--only tests` the answer is as before. */"""
+        """/* REQ-CS-165: `wingbox impact <file> --only tests` in a repository with such facts also names the build targets that hold the file or one of its dependents among their sources, `(affected-targets <file> <target> ...)`, and the tests that run one of those targets or a file of the list, `(affected-tests <file> <test> ...)` (`targets` and `tests` in JSON, two lines in the text); a file no target holds names none, and without `--only tests` the answer is as before. With `--diff --only tests` each `(changed ...)` fact also carries `:targets (...) :tests (...)`, those of the file and of the files that use the changed function. */"""
         answer = json.loads(_run(self.root, "impact", "native/src/scene/stage.h", "--only", "tests", "--json").stdout)["impact"][0]
         self.assertEqual(["round_app", "stage", "stage_tests"], answer["targets"])
         self.assertEqual(["round_smoke", "stage_run"], answer["tests"])
@@ -99,6 +99,22 @@ class BuildTargetsTest(unittest.TestCase):
         self.assertEqual(([], []), (lone["targets"], lone["tests"]))
         whole = json.loads(_run(self.root, "impact", "native/src/scene/stage.h", "--json").stdout)["impact"][0]
         self.assertNotIn("targets", whole)
+        # A diff: the targets and tests of the file and of the files that use the changed function.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(os.path.realpath(directory))
+            git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+            subprocess.run([*git, "init", "-q"], check=True)
+            _write(root, PROJECT)
+            subprocess.run([*git, "add", "."], check=True, capture_output=True)
+            subprocess.run([*git, "commit", "-q", "-m", "first"], check=True, capture_output=True)
+            _write(root, {"native/src/play/round.cpp": '#include "scene/stage.h"\nint play() { Stage stage; return stage.run() + 1; }\n'})
+            _run(root, "build", ".")
+            document = json.loads(_run(root, "impact", "--diff", "--only", "tests", "--json").stdout)
+            self.assertEqual(["round_app"], document["impact"][0]["targets"])
+            play = next(item for item in document["changed"] if item["symbol"] == "native/src/play/round.cpp::play")
+            self.assertEqual((["round_app"], ["round_smoke"]), (play["targets"], play["tests"]))   # the target that compiles the file
+            self.assertIn(":targets (round_app) :tests (round_smoke))", _run(root, "impact", "--diff", "--only", "tests").stdout)
+            self.assertNotIn("targets", json.loads(_run(root, "impact", "--diff", "--json").stdout)["changed"][0])
         human = _run(self.root, "impact", "native/src/scene/stage.h", "--only", "tests", "--human").stdout
         self.assertIn("Build targets: round_app, stage, stage_tests", human)
         self.assertIn("Tests to run: round_smoke, stage_run", human)

@@ -246,10 +246,23 @@ class Changed:
     symbol: str                 # <file>::<name>
     line: int
     used_by: tuple[str, ...]
+    affected: Optional[Affected] = None   # with only "tests": the targets and tests of its file and its users
 
 
 def changed_fact(item: Changed) -> str:
-    return f"(changed {atom(item.symbol)} :line {item.line} :used-by ({' '.join(atom(path) for path in item.used_by)}))"
+    built = ""
+    if item.affected is not None:
+        built = (f" :targets ({' '.join(atom(name) for name in item.affected.targets)})"
+                 f" :tests ({' '.join(atom(name) for name in item.affected.tests)})")
+    return f"(changed {atom(item.symbol)} :line {item.line} :used-by ({' '.join(atom(path) for path in item.used_by)}){built})"
+
+
+def changed_json(item: Changed) -> dict[str, Any]:
+    document: dict[str, Any] = {"symbol": item.symbol, "line": item.line, "used_by": list(item.used_by)}
+    if item.affected is not None:
+        document["targets"] = list(item.affected.targets)
+        document["tests"] = list(item.affected.tests)
+    return document
 
 
 def impact_json(
@@ -259,7 +272,7 @@ def impact_json(
     same keys, and nothing is cut. With changed (`impact --diff`), "changed" lists the changed functions."""
     document: dict[str, Any] = {"graph": header_json(header), "impact": [answer_json(answer) for answer in answers]}
     if changed is not None:
-        document["changed"] = [{"symbol": item.symbol, "line": item.line, "used_by": list(item.used_by)} for item in changed]
+        document["changed"] = [changed_json(item) for item in changed]
     return document
 
 
