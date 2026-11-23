@@ -1,5 +1,26 @@
 # Completion Log
 
+## 2026-11-23 - wingbox cycles: structure without a layer style (#188)
+
+### Why
+- Issue #188, point 3, the third of the reporter's conditions: a repository that fits no style of the library gets `style none`, "boundary violations: not checked" and `place-none`, so half of the product says nothing on the first run. The report asks for checks that work without a style (cycles, hubs, edges between top-level folders) and for a draft of the layers.
+- The maintainer left the name to the implementer: `wingbox cycles`, after its first and plainest finding.
+
+### Changes
+- `scripts/code_graph_search.py`: `cmd_cycles(g, scope)`. `_strong_groups`: strongly connected components, Tarjan without recursion. Facts: `(cycle N :files K <file> ...)` for each group of more than one file over the import edges (type-only imports left out), largest first, at most 30 files named and `:more`; `(hub <file> :dependents N :dependencies M)` for a file with at least ten of each, at most 20, by the product of the two; `(folder-cycle a b :forward N :back M)` for two top-level folders with file pairs both ways; `(folder-order (...) ...)`, the groups of folders in the order in which a group stands before those it depends on, ties by name; `(cycles-summary ...)`. With a folder as the argument: its files, its subfolders as the folders.
+- `README.md` ("Without a layer style: `wingbox cycles`"), `SKILL.md` (the command table).
+- Tests written first, `tests/test_cycles_command.py`: REQ-CS-162, REQ-CS-163.
+
+### On the repository of #177
+- Four groups of files that depend on each other (ten files, all Python), six hubs (headers of the engine), no two top-level folders that depend on each other, and an order of the seven top-level folders. Below the source folder of the engine: its subsystems depend on each other in pairs, with counts each way, for example 122 file pairs one way and 11 back.
+
+### Seen while writing, not changed
+- A Python file named `index.py` beside an `__init__.py` gets the module ID of its folder (the rule for TypeScript index files is applied to Python), and commands that print a file path name `__init__.py` for it.
+
+### Not done
+- A command that writes the layers of `.wingbox/config.yaml` from `folder-order`: the order is printed, the choice of what is a layer stays with a person or with `wingbox learn`.
+- The MCP server has no tool for it: its tool list is kept as it is.
+
 ## 2026-11-23 - The first usages after a build reads the files that hold the name (#188)
 
 ### Why

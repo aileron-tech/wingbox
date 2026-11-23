@@ -47,6 +47,7 @@ Usage::
                                                 --strict: a boundaries-result line and exit 0 pass,
                                                 1 violation, 2 not fully checked, 3 no readable graph
     code_graph_search.py invariants [scope]     Check naming-convention violations (default: all)
+    code_graph_search.py cycles [folder]        Files that depend on each other, hubs, and the order of the folders
     code_graph_search.py find_function <name>   Find function/method definitions by name
     code_graph_search.py find_type <name>       Find type/class/interface/enum definitions by name
     code_graph_search.py find_callchain <src_fn> <tgt_fn> [depth]  Trace call path between two functions
@@ -3115,6 +3116,147 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
     return status or (1 if pairs["violation"] or broken else 0)
 
 
+# ---------------------------------------------------------------------------
+# Cycles: what the dependency graph says without a layer style
+# ---------------------------------------------------------------------------
+
+_HUB_DEGREE = 10       # a hub has at least this many dependents and this many dependencies
+_HUBS_SHOWN = 20
+_CYCLE_FILES_SHOWN = 30
+
+
+def _strong_groups(nodes: Sequence[str], edges: dict[str, set[str]]) -> list[list[str]]:
+    """The groups of nodes that reach each other (strongly connected components), in the order in which a
+    group stands before every group it depends on. Tarjan's algorithm without recursion."""
+    index: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on_stack: set[str] = set()
+    stack: list[str] = []
+    groups: list[list[str]] = []
+    counter = 0
+    for start in nodes:
+        if start in index:
+            continue
+        work: list[tuple[str, list[str]]] = [(start, sorted(edges.get(start, ())))]
+        index[start] = low[start] = counter
+        counter += 1
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            node, rest = work[-1]
+            if rest:
+                target = rest.pop()
+                if target not in index:
+                    index[target] = low[target] = counter
+                    counter += 1
+                    stack.append(target)
+                    on_stack.add(target)
+                    work.append((target, sorted(edges.get(target, ()))))
+                elif target in on_stack:
+                    low[node] = min(low[node], index[target])
+                continue
+            work.pop()
+            if work:
+                parent = work[-1][0]
+                low[parent] = min(low[parent], low[node])
+            if low[node] == index[node]:
+                group = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    group.append(member)
+                    if member == node:
+                        break
+                groups.append(sorted(group))
+    return groups
+
+
+def cmd_cycles(g: CodeGraph, scope: str = "") -> None:
+    """What the import graph says where no layer style applies: the groups of files that depend on each
+    other, the files many depend on that depend on many, and how the folders depend on each other.
+
+    scope: a folder; the answer is then about the files below it, with its subfolders as the folders."""
+    prefix = scope.strip("/").replace(os.sep, "/")
+    files = {module: _impact_file(g, module) for module in g.nodes}
+    inside = {module for module, path in files.items() if not prefix or path == prefix or path.startswith(prefix + "/")}
+    if prefix and not inside:
+        _print_no_match(g, scope)
+        return
+    edges: dict[str, set[str]] = {}
+    for edge in g.all_edges:
+        # An import that the compiler erases (`import type`) makes no cycle at run time.
+        if edge.etype != "imports" or ":type-only" in edge.flags:
+            continue
+        source, target = edge.source.split("::")[0], edge.target.split("::")[0]
+        if source != target and source in inside and target in inside:
+            edges.setdefault(source, set()).add(target)
+    dependents: dict[str, int] = {}
+    for targets in edges.values():
+        for target in targets:
+            dependents[target] = dependents.get(target, 0) + 1
+
+    cycles = sorted(
+        (sorted(files[module] for module in group) for group in _strong_groups(sorted(inside), edges) if len(group) > 1),
+        key=lambda group: (-len(group), group),
+    )
+    for number, group in enumerate(cycles, start=1):
+        shown = group[:_CYCLE_FILES_SHOWN]
+        more = f" :more {len(group) - len(shown)}" if len(group) > len(shown) else ""
+        print(f"(cycle {number} :files {len(group)} {' '.join(_q(path) for path in shown)}{more})")
+
+    hubs = sorted(
+        ((dependents.get(module, 0), len(edges.get(module, ())), files[module]) for module in inside
+         if dependents.get(module, 0) >= _HUB_DEGREE and len(edges.get(module, ())) >= _HUB_DEGREE),
+        key=lambda item: (-item[0] * item[1], item[2]),
+    )
+    for used_by, uses, path in hubs[:_HUBS_SHOWN]:
+        print(f"(hub {_q(path)} :dependents {used_by} :dependencies {uses})")
+
+    def folder_of(module: str) -> str:
+        rest = files[module][len(prefix) + 1:] if prefix else files[module]
+        return rest.split("/", 1)[0] if "/" in rest else "."
+
+    between: dict[tuple[str, str], int] = {}
+    for source, targets in edges.items():
+        for target in targets:
+            pair = (folder_of(source), folder_of(target))
+            if pair[0] != pair[1]:
+                between[pair] = between.get(pair, 0) + 1
+    folder_cycles = sorted((a, b) for (a, b) in between if a < b and (b, a) in between)
+    for a, b in folder_cycles:
+        print(f"(folder-cycle {_q(a)} {_q(b)} :forward {between[(a, b)]} :back {between[(b, a)]})")
+    folders = sorted({folder_of(module) for module in inside})
+    folder_edges: dict[str, set[str]] = {}
+    for a, b in between:
+        folder_edges.setdefault(a, set()).add(b)
+    if len(folders) > 1:
+        # From the folders that depend on others to the folders the others depend on: a group is ready when
+        # nothing left depends on it; of two ready groups the one whose first folder sorts first comes first.
+        groups = _strong_groups(folders, folder_edges)
+        group_of = {folder: number for number, group in enumerate(groups) for folder in group}
+        waiting = {number: 0 for number in range(len(groups))}
+        targets_of: dict[int, set[int]] = {number: set() for number in range(len(groups))}
+        for a, b in between:
+            if group_of[a] != group_of[b] and group_of[b] not in targets_of[group_of[a]]:
+                targets_of[group_of[a]].add(group_of[b])
+                waiting[group_of[b]] += 1
+        ordered: list[list[str]] = []
+        ready = sorted((number for number, count in waiting.items() if count == 0), key=lambda number: groups[number])
+        while ready:
+            number = ready.pop(0)
+            ordered.append(groups[number])
+            for target in targets_of[number]:
+                waiting[target] -= 1
+                if waiting[target] == 0:
+                    ready.append(target)
+            ready.sort(key=lambda item: groups[item])
+        print("(folder-order " + " ".join("(" + " ".join(_q(folder) for folder in group) + ")" for group in ordered) + ")")
+    print(
+        f"(cycles-summary :cycles {len(cycles)} :files-in-cycles {sum(len(group) for group in cycles)} "
+        f":hubs {len(hubs)} :folder-cycles {len(folder_cycles)} :files {len(inside)})"
+    )
+
+
 def cmd_layers(g: CodeGraph) -> None:
     """Show the layer of every module, grouped by layer, with the part, style and rule that set it."""
     by_layer: dict[str, list[str]] = {}
@@ -4985,6 +5127,8 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         return cmd_boundaries(g, target, strict=strict) or 0
     elif cmd == "layers":
         cmd_layers(g)
+    elif cmd == "cycles":
+        cmd_cycles(g, args[1] if len(args) >= 2 else "")
     elif cmd == "invariants":
         target = args[1] if len(args) >= 2 else "all"
         cmd_invariants(g, target)
