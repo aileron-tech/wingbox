@@ -34,7 +34,7 @@ TREE = {
     "include/depot/pallet.h": '#include "crate.h"\n',
     "src/crate.cpp": '#include "depot/crate.h"\n#include <depot/pallet.h>\n#include <vector>\n// #include "depot/gone.h"\n/* #include "depot/pallet.h" */\n',
     "src/local.h": "struct Local {};\n",
-    "src/shelf.cpp": '#include "local.h"\n#include <local.h>\n#if defined(_WIN32)\n#  include "depot/pallet.h"\n#endif\n',
+    "src/shelf.cpp": '#include "local.h"\n#include <local.h>\n#if defined(DEPOT_NEVER_DEFINED)\n#  include "depot/pallet.h"\n#endif\n',
 }
 
 
