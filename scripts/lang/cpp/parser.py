@@ -246,7 +246,10 @@ def parse_cpp(
         mtime=mtime,
         content_hash=file_hash(path),
         imports=included,
-        exports_abstract=unique_strings(iter(collector.abstract)),
+        # An abstract class is not reported as an interface with providers: that would add dependents that
+        # no include states (a user of the base class listed under each derived class). The graph of C and
+        # C++ files is their includes.
+        exports_abstract=[],
         implements=[],
         extends=unique_strings(iter(collector.bases)),
         purpose=infer_purpose(path, content, result_language, entity_payloads),

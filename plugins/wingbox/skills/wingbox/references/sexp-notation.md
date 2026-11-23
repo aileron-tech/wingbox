@@ -611,8 +611,10 @@ files relative to the repository root. `:direct` and `:total` are the counts of
 depth 1 and of all depths. Rows are grouped by depth and, below depth 1, by the
 file of the previous depth they are reached through, named once per group. A
 bare path is a plain import; a path is followed by `:via <relation>` when the
-relation is not an import, by `:more N` when it depends on N other files of
-the previous depth as well, and by the name lists of its edge. `read-first`
+relation is not an import (`generated`, `runs`, `reads`), by `:more N` when it
+depends on N other files of the previous depth as well, by `:basis declared`
+or `:basis inferred` when the source text does not state the edge, and by the
+name lists of its edge. `read-first`
 names the file and its direct dependents. The form is complete: nothing is cut.
 The `(advice ...)` facts that concern a file follow its form.
 
@@ -624,9 +626,11 @@ status is 1 when a file is not in the graph.
 
 `impact --json` prints the same answer as one object: `{"graph": {"built",
 "files", "stale"}, "impact": [{"file", "direct", "total", "rows", "read_first",
-"advice"}]}`, each row `{"file", "depth", "via", "through", "more", "reasons"}`
-and each reason `{"way", "through", "names", "of"}`; a file that is not in the
-graph is `{"file", "error", "suggestions"}`. `impact --human` prints the text
+"advice"}]}`, each row `{"file", "depth", "via", "through", "more", "reasons"}`, with
+`"basis"` (`declared` or `inferred`) when the code does not state the edge, and each reason `{"way",
+"through", "names", "of"}`; a name that matches nothing is `{"file", "error",
+"suggestions"}`, a file of the repository that is not in the graph `{"file",
+"error", "reason"}` with `language` where it has one. `impact --human` prints the text
 for people, which lists at most 200 dependents (nearest first) and the first
 10 read-first files unless `--all`.
 

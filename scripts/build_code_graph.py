@@ -155,7 +155,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
-        from . import graph_snapshot, layer_guess, portable, source_kinds
+        from . import generation, graph_snapshot, layer_guess, portable, source_kinds
         from .architecture.config import ConfigErr, plan_from_config, read_config
         from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
@@ -191,6 +191,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
+        import generation
         import graph_snapshot
         import layer_guess
         import portable
@@ -302,7 +303,7 @@ def prepare_wingbox_directory(root: str) -> None:
 # 3: Python results carry module_loads and registry_calls.
 # 6: validation is read from the syntax tree and stored with its evidence.
 # 7: results carry the lines of their import statements (import_lines, line of a name) and text_hash.
-CACHE_SCHEMA_VERSION = 7
+CACHE_SCHEMA_VERSION = 8
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -413,6 +414,7 @@ def parse_file(args: tuple[str, ...]) -> FileResult:
         result = language_for_name(language_name).parse(path, content, repo, mtime)
     # What the graph is built from is this text: a byte order mark or CRLF line endings give the same graph.
     result.text_hash = hashlib.sha256(content.encode("utf-8", "replace")).hexdigest()
+    result.generation = generation.read_markers(content)
     return result
 
 
@@ -1057,6 +1059,10 @@ def _wildcard_import_targets(
     return targets
 
 
+# Languages whose files depend on each other through the inclusion of whole files only.
+_INCLUDE_LANGUAGES = frozenset({"cpp", "c"})
+
+
 def _resolve_provider(
     symbol: str,
     source: FileResult,
@@ -1258,6 +1264,10 @@ class _TracedLanguage:
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         self._trace.specs.add(import_name)
         return self._bound.resolve_import(import_name, source_path)
+
+    def import_basis(self, import_name: str, source_path: str) -> str:
+        basis = getattr(self._bound, "import_basis", None)
+        return basis(import_name, source_path) if basis is not None else ""
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
         # Submodules named in `from package import name`: the answer depends on the paths of both.
@@ -1516,12 +1526,23 @@ def _module_facts(
     for target_id, lines in (stated_lines(r) if stated_lines is not None else {}).items():
         if target_id != node_id and lines:
             import_lines.setdefault(target_id, set()).update(lines)
+    # A target every import of which was found by inference (C and C++ without a compilation database)
+    # carries the relation `inferred`; one stated import of the same file makes the edge a stated one.
+    import_basis = getattr(bound_language, "import_basis", None)
+    inferred_targets: set[str] = set()
+    stated_targets: set[str] = set()
     for imp in r.imports:
         target_id = bound_language.resolve_import(imp, r.path)
         if target_id and target_id != node_id:
             resolved_imports.setdefault(target_id, set())
             if imp in r.import_lines:
                 import_lines.setdefault(target_id, set()).update(r.import_lines[imp])
+            if import_basis is not None and import_basis(imp, r.path) == "inferred":
+                inferred_targets.add(target_id)
+            else:
+                stated_targets.add(target_id)
+    for target_id in inferred_targets - stated_targets:
+        resolved_imports[target_id].add("inferred")
     for relation in r.relations:
         target_id = bound_language.resolve_import(
             relation["target"],
@@ -1610,7 +1631,10 @@ def _module_facts(
     # -- CALLS_API edges (implements/extends + entity :bases) --
     # Source 1: FileResult.implements + extends (from heritage clauses)
     calls_api_targets: set[str] = set()
-    for iface in r.implements + r.extends:
+    # C and C++: a base class is visible only through an include, which is already an edge; a base found by
+    # its bare name in another file would add a dependent that no include states.
+    heritage = [] if r.language in _INCLUDE_LANGUAGES else r.implements + r.extends
+    for iface in heritage:
         provider_id = _resolve_provider(
             iface,
             r,
@@ -1623,7 +1647,7 @@ def _module_facts(
 
     # Source 2: Entity :bases cross-reference (catches bases not in
     # heritage clauses, and bases defined in other modules)
-    for ent in r.entities:
+    for ent in r.entities if r.language not in _INCLUDE_LANGUAGES else ():
         for base_name in ent.get("bases", []):
             provider_id = _resolve_provider(
                 base_name,
@@ -1908,6 +1932,7 @@ def assemble_graph(
         (edge["source"], edge["target"], edge["type"]) for edge in edges
     }
     edges.extend(_registry_edges(context, edges))
+    edges.extend(_generation_edges(context, results))
     seen_edges.update((edge["source"], edge["target"], edge["type"]) for edge in edges)
     # -- Gap 2: BOUNDARY violation detection --
     # -- HTTP_CALLS edges (cross-service HTTP client detection) --
@@ -2150,6 +2175,76 @@ def read_fragments(path: str, root: str) -> Result[tuple[str, DiscoveryExclusion
     except (ValueError, TypeError, IndexError, AttributeError, KeyError) as error:
         return Err(f"invalid fragment store: {error}")
     return Ok((key, exclusions, stored))
+
+
+def _generation_edges(context: GraphContext, results: Sequence[FileResult]) -> list[dict]:
+    """The links no import states (generation.py): a generated file depends on its generator and on the
+    inputs, a file depends on the script it launches. Declared in the config file, read from the marker at
+    the head of a generated file, from `add_custom_command` of the CMake files and from the launch calls a
+    parser found. An end that is a file of the repository outside the graph (a schema, a template) is kept
+    by its path; a path the repository does not hold is kept as unresolved."""
+    root = context.root
+    module_of = {
+        os.path.relpath(result.path, root).replace(os.sep, "/"): node_id
+        for node_id, result in context.id_to_result.items()
+    }
+
+    def read_text(relative: str) -> Optional[str]:
+        try:
+            with open(os.path.join(root, relative), "r", encoding=SOURCE_ENCODING, errors="replace") as handle:
+                return handle.read()
+        except OSError:
+            return None
+
+    links, unresolved, error = generation.declared_links(root, read_text)
+    if error:
+        print(f"[code-graph] WARNING: {error}; no generator is read from the config file", file=sys.stderr)
+    for result in results:
+        file = os.path.relpath(result.path, root).replace(os.sep, "/")
+        if result.generation:
+            found, missing = generation.marker_links(root, file, result.generation)
+            links.extend(found)
+            unresolved.extend(missing)
+        for launch in result.launches:
+            target = generation.existing_file(root, launch["path"], os.path.dirname(file))
+            if target is not None and target in module_of and target != file:
+                links.append(generation.Link("runs", file, target, "runs", generation.INFERRED, f"{file} line {launch['line']}"))
+    cmake_files: list[str] = []
+    if any(result.language in ("cpp", "c") for result in results):
+        for directory, folders, names in os.walk(root):
+            folders[:] = sorted(folder for folder in folders if not is_excluded_directory(context.exclusions, directory, folder))
+            cmake_files.extend(
+                os.path.relpath(os.path.join(directory, name), root).replace(os.sep, "/")
+                for name in sorted(names) if name == "CMakeLists.txt" or name.endswith(".cmake")
+            )
+    links.extend(generation.cmake_links(root, cmake_files, read_text))
+
+    edges: list[dict] = []
+    lines_of: dict[tuple[str, str], list[int]] = {}
+    for link in generation.merged(links):
+        source = module_of.get(link.source)
+        if source is None:
+            # A generated file that is not in the graph (a language without a parser, a data file): nothing depends on it here.
+            continue
+        if link.kind == "runs":
+            lines_of.setdefault((source, module_of[link.target]), []).append(int(link.evidence.rsplit(" ", 1)[1]))
+            continue
+        target = module_of.get(link.target)
+        if target is not None:
+            edges.append({"source": source, "target": target, "type": "GENERATED", "role": link.role, "basis": link.basis})
+        else:
+            edges.append({"source": source, "target": source, "type": "GENERATED_FILE", "file": link.target,
+                          "role": link.role, "basis": link.basis})
+    for (source, target), lines in sorted(lines_of.items()):
+        edges.append({"source": source, "target": target, "type": "RUNS", "basis": generation.INFERRED, "from_lines": sorted(set(lines))})
+    anchor = next(iter(context.id_to_result), "")
+    for item in sorted(set(unresolved), key=lambda entry: (entry.path, entry.role)):
+        if anchor:
+            edges.append({"source": anchor, "target": anchor, "type": "GENERATION_UNRESOLVED", "file": item.path,
+                          "role": item.role, "basis": item.basis, "evidence": item.evidence})
+        print(f"[code-graph] WARNING: {item.evidence} names {item.path} as {'an' if item.role != 'run' else 'the'} "
+              f"{'generator' if item.role == 'run' else item.role}: no such file in the repository", file=sys.stderr)
+    return edges
 
 
 def _registry_edges(context: GraphContext, edges: list[dict]) -> list[dict]:
@@ -3593,9 +3688,13 @@ def render_sexp(
     violations = [e for e in edges if e.get("type") == "VIOLATION"]
     # A use reached only through a re-export and a module-level variable live in the use file
     # (.wingbox/index.uses.sexp), which entity and usages read; module queries never need them.
+    # A generation link to a file outside the graph and a path a link names in vain are no edges between
+    # modules: they are written in a section of their own, after the edges.
+    generation_facts = [e for e in edges if e.get("type") in ("GENERATED_FILE", "GENERATION_UNRESOLVED")]
     real_edges = [
         e for e in edges
         if e.get("type") != "VIOLATION"
+        and e.get("type") not in ("GENERATED_FILE", "GENERATION_UNRESOLVED")
         and not (e.get("type") == "REFERENCES" and "reexport" in e.get("relations", []))
     ]
 
@@ -3727,6 +3826,24 @@ def render_sexp(
             client = edge.get("client_entity", "")
             client_str = f" :client {client}" if client else ""
             lines.append(f"(http-calls {src} {tgt} :transport http{client_str})")
+        elif etype == "GENERATED":
+            lines.append(f"(generated {src} {tgt} :{edge['role']} :{edge['basis']})")
+        elif etype == "RUNS":
+            fl = edge.get("from_lines", [])
+            lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
+            lines.append(f"(runs {src} {tgt} :{edge['basis']}{lns})")
+
+    if generation_facts:
+        lines.append("")
+        lines.append("; --- generation ---")
+        for edge in sorted(generation_facts, key=lambda e: (e["type"], e["source"], e["file"], e["role"])):
+            if edge["type"] == "GENERATED_FILE":
+                lines.append(f'(generated-file {_pid(edge["source"])} "{_sexp_escape(edge["file"])}" :{edge["role"]} :{edge["basis"]})')
+            else:
+                lines.append(
+                    f'(generation-unresolved "{_sexp_escape(edge["file"])}" :role {edge["role"]} :{edge["basis"]} '
+                    f':stated "{_sexp_escape(edge["evidence"])}")'
+                )
 
     # -- Architecture: parts, their rules, and the layer of every module --
     if architecture is not None:

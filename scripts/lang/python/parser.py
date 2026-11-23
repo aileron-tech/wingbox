@@ -13,7 +13,7 @@ from ..interface import (
     RegistryCallPayload,
     UsePayload,
 )
-from .dynamic import find_module_loads, find_registry_calls
+from .dynamic import find_launches, find_module_loads, find_registry_calls
 from ..purpose import infer_purpose
 from ..source import add_import_line, detect_naming, file_hash
 from .symbols import module_bindings, module_variables, use_sites
@@ -39,6 +39,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     uses: list[UsePayload] = []
     module_loads: list[ModuleLoadPayload] = []
     registry_calls: list[RegistryCallPayload] = []
+    launches: list[dict] = []
     validation = ""
 
     try:
@@ -91,6 +92,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         literal_imports, module_loads = find_module_loads(tree, module_of_name, index)
         imports.extend(literal_imports)
         registry_calls = find_registry_calls(tree, import_targets, index)
+        launches = find_launches(tree, module_of_name, index)
 
         # Entities remain top-level so nested functions do not become modules.
         for node in ast.iter_child_nodes(tree):
@@ -186,6 +188,7 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         uses=uses,
         module_loads=module_loads,
         registry_calls=registry_calls,
+        launches=launches,
         validation_evidence=validation,
     )
 

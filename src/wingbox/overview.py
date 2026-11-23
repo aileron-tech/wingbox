@@ -113,6 +113,9 @@ class Overview:
     pattern_breaks: tuple[CapabilityInfo, ...] = ()      # pattern checks of the style the code does not follow
     skipped_languages: tuple[tuple[str, str, int], ...] = ()   # (display name, language, files) the build left out
     not_parsed: tuple[tuple[str, int], ...] = ()   # (language, files) of languages Wingbox has no parser for
+    # Links no import states: (declared, inferred) generated files, launched scripts, includes found by
+    # inference, and the paths a generation link names that the repository does not hold.
+    generation: tuple[int, int, int, int, int] = (0, 0, 0, 0, 0)
 
 
 def _layer_rank(layer: str) -> int:
@@ -250,6 +253,7 @@ def build_overview(graph: Any, search: Any, project: str, advice: Any = None) ->
             for item in advice_items
         ),
         quiet_parts=tuple(quiet_parts),
+        generation=_generation_counts(graph),
         not_checked=tuple(
             (item.part, search.not_checked_text(item, "`"), item.count)
             for item in search.not_checked_parts(graph, set(graph.nodes))
@@ -435,6 +439,21 @@ def _recommendations(view: Overview) -> list[str]:
     return lines
 
 
+def _generation_counts(graph: Any) -> tuple[int, int, int, int, int]:
+    """(declared generation links, inferred ones, launch links, inferred includes, unresolved paths) of a graph."""
+    generated = [edge for edge in graph.all_edges if edge.etype == "generated"]
+    files = [flags for links in getattr(graph, "generated_from_files", {}).values() for _module, flags in links]
+    declared = sum(1 for edge in generated if ":declared" in edge.flags) + sum(1 for flags in files if ":declared" in flags)
+    inferred = len(generated) + len(files) - declared
+    return (
+        declared,
+        inferred,
+        sum(1 for edge in graph.all_edges if edge.etype == "runs"),
+        sum(1 for edge in graph.all_edges if edge.etype == "imports" and ":inferred" in edge.flags),
+        len(getattr(graph, "generation_unresolved", ())),
+    )
+
+
 _SKIPPED_FACT = re.compile(r"^\(skipped-language (\S+) :files (\d+) ")
 
 
@@ -482,6 +501,18 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
             f"- Not in this graph: {listed}. Wingbox has no parser for these languages: what depends on such a "
             "file, and what it depends on, is not known here."
         )
+    declared, inferred, launches, inferred_includes, unresolved = view.generation
+    if declared or inferred or launches or inferred_includes or unresolved:
+        parts = []
+        if declared or inferred:
+            parts.append(f"{_plural(declared + inferred, 'generation link')} ({_number(declared)} declared, {_number(inferred)} inferred)")
+        if launches:
+            parts.append(f"{_plural(launches, 'launch link')} (inferred)")
+        if inferred_includes:
+            parts.append(f"{_plural(inferred_includes, 'include')} found without a compilation database (inferred)")
+        if unresolved:
+            parts.append(f"{_plural(unresolved, 'path')} of a generation link not found (unresolved)")
+        lines.append("- Links that no import states: " + "; ".join(parts) + ". `wingbox impact` marks each such row with its basis.")
     lines += [
         f"- Not checked: part {_code(part)} - {reason}; {_plural(count, 'file')} without a boundary check."
         for part, reason, count in view.not_checked

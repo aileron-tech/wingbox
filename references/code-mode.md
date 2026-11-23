@@ -22,7 +22,7 @@ Object.fromEntries(answer.impact.map(a => [a.file, a.error ?? a.rows.map(r => r.
 ```
 
 An array inside `` $`...` `` becomes separate arguments. Each row also says why it is listed: `via`,
-`through`, `reasons`. A file that is not in the graph has `error` in place of `rows`. A call that fails
+`through`, `reasons`, and `basis` when the edge is declared or inferred. A file that is not in the graph has `error` in place of `rows`. A call that fails
 as a whole (no graph in the folder, an argument that is not valid) answers
 `{"error": {"code", "message"}}`.
 

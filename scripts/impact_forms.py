@@ -15,8 +15,9 @@ The compact form names each thing once:
 
 One form per asked file. Rows are grouped by depth and, below depth 1, by the file they are reached
 through. A bare path is a plain import; a path is followed by `:via <relation>` when the relation is
-not an import, `:more N` when it depends on N other files of the previous depth too, and the lists
-that say which names it takes. A name that matches nothing gives `(error no-match <file> ...)` in its
+not an import, `:more N` when it depends on N other files of the previous depth too, `:basis declared`
+or `:basis inferred` when the source text does not state the edge, and the lists that say which names
+it takes. A name that matches nothing gives `(error no-match <file> ...)` in its
 place; a file of the repository that is not in the graph gives `(error not-in-graph <file> :reason ...)`.
 
 Pure functions: values in, text out.
@@ -58,6 +59,10 @@ class ImpactLine:
     more: int                 # other files of the previous depth it depends on as well
     reasons: tuple[str, ...]  # the name lists of the edge as the graph facts carry them: (:use A B)
     text: str                 # the same reason in words
+    # What the edge rests on: "" when the source text states it (an import, an include found by the rules
+    # of the language), `declared` (the config file), `inferred` (a marker, a build file, a launch call, an
+    # include found without the folders the compiler was given).
+    basis: str = ""
 
 
 @dataclass(frozen=True)
@@ -127,6 +132,8 @@ def _row(line: ImpactLine) -> str:
         parts.append(f":via {line.via}")
     if line.more:
         parts.append(f":more {line.more}")
+    if line.basis:
+        parts.append(f":basis {line.basis}")
     parts.extend(line.reasons)
     return " ".join(parts)
 
@@ -166,7 +173,7 @@ def impact_sexp(answers: Sequence[ImpactAnswer], header: Optional[GraphHeader]) 
 
 
 def _row_json(line: ImpactLine, depth: int) -> dict[str, Any]:
-    return {
+    row: dict[str, Any] = {
         "file": line.file,
         "depth": depth,
         "via": line.via,
@@ -174,6 +181,10 @@ def _row_json(line: ImpactLine, depth: int) -> dict[str, Any]:
         "more": line.more,
         "reasons": [route_json(items) for items in (split_fact(reason) or [] for reason in line.reasons) if items],
     }
+    if line.basis:
+        # Only for an edge the source text does not state: the rows of every other edge keep their six keys.
+        row["basis"] = line.basis
+    return row
 
 
 def answer_json(answer: ImpactAnswer) -> dict[str, Any]:

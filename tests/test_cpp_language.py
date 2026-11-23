@@ -103,7 +103,7 @@ class CppParserTest(unittest.TestCase):
         return parse_cpp(str(path), content, root.name, path.stat().st_mtime)
 
     def test_a_header_gives_its_includes_types_functions_and_macros(self) -> None:
-        """/* REQ-CPP-001: a C++ header gives its includes as written, quoted ones plain and angle ones in their brackets, also inside a conditional block, each with its line; classes with their methods and base classes, structs, enums, type aliases, function declarations inside namespaces and macros that have a value; an include guard and `#pragma once` give nothing. */"""
+        """/* REQ-CPP-001: a C++ header gives its includes as written, quoted ones plain and angle ones in their brackets, also inside a conditional block, each with its line; classes with their methods and base classes, structs, enums, type aliases, function declarations inside namespaces and macros that have a value; an include guard and `#pragma once` give nothing, and a class with a pure virtual method is not reported as an interface with providers: the dependencies of C and C++ files are their includes. */"""
         with tempfile.TemporaryDirectory() as directory:
             result = self._parse(Path(directory), "render/painter.h", HEADER)
         entities = {entity["name"]: entity for entity in result.entities}
@@ -119,7 +119,7 @@ class CppParserTest(unittest.TestCase):
         self.assertEqual("function", entities["blend"]["kind"])
         self.assertEqual("function", entities["CLAMP"]["kind"])
         self.assertEqual("function", entities["MAX_LAYERS"]["kind"])
-        self.assertEqual(["Painter"], result.exports_abstract)
+        self.assertEqual([], result.exports_abstract)
         self.assertEqual(["core::Shape", "Loggable"], result.extends)
 
     def test_a_source_file_gives_its_function_definitions(self) -> None:
@@ -260,6 +260,19 @@ class CppIncludeTest(unittest.TestCase):
             },
             rows,
         )
+
+    def test_a_base_class_adds_no_dependency_beyond_the_include(self) -> None:
+        """/* REQ-CPP-013: a class that derives from a class of another file depends on that file through its include only: a file that names a base class it does not include (a class of the same name declared elsewhere) gets no edge, and the graph of C and C++ files has no edge kind but the includes. */"""
+        _write(self.root, {
+            "shapes/shape.h": "class Shape { public: virtual int area() const = 0; };\n",
+            "shapes/square.h": '#include "shape.h"\nclass Square : public Shape { public: int area() const override; };\n',
+            "other/round.h": "class Shape;\nclass Round : public Shape { public: int area() const; };\n",
+        })
+        results = [parse_file((str(self.root / name), "cpp", "fixture")) for name in ("shapes/shape.h", "shapes/square.h", "other/round.h")]
+        graph = build_graph(results, str(self.root))
+        self.assertIsInstance(graph, Ok)
+        module_edges = {(edge["source"], edge["target"], edge["type"]) for edge in graph.value.edges if "::" not in edge["target"]}
+        self.assertEqual({("shapes/square.h", "shapes/shape.h", "IMPORTS")}, module_edges)
 
 
 USAGE_FILES = {

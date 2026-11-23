@@ -73,11 +73,13 @@ class OutsideTheGraphTest(unittest.TestCase):
         self.assertIn('(error not-in-graph build/made.py :reason excluded :language "Python")', _run(self.root, "impact", "build/made.py").stdout)
 
     def test_the_other_file_commands_give_the_same_answer(self) -> None:
-        """/* REQ-CS-148: `analyze`, `deps`, `rdeps` and `module` of a file of the repository that is not in the graph print the same `not-in-graph` fact instead of `no-match` with files of similar names. */"""
+        """/* REQ-CS-148: `analyze`, `deps`, `rdeps` and `module` of a file of the repository that is not in the graph print the same `not-in-graph` fact instead of `no-match` with files of similar names; the path of a file that is a module of the graph never gives `not-in-graph`. */"""
         for command in ("analyze", "deps", "rdeps", "module"):
             with self.subTest(command=command):
                 answer = _run(self.root, command, "cmake/flags.cmake").stdout
                 self.assertIn('(error not-in-graph cmake/flags.cmake :reason not-parsed-language :language "CMake")', answer)
+                # A file that is in the graph is never said to be outside it, also when the command wants its module ID.
+                self.assertNotIn("not-in-graph", _run(self.root, command, "depot/shelf.py").stdout)
 
     def test_the_build_counts_the_files_it_has_no_parser_for(self) -> None:
         """/* REQ-CS-149: a build counts the files of languages it has no parser for, per language, most files first: it prints the count, writes `(not-parsed-language "CMake" :files 2)` lines to `.wingbox/graph-unparsed.sexp`, and the graph fact of an `impact` answer carries `:not-parsed ("CMake" 2 "Shell" 1)`, `graph.not_parsed` in JSON. Files in skipped folders are not counted, documents and data files are not languages, and a repository without such files has no record and no `:not-parsed`. */"""

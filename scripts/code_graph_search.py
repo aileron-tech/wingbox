@@ -204,7 +204,7 @@ class EntityFact:
 # file. It is read as no mark, so no answer states validation on that ground.
 _RETIRED_VALIDATION_MARK = ":validated"
 # Edge facts of the code graph; every kind except a pipeline data-flow is a dependency of its source.
-_EDGE_KINDS = ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls", "registry-wires")
+_EDGE_KINDS = ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls", "registry-wires", "generated", "runs")
 
 
 @dataclass(frozen=True)
@@ -563,6 +563,10 @@ def outside_graph(g: CodeGraph, target: str) -> Optional[OutsideGraph]:
     relative = portable.relative_posix(absolute, g._root)
     if relative is None:
         return None
+    if _impact_target_modules(g, relative, _target_to_module_pattern(relative, g._root)):
+        # The file is a module of the graph under its module ID: a command that takes IDs did not find
+        # it by its path. That is a name that matches nothing, not a file outside the graph.
+        return None
     name = os.path.basename(absolute)
     parsed = source_kinds.parsed_language(name)
     if parsed is not None:
@@ -673,6 +677,10 @@ class CodeGraph:
         self.pmap: dict[str, str] = {}
         self.package_layers: dict[str, str] = {}  # Python package __init__ -> layer of its package
         self.arch_parts: dict[str, dict[str, str]] = {}   # part -> keyword values of its arch-part fact
+        # A file of the repository outside the graph -> the generated modules that depend on it, with the marks
+        # of the fact (:by or :from, :declared or :inferred); and the paths a generation link names in vain.
+        self.generated_from_files: dict[str, list[tuple[str, list[str]]]] = {}
+        self.generation_unresolved: list[tuple[str, dict[str, str], list[str]]] = []
         self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
         self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
         self.entry_roots: dict[str, bool] = {}   # module -> nothing imports it and it imports a composition root
@@ -721,6 +729,8 @@ class CodeGraph:
         self.pmap = {}
         self.package_layers = {}
         self.arch_parts = {}
+        self.generated_from_files = {}
+        self.generation_unresolved = []
         self.arch_denies = {}
         self.candidate_rules = set()
         self.entry_roots = {}
@@ -916,6 +926,12 @@ class CodeGraph:
                         ent_name = part.split("::", 1)[1]
                         self.edges_by_entity_name.setdefault(ent_name, []).append(edge)
 
+            elif kind == "generated-file" and len(tokens) >= 3:
+                # A generated file depends on a file of the repository that is not in the graph (a schema, a template).
+                flags = [token for token in tokens[3:] if token.startswith(":")]
+                self.generated_from_files.setdefault(tokens[2], []).append((_resolve(tokens[1]), flags))
+            elif kind == "generation-unresolved" and len(tokens) >= 2:
+                self.generation_unresolved.append((tokens[1], _keywords(tokens[2:]), [t for t in tokens[2:] if t in (":declared", ":inferred")]))
             elif kind == "arch-part" and len(tokens) >= 2:
                 self.arch_parts[tokens[1]] = _keywords(tokens[2:])
             elif kind == "arch-deny" and len(tokens) >= 5:
@@ -1503,6 +1519,7 @@ class ImpactRow:
     through: str
     more: int
     names: tuple[NameRoute, ...]
+    basis: str = ""   # declared or inferred; "" for an edge the source text states
 
 
 def _impact_rows(g: CodeGraph, start: str, max_depth: int) -> list[list[ImpactRow]]:
@@ -1520,10 +1537,27 @@ def _impact_rows(g: CodeGraph, start: str, max_depth: int) -> list[list[ImpactRo
             through, edge_type = reached[module][0]
             names = next((edge.names for edge in g.edges_to.get(through, ())
                           if edge.etype == "imports" and edge.source.split("::")[0] == module and edge.names), ())
-            level_rows.append(ImpactRow(module, edge_type, through, len(reached[module]) - 1, names if edge_type == "imports" else ()))
+            level_rows.append(ImpactRow(
+                module, edge_type, through, len(reached[module]) - 1, names if edge_type == "imports" else (),
+                _edge_basis(g, module, through, edge_type),
+            ))
         rows.append(level_rows)
         previous = [module for module, _edge_type in level]
     return rows
+
+
+def _flags_basis(flags: Sequence[str]) -> str:
+    return "declared" if ":declared" in flags else "inferred" if ":inferred" in flags else ""
+
+
+def _edge_basis(g: CodeGraph, module: str, through: str, edge_type: str) -> str:
+    """What the edge of module to through rests on: `declared` (the config file), `inferred` (a marker in a
+    generated file, a build file, a launch call, an include found without the compiler's folders), "" when
+    the source text states it."""
+    for edge in g.edges_to.get(through, ()):
+        if edge.etype == edge_type and edge.source.split("::")[0] == module:
+            return _flags_basis(edge.flags)
+    return ""
 
 
 _ROUTE_NAME_SEPARATOR = ", "
@@ -1548,13 +1582,18 @@ def _route_text(route: NameRoute) -> str:
     return f"uses {names}"
 
 
+_RELATION_WORDS = {"imports": "imports it", "generated": "is generated by it or from it", "runs": "runs it"}
+
+
 def impact_reason(g: CodeGraph, row: ImpactRow, depth: int) -> str:
     """Why a file is on the impact list, as one line of text: the relation of its edge and, below depth 1,
     the file it is reached through."""
     if row.names:
         relation = "; ".join(_route_text(route) for route in row.names)
     else:
-        relation = "imports it" if row.edge_type == "imports" else row.edge_type
+        relation = _RELATION_WORDS.get(row.edge_type, row.edge_type)
+    if row.basis:
+        relation += f" ({row.basis})"
     if depth == 1:
         return relation
     others = f" (or {row.more} other {'file' if row.more == 1 else 'files'})" if row.more else ""
@@ -1565,7 +1604,8 @@ def impact_fact(g: CodeGraph, root_id: str, row: ImpactRow, depth: int) -> str:
     through = f" :through {row.through}" if depth > 1 else ""
     more = f" :more {row.more}" if depth > 1 and row.more else ""
     names = "".join(f" {name_route_sexp(route)}" for route in row.names)
-    return f"(impact {root_id} {row.module} :lang {g.module_lang(row.module)} :via {row.edge_type} :depth {depth}{through}{more}{names})"
+    basis = f" :basis {row.basis}" if row.basis else ""
+    return f"(impact {root_id} {row.module} :lang {g.module_lang(row.module)} :via {row.edge_type} :depth {depth}{through}{more}{basis}{names})"
 
 
 def _impact_file(g: CodeGraph, module_id: str) -> str:
@@ -1786,6 +1826,8 @@ def impact_answer(g: CodeGraph, target: str, max_depth: int, advice: Optional[Se
     matches = _impact_target_modules(g, target, pattern)
     if not matches:
         outside = outside_graph(g, target)
+        if outside is not None and outside.file in g.generated_from_files:
+            return _generation_input_answer(g, outside.file, max_depth)
         if outside is not None:
             return impact_forms.ImpactMissing(outside.file, (), outside.text, outside.reason, outside.language)
         suggestions = CodeGraph._suggest_similar(pattern, g.nodes)
@@ -1801,6 +1843,7 @@ def impact_answer(g: CodeGraph, target: str, max_depth: int, advice: Optional[Se
                 row.more if depth > 1 else 0,
                 tuple(name_route_sexp(route) for route in row.names),
                 impact_reason(g, row, depth),
+                row.basis,
             )
             for row in level
         )
@@ -1817,6 +1860,39 @@ def impact_answer(g: CodeGraph, target: str, max_depth: int, advice: Optional[Se
         f"Note: {len(matches)} modules match {pattern}; showing {root_id}. Others: {', '.join(others)}",
         said,
     )
+
+
+def _generation_input_answer(g: CodeGraph, file: str, max_depth: int) -> impact_forms.ImpactFound:
+    """The impact of a file that is not in the graph and that generated files are made from (a schema, a
+    template): at depth 1 the generated files and the generators that read it, below them what depends on those."""
+    first: dict[str, impact_forms.ImpactLine] = {}
+    for module, flags in sorted(g.generated_from_files[file]):
+        basis = _flags_basis(flags)
+        first.setdefault(module, impact_forms.ImpactLine(
+            _impact_file(g, module), "generated", "", 0, (), f"is generated from it ({basis})" if basis else "is generated from it", basis))
+        for edge in g.edges_from.get(module, ()):
+            if edge.etype == "generated" and ":by" in edge.flags:
+                generator = edge.target.split("::")[0]
+                first.setdefault(generator, impact_forms.ImpactLine(
+                    _impact_file(g, generator), "reads", "", 0, (), f"generates {_impact_file(g, module)} from it ({basis})", basis))
+    levels: list[list[impact_forms.ImpactLine]] = [list(first.values())]
+    seen = set(first)
+    frontier = list(first)
+    for depth in range(2, max_depth + 1):
+        level: list[impact_forms.ImpactLine] = []
+        for through in frontier:
+            for row in (_impact_rows(g, through, 1) or [[]])[0]:
+                if row.module not in seen:
+                    seen.add(row.module)
+                    level.append(impact_forms.ImpactLine(
+                        _impact_file(g, row.module), row.edge_type, _impact_file(g, through), 0,
+                        tuple(name_route_sexp(route) for route in row.names), impact_reason(g, row, depth), row.basis))
+        if not level:
+            break
+        levels.append(level)
+        frontier = [module for module in seen if _impact_file(g, module) in {line.file for line in level}]
+    read_first = tuple(dict.fromkeys([file] + [line.file for line in levels[0]]))
+    return impact_forms.ImpactFound(file, max_depth, tuple(tuple(level) for level in levels), read_first)
 
 
 def graph_header(g: CodeGraph, stale: Optional[int]) -> impact_forms.GraphHeader:
