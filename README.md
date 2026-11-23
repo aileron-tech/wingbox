@@ -507,7 +507,7 @@ repository that is not in the graph `(error not-in-graph <file> :reason ...)`
 ([What the graph does not cover](#what-the-graph-does-not-cover)), and the other
 files are still answered.
 
-Three options narrow or widen what `impact` answers:
+Four options narrow or widen what `impact` answers:
 
 - `wingbox impact <file> ... --only tests` keeps the dependents that are test
   files: the tests to run for the change. `:direct` and `:total` count them and
@@ -524,6 +524,22 @@ Three options narrow or widen what `impact` answers:
   that use it through the declaration in its header are included. Both options
   go together: `wingbox impact --diff --only tests`, where each changed
   function also names the CMake targets and tests of the files that use it.
+- `wingbox impact <file> ... --summary` answers in a few lines where the
+  complete list has hundreds: the number of dependents at each depth and of
+  each kind (made from the file or started by it, test files, entry points,
+  which nothing else depends on, and the others), the eight folders with the
+  most of them, twenty files to look at first, and the command that prints
+  the complete list. It goes with `--only tests`, `--diff`, `--json` and
+  `--human`:
+
+  ```text
+  (impact-summary core/base.py :direct 39 :total 40 :depth 2
+   (depths 39 1)
+   (kinds :generated 1 :tests 6 :entry-points 3 :other 30)
+   (folders (services 30) (tests 6) (. 2) (core 1) (jobs 1))
+   (first core/table.py run_export.py run_report.py tests/test_part0.py ... :more 20)
+   (full "wingbox impact core/base.py 2"))
+  ```
 - A C or C++ source file is answered through its header, see
   [C and C++ dependency search](#c-and-c-dependency-search).
 
@@ -1335,7 +1351,7 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 | `search_source` | The lines of the source files of the graph that hold a text, with file and line; in all files or those whose path matches, 200 matches a call (`pattern`, `path`, `first`) | `grep` |
 | `find_definitions` | Where a function, type or constant is defined; `name` may be a pattern with `.*` (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
 | `find_usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
-| `analyze_impact` | What a change to one file or to several reaches, as S-expressions (`target` or `targets`, `depth`, `only` `tests` for the test files alone) | `impact` |
+| `analyze_impact` | What a change to one file or to several reaches, as S-expressions (`target` or `targets`, `depth`, `only` `tests` for the test files alone, `summary` for counts and the first files in place of the list) | `impact` |
 | `list_dependencies` | What a module uses or who uses it, hop by hop (`module`, `direction`: out, in; `depth`) | `deps`, `rdeps` |
 | `trace_calls` | Who calls a function, what it calls, or a call path to another one (`function`, `direction`: in, out; `to`; `depth`) | `find_callers`, `find_calls`, `find_callchain` |
 | `list_layers` | The modules by architecture layer | `layers` |

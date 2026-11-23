@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- `wingbox impact <file> --summary` answers in a few lines for a file with hundreds of dependents:
+  the counts by depth and by kind (generated, tests, entry points, others), the folders with the
+  most of them, twenty files to look at first and the command of the complete list. It goes with
+  `--only tests`, `--diff`, `--json` and `--human`. The MCP tool `analyze_impact` takes `summary`;
+  the tool list is unchanged.
+
+### Fixes
+
+- The MCP tool `analyze_impact` with `only` set to `tests` answered `unknown option --only` in
+  0.18.0: the server checked the call as a command line that knew no such option. The command
+  line was not affected.
+
 ## 0.18.0 - 2026-11-23
 
 ### Changes

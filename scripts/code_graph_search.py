@@ -1945,8 +1945,20 @@ def _affected_build(g: CodeGraph, modules: set[str]) -> Optional[impact_forms.Af
     return impact_forms.Affected(tuple(targets), tuple(tests))
 
 
+_GENERATION_RELATIONS = frozenset({"generated", "runs", "reads"})
+
+
+def _dependent_kind(g: CodeGraph, row: ImpactRow) -> str:
+    """The kind `impact --summary` counts a dependent under."""
+    if row.edge_type in _GENERATION_RELATIONS:
+        return "generated"
+    if module_layer(g, row.module) == "test":
+        return "test"
+    return "other" if _collect_rdep_mods(g, row.module) else "entry-point"
+
+
 def impact_answer(
-    g: CodeGraph, target: str, max_depth: int, advice: Optional[Sequence] = None, only: str = "",
+    g: CodeGraph, target: str, max_depth: int, advice: Optional[Sequence] = None, only: str = "", kinds: bool = False,
 ) -> impact_forms.ImpactAnswer:
     """What depends on a file or module, complete: every dependent by depth with the reason it is listed, the
     files to read first and the advice that concerns the file; or that the file is not in the graph.
@@ -1977,6 +1989,7 @@ def impact_answer(
                 tuple(name_route_sexp(route) for route in row.names),
                 impact_reason(g, row, depth),
                 row.basis,
+                _dependent_kind(g, row) if kinds else "",
             )
             for row in level
         )
@@ -2102,19 +2115,45 @@ def impact_document(
     return _impact_status(answers), impact_forms.impact_json(answers, graph_header(g, stale), changed)
 
 
-def _impact_answers(g: CodeGraph, targets: Sequence[str], max_depth: int, only: str = "") -> list[impact_forms.ImpactAnswer]:
+def _impact_answers(
+    g: CodeGraph, targets: Sequence[str], max_depth: int, only: str = "", kinds: bool = False,
+) -> list[impact_forms.ImpactAnswer]:
     # The advice of the graph is worked out once for a call with several files.
     advice = advice_items(g)[0] if len(targets) > 1 else None
-    return [impact_answer(g, target, max_depth, advice, only) for target in targets]
+    return [impact_answer(g, target, max_depth, advice, only, kinds) for target in targets]
 
 
-def impact_options(args: Sequence[str]) -> Union[str, tuple[list[str], str, Optional[str]]]:
-    """(the other arguments, the value of --only, the ref of --diff or None) of an `impact` call; a
-    string when an option is written wrongly. `--only tests`; `--diff [ref]`, the ref HEAD when the word
-    after it is another option, a whole number (the depth) or missing."""
+def cmd_impact_summary(
+    g: CodeGraph, targets: Sequence[str], max_depth: int = 2, form: str = "sexp", stale: Optional[int] = None,
+    only: str = "", changed: Optional[Sequence[impact_forms.Changed]] = None,
+) -> tuple[int, Optional[dict]]:
+    """`impact --summary`: per file the counts of its dependents and the few to look at first, in place of
+    the complete list. Prints the compact form or the text; returns (exit status, the JSON document or None)."""
+    answers = _impact_answers(g, targets, max_depth, only, kinds=True)
+    header = graph_header(g, stale)
+    if form == "json":
+        return _impact_status(answers), impact_forms.summary_json(answers, header, changed)
+    if form == "human":
+        sys.stdout.write(impact_forms.summary_text(answers))
+        for item in changed or ():
+            print(f"  changed {item.symbol} (line {item.line}): used by {len(item.used_by)} "
+                  f"{'test files' if only else 'files'}"
+                  + (f"; tests to run: {len(item.affected.tests)}" if item.affected is not None else ""))
+    else:
+        sys.stdout.write(impact_forms.summary_sexp(answers, header if len(answers) > 1 or header.not_parsed else None))
+        for item in changed or ():
+            print(impact_forms.changed_summary_fact(item))
+    return _impact_status(answers), None
+
+
+def impact_options(args: Sequence[str]) -> Union[str, tuple[list[str], str, Optional[str], bool]]:
+    """(the other arguments, the value of --only, the ref of --diff or None, whether --summary was given) of
+    an `impact` call; a string when an option is written wrongly. `--only tests`; `--diff [ref]`, the ref
+    HEAD when the word after it is another option, a whole number (the depth) or missing."""
     rest: list[str] = []
     only = ""
     diff: Optional[str] = None
+    summary = False
     index = 0
     while index < len(args):
         argument = args[index]
@@ -2132,9 +2171,11 @@ def impact_options(args: Sequence[str]) -> Union[str, tuple[list[str], str, Opti
                 index += 1
             else:
                 diff = "HEAD"
+        elif argument == "--summary":
+            summary = True
         else:
             rest.append(argument)
-    return rest, only, diff
+    return rest, only, diff, summary
 
 
 def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[list[str], list[impact_forms.Changed]]]:
@@ -4920,10 +4961,18 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         if isinstance(pattern_result, SearchPatternErr):
             return f"invalid pattern {args[1]}: {pattern_result.error}"
 
+    if args[0] == "impact":
+        # The options of `impact` that are no form (--only, --diff, --summary) are read by impact_options;
+        # what is checked below is the rest. The MCP server checks its calls here too.
+        options = impact_options(args[1:])
+        if isinstance(options, str):
+            return options
+        args = ["impact", *options[0]]
+
     if args[0] in ("usages", "impact"):
         unknown = [argument for argument in args[1:] if argument.startswith("--")]
         if unknown:
-            more = ", --only tests and --diff [ref]" if args[0] == "impact" else ""
+            more = ", --only tests, --diff [ref] and --summary" if args[0] == "impact" else ""
             return f"unknown option {unknown[0]}: {args[0]} takes --human, --json, --sexp and --all{more}"
 
     if args[0] == "grep":
@@ -5061,13 +5110,16 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
     # form and JSON are complete.
     show_all = "--all" in args or form not in LIMITED_FORMS
     args = [argument for argument in args if argument != "--all"]
-    only, diff_ref = "", None
+    only, diff_ref, summary = "", None, False
     if args and args[0] == "impact":
         options = impact_options(args[1:])
         if isinstance(options, str):
             print(f"(error invalid-argument {_q(options)})")
             return 2, None
-        rest, only, diff_ref = options
+        rest, only, diff_ref, summary = options
+        if summary and form == "flat":
+            print(f"(error invalid-argument {_q('--summary has no --sexp form: use it alone, with --json or with --human')})")
+            return 2, None
         args = ["impact", *rest]
 
     # `impact --diff` names its files itself: it needs no file argument.
@@ -5103,12 +5155,16 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
                 return 0, impact_forms.impact_json([], graph_header(g, graph_stale), [])
             print(f"(impact-diff-empty {_q(diff_ref)})")
             return 0, None
+        if summary:
+            return cmd_impact_summary(g, targets, max_depth, form, graph_stale, only, changed)
         if form == "json":
             return impact_document(g, targets, max_depth, graph_stale, only, changed)
         return cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only, changed), None
     if cmd == "impact" and len(args) >= 2:
         targets, depth = impact_arguments(args[1:])
         max_depth = DEFAULT_IMPACT_DEPTH if depth is None else int(depth)
+        if summary:
+            return cmd_impact_summary(g, targets, max_depth, form, graph_stale, only)
         if form == "json":
             return impact_document(g, targets, max_depth, graph_stale, only)
         return cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only), None

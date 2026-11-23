@@ -627,6 +627,15 @@ source file stands `(impact-paired-header <file> <header>)` (the rows marked
 after `:used-by` under `--only tests` in a graph with build facts. The form is complete: nothing is cut.
 The `(advice ...)` facts that concern a file follow its form.
 
+`impact --summary` prints `(impact-summary <file> :direct N :total M :depth D
+[:only tests]` in place of that form: `(depths N ...)` the dependents at each
+depth, `(kinds :generated N :tests N :entry-points N :other N)`, `(folders
+(<folder> N) ... [:more N])` the eight folders with the most dependents,
+`(first <file> ... [:more N])` at most twenty files, `(build :targets N :tests
+M)` under `--only tests` in a graph with build facts, and `(full "<command>")`,
+the command of the complete list. With `--diff` each changed function is one
+`(changed-summary <file>::<name> :line N :used-by K [:targets T :tests M])`.
+
 `graph` says when the graph file was written (UTC), how many files it holds
 and how many changed files it is known to miss: 0 after the refresh that every
 query starts, the number of changed files with `WINGBOX_AUTO_REFRESH=0`, and

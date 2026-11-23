@@ -226,6 +226,46 @@ class ToolListTest(unittest.TestCase):
         self.assertIn("malformed expression", description)
         self.assertIn("error line", description)
 
+    def test_the_summary_of_an_impact_through_the_server(self) -> None:
+        """/* REQ-MCP-038: `analyze_impact` with `summary` true answers with the `(impact-summary ...)` form of
+        `wingbox impact --summary` (the counts, the folders, the first files and the command of the complete
+        list) and without the rows of the complete form; without `summary` the answer is the complete form. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [
+            _initialize(), _call(2, "build_graph", {}),
+            _call(3, "analyze_impact", {"target": "shop/pricing.py", "summary": True}),
+            _call(4, "analyze_impact", {"target": "shop/pricing.py"}),
+        ])
+        short = "\n".join(_texts(session.reply(3)))
+        self.assertFalse(session.reply(3)["result"]["isError"], short)
+        self.assertIn("(impact-summary shop/pricing.py :direct ", short)
+        self.assertIn("(kinds :generated ", short)
+        self.assertIn('(full "wingbox impact shop/pricing.py 2")', short)
+        self.assertNotIn("(read-first", short)
+        whole = "\n".join(_texts(session.reply(4)))
+        self.assertIn("(impact shop/pricing.py :direct ", whole)
+        self.assertNotIn("impact-summary", whole)
+
+    def test_the_tests_of_an_impact_through_the_server(self) -> None:
+        """/* REQ-MCP-039: `analyze_impact` with `only` set to `tests` answers with the form `wingbox impact
+        --only tests` prints (`:only tests`, the test files alone) and is no tool error; together with
+        `summary` true it answers with the short form of the test files. Version 0.18.0 refused the call:
+        the server checked the arguments as a command line that knows no `--only`. */"""
+        _make_shop(self.root)
+        session = McpSession(self.root, [
+            _initialize(), _call(2, "build_graph", {}),
+            _call(3, "analyze_impact", {"target": "shop/pricing.py", "only": "tests"}),
+            _call(4, "analyze_impact", {"target": "shop/pricing.py", "only": "tests", "summary": True}),
+            _call(5, "analyze_impact", {"target": "shop/pricing.py", "only": "all"}),
+        ])
+        tests = "\n".join(_texts(session.reply(3)))
+        self.assertFalse(session.reply(3)["result"]["isError"], tests)
+        self.assertRegex(tests, r"\(impact shop/pricing.py :direct \d+ :total \d+ :only tests")
+        short = "\n".join(_texts(session.reply(4)))
+        self.assertFalse(session.reply(4)["result"]["isError"], short)
+        self.assertRegex(short, r"\(impact-summary shop/pricing.py :direct \d+ :total \d+ :depth 2 :only tests")
+        self.assertNotIn(":only", "\n".join(_texts(session.reply(5))))
+
     def test_the_line_limit_of_read_source_is_the_one_of_the_command(self) -> None:
         """/* REQ-MCP-035: the number of lines the description of `read_source` names is the limit of the
         `source` command. */"""
