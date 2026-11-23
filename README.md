@@ -925,6 +925,19 @@ The extras `wingbox[csharp]`, `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]`,
 `wingbox add <language>` is kept for scripts written for version 0.12: it adds
 nothing and exits 0.
 
+To install only the parsers of the languages a repository holds, install the
+package without its dependencies and add them by hand, with the pins of
+`requirements/<language>.txt` (Python needs no parser):
+
+```bash
+pip install --no-deps wingbox
+pip install PyYAML==6.0.3 tree-sitter==0.25.2 tree-sitter-cpp==0.23.4   # a Python and C or C++ repository
+```
+
+A build then names every parser it lacks: files of C#, Java, Go, Ruby, PHP,
+Dart, C and C++ are skipped with the notice above, and for TypeScript,
+JavaScript or Rust files the build stops and names the package to add.
+
 ### Generated files and launched scripts
 
 Some dependencies are stated by no import: a file that a generator writes
@@ -1307,6 +1320,25 @@ Cursor, in `.cursor/mcp.json` of the project (or `~/.cursor/mcp.json`):
   }
 }
 ```
+
+OpenCode, in `opencode.jsonc` of the project (run with OpenCode 1.2.10:
+`opencode mcp list` answers "wingbox connected"; a later version of its
+documentation puts the same entry under `mcp.servers`):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "wingbox": {
+      "type": "local",
+      "command": ["wingbox", "mcp", "--build-missing"]
+    }
+  }
+}
+```
+
+OpenCode reads the `AGENTS.md` of the project: say there when to ask the graph
+(`SAMPLE_AGENTS.md` of this repository is a text to start from).
 
 Claude Desktop, in
 `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.

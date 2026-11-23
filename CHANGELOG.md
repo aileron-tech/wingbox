@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.17.0 - 2026-11-23
 
 ### Changes
 
@@ -45,6 +45,8 @@
   compact form; a row of an edge the code states is unchanged. A C or C++ include found through the CMake files or by the end of its path is
   `inferred`; one found beside the file or through `compile_commands.json` is `source`. A repository with
   generated files or launch calls gets more dependents in `impact`, `rdeps` and `analyze`.
+- The README shows how to install only the parsers a repository needs (`pip install --no-deps
+  wingbox` and the pinned parsers), and the configuration for OpenCode.
 
 ## 0.16.1 - 2026-11-23
 
