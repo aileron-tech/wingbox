@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-23 - Release 0.19.0
+
+### Changes
+- Version 0.19.0, core and `packages/wingbox-http` (REQ-HTTP-021); the map-request workflow builds with it. A minor version: new options (`impact --summary`, `init --from-folders`) and a new key of the config file (`order`).
+- In it: `impact --summary` and the fix of the MCP call with `only` `tests` (#197); layers a project names itself, `wingbox init --from-folders`, and parts of C and C++ files (#198).
+- `README.md`: two rows in the table of common searches.
+
+### Motivation
+- Issue #188. Two proposals of the report were left out of 0.18.0 on the implementer's own judgement and reported as "not added" and "not done"; the maintainer had asked for every point. Both are in this version. Two faults of 0.18.0 found on the way are fixed with it: the MCP tool `analyze_impact` refused `only` `tests`, and a part of only C or C++ files was dropped at the build.
+
+### Still open from the report
+- Language extras (point 4): waits for the maintainer's decision, because offering them means that a plain install no longer brings the parsers.
+- A benchmark of agents on multi-step tasks (point 6): in work; its numbers go to the maintainer before they are published.
+
 ## 2026-11-23 - Layers a project names itself; wingbox init --from-folders (#188)
 
 ### Why

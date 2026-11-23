@@ -1545,6 +1545,7 @@ anything.
 | See what a change will break | `impact path/to/file.py` |
 | The same for several files in one call | `impact path/to/a.py path/to/b.py 2` |
 | The tests to run for a change, with the CMake targets and tests it reaches | `impact path/to/file.cpp --only tests` |
+| A few lines in place of a list of hundreds of dependents | `impact path/to/file.h --summary` |
 | What the changes of the working tree or of a branch reach | `impact --diff`, `impact --diff main --only tests` |
 | Find every use of one symbol | `usages path/to/file.py::create_order` |
 | Measure blast radius as a tree | `rdeps path/to/module 2` |
@@ -1566,6 +1567,7 @@ anything.
 | Gate on the layer rules: one result line, exit 0 pass, 1 violation, 2 not fully checked, 3 no readable graph | `boundaries all --strict` |
 | Show the layer of every module with its style and rule | `layers` |
 | Files that depend on each other, hubs and the order of the folders, with no layer style | `cycles`, `cycles src` |
+| Layer rules for a repository that fits no style, from the order of its folders | `wingbox init --from-folders .` |
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |
 
