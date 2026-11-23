@@ -4160,20 +4160,12 @@ def _modified_since(result: FileResult) -> bool:
         return True
 
 
-def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
-    """Fill the use file of a built graph with every use position; Err with the reason when it cannot.
-
-    The build parses only the uses that can name another file. The first query that needs positions
-    (usages, entity --positions) calls this. It reads the build cache and the walk cache
-    (.wingbox/index.uses-cache.json): a file whose content hash is in the walk cache is not walked again
-    and, while the surface of the repository is the same, not resolved again either. The other files
-    are walked in parallel and resolved; the use file is rewritten with positions and keeps its key,
-    so the next build without changes keeps the positions.
-    """
-    root = os.path.realpath(root)  # the build keys modules by real paths
-    path = uses_path(map_path)
+def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, list[FileResult]], str]:
+    """(the text of the graph, the key of its use file, the builder fingerprint, the parse results of the
+    build cache) for filling use positions; Err with the reason when the use file, the graph and the cache
+    do not belong together."""
     try:
-        with open(path, "r", encoding="utf-8") as uses_file:
+        with open(uses_path(map_path), "r", encoding="utf-8") as uses_file:
             header = next((line for line in uses_file if line.startswith("(code-graph-uses ")), "")
         with open(map_path, "r", encoding="utf-8") as graph_file:
             graph_text = graph_file.read()
@@ -4197,6 +4189,140 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
     fingerprint = str(cache.get("builder_fingerprint", ""))
     if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1)) != key_match.group(1):
         return Err("the build cache does not match the code graph")
+    return Ok((graph_text, key_match.group(1), fingerprint, results))
+
+
+def use_position_lines(map_path: str, root: str, name: str) -> Result[list[str], str]:
+    """The use lines with positions of the files that write name, for one question about that name while
+    the use file has no positions yet.
+
+    write_use_positions walks every file of the repository, which takes about as long as the build. A
+    question about one name needs the files that use it, and a file that uses a name holds it as text:
+    only those files are walked and resolved, and nothing is written. The lines are the ones the full
+    fill writes for these files.
+    """
+    root = os.path.realpath(root)
+    inputs = _position_inputs(map_path, root)
+    if isinstance(inputs, Err):
+        return inputs
+    _graph_text, _key, _fingerprint, results = inputs.value
+    wanted = name.encode("utf-8")
+    candidates: list[FileResult] = []
+    for result in results:
+        if not supports_symbols(result.language):
+            continue
+        try:
+            with open(result.path, "rb") as source_file:
+                data = source_file.read()
+        except OSError as error:
+            return Err(f"cannot read {result.path}: {error}")
+        if wanted in data:
+            if hashlib.sha256(data).hexdigest() != result.content_hash:
+                return Err(f"{result.path} changed since the build")
+            candidates.append(result)
+    # A language whose build walk is already the full one is not walked again: its uses are in the cache.
+    walked = dict(map(_position_uses, [
+        (result.path, result.language) for result in candidates if result.language not in _FULL_WALK_LANGUAGES]))
+    with_uses = [dataclasses.replace(result, uses=walked[result.path]) if result.path in walked else result for result in results]
+    index_result = _build_node_indexes(with_uses, root)
+    if isinstance(index_result, Err):
+        return Err("module ID collision")
+    path_to_id, id_to_result = index_result.value
+    _sorted_nodes, path_to_sid = _path_ids([{"id": node_id, "repo": result.repo} for node_id, result in id_to_result.items()])
+    bound = _LazyBoundLanguages(root, path_to_id)
+    imports: dict[str, Optional[str]] = {}
+
+    def resolve_import(language: str, spec: str, source: str) -> Optional[str]:
+        import_key = f"{language}\0{spec}\0{source}"
+        if import_key not in imports:
+            imports[import_key] = bound[language_for_result(language).name].resolve_import(spec, source)
+        return imports[import_key]
+
+    id_of = {result.path: node_id for node_id, result in id_to_result.items()}
+    chosen = frozenset(id_of[result.path] for result in candidates)
+    resolved, unresolved = _resolve_symbol_uses(id_to_result, bound, resolve_import, chosen)
+    lines: list[str] = []
+    for node_id in sorted(chosen):
+        node: dict[str, Any] = {"id": node_id, "entities": id_to_result[node_id].entities, "uses": resolved.get(node_id, [])}
+        if node_id in unresolved:
+            node["unresolved_method_calls"] = unresolved[node_id]
+        lines.extend(_use_block(node, path_to_sid, positions=True))
+    return Ok(lines)
+
+
+# C and C++: the build reads every use site of a file (an include puts every name in scope, so none can be
+# left out as unable to name another file). Filling positions takes them from the build cache.
+_FULL_WALK_LANGUAGES = frozenset({"cpp", "c"})
+POSITIONS_LOCK = "positions.lock"
+# A fill that left its lock behind (a killed process) stops holding others back after this many seconds.
+_POSITIONS_LOCK_SECONDS = 900
+
+
+def start_position_fill(map_path: str, root: str) -> bool:
+    """Start write_use_positions in a process of its own and return at once; False when one is running, the
+    environment says no (WINGBOX_POSITIONS_FILL=0) or the process cannot be started.
+
+    The first question about a name is answered from the few files that hold it (use_position_lines); this
+    fills the whole use file meanwhile, so that later questions read it and walk nothing.
+    """
+    if os.environ.get("WINGBOX_POSITIONS_FILL", "1") == "0":
+        return False
+    lock = os.path.join(os.path.dirname(os.path.abspath(map_path)), POSITIONS_LOCK)
+    try:
+        if time.time() - os.path.getmtime(lock) < _POSITIONS_LOCK_SECONDS:
+            return False
+        os.unlink(lock)
+    except OSError:
+        pass
+    try:
+        handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(handle)
+    except OSError:
+        return False
+    options: dict[str, Any] = {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS} \
+        if portable.WINDOWS else {"start_new_session": True}
+    try:
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "--fill-positions", os.path.abspath(map_path), os.path.realpath(root)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, **options,
+        )
+    except OSError:
+        try:
+            os.unlink(lock)
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def _fill_positions_main(map_path: str, root: str) -> int:
+    """The process start_position_fill starts: fill the use file, then give the lock back."""
+    lock = os.path.join(os.path.dirname(os.path.abspath(map_path)), POSITIONS_LOCK)
+    try:
+        return 0 if isinstance(write_use_positions(map_path, root), Ok) else 1
+    finally:
+        try:
+            os.unlink(lock)
+        except OSError:
+            pass
+
+
+def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
+    """Fill the use file of a built graph with every use position; Err with the reason when it cannot.
+
+    The build parses only the uses that can name another file. The first query that needs positions
+    (usages, entity --positions) calls this. It reads the build cache and the walk cache
+    (.wingbox/index.uses-cache.json): a file whose content hash is in the walk cache is not walked again
+    and, while the surface of the repository is the same, not resolved again either. The other files
+    are walked in parallel and resolved; the use file is rewritten with positions and keeps its key,
+    so the next build without changes keeps the positions.
+    """
+    root = os.path.realpath(root)  # the build keys modules by real paths
+    path = uses_path(map_path)
+    inputs = _position_inputs(map_path, root)
+    if isinstance(inputs, Err):
+        return inputs
+    graph_text, key, fingerprint, results = inputs.value
     indexed = [result for result in results if supports_symbols(result.language)]
     # A file whose modification time is the one the build saw is not read again to compare hashes.
     changed = [result.path for result in indexed if _modified_since(result) and file_hash(result.path) != result.content_hash]
@@ -4213,6 +4339,9 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
         cached = walk_cache.files.get(result.path)
         if cached is not None and cached[0] == result.content_hash:
             entries_out[result.path] = cached if same_surface else [cached[0], cached[1], None, None]
+        elif result.language in _FULL_WALK_LANGUAGES:
+            entries_out[result.path] = [
+                result.content_hash, json.dumps([_compact_use(use) for use in result.uses], separators=(",", ":")), None, None]
         else:
             to_walk.append((result.path, result.language))
     if to_walk:
@@ -4269,7 +4398,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
         for node_id, result in sorted(id_to_result.items(), key=lambda item: order[item[0]])
         if result.path in entries_out and entries_out[result.path][2]
     ]
-    _atomic_write_text(path, "\n".join([*_uses_header(key_match.group(1), graph_text, True), *texts]) + "\n")
+    _atomic_write_text(path, "\n".join([*_uses_header(key, graph_text, True), *texts]) + "\n")
     if to_walk or to_resolve or set(walk_cache.files) != set(entries_out):
         _atomic_write_text(walk_cache_path, json.dumps({
             "schema": USES_CACHE_SCHEMA_VERSION,
@@ -4832,6 +4961,9 @@ def main(args: Optional[list[str]] = None) -> int:
     if raw_args in (["-h"], ["--help"]):
         print(_builder_usage())
         return 0
+    if len(raw_args) == 3 and raw_args[0] == "--fill-positions":
+        # Not an option of a build: the process start_position_fill starts.
+        return _fill_positions_main(raw_args[1], raw_args[2])
     parsed_options = parse_builder_options(raw_args)
     if isinstance(parsed_options, Err):
         print(f"Error: {parsed_options.error}", file=sys.stderr)

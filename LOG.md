@@ -1,5 +1,25 @@
 # Completion Log
 
+## 2026-11-23 - The first usages after a build reads the files that hold the name (#188)
+
+### Why
+- Issue #188, point 4, the second of the reporter's three conditions: the first `wingbox usages` on C++ took 10.2 s on their machine, the next ones 0.18 s; an agent that waits ten seconds goes back to a text search. Measured here on the repository of #177 with one worker: 73.6 s for the first call after a build of 71.9 s, 0.58 s for the second.
+- Where the time went (profile of `write_use_positions`): three quarters in walking all 2,281 files again for their positions (the 719 Python files 56 %, the 1,558 C and C++ files 18 %), 12 % in resolving the uses, 5 % in reading the build cache. An answer about one name needs about twenty of those files.
+
+### Changes
+- `scripts/build_code_graph.py`: `use_position_lines(map_path, root, name)` walks and resolves only the files whose text holds the name (a file that uses a name holds it), refuses when such a file changed since the build, writes nothing, and returns the lines the full fill writes for those files. `start_position_fill` starts `write_use_positions` in a process of its own (`--fill-positions`, not an option of a build), under `.wingbox/positions.lock`; a lock older than fifteen minutes is taken over; `WINGBOX_POSITIONS_FILL=0` starts nothing. `_position_inputs`: what both fillers read. C and C++ use sites are taken from the build cache in both (the build already reads every one of them): no second walk of those files.
+- `scripts/code_graph_search.py`: `CodeGraph._positions_of(name)` and `unresolved_calls_of(member)`; `uses_named` and the unresolved calls of `usages` read through them. `entity --positions` still fills the whole file: it lists every use of a file. A graph of up to 300 files fills the whole use file at the first question, as before (`_FILL_AT_ONCE_FILES`): that takes less than a second there, and the tests of the repository, all on small trees, start no process.
+- `README.md`: what the first `usages` does, and the environment variable.
+- Tests written first, `tests/test_usages_first_query.py`: REQ-CS-159 (the first answer equals the answer of the filled use file, for ten symbols of Python and C++), REQ-CS-160 (only the files that hold the name are read; a changed file is refused), REQ-CS-161 (the fill runs in a process of its own, once).
+
+### Measured on the repository of #177 (one worker)
+- First `usages` after a build: 5.3 to 6.3 s (73.6 s before), the same 33 uses in 20 files. About 3 s of it is reading the build cache, 59 MB, most of it the use sites of the C and C++ files.
+- The fill in its own process: done after 69 s; then 0.58 s a call, as before.
+
+### Not done
+- A build that fills the positions itself (the reporter's other proposal): it would double the time of a cold build, the number the build benchmark publishes.
+- The build cache is read whole for one question; splitting the use sites out of it would take most of the remaining seconds.
+
 ## 2026-11-23 - impact of an implementation file, of tests only, of a diff (#188)
 
 ### Why
