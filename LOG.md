@@ -1,5 +1,30 @@
 # Completion Log
 
+## 2026-11-24 - After the release 0.19.0
+
+### Checks (AGENTS.md section 6)
+- Before the upload, the built wheel in a new environment: the MCP tool `analyze_impact` with `only` `tests` and with `summary` answers (the call 0.18.0 refused), `impact --summary` and `init --from-folders` answer. That check is what 0.18.0 lacked.
+- 6.1 PyPI: `wingbox` and `wingbox-http` 0.19.0 list two files each. `uvx --refresh --from "wingbox[http]==0.19.0" wingbox --version` answers `wingbox 0.19.0`; `wingbox mcp --http --help` prints the options of the HTTP transport.
+- 6.1 GitHub release `v0.19.0`: assets `SHA256SUMS`, `wingbox-0.19.0.cdx.json`, `wingbox-0.19.0.mcpb`, `wingbox.mcpb`; the two digests PyPI answers for `wingbox` (wheel `da76231c...`, sdist `dd055772...`) are lines of `SHA256SUMS`; the extension link answers 200.
+- 6.1 Workflows: `publish-mcp` succeeded for the release; the registry answers 0.19.0, `active`. `tests` and `docs` of the release commit ran after the tag existed and are red in `test_plugins`, as section 6.1 says they must be; `tests` of the pin commit (#200) is green in all nine jobs.
+- 6.1 Plugin pin: #200. Homebrew: the `bump.yml` run for the release succeeded; the formula names 0.19.0.
+- 6.1 Clean install: `uvx --from wingbox==0.19.0 wingbox` on the repository of issue #177, built from nothing: every number of 0.18.0 again (192 and 439 for the source file, 146 and 308 tests, 767 targets, 1,671 tests, a first `usages` in 5.5 s), and the new ones: `impact --summary` 7 lines for 475; `init --from-folders` on the source folder of the engine 14 layers, 770 files, 102 upward includes; `boundaries` 102 violations, then 0 and 102 known after `align --learn`; the MCP call with `only` `tests` and `summary` answers.
+- 6.2 Descriptions: the README follows the release. GitHub "About", the package descriptions, the store texts: not applicable (no new language, no new assistant).
+- 6.3 Listings: the official registry as above. The tool list is unchanged; the description of `analyze_impact` and one parameter changed (`npx mcp-tdqs lint`: 0 errors, 0 warnings), so Glama needs "Sync Server" again: handed to the maintainer. The other directories: not applicable.
+- 6.4 The pull request check: `aileron-tech/wingbox-action` 1.6.3 sets the default Wingbox release to 0.19.0; its 282 unit tests pass with 0.19.0 installed, its pull request had 15 green checks, the `test` workflow of the release commit was green before the tags `v1.6.3` and `v1` were set; the Marketplace page names v1.6.3. The example pull request the site links: run started again, the one comment updated in place, its review plan says `:wingbox "0.19.0"`. This repository: `.github/workflows/wingbox.yml` names the action at the commit of `v1.6.3`; the run of that workflow on the pull request of this entry is the check.
+- 6.5 The site: the row of `analyze_impact` names the summary; the GitLab example pins `WINGBOX_VERSION` 0.19.0. Type check and build clean, deployed; the live pages hold the new text; no horizontal overflow at 1440 and 390 px.
+- 6.6 Issue #188: reopened with a correction of the first report (the two proposals it called "not added" and "not done" are in 0.19.0, and the two faults of 0.18.0). It stays open for the two points below.
+
+### Not done
+- Issue #188, language extras: waits for the maintainer's decision.
+- Issue #188, a benchmark of agents on tasks: in work; no number is published before the maintainer has seen it.
+- 6.4, GitLab: the pipeline of the private test project. Its host and credentials are not on this machine.
+- 6.3, Glama: see above.
+- The date in the changelog heading of 0.19.0 is the day the version commit was written (2026-11-23); the upload to PyPI was made after midnight.
+
+### Seen, for a later change
+- A release commit cannot be green once its tag exists: the plugin tests compare the manifests with the newest tag, and the manifests follow in the pin commit. Both runs of the release commit are red for that reason at every release.
+
 ## 2026-11-23 - Release 0.19.0
 
 ### Changes
