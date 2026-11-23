@@ -77,9 +77,10 @@ class ImpactFound:
     max_depth: int
     levels: tuple[tuple[ImpactLine, ...], ...]  # dependents by depth, depth 1 first
     read_first: tuple[str, ...]                 # the file and its direct dependents
-    note_fact: str = ""                         # (impact-ambiguous ...) when several modules match
+    note_fact: str = ""                         # (impact-ambiguous ...), (impact-paired-header ...), (impact-no-includers ...)
     note_text: str = ""
     advice: tuple[Advice, ...] = ()
+    only: str = ""                              # "tests": the rows are the test files of the whole list
 
     @property
     def direct(self) -> int:
@@ -139,8 +140,11 @@ def _row(line: ImpactLine) -> str:
 
 
 def found_sexp(answer: ImpactFound) -> str:
-    out = [f"(impact {atom(answer.file)} :direct {answer.direct} :total {answer.total}"]
+    only = f" :only {answer.only}" if answer.only else ""
+    out = [f"(impact {atom(answer.file)} :direct {answer.direct} :total {answer.total}{only}"]
     for depth, level in enumerate(answer.levels, start=1):
+        if not level:
+            continue   # `--only` kept no row of this depth
         if depth == 1:
             out.append(" (1 " + "\n    ".join(_row(line) for line in level) + ")")
             continue
@@ -205,6 +209,8 @@ def answer_json(answer: ImpactAnswer) -> dict[str, Any]:
     }
     if answer.note_fact:
         document["note"] = fact_json(answer.note_fact)
+    if answer.only:
+        document["only"] = answer.only
     return document
 
 
@@ -217,10 +223,28 @@ def header_json(header: Optional[GraphHeader]) -> Optional[dict[str, Any]]:
     return document
 
 
-def impact_json(answers: Sequence[ImpactAnswer], header: Optional[GraphHeader]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class Changed:
+    """A function a diff changes, and the other files that use it."""
+
+    symbol: str                 # <file>::<name>
+    line: int
+    used_by: tuple[str, ...]
+
+
+def changed_fact(item: Changed) -> str:
+    return f"(changed {atom(item.symbol)} :line {item.line} :used-by ({' '.join(atom(path) for path in item.used_by)}))"
+
+
+def impact_json(
+    answers: Sequence[ImpactAnswer], header: Optional[GraphHeader], changed: Optional[Sequence[Changed]] = None,
+) -> dict[str, Any]:
     """{"graph": {...} or null, "impact": [one object per asked file, in the order asked]}; every row has the
-    same keys, and nothing is cut."""
-    return {"graph": header_json(header), "impact": [answer_json(answer) for answer in answers]}
+    same keys, and nothing is cut. With changed (`impact --diff`), "changed" lists the changed functions."""
+    document: dict[str, Any] = {"graph": header_json(header), "impact": [answer_json(answer) for answer in answers]}
+    if changed is not None:
+        document["changed"] = [{"symbol": item.symbol, "line": item.line, "used_by": list(item.used_by)} for item in changed]
+    return document
 
 
 # ---------------------------------------------------------------------------
@@ -239,12 +263,14 @@ def found_text(answer: ImpactFound, show_all: bool) -> str:
     if answer.note_text:
         lines += [answer.note_text, ""]
     hops = "hop" if answer.max_depth == 1 else "hops"
-    lines.append(f"Impact of changing {answer.file}")
+    lines.append(f"Impact of changing {answer.file}" + (f" ({answer.only} only)" if answer.only else ""))
     lines.append(f"  {'direct dependents':<20}{answer.direct}")
     lines.append(f"  {f'within {answer.max_depth} {hops}':<20}{answer.total}")
     lines.append("")
     if not answer.levels:
-        lines.append("No other module depends on it.")
+        # A note already says what the empty list means (a source file nothing includes).
+        if not answer.note_text:
+            lines.append(f"No {'test file' if answer.only else 'other module'} depends on it.")
         return "\n".join(lines) + "\n"
     # Nearest dependents first: the limit is spent on depth 1 before depth 2.
     budget = answer.total if show_all else ANSWER_FILE_LIMIT

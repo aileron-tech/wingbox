@@ -1,5 +1,26 @@
 # Completion Log
 
+## 2026-11-23 - impact of an implementation file, of tests only, of a diff (#188)
+
+### Why
+- Issue #188, points 1 and 2, the first of the reporter's three conditions for adoption. `wingbox impact <file>.cpp` answered 0 direct and 0 total, because nothing includes a source file; the text for people said "No other module depends on it". Most edits of a C or C++ repository are in source files, and an agent reads that answer as "safe". On a central header the answer held 440 files, 308 of them tests, with no way to ask for the tests alone.
+- The maintainer left the names and the defaults to the implementer. Chosen: the header is followed by default, without a flag, because a flag would leave the empty answer in place; `--only tests` and `--diff` are options of `impact`, not a new command.
+
+### Changes
+- `scripts/code_graph_search.py`: `paired_headers` (a header of the stem of the source file among its includes, then one of that stem in its folder); `_impact_levels` and `_impact_rows` start from the file and its headers, and a row of depth 1 reached through a header has the basis `paired-header`. `_source_file_note`: `(impact-paired-header <file> <header> ...)`, or `(impact-no-includers <file>)` for a source file without a header and without rows; the three forms and the flat form print it. `_only_rows`: with `--only tests` the rows whose layer is `test`. `impact_options` reads `--only tests` and `--diff [ref]`. `cmd_diff_functions` is split into `_diff_ranges` and `_diff_functions` (its output is unchanged; a deleted file no longer keeps the name of the file before it); `diff_changes` gives the changed files and, per changed function, the files that use it from the use lines of the graph (`use_pairs`: no positions are needed), through the declaration in the header as well.
+- `scripts/impact_forms.py`: `ImpactFound.only`, `Changed` and `changed_fact`; the compact form skips a depth without rows; the text says "No test file depends on it" and leaves the sentence out when a note explains the empty list.
+- `src/wingbox/mcp_server.py`: `analyze_impact` takes `only` (`all`, `tests`); the tool list is unchanged.
+- `README.md`, `SKILL.md`, `references/sexp-notation.md`, `docs/assurance/known-limits.md`.
+- Tests written first, `tests/test_impact_implementation_files.py`: REQ-CPP-014, REQ-CPP-015, REQ-CS-157, REQ-CS-158.
+
+### On the repository of the issue (the commit of #177)
+- The source file of the central header: 192 direct dependents and 439 within two steps, where it had 0 and 0 (the header has 193 and 440: the source file itself is not a row).
+- `--only tests` on that header: 146 direct, 308 within two steps.
+
+### Not done
+- A changed function is found by the lines of the definitions around it, as `diff_functions` always did: lines added after the last definition of a file count for that definition.
+- Mapping the test files to runner targets (CTest, pytest): with the build targets of point 5.
+
 ## 2026-11-23 - After the release 0.17.0: the pull request check, the site, the topics
 
 ### What was done (AGENTS.md sections 6.2, 6.4 and 6.5)
