@@ -300,7 +300,12 @@ after `wingbox`, because it requires exactly that version of it.
 
 A macOS job that ends "cancelled" with no steps never got a runner:
 `gh run rerun <run id> --failed` restarts only that job. A red job is read
-(`gh run view <run id> --log-failed`) before anything is rerun.
+(`gh run view <run id> --log-failed`) before anything is rerun. The `tests`
+runs of `main` share one concurrency group, which holds one running and one
+waiting run: restarting a run while another waits cancels the waiting one, so
+restart them one at a time, the oldest first. A job of the release commit that
+runs after the tag exists is red in `test_plugins` until the pin commit: the
+run of the pin commit is the one to read.
 
 ### 6.2 The descriptions
 

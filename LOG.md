@@ -1,5 +1,25 @@
 # Completion Log
 
+## 2026-11-23 - After the release 0.18.0
+
+### Checks (AGENTS.md section 6)
+- 6.1 PyPI: `wingbox` and `wingbox-http` 0.18.0 list two files each. `uvx --refresh --from "wingbox[http]==0.18.0" wingbox --version` answers `wingbox 0.18.0`; `wingbox mcp --http --help` prints the options of the HTTP transport. For about two minutes after the upload the index answered "no version".
+- 6.1 GitHub release `v0.18.0`: assets `SHA256SUMS`, `wingbox-0.18.0.cdx.json`, `wingbox-0.18.0.mcpb`, `wingbox.mcpb`; the two digests PyPI answers for `wingbox` (wheel `dfe5059a...`, sdist `22a93e28...`) are lines of `SHA256SUMS`; the extension link answers 200.
+- 6.1 Workflows: `publish-mcp` succeeded for the release; the registry answers 0.18.0, `active`. `docs` green on the release commit. `tests` of the release commit on `main`: ten jobs green; the macOS 3.13 job was cancelled without steps (no runner), and restarted it is red in `test_plugins`, as it must be: it ran after the tag existed, and the manifests of that commit still name 0.17.0. The pin commit (#194) is the one whose `tests` run counts; it was restarted in full after the queue cancelled it, and all nine jobs are green. Two macOS jobs of the commit of #191 were cancelled without steps too and are green after the restart; restarting that run while the run of the pin commit waited is what cancelled the waiting one, which is why section 6.1 now says to restart such runs one at a time.
+- 6.1 Plugin pin: #194. Homebrew: `bump.yml` run for the release succeeded; the formula names 0.18.0 (the dependencies of the package did not change).
+- 6.1 Clean install: `uvx --from wingbox==0.18.0 wingbox` built the repository of issue #177 from nothing and gave every number of the report in #188 and, again, those of #177 (31 and 66; 193 and 440; 1,296 Python import edges, 0 wrong, 0 missing; 6,043 include edges of the reference, 0 missing). In a project of one source file and one CMake file: `build`, `impact`, `impact --diff --only tests` and `cycles` answer.
+- 6.2 Descriptions: the README follows the release (the commands were run as written: `impact <file> --only tests`, `impact --diff`, `cycles`). GitHub "About", the `description` and `keywords` of both packages, the plugin and store texts: not applicable, the release adds no language and no assistant and they list no commands.
+- 6.3 Listings: the official registry as above. The tool list and every tool description are unchanged; the description of one parameter of `analyze_impact` changed (`npx mcp-tdqs lint`: 0 errors, 0 warnings). Glama: "Sync Server" is pressed in the admin area of the listing, which needs the maintainer's login: handed over. The other directories show the description and the install command, which did not change: not applicable. The Claude Desktop extension was built for the release (`tests.test_mcpb` passes).
+- 6.4 The pull request check: `aileron-tech/wingbox-action` 1.6.2 sets the default Wingbox release to 0.18.0; its unit tests pass with 0.18.0 installed, its pull request had 15 green checks, the `test` workflow of the release commit was green before the tags `v1.6.2` and `v1` were set; the Marketplace page names v1.6.2. The example pull request the site links: its `wingbox` run was started again, the one comment was updated in place and its review plan says `:wingbox "0.18.0"`. This repository: `.github/workflows/wingbox.yml` names the action at the commit of `v1.6.2`; the run of that workflow on the pull request of this entry is the check.
+- 6.5 The site: "What it answers" asks which tests, CMake targets and CTest tests to run for a change; the row of `analyze_impact` says it can answer with the tests alone; the GitLab example pins `WINGBOX_VERSION` 0.18.0 (it said 0.14.0). Type check and build clean, deployed; the live home page and `/pull-request-check` hold the new text; no horizontal overflow at 1440 and 390 px on either.
+- 6.6 Issue #188: the report with the numbers measured with the release is posted and the issue is closed.
+
+### Not done
+- 6.4, GitLab: the pipeline of the private test project with the released template. Its host and credentials are not on this machine.
+- 6.3, Glama: see above.
+- 6.5: the benchmark pages of the site do not show `benchmarks/cpp` and `benchmarks/collisions`.
+- Announcement: left to the maintainer. Checked headlines: `wingbox impact --diff --only tests` names the tests and the CTest names for the changes of the working tree; `impact` of a `.cpp` file is no longer empty; the first `usages` after a build answers in seconds; `wingbox cycles` finds cycles and hubs with no configuration.
+
 ## 2026-11-23 - Release 0.18.0
 
 ### Changes
