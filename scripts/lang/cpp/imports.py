@@ -246,6 +246,8 @@ class BoundCppLanguage:
     cmake_folders: tuple[str, ...]
     by_name: Mapping[str, tuple[str, ...]]
     _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
+    # The includes found without the folders a compiler was given: through the CMake files or by the end of a path.
+    _inferred: set[tuple[str, str]] = field(default_factory=set, compare=False, repr=False)
     _nearest: dict[str, _Folders] = field(default_factory=dict, compare=False, repr=False)
     _ordered_cmake: dict[str, tuple[str, ...]] = field(default_factory=dict, compare=False, repr=False)
 
@@ -328,14 +330,27 @@ class BoundCppLanguage:
             return None
         source = os.path.normpath(os.path.abspath(source_path))
         folder = os.path.dirname(source)
-        folders: list[str] = [folder] if is_quoted else []
-        folders.extend(self._database_folders_for(source).of(is_quoted))
-        folders.extend(self._cmake_folders_for(folder))
-        for base in folders:
+        stated: list[str] = [folder] if is_quoted else []
+        stated.extend(self._database_folders_for(source).of(is_quoted))
+        for base in stated:
             target_id = self.path_to_id.get(os.path.normpath(os.path.join(base, name)))
             if target_id is not None:
                 return target_id
-        return self._by_path_end(name) if is_quoted else None
+        for base in self._cmake_folders_for(folder):
+            target_id = self.path_to_id.get(os.path.normpath(os.path.join(base, name)))
+            if target_id is not None:
+                self._inferred.add((import_name, source_path))
+                return target_id
+        target_id = self._by_path_end(name) if is_quoted else None
+        if target_id is not None:
+            self._inferred.add((import_name, source_path))
+        return target_id
+
+    def import_basis(self, import_name: str, source_path: str) -> str:
+        """`inferred` for an include that was found through the CMake files or by the end of its path, ""
+        for one found beside the including file or in an include folder of the compilation database."""
+        self.resolve_import(import_name, source_path)
+        return "inferred" if (import_name, source_path) in self._inferred else ""
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
         return ()

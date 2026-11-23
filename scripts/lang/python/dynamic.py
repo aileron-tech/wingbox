@@ -57,6 +57,70 @@ def find_module_loads(
     return literal_imports, patterns
 
 
+_LAUNCHERS = frozenset({"run", "call", "check_call", "check_output", "Popen"})
+_SCRIPT_SUFFIXES = (".py", ".sh", ".rb", ".js", ".mjs", ".ts", ".php", ".pl", ".ps1")
+
+
+def _is_launch(func: ast.expr, module_of_name: dict[str, str]) -> bool:
+    """subprocess.run, call, check_call, check_output, Popen, their names imported from subprocess, os.system."""
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        owner = module_of_name.get(func.value.id, func.value.id)
+        return (owner == "subprocess" and func.attr in _LAUNCHERS) or (owner == "os" and func.attr in ("system", "popen"))
+    if isinstance(func, ast.Name):
+        origin = module_of_name.get(func.id, "")
+        return origin.startswith("subprocess.") and origin.rsplit(".", 1)[1] in _LAUNCHERS
+    return False
+
+
+def _script_paths(node: ast.expr) -> list[str]:
+    """The script paths written as literals in a command: `"tools/report.py"`, a word of a command line
+    (`"python tools/report.py --all"`), and the literal tail of `os.path.join(HERE, "tools", "report.py")`
+    or `ROOT / "tools" / "report.py"`, whose first part is not a literal."""
+    found: list[str] = []
+    todo: list[ast.expr] = [node]
+    while todo:
+        current = todo.pop()
+        if isinstance(current, ast.Constant) and isinstance(current.value, str):
+            found.extend(word for word in current.value.split() if word.endswith(_SCRIPT_SUFFIXES))
+        elif isinstance(current, (ast.List, ast.Tuple)):
+            todo.extend(reversed(current.elts))
+        elif isinstance(current, ast.Call):
+            parts = [argument.value for argument in current.args
+                     if isinstance(argument, ast.Constant) and isinstance(argument.value, str)]
+            joined = isinstance(current.func, ast.Attribute) and current.func.attr == "join"
+            if joined and parts and parts[-1].endswith(_SCRIPT_SUFFIXES) and len(parts) < len(current.args):
+                found.append("/".join(parts))
+            else:
+                todo.extend(reversed(current.args))
+        elif isinstance(current, ast.BinOp) and isinstance(current.op, ast.Div):
+            parts = []
+            walker: ast.expr = current
+            while isinstance(walker, ast.BinOp) and isinstance(walker.op, ast.Div) \
+                    and isinstance(walker.right, ast.Constant) and isinstance(walker.right.value, str):
+                parts.append(walker.right.value)
+                walker = walker.left
+            if parts and parts[0].endswith(_SCRIPT_SUFFIXES):
+                found.append("/".join(reversed(parts)))
+        elif isinstance(current, ast.JoinedStr):
+            todo.extend(reversed(current.values))
+    return found
+
+
+def find_launches(tree: ast.AST, module_of_name: dict[str, str], index: Optional[TreeIndex] = None) -> list[dict]:
+    """The scripts the file launches as a process by a literal path: [{"path": as written, "line": N}]."""
+    launches: list[dict] = []
+    seen: set[tuple[str, int]] = set()
+    for node in (index_tree(tree) if index is None else index).walk(_CALL):
+        assert isinstance(node, ast.Call)
+        if not node.args or not _is_launch(node.func, module_of_name):
+            continue
+        for path in _script_paths(node.args[0]):
+            if (path, node.lineno) not in seen:
+                seen.add((path, node.lineno))
+                launches.append({"path": path.replace("\\", "/"), "line": node.lineno})
+    return launches
+
+
 def _loader_kind(func: ast.expr, module_of_name: dict[str, str]) -> Optional[str]:
     if isinstance(func, ast.Name):
         if func.id == "__import__":

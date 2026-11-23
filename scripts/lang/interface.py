@@ -198,6 +198,11 @@ class FileResult:
     # What in the syntax tree makes the file a validation module ("base pydantic.BaseModel"); "" when
     # nothing does. has_validation is true exactly when this is set.
     validation_evidence: str = ""
+    # What the head of the file says about its own generation (generation.read_markers): {"role": "by" or
+    # "from", "path": as written, "line": N}. Set where the file is read, for every language.
+    generation: list[dict] = field(default_factory=list)
+    # Scripts the file launches as a process, by a literal path: {"path": as written, "line": N}.
+    launches: list[dict] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

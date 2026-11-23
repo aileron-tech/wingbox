@@ -221,7 +221,8 @@ dependents = {a["file"]: [row["file"] for row in a.get("rows", [])] for a in ans
 
 `answer["graph"]["stale"]` is 0 when the graph is up to date. Each row carries
 the reason it is listed: `depth`, `via` (the relation), `through` (the file it
-is reached through) and `reasons` (the names it takes). A file that is not in
+is reached through), `basis` (`declared` or `inferred`, present only when the code does not state
+the edge) and `reasons` (the names it takes). A file that is not in
 the graph has `error` in place of `rows`. The rows are complete (each dependent
 once, the list not cut, test files included). In Claude Code's Code Mode follow
 [references/code-mode.md](references/code-mode.md): one call in one block of
@@ -345,6 +346,23 @@ or a build prints `WARNING: ... files are skipped`: the parser of that language
 is not installed and its N files are not in the graph, so dependents and usages
 in those files are missing from every answer. Say so, ask the user to approve
 the command of `:add`, run it, then run `wingbox build` and query again.
+
+A row with `:via generated` is a generated file listed under its generator or
+its input, `:via runs` a file that launches the script as a process, `:via
+reads` a generator under the input it reads. `:basis declared` comes from
+`generators:` of `.wingbox/config.yaml`; `:basis inferred` from a `Generated
+by <path>` line at the head of the generated file, from `add_custom_command`
+of a CMake file, from a `subprocess` call with a literal script path, or from
+a C or C++ include found without a compilation database. Treat an inferred
+row as likely, and read the file before relying on it. To make a generation
+link certain, declare it:
+
+```yaml
+generators:
+  - run: tools/make_layouts.py
+    inputs: [schema/formats.yaml]
+    outputs: [depot/layouts.py, native/src/layouts.h]
+```
 
 If a command returns `(error not-in-graph <file> :reason ...)`: the file is in
 the repository and the graph does not cover it. Do not look for another ID.
