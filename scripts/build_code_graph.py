@@ -3688,9 +3688,13 @@ def render_sexp(
     violations = [e for e in edges if e.get("type") == "VIOLATION"]
     # A use reached only through a re-export and a module-level variable live in the use file
     # (.wingbox/index.uses.sexp), which entity and usages read; module queries never need them.
+    # A generation link to a file outside the graph and a path a link names in vain are no edges between
+    # modules: they are written in a section of their own, after the edges.
+    generation_facts = [e for e in edges if e.get("type") in ("GENERATED_FILE", "GENERATION_UNRESOLVED")]
     real_edges = [
         e for e in edges
         if e.get("type") != "VIOLATION"
+        and e.get("type") not in ("GENERATED_FILE", "GENERATION_UNRESOLVED")
         and not (e.get("type") == "REFERENCES" and "reexport" in e.get("relations", []))
     ]
 
@@ -3828,13 +3832,18 @@ def render_sexp(
             fl = edge.get("from_lines", [])
             lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
             lines.append(f"(runs {src} {tgt} :{edge['basis']}{lns})")
-        elif etype == "GENERATED_FILE":
-            lines.append(f'(generated-file {src} "{_sexp_escape(edge["file"])}" :{edge["role"]} :{edge["basis"]})')
-        elif etype == "GENERATION_UNRESOLVED":
-            lines.append(
-                f'(generation-unresolved "{_sexp_escape(edge["file"])}" :role {edge["role"]} :{edge["basis"]} '
-                f':stated "{_sexp_escape(edge["evidence"])}")'
-            )
+
+    if generation_facts:
+        lines.append("")
+        lines.append("; --- generation ---")
+        for edge in sorted(generation_facts, key=lambda e: (e["type"], e["source"], e["file"], e["role"])):
+            if edge["type"] == "GENERATED_FILE":
+                lines.append(f'(generated-file {_pid(edge["source"])} "{_sexp_escape(edge["file"])}" :{edge["role"]} :{edge["basis"]})')
+            else:
+                lines.append(
+                    f'(generation-unresolved "{_sexp_escape(edge["file"])}" :role {edge["role"]} :{edge["basis"]} '
+                    f':stated "{_sexp_escape(edge["evidence"])}")'
+                )
 
     # -- Architecture: parts, their rules, and the layer of every module --
     if architecture is not None:
