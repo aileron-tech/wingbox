@@ -25,6 +25,10 @@
   and starts one process that fills the rest for the calls that follow. On the repository of
   issue #177 (2,281 files, one worker): 5 to 6 s where it took 74 s, the same answer;
   0.6 s once the fill is done, as before. `WINGBOX_POSITIONS_FILL=0` starts no process.
+- A new command, `wingbox cycles [folder]`, for repositories that fit no layer style: the groups of
+  files that depend on each other, the files with ten or more dependents and dependencies, the
+  top-level folders that depend on each other, and the order of the folders from dependents to
+  dependencies. It reads the import graph alone and needs no configuration.
 
 ## 0.17.0 - 2026-11-23
 

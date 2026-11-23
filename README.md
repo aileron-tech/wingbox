@@ -599,6 +599,39 @@ On immich the capability rules find 15 files that do what their layer may
 not (database client types in DTOs and services, query-builder helpers in
 `utils/`) and 2 services that write the HTTP response themselves.
 
+### Without a layer style: `wingbox cycles`
+
+The layer rules need a style, and a repository that fits none (an engine, a
+compiler, embedded code, a monorepo with its own folders) answers `style none`
+and "not checked". `wingbox cycles` reads the import graph alone and needs no
+style and no configuration:
+
+```text
+(cycle 1 :files 3 shop/cart.py shop/order.py store/catalog.py)
+(hub hub.py :dependents 12 :dependencies 12)
+(folder-cycle shop store :forward 1 :back 1)
+(folder-order (shop store) (core) (user) (.) (leaf))
+(cycles-summary :cycles 1 :files-in-cycles 3 :hubs 1 :folder-cycles 1 :files 34)
+```
+
+- `cycle`: a group of files that depend on each other through imports or
+  includes (two files that import each other, or a longer ring), the largest
+  first. An import the compiler erases (`import type`) is not counted.
+- `hub`: a file that at least ten files depend on and that depends on at least
+  ten: a change of it reaches far, and it is changed often because it knows
+  much.
+- `folder-cycle`: two top-level folders with dependencies in both directions,
+  with the number of file pairs each way. The smaller number is usually the
+  direction to remove.
+- `folder-order`: the top-level folders from those that depend on others to
+  those the others depend on; folders that depend on each other stand in one
+  group. It is the order a layer rule would have to respect: a draft for the
+  `layers` of `.wingbox/config.yaml`.
+
+`wingbox cycles <folder>` answers for the files below a folder, with its
+subfolders as the folders (`wingbox cycles engine/src`). `--json` prints the
+same facts.
+
 ### The architecture of each part: `wingbox init`
 
 `wingbox init [PATH] [--force] [--sexp] [--details]` splits the repository into parts and
