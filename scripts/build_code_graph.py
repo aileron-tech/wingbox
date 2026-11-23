@@ -26,6 +26,9 @@ Parsers
   Rails/Zeitwerk constants, mixins, associations, jobs, mailers, and specs.
 - **Pascal**: dependency-free structural parser. Handles Free Pascal/Lazarus
   units, programs, uses/includes, types, inheritance, methods, and routines.
+- **C and C++**: tree-sitter (``tree-sitter-cpp``). Handles ``#include``
+  dependencies through ``compile_commands.json``, the CMake files or the tree,
+  types, functions, methods, macros, and the uses of a name.
 - **Dart**: tree-sitter (``tree-sitter-dart``). Handles lib/ packages found
   through pubspec.yaml, classes, mixins, enums, extensions, members,
   inheritance, imports/exports, and part/part of libraries.
@@ -3878,7 +3881,7 @@ def reused_uses_text(reused: ReusedUses, graph_text: str) -> str:
 
 def _position_parser(language: str) -> Callable[[str, str], list]:
     """The full use walk of a language (python_use_positions, typescript_use_positions, ...)."""
-    family = {"python": "python", "rust": "rust"}.get(language, "typescript")
+    family = {"python": "python", "rust": "rust", "cpp": "cpp", "c": "cpp"}.get(language, "typescript")
     package = f"{__package__}.lang" if __package__ else "lang"
     module = importlib.import_module(f"{package}.{family}.parser")
     return getattr(module, f"{family}_use_positions")

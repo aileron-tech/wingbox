@@ -1,5 +1,29 @@
 # Completion Log
 
+## 2026-11-23 - C and C++ (#177)
+
+### Why
+- Issue #177: in a mixed C++ and Python repository the engine was outside the graph. `wingbox impact` of a header answered `no-match` where a search of the include lines finds 193 files, so a change in the central code had no blast radius. The maintainer asked for every point of the report to be closed and for the numbers the reporter states on the reporter's repository.
+
+### Changes
+- `scripts/lang/cpp/` (new): the language `cpp` with the result languages `cpp` and `c` (a `.c` file), one grammar for both (`tree-sitter-cpp==0.23.4`). `parser.py` reads the includes with a query (anywhere in the file, quoted names plain, angle names in their brackets, a macro name skipped), and the entities: classes, structs and unions with their methods and base classes, enums with their members, typedefs and `using` aliases, function definitions and prototypes, macros with a value; a method defined in a class body or outside it (`Painter::paint`) is the entity `Painter.paint` with its own line. A module ID is the path with its extension.
+- `scripts/lang/cpp/imports.py`: the file of an include. Beside the including file for a quoted name; then the include folders of the compilation database (`compile_commands.json` at the root, in a folder of the root or one level below; `-I`, `-isystem`, `-iquote`, `-idirafter`, `--include-directory`, `-external:I`, `/I`, joined or as the next argument, in `arguments` or `command`; a header takes the folders of the entries of the nearest folder); without a database the literal folders of `target_include_directories` and `include_directories` in the CMake files; last, for a quoted name that is not a standard header, the one file whose path ends with the name. Nothing else is tried.
+- `scripts/lang/cpp/symbols.py`: one glob binding per include and the use sites of a file (calls, types, base classes, names with a scope, other names that are not locals of the function around them, method calls as unresolved member uses), read with one query of the grammar. `scripts/lang/symbols.py`: `cpp` and `c` are languages of the symbol index; a name behind includes is the one file among those the includes reach that defines it (`_from_includes`), not a walk of every include. `scripts/build_code_graph.py`: the use positions of C and C++ are read with `cpp_use_positions`.
+- `src/wingbox/hook.py`: the source extensions of the hook. `pyproject.toml`, `requirements/cpp.txt`: the pin, the extra `cpp`, `all`. `README.md`, `SKILL.md`, the plugin copies and the store texts name the language; `README.md` has the section "C and C++ dependency search"; `docs/assurance/known-limits.md` and `verification-plan.md` have their rows.
+- Tests written first, `tests/test_cpp_language.py`: REQ-CPP-001 to REQ-CPP-011. `tests/test_language_registry.py`, `tests/test_language_parsers.py`: the new language in the registry, the pins and the skipped-language notice.
+
+### Verification on the repository of the issue (commit of the issue; 1,558 C and C++ files, 719 Python, 4 JavaScript; one worker)
+- `wingbox impact <the header named in the issue> 2 --json`: 193 direct dependents, the same 193 files as a search of the include lines (`rg -l` of `#include` with that file name); 440 within two steps.
+- Every include edge of the graph against a reference written for this change (the text of the files without comments; a quoted name beside the file, then the one include root of the engine): 6,043 edges in the reference, 0 missing in the graph, 1 edge more in the graph. That edge is right: the file states its own compile command in a comment, with `-I` of the folder that holds the header, and the graph finds the header as the one file of that name. A first run had 4 wrong edges, `<time.h>` and `<math.h>` taken for files of the repository of the same name; since then an angle name and a standard header are never found by the end of a path.
+- `wingbox usages <that header>::<one of its functions>`: 33 uses in 20 files. A word search finds 25 files: the 20, the declaration, the definition, and 3 files that name the function only in a comment.
+- The Python numbers are unchanged: the module named in the issue has 31 direct dependents, 66 within two steps; 1,296 required import edges, 0 wrong, 0 missing.
+- Build time, `wingbox build .` from nothing: 32 s for the Python and JavaScript files alone (0.16.1), 67 s with the C and C++ files. The first version of the use sites took 133 s: 51 s walking the syntax trees in Python (now one query, 10 s) and about 45 s asking every include on the way for every name (now the set of reached files).
+
+### Not done here
+- No compilation database of that repository was available (its build was not run): the database path is covered by the tests, the numbers above come from the CMake files and the tree.
+- No benchmark on public C and C++ repositories yet; `docs/assurance/known-limits.md` says "not assessed".
+- A name that two reachable headers declare is attributed to neither (REQ-CPP-011); with the walk of every include the nearest one had answered: 92 of 23,172 reference edges of that repository.
+
 ## 2026-11-23 - After the release 0.16.1
 
 ### Checks (AGENTS.md section 6)

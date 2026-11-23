@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **C and C++.** Files `.c`, `.cc`, `.cpp`, `.cxx`, `.h`, `.hh`, `.hpp`, `.hxx`, `.inl` and `.ipp`
+  are part of the graph: their `#include` dependencies, classes, structs, unions, enums, type
+  aliases, functions, methods, macros with a value and base classes. `wingbox impact <header>`
+  lists the files that include a header, directly and through one other file; `wingbox usages
+  <header>::<name>` lists the uses of a function, type, macro or enum in the files that include
+  the header, and a method called on an object as an unresolved call. An include is looked for
+  beside the including file, then in the include folders of `compile_commands.json` (at the root,
+  in a folder of the root such as `build/`, or one level below), without that file in the folders
+  the CMake files name, and last, for a quoted name, as the one file whose path ends with the
+  name; a system header, a library outside the repository and an ambiguous name are no
+  dependency. A header and the source file beside it are two modules: the module ID of a C or C++
+  file keeps its extension. The preprocessor is not run. The package now depends on
+  `tree-sitter-cpp==0.23.4` (extra `cpp`, kept in `all`). **A repository with C or C++ files gets
+  a larger graph and a longer build after the upgrade**: those files were left out before.
+
 ## 0.16.1 - 2026-11-23
 
 ### Fixes

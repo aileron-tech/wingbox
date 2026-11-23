@@ -8,8 +8,8 @@ description: >
   on each other; before a refactor, a cross-package change or any non-trivial
   edit; and when exploring an unfamiliar codebase. Builds and queries architecture-aware code search,
   dependency graphs, call flows, module boundaries and architecture violations
-  for Python, TypeScript, TSX, Rust, C#, Java, Go, Ruby, Ruby on Rails, PHP,
-  Laravel, Blade, Livewire, Eloquent, Dart and Flutter.
+  for Python, TypeScript, TSX, Rust, C, C++, C#, Java, Go, Ruby, Ruby on Rails,
+  PHP, Laravel, Blade, Livewire, Eloquent, Dart and Flutter.
 ---
 
 # Wingbox -- Code Graph Architecture Discovery
@@ -112,8 +112,8 @@ python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
 
 Python indexing has no external parser dependency. When the parser of
 TypeScript or Rust is absent or has the wrong version, the first build fails
-before publication; files of C#, Java, Go, Ruby, PHP or Dart without their
-parser are skipped with a warning (a project of such a language alone fails
+before publication; files of C#, Java, Go, Ruby, PHP, Dart, C or C++ without
+their parser are skipped with a warning (a project of such a language alone fails
 too). Either way the builder prints the exact per-language command to run, such as:
 
 ```bash
@@ -122,6 +122,7 @@ python3 -m pip install -r "$SKILL_ROOT/requirements/csharp.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/ruby.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/php.txt"
 python3 -m pip install -r "$SKILL_ROOT/requirements/dart.txt"
+python3 -m pip install -r "$SKILL_ROOT/requirements/cpp.txt"
 ```
 
 Install only the requirement files named by the builder, then rerun it.
@@ -276,7 +277,8 @@ Key patterns:
 **`:lang` values**: `py` = Python (snake_case), `ts` = TypeScript
 (camelCase), `tsx` = TSX (PascalCase), `rs` = Rust (snake_case), `cs` = C#,
 `java` = Java, `go` = Go, `rb` = Ruby/Rails, `php` = PHP/Laravel (PascalCase),
-`blade` = Blade templates, and `dart` = Dart/Flutter.
+`blade` = Blade templates, `dart` = Dart/Flutter, `cpp` = C++ (and every
+`.h` file), and `c` = C.
 
 ## Scheme Query Language
 
@@ -453,6 +455,23 @@ associations, events and jobs. `view()` references resolve through
 or `View::addNamespace`. It never boots Laravel. Unresolved or ambiguous class,
 view and component names remain unlinked, and a duplicate class declaration
 such as an IDE-helper stub does not shadow the PSR-4 file.
+
+C and C++ indexing reads `.c .cc .cpp .cxx .h .hh .hpp .hxx .inl .ipp` files
+with one tree-sitter grammar: `#include` dependencies, classes, structs,
+unions, enums, type aliases, functions, methods, macros with a value and base
+classes. A module ID keeps the extension, so `stage.h` and `stage.cpp` are two
+modules: query the header to see who includes it (`wingbox impact
+studio/src/scene/stage.h`); a source file is included by nothing. An include is
+looked for beside the including file (a quoted name), then in the include
+folders of `compile_commands.json` (at the root, in `build/` or one level
+below), without that file in the folders the CMake files name, and last, for
+a quoted name, as the one file whose path ends with the written name. A system
+header, a library outside the repository and an ambiguous name create no
+edge. `wingbox usages <header>::<name>` lists the uses of a function, type,
+macro or enum in the files that include the header; a method called on an
+object is listed as an unresolved call, because the type of the object is not
+derived. The preprocessor is not run: every branch of an `#if` is read, and a
+header that a build step generates outside the repository is no dependency.
 
 Dart indexing discovers `.dart` files and reads each one with a tree-sitter
 Dart grammar: classes, mixins, enums, extension types, extensions, type

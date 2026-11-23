@@ -17,8 +17,8 @@
 > boundaries and the **blast radius** of a change before editing code.
 > It works as an agent skill in Claude Code, Codex, Gemini CLI, Cursor and
 > GitHub Copilot, as an MCP server for any MCP client, and from the command
-> line. It supports Python, TypeScript, Rust, C#, Java, Go, Ruby, Rails, PHP,
-> Laravel (Blade, Livewire), Dart, Flutter, Free Pascal, and Lazarus.
+> line. It supports Python, TypeScript, Rust, C, C++, C#, Java, Go, Ruby, Rails,
+> PHP, Laravel (Blade, Livewire), Dart, Flutter, Free Pascal, and Lazarus.
 >
 > **Runs fully locally:** no network access, no model, no telemetry. It can be
 > used inside a security perimeter and on a machine with no internet.
@@ -48,8 +48,8 @@
 
 Understand a large codebase before you change it. Wingbox is an
 architecture-aware code search and impact analysis tool for Python, TypeScript,
-TSX, Rust, C#, Java, Go, Ruby, Ruby on Rails, PHP, Laravel, Blade, Livewire,
-Dart, Flutter, Free Pascal, and Lazarus repositories. It helps developers and
+TSX, Rust, C, C++, C#, Java, Go, Ruby, Ruby on Rails, PHP, Laravel, Blade,
+Livewire, Dart, Flutter, Free Pascal, and Lazarus repositories. It helps developers and
 AI coding agents find the right module, trace dependencies, measure change
 impact, and read only the source files that matter.
 
@@ -896,8 +896,8 @@ The package installs the parser of every supported language: one
 and nothing is fetched afterwards. The Dart parser has no wheel for Windows on
 arm64; there Wingbox installs without it.
 
-A build that finds no parser for C#, Java, Go, Ruby, PHP or Dart files in the
-environment it runs in maps the other languages, says how many files it left
+A build that finds no parser for C#, Java, Go, Ruby, PHP, Dart, C or C++ files
+in the environment it runs in maps the other languages, says how many files it left
 out and names the command that installs the parser:
 
 ```text
@@ -918,8 +918,8 @@ A build that parses every language removes the record. A project whose only
 source files are in a language without its parser publishes no graph; the
 build stops with the command.
 
-The extras `wingbox[csharp]`, `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]` and
-`[all]` stay valid and name parsers the package already installs.
+The extras `wingbox[csharp]`, `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]`,
+`[cpp]` and `[all]` stay valid and name parsers the package already installs.
 `wingbox add <language>` is kept for scripts written for version 0.12: it adds
 nothing and exits 0.
 
@@ -1085,8 +1085,8 @@ and LSP project discovery. Tracked snapshot paths that still match
 Parser packages are loaded only for languages found in that project. Python
 needs no extra parser package. If the parser of TypeScript or Rust is not
 installed, the builder stops before publishing and prints its exact install
-command; files of C#, Java, Go, Ruby, PHP or Dart without their parser are
-skipped with a warning that prints it (a project of such a language alone
+command; files of C#, Java, Go, Ruby, PHP, Dart, C or C++ without their parser
+are skipped with a warning that prints it (a project of such a language alone
 stops too). For example:
 
 ```bash
@@ -1095,12 +1095,13 @@ python3 -m pip install -r requirements/csharp.txt
 python3 -m pip install -r requirements/ruby.txt
 python3 -m pip install -r requirements/php.txt
 python3 -m pip install -r requirements/dart.txt
+python3 -m pip install -r requirements/cpp.txt
 ```
 
 Install only the files for languages you use, then run the same build command
 again. Each file pins `tree-sitter==0.25.2` and the grammar of its language
 (`requirements/php.txt`: `tree-sitter-php==0.24.1`, `requirements/dart.txt`:
-`tree-sitter-dart==0.1.0`). An installed `wingbox` needs none of these steps:
+`tree-sitter-dart==0.1.0`, `requirements/cpp.txt`: `tree-sitter-cpp==0.23.4`). An installed `wingbox` needs none of these steps:
 the package depends on the same pinned parsers
 ([Language parsers](#language-parsers)).
 `requirements.txt` contains the separate infrastructure-topology dependency.
@@ -1374,6 +1375,7 @@ when the graph is outside the current directory and its parents.
 | Ruby and Rails | Ruby classes, modules, instance and singleton methods, inheritance, requires, Zeitwerk constants, concerns, associations, callbacks, jobs, mailers, and impacted specs |
 | PHP and Laravel | PHP 8 classes, interfaces, traits, enums, methods, attributes, `use` aliases, inheritance, Composer PSR-4 classes, Blade views and components, Livewire components, Eloquent associations, events, and jobs |
 | Dart and Flutter | Dart classes, mixins, enums, extension types, extensions, type aliases, functions, inheritance, `import`/`export`/`part`/`part of` directives, the project's own `package:` libraries and relative files |
+| C and C++ | `#include` dependencies between the files of the repository (found through `compile_commands.json`, else through the include folders the CMake files name, else in the tree), classes, structs, unions, enums, type aliases, functions, methods, macros with a value, base classes, and the uses of a name in the files that include its header |
 | Free Pascal and Lazarus | Units, programs, uses/includes, classes, records, interfaces, inheritance, methods, and routines |
 
 Wingbox is designed for single repositories and monorepos. It understands
@@ -1444,6 +1446,57 @@ dynamically, in a loop over a directory for example, is left unlinked unless it
 also follows one of the conventions above. Nothing boots Laravel, runs Composer
 or opens a network connection; the graph comes from source text and
 `composer.json`.
+
+## C and C++ dependency search
+
+A C or C++ file depends on the files it includes. Wingbox reads the files
+`.c`, `.cc`, `.cpp`, `.cxx`, `.h`, `.hh`, `.hpp`, `.hxx`, `.inl` and `.ipp`
+with one tree-sitter grammar (a `.h` file is read as C++: its name does not
+say which of the two languages it is written in) and looks for the file of
+every `#include` the way a compiler does: a quoted name beside the including
+file first, then in the include folders. The include folders come from, in
+this order:
+
+1. `compile_commands.json`, at the root of the repository, in a folder of the
+   root or one level below (`build/`, `build/release/`): the `-I`, `-isystem`,
+   `-iquote`, `-idirafter` and `/I` folders of the entry of the file, in their
+   order. A header has no entry of its own and takes the folders of the entries
+   of the nearest folder. CMake writes the file with
+   `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`.
+2. Without that file, the folders the CMake files of the repository name
+   literally in `target_include_directories` and `include_directories`
+   (`${CMAKE_CURRENT_SOURCE_DIR}`, `${CMAKE_CURRENT_LIST_DIR}`,
+   `${PROJECT_SOURCE_DIR}`, `${CMAKE_SOURCE_DIR}` or a relative path).
+3. Last, for a quoted name, the one file of the repository whose path ends
+   with the written name.
+
+A name that none of these finds is no dependency: a system header, a library
+outside the repository, a path that two files end with. A name in angle
+brackets and the name of a standard header are found in an include folder or
+not at all, so `<time.h>` is never the `time.h` that lies somewhere in the
+repository.
+
+A header and the source file beside it are two modules, and a module ID keeps
+its extension (`studio/src/scene/stage.h`, `studio/src/scene/stage.cpp`).
+`wingbox impact studio/src/scene/stage.h` lists the files that include the header,
+directly and through one other file, tests included. A source file is
+included by nothing, so its impact is empty: start from its header to see who
+uses what it defines.
+
+`wingbox usages <header>::<name>` lists the uses of a function, a type, a
+macro or an enum in the files that include the header directly or through
+other headers, with their lines; `Type::member` and `Enum::Value` are uses of
+that member. Comments and strings are not uses.
+
+What is not read: the preprocessor is not run, so every branch of an `#if` is
+read and an include whose name is a macro is skipped; a header that a build
+step generates and that is not in the repository is no dependency; namespaces
+are not followed (`render::blend` is looked up as `blend`); the type of an
+object is not derived, so a method called on an object (`painter.paint()`) is
+listed by `usages Painter.paint` as an unresolved call, never as a use of a
+guessed class; overloads share one name. `build/` is skipped as in every
+language, so a compilation database there is read and the sources there are
+not.
 
 ## Dart and Flutter dependency search
 

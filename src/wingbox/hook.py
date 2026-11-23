@@ -47,8 +47,9 @@ from wingbox.facts import atom
 
 # Files the builder parses (scripts/build_code_graph.py LANGUAGES; a test keeps them equal).
 SOURCE_EXTENSIONS = frozenset({
-    ".cjs", ".cs", ".cts", ".dart", ".go", ".inc", ".java", ".js", ".jsx", ".lpr", ".mjs", ".mts",
-    ".pas", ".php", ".pp", ".py", ".rake", ".rb", ".rs", ".ts", ".tsx",
+    ".c", ".cc", ".cjs", ".cpp", ".cs", ".cts", ".cxx", ".dart", ".go", ".h", ".hh", ".hpp", ".hxx", ".inc",
+    ".inl", ".ipp", ".java", ".js", ".jsx", ".lpr", ".mjs", ".mts", ".pas", ".php", ".pp", ".py", ".rake",
+    ".rb", ".rs", ".ts", ".tsx",
 })
 PROJECT_MANIFESTS = (
     "pyproject.toml", "setup.py", "package.json", "tsconfig.json", "Cargo.toml", "go.mod", "pom.xml",
