@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-23 - Glama after 0.18.0: A, 4.4 of 5
+
+### Checks (AGENTS.md section 5 and 6.3)
+- The maintainer pressed "Sync Server" in the admin area of the listing. The score page (https://glama.ai/mcp/servers/aileron-tech/wingbox/score) then says: TDQS A, 4.4 of 5.0, scored 2026-11-23 19:55 across 14 tools; the listing shows the README of 0.18.0. The page gives the time without a zone, so whether this score was made by that sync or by one shortly before it is not known.
+- Disambiguation 4 of 5: several tools touch adjacent questions (`analyze_impact`, `list_dependencies` and `find_usages`; `search_source` and `find_definitions`; `describe_module` and `list_files`); every description names the neighbour and the property that tells them apart, and an agent that reads names alone could still hesitate between the dependency tools.
+- Naming consistency 5 of 5: all 14 names are verb_noun in snake_case.
+- Tool count 5 of 5: 14 tools, within 3 to 15, none redundant.
+- Completeness 4 of 5: the read-only life of graph analysis is covered; named as small gaps: no diff between two arbitrary commits, no search over files that are not source.
+- The grade is the one of 2026-11-19 (A, 4.4): 0.18.0 changed the description of one parameter and no tool.
+
 ## 2026-11-23 - Thanks: the reporter of issues #177 and #188
 
 ### Changes
