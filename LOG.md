@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-23 - Thanks: the reporter of issues #177 and #188
+
+### Changes
+- `README.md`, "Thanks": an entry for the author of issues #177 and #188, by GitHub login as the other entries, with what each report led to (0.16.1, 0.17.0, 0.18.0).
+
+### Why
+- The maintainer asked for it: the two reports are the source of the C and C++ support and of the changes of 0.18.0.
+
 ## 2026-11-23 - After the release 0.18.0
 
 ### Checks (AGENTS.md section 6)
