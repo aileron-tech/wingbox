@@ -9,12 +9,20 @@
   most of them, twenty files to look at first and the command of the complete list. It goes with
   `--only tests`, `--diff`, `--json` and `--human`. The MCP tool `analyze_impact` takes `summary`;
   the tool list is unchanged.
+- **Layers for a repository that fits no style.** `wingbox init --from-folders <part>` reads the
+  graph and writes the part into `.wingbox/config.yaml` with `style: declared` and `order:`: one
+  layer per folder, lowest first. From then on an import of a higher layer is a boundary
+  violation, in `wingbox boundaries`, the report and the pull request check; `wingbox align
+  --learn` accepts the ones of today. A part can also state `order:` by hand.
 
 ### Fixes
 
 - The MCP tool `analyze_impact` with `only` set to `tests` answered `unknown option --only` in
   0.18.0: the server checked the call as a command line that knew no such option. The command
   line was not affected.
+- A part of `.wingbox/config.yaml` that holds only C or C++ files was dropped at the build, so its
+  layers were never checked: the architecture rules did not count `.c`, `.cpp`, `.h` and the other
+  C and C++ extensions as source files.
 
 ## 0.18.0 - 2026-11-23
 

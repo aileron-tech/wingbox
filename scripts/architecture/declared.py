@@ -26,6 +26,7 @@ class DeclaredLayer:
     name: str
     path: Optional[str]           # regex relative to the folder of the declaring file
     files: tuple[str, ...]        # files pinned to this layer
+    folders: tuple[str, ...] = () # the folders of an `order:` entry of .wingbox/config.yaml, as written
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,16 @@ def _parse_value(tokens: list[str], i: int) -> tuple[object, int]:
             depth -= 1
         i += 1
     return ("expr", " ".join(tokens[start:i])), i
+
+
+def layers_from_order(file: str, base: str, order: tuple[tuple[str, tuple[str, ...]], ...]) -> DeclaredLayers:
+    """The layer table of an `order:` list of .wingbox/config.yaml: (layer, folders) entries, lowest first,
+    the folders relative to the part (`.`: the files directly in it)."""
+    layers = []
+    for name, folders in order:
+        patterns = ["[^/]+$" if folder.strip("/") in (".", "") else re.escape(folder.strip("/")) + "/" for folder in folders]
+        layers.append(DeclaredLayer(name=name, path="^(?:" + "|".join(patterns) + ")", files=(), folders=tuple(folders)))
+    return DeclaredLayers(file=file, base=base, layers=tuple(layers))
 
 
 def read_layer_table(path: str, text: str) -> DeclaredLayers | NotRead:

@@ -5,6 +5,9 @@
                                             print the candidates and write .wingbox/config.yaml (kept if present
                                             unless --force) and .wingbox/assistant-setup.md (lines a team may
                                             add by hand); then wingbox learn settles the open points
+    wingbox init --from-folders PART [--force] [--sexp]
+                                            For a part no style fits ("." is the repository): write its layers
+                                            into .wingbox/config.yaml from the order of its folders in the graph
     wingbox advice [--learned]              The open recommendations (or what was learned from past ones);
     wingbox advice accept|reject <id> [--reason TEXT]   record the decision in .wingbox/decisions.sexp
     wingbox align [PART] [--to STYLE] [--learn]
@@ -1419,7 +1422,117 @@ def _replace(item, **changes):
     return dataclasses.replace(item, **changes)
 
 
+def _init_from_folders(args: list[str], cwd: str) -> int:
+    """`wingbox init --from-folders PART [--force] [--sexp]`: for a part no layer style fits, write its
+    layers into .wingbox/config.yaml from the order of its folders in the graph."""
+    index = args.index("--from-folders")
+    part = args[index + 1] if index + 1 < len(args) and not args[index + 1].startswith("-") else ""
+    others = [argument for position, argument in enumerate(args) if position not in (index, index + 1 if part else index)]
+    unknown = [argument for argument in others if argument not in ("--force", "--sexp")]
+    if not part or unknown:
+        print("[wingbox] ERROR: usage: wingbox init --from-folders PART [--force] [--sexp]  (PART: a folder, "
+              "\".\" for the repository)" + (f"; unknown argument {unknown[0]}" if unknown else ""), file=sys.stderr)
+        return 2
+    force, sexp = "--force" in others, "--sexp" in others
+    root = _find_root(cwd)
+    if root is None or not os.path.isfile(_graph_file(root)):
+        print("[wingbox] ERROR: no code graph here: the layers are read from it. Run `wingbox build .` first, "
+              "then this command again.", file=sys.stderr)
+        return 1
+    builder = load_script("build_code_graph")
+    search = load_script("code_graph_search")
+    load_script("architecture")
+    from architecture.config import CONFIG_FILE, render_config
+    from architecture.declared import layers_from_order
+    from architecture.library import load_library
+    from architecture.plan import DECLARED, DeclaredRules, PartPlan, RepositoryPlan
+    from architecture.repository import list_files
+    from architecture.sexp import q
+
+    part = os.path.relpath(os.path.realpath(os.path.join(cwd, part)), root).replace(os.sep, "/")
+    if part.startswith(".."):
+        print(f"[wingbox] ERROR: {part} is outside the project at {root}", file=sys.stderr)
+        return 2
+    graph = search.CodeGraph()
+    loaded = graph.load(_graph_file(root), root)
+    if isinstance(loaded, search.MapLoadErr):
+        print(f"[wingbox] ERROR: {_graph_file(root)} not read: {loaded.error}", file=sys.stderr)
+        return 1
+    found = search.folder_layers(graph, part)
+    if isinstance(found, str):
+        print(f"(layers-from-folders-none {q(part)} :reason {q(found)})" if sexp else f"Nothing written: {found}.")
+        return 1
+    names = {folder: folder for folder in found.folders}
+    if "." in names:   # the files directly in the part
+        names["."] = "root" if "root" not in names else "root-files"
+    order = tuple((names[folder], (folder,)) for folder in found.folders)
+    skip = frozenset(builder.SKIP_DIRS)
+    plan = builder.architecture_plan(root, skip, frozenset())
+    if isinstance(plan, builder.Err):
+        print(f"[wingbox] ERROR: {plan.error}", file=sys.stderr)
+        return 1
+    existing = next((item for item in plan.value.parts if item.path == found.part), None)
+    facts = [
+        f"(layers-from-folders {_atom(found.part)} :folders {len(found.folders)} :files {found.files})",
+        f"(layer-order {_atom(found.part)} {' '.join(_atom(names[folder]) for folder in found.folders)})",
+        *(f"(upward {_atom(found.part)} {_atom(names[a])} {_atom(names[b])} :imports {count})" for a, b, count in found.upward),
+    ]
+    written = False
+    if existing is not None and existing.has_rules and not force:
+        facts.append(f"(arch-config-kept {q(CONFIG_FILE)} :reason "
+                     f"{q(f'part {found.part} has layer rules ({existing.style}); --force replaces them')})")
+    else:
+        base = "" if found.part == "." else found.part
+        rules = DeclaredRules(files=(), layers=layers_from_order(CONFIG_FILE, base, order), not_read=(),
+                              baseline=frozenset(), baseline_file="")
+        new = PartPlan(
+            path=found.part, kind=existing.kind if existing else "folder", level=existing.level if existing else "component",
+            files=found.files, style=DECLARED, state="declared", origin="declared", score=None, judgement=None,
+            layers=(), routing_root=(), declared=rules,
+        )
+        parts = tuple(new if item.path == found.part else item for item in plan.value.parts)
+        if existing is None:
+            parts = tuple(sorted((*parts, new), key=lambda item: item.path))
+        roots = tuple(sorted({*plan.value.roots, base}, key=lambda item: (-len(item), item)))
+        try:
+            _prepare_wingbox(root)
+            with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(render_config(RepositoryPlan(parts, roots), load_library(), date.today().isoformat(),
+                                           list_files(root, skip, frozenset())))
+        except OSError as error:
+            print(f"[wingbox] ERROR: cannot write {CONFIG_FILE}: {error}", file=sys.stderr)
+            return 1
+        written = True
+        facts.append(f"(arch-config-written {_atom(CONFIG_FILE)})")
+    if sexp:
+        print("\n".join(facts))
+        return 0
+    layers = ", ".join(names[folder] for folder in found.folders)
+    lines = [
+        f"Layers of {found.part} from its folders, lowest first: {layers}",
+        f"  {len(found.folders)} folders, {found.files} source files. A file may depend on its own layer and on the layers below it.",
+    ]
+    if found.upward:
+        total = sum(count for _a, _b, count in found.upward)
+        lines.append(f"Imports that go upward under this order ({total}):")
+        lines += [f"  {names[a]} -> {names[b]}: {count}" for a, b, count in found.upward]
+    else:
+        lines.append("No import goes upward under this order.")
+    if written:
+        lines += [
+            f"Written: {CONFIG_FILE} (part {found.part}: style declared, order). Reorder the entries by hand where the order is wrong.",
+            "Next: wingbox build .   then   wingbox boundaries   (the upward imports are its violations);",
+            "      wingbox align --learn   accepts the ones of today into .wingbox/baseline.sexp, so that only new ones are reported.",
+        ]
+    else:
+        lines.append(f"Not written: part {found.part} has layer rules already ({existing.style}); --force replaces them.")
+    print("\n".join(lines))
+    return 0
+
+
 def _init(args: list[str], cwd: str) -> int:
+    if "--from-folders" in args:
+        return _init_from_folders(args, cwd)
     parsed = init_arguments(args, cwd)
     if isinstance(parsed, str):
         print(f"[wingbox] ERROR: {parsed}", file=sys.stderr)

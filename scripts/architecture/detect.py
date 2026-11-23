@@ -38,6 +38,7 @@ SOURCE_EXTENSIONS = frozenset({
     ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rb", ".go", ".rs", ".cs", ".java", ".kt",
     ".php", ".vue", ".svelte", ".erb", ".cshtml", ".swift", ".scala", ".ex", ".exs", ".haml", ".slim",
     ".pas", ".pp", ".lpr", ".dpr",
+    ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp",
 })
 EXTRA_TEST_FOLDERS = ("__tests__", "__mocks__", "e2e", "testdata", "integration_test")   # integration_test/: Flutter
 

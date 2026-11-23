@@ -3244,17 +3244,10 @@ def _strong_groups(nodes: Sequence[str], edges: dict[str, set[str]]) -> list[lis
     return groups
 
 
-def cmd_cycles(g: CodeGraph, scope: str = "") -> None:
-    """What the import graph says where no layer style applies: the groups of files that depend on each
-    other, the files many depend on that depend on many, and how the folders depend on each other.
-
-    scope: a folder; the answer is then about the files below it, with its subfolders as the folders."""
-    prefix = scope.strip("/").replace(os.sep, "/")
+def _import_edges(g: CodeGraph, prefix: str) -> tuple[dict[str, str], set[str], dict[str, set[str]]]:
+    """(the file of every module, the modules below the folder prefix, their import edges among themselves)."""
     files = {module: _impact_file(g, module) for module in g.nodes}
     inside = {module for module, path in files.items() if not prefix or path == prefix or path.startswith(prefix + "/")}
-    if prefix and not inside:
-        _print_no_match(g, scope)
-        return
     edges: dict[str, set[str]] = {}
     for edge in g.all_edges:
         # An import that the compiler erases (`import type`) makes no cycle at run time.
@@ -3263,6 +3256,82 @@ def cmd_cycles(g: CodeGraph, scope: str = "") -> None:
         source, target = edge.source.split("::")[0], edge.target.split("::")[0]
         if source != target and source in inside and target in inside:
             edges.setdefault(source, set()).add(target)
+    return files, inside, edges
+
+
+@dataclass(frozen=True)
+class FolderLayers:
+    """The folders of a part as layers, lowest first, and the imports that go upward under that order."""
+
+    part: str                                   # the folder asked, "." for the repository
+    folders: tuple[str, ...]                    # lowest first; "." stands for the files directly in the part
+    files: int                                  # source files counted (test files are in no layer)
+    upward: tuple[tuple[str, str, int], ...]    # (from folder, to folder, file pairs), from below to above
+
+
+def folder_layers(g: CodeGraph, part: str) -> Union[str, FolderLayers]:
+    """One layer per folder of a part, lowest first: a folder stands below the folders that depend on it;
+    folders that depend on each other are ordered so that few imports go upward (of the folders left, the
+    one that the others depend on most and that depends on them least is placed lowest). A string says
+    why there is nothing to order."""
+    prefix = "" if part.strip("/") in ("", ".") else part.strip("/").replace(os.sep, "/")
+    files, inside, edges = _import_edges(g, prefix)
+    inside = {module for module in inside if module_layer(g, module) != "test"}
+    if not inside:
+        return f"no source file of the graph is below {part}"
+
+    def folder_of(module: str) -> str:
+        rest = files[module][len(prefix) + 1:] if prefix else files[module]
+        return rest.split("/", 1)[0] if "/" in rest else "."
+
+    folders = sorted({folder_of(module) for module in inside})
+    if len(folders) < 2:
+        return f"{part} has fewer than two folders with source files: there is nothing to order"
+    between: dict[tuple[str, str], int] = {}
+    for source, targets in edges.items():
+        for target in targets:
+            if source in inside and target in inside and folder_of(source) != folder_of(target):
+                pair = (folder_of(source), folder_of(target))
+                between[pair] = between.get(pair, 0) + 1
+    depends: dict[str, set[str]] = {}
+    for a, b in between:
+        depends.setdefault(a, set()).add(b)
+    groups = _strong_groups(folders, depends)
+    group_of = {folder: number for number, group in enumerate(groups) for folder in group}
+    # Lowest first: a group is placed when every group it depends on is placed; ties by name.
+    waiting = {number: {group_of[b] for a in group for b in depends.get(a, ()) if group_of[b] != number}
+               for number, group in enumerate(groups)}
+    placed: list[int] = []
+    while len(placed) < len(groups):
+        ready = sorted((number for number in waiting if number not in placed and waiting[number] <= set(placed)),
+                       key=lambda number: groups[number])
+        placed.append(ready[0])
+    ordered: list[str] = []
+    for number in placed:
+        left = set(groups[number])
+        while left:
+            def score(folder: str) -> int:
+                used_by = sum(between.get((other, folder), 0) for other in left)
+                uses = sum(between.get((folder, other), 0) for other in left)
+                return used_by - uses
+            lowest = sorted(left, key=lambda folder: (-score(folder), folder))[0]
+            ordered.append(lowest)
+            left.discard(lowest)
+    rank = {folder: index for index, folder in enumerate(ordered)}
+    upward = tuple(sorted((a, b, count) for (a, b), count in between.items() if rank[a] < rank[b]))
+    return FolderLayers(part.strip("/") or ".", tuple(ordered), len(inside), upward)
+
+
+def cmd_cycles(g: CodeGraph, scope: str = "") -> None:
+    """What the import graph says where no layer style applies: the groups of files that depend on each
+    other, the files many depend on that depend on many, and how the folders depend on each other.
+
+    scope: a folder; the answer is then about the files below it, with its subfolders as the folders."""
+    prefix = scope.strip("/").replace(os.sep, "/")
+    files, inside, edges = _import_edges(g, prefix)
+    if prefix and not inside:
+        _print_no_match(g, scope)
+        return
     dependents: dict[str, int] = {}
     for targets in edges.values():
         for target in targets:

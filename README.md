@@ -647,12 +647,55 @@ style and no configuration:
   direction to remove.
 - `folder-order`: the top-level folders from those that depend on others to
   those the others depend on; folders that depend on each other stand in one
-  group. It is the order a layer rule would have to respect: a draft for the
-  `layers` of `.wingbox/config.yaml`.
+  group. It is the order a layer rule would have to respect.
 
 `wingbox cycles <folder>` answers for the files below a folder, with its
 subfolders as the folders (`wingbox cycles engine/src`). `--json` prints the
 same facts.
+
+#### Layers from the folders: `wingbox init --from-folders`
+
+To have that order checked from now on, let Wingbox write it as the layers
+of the part:
+
+```text
+$ wingbox init --from-folders .
+Layers of . from its folders, lowest first: core, store, shop, app
+  4 folders, 9 source files. A file may depend on its own layer and on the layers below it.
+Imports that go upward under this order (1):
+  store -> shop: 1
+Written: .wingbox/config.yaml (part .: style declared, order). Reorder the entries by hand where the order is wrong.
+Next: wingbox build .   then   wingbox boundaries   (the upward imports are its violations);
+      wingbox align --learn   accepts the ones of today into .wingbox/baseline.sexp, so that only new ones are reported.
+```
+
+The argument is the part: `.` for the repository, or a folder
+(`wingbox init --from-folders engine/src`), which becomes a part of its own.
+Every folder of the part with source files is one layer; a folder stands
+below the folders that depend on it, and folders that depend on each other
+are ordered so that few imports go upward. Test files are in no layer. What
+is written is plain to read and to change:
+
+```yaml
+parts:
+  .:
+    level: container
+    style: declared
+    order:   # lowest first: a file may depend on its own layer and on the layers below it
+      - core: [core]
+      - store: [store]
+      - shop: [shop]
+      - app: [app]
+```
+
+Move a folder to another entry, put two folders into one layer
+(`- sales: [shop, app]`) or reorder the entries, then build again. From then
+on `wingbox boundaries`, the report, `wingbox place` and the pull request
+check treat the part like any part with a style: an import of a higher layer
+is a violation, and the ones accepted with `wingbox align --learn` are
+counted as known. A part that has layer rules already is kept unless
+`--force`. It needs a built graph, and works for every language of the
+graph, C and C++ included.
 
 ### The architecture of each part: `wingbox init`
 
