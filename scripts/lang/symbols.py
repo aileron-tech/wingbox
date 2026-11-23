@@ -18,7 +18,12 @@ from .interface import FileResult, UsePayload
 # written; None: a member of a module is never a module of its own (TypeScript).
 _SEPARATORS: dict[str, Optional[str]] = {
     "python": ".", "rust": "::", "typescript": None, "tsx": None, "javascript": None,
+    # C and C++: an include is a glob import of the included file; a namespace is not a module.
+    "cpp": None, "c": None,
 }
+# Languages whose only import is the inclusion of a whole file: no name is renamed or hidden on the way,
+# so what a name means behind the includes is decided by the files they reach, not by the route to them.
+_INCLUDE_LANGUAGES = frozenset({"cpp", "c"})
 _MAX_DEPTH = 16
 _ENDLESS = _MAX_DEPTH + 1  # the height of a chain of glob imports that no search follows to its end
 # Entity kinds whose methods a call can name: classes, structs, enums, interfaces, traits.
@@ -352,6 +357,8 @@ class SymbolIndex:
     ) -> Optional[Target]:
         self._touch(("m", module))
         result = self._results[module]
+        if result.language in _INCLUDE_LANGUAGES:
+            return self._from_includes(module, name)
         if result.language == "python" and name.startswith("_"):
             return None
         globs = self._globs_of(module)
@@ -387,6 +394,22 @@ class SymbolIndex:
             if resolved is not None:
                 found.add(resolved)
         return next(iter(found)) if len(found) == 1 else None
+
+    def _from_includes(self, module: str, name: str) -> Optional[Target]:
+        """C and C++: the one file among those the includes of module reach, through any number of further
+        includes, that defines name. A file between the two only passes the name on, so the files are not
+        asked one by one: a translation unit reaches hundreds of headers, and every name it writes would
+        walk them again. Two reachable files with the name leave it unresolved, as everywhere."""
+        self._touch(("c", module))
+        holders = self._holding(name)
+        if not holders:
+            return None
+        reached = self._reach(module)
+        if len(holders) <= len(reached):
+            found = [holder for holder in holders if holder in reached and name in self._defined[holder]]
+        else:
+            found = [holder for holder in reached if holder in holders and name in self._defined[holder]]
+        return Symbol(found[0], name) if len(found) == 1 else None
 
     def member(self, ref: ModuleRef, name: str, depth: int = 0, seen: frozenset = frozenset()) -> Optional[Target]:
         """name inside the module ref: a child module, or a name the module defines or re-exports."""

@@ -85,6 +85,19 @@ Measured: [benchmarks/impact/README.md](../../benchmarks/impact/README.md) (40 o
 
 Measured: [benchmarks/php/README.md](../../benchmarks/php/README.md) (60 of 60 questions; 6,054 reference dependencies with 0 wrong and 0 missing).
 
+## C and C++
+
+| What the graph does not see | What it means for an answer | Source |
+|---|---|---|
+| The preprocessor is not run: conditional blocks, macros that expand to code, an `#include` whose name is a macro | Every branch of an `#if` is read, so an include that only one platform compiles is a dependency on every platform; an include named by a macro is no edge | [README.md](../../README.md), "C and C++ dependency search" |
+| An include that no include folder and no single file of the repository answers: a system header, a library outside the repository, a header a build step generates outside the repository, a path two files end with | No edge. The graph never chooses between two files | the same section; `tests/test_cpp_language.py::CppIncludeTest` |
+| Include folders without a compilation database | Read from the literal folders of `target_include_directories` and `include_directories`, then, for a quoted name, from the one file whose path ends with the name: an inference, right when the repository has one file of that name. With `compile_commands.json` the folders are those the compiler was given | the same section; `tests/test_cpp_language.py::CppIncludeTest` |
+| A source file and the header that declares what it defines | Two modules with no edge from the header to the source file: `impact` of a `.cpp` file lists the files that include it (usually none), not the users of its functions. Start from the header | the same section |
+| The type of an object, overload resolution, templates, namespaces | A method called on an object is listed by `usages Class.method` as an unresolved call; overloads share one name; `a::b::name` is looked up as `name` and as the member `name` of `b` | the same section; `tests/test_cpp_language.py::CppUsagesTest` |
+| A name that two headers declare, in a file that reaches both through its includes | The use is attributed to neither header: `usages` of each lists the files that reach only that one | `tests/test_cpp_language.py::CppUsagesTest` |
+| A `.h` file written in C | Read with the C++ grammar; a C++ keyword used as a name gives a parse error around that name, and the includes and the other declarations of the file are still read | `tests/test_cpp_language.py::CppParserTest` |
+| How the graph compares with the includes of public C and C++ projects | not assessed: no benchmark result for C and C++ is in the repository | - |
+
 ## Dart and Flutter
 
 | What the graph does not see | What it means for an answer | Source |

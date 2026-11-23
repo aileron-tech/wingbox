@@ -20,7 +20,7 @@ from scripts.lang import LANGUAGES
 
 REPO = Path(__file__).resolve().parents[1]
 # The languages whose parser is also a pip extra of the package, kept for the commands written for 0.12.
-EXTRAS = ("csharp", "java", "go", "ruby", "php", "dart")
+EXTRAS = ("csharp", "java", "go", "ruby", "php", "dart", "cpp")
 DART_MARKER = 'sys_platform != "win32" or platform_machine != "ARM64"'
 # One source file of each of these languages: (file, text, display name, grammar distribution).
 SOURCES = {
@@ -30,6 +30,7 @@ SOURCES = {
     "ruby": ("storefront/worker.rb", "class Worker\nend\n", "Ruby", "tree-sitter-ruby"),
     "php": ("storefront/index.php", "<?php\nclass Index {}\n", "PHP and Laravel", "tree-sitter-php"),
     "dart": ("storefront/main.dart", "void main() {}\n", "Dart", "tree-sitter-dart"),
+    "cpp": ("storefront/main.cpp", "int main() { return 0; }\n", "C and C++", "tree-sitter-cpp"),
 }
 # The folders 0.12 kept a parser in: <per-user folder>/<platform>/<distribution>-<version>.
 OLD_PLATFORM_FOLDERS = (
@@ -69,7 +70,7 @@ def _project(directory: str, language: str) -> Path:
 
 class SkippedLanguageTest(unittest.TestCase):
     def test_a_build_without_the_parser_skips_the_language_and_names_the_pip_extra(self) -> None:
-        """/* REQ-DEPS-007: the parsers of C#, Java, Go, Ruby, PHP and Dart are installed with the package; a build that meets files of one of them without its parser all the same (a broken install, Dart on Windows arm64) goes on with the other languages and warns with the number of skipped files and the pip extra, `pip install "wingbox[<language>]"`. */"""
+        """/* REQ-DEPS-007: the parsers of C#, Java, Go, Ruby, PHP, Dart and C/C++ are installed with the package; a build that meets files of one of them without its parser all the same (a broken install, Dart on Windows arm64) goes on with the other languages and warns with the number of skipped files and the pip extra, `pip install "wingbox[<language>]"`. */"""
         for language, (_name, _text, display, distribution) in SOURCES.items():
             with self.subTest(language=language), tempfile.TemporaryDirectory() as directory:
                 root = _project(directory, language)
@@ -153,7 +154,7 @@ class EnvironmentOnlyTest(unittest.TestCase):
 
 class PinnedParsersTest(unittest.TestCase):
     def test_the_package_depends_on_every_parser_with_exact_pins(self) -> None:
-        """/* REQ-DEPS-012: the package depends on tree-sitter, PyYAML and the grammars of TypeScript, Rust, C#, Java, Go, Ruby, PHP and Dart, each with an exact pin; the Dart grammar alone carries an environment marker, which leaves it out on Windows arm64, where it has no wheel; the extras csharp, java, go, ruby, php, dart and all stay defined with the same pins for the commands written for 0.12, and `all` holds these parsers and nothing else; the one other extra is `http`, the transport package; every pin equals the one of the language adapter and of the requirements file. */"""
+        """/* REQ-DEPS-012: the package depends on tree-sitter, PyYAML and the grammars of TypeScript, Rust, C#, Java, Go, Ruby, PHP, Dart and C/C++, each with an exact pin; the Dart grammar alone carries an environment marker, which leaves it out on Windows arm64, where it has no wheel; the extras csharp, java, go, ruby, php, dart and all stay defined with the same pins for the commands written for 0.12, and `all` holds these parsers and nothing else; the one other extra is `http`, the transport package; every pin equals the one of the language adapter and of the requirements file. */"""
         project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         dependencies = {}
         for requirement in project["dependencies"]:

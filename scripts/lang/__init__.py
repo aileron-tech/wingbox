@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .cpp import CPP_LANGUAGE
 from .csharp import CSHARP_LANGUAGE
 from .dart import DART_LANGUAGE
 from .go import GO_LANGUAGE
@@ -36,12 +37,13 @@ LANGUAGES: tuple[Language, ...] = (
     PHP_LANGUAGE,
     PASCAL_LANGUAGE,
     DART_LANGUAGE,
+    CPP_LANGUAGE,
 )
 
 # The languages whose parser is also a pip extra of the package, under the language's name (pyproject.toml).
 # Every parser is a dependency of the package; where one is missing all the same (a broken install, Dart on
 # Windows arm64), a build skips the language and names the extra.
-PIP_EXTRA_LANGUAGES: tuple[str, ...] = ("csharp", "java", "go", "ruby", "php", "dart")
+PIP_EXTRA_LANGUAGES: tuple[str, ...] = ("csharp", "java", "go", "ruby", "php", "dart", "cpp")
 
 
 def language_for_file(file_name: str) -> Language | None:

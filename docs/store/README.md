@@ -43,8 +43,8 @@ Long description:
 > which modules and packages depend on each other and which dependencies cross
 > an architecture layer; and which three or four files to read first. Use it
 > before a refactor or a cross-package change. It parses Python, TypeScript
-> and TSX, Rust, C#, Java, Go, Ruby and Ruby on Rails, PHP and Laravel, Dart
-> and Flutter with tree-sitter, and writes an offline HTML map of the
+> and TSX, Rust, C and C++, C#, Java, Go, Ruby and Ruby on Rails, PHP and
+> Laravel, Dart and Flutter with tree-sitter, and writes an offline HTML map of the
 > repository. Everything runs on your
 > computer with the open-source wingbox command (MIT, on PyPI): no code, graph
 > or question is sent anywhere. The plugin needs a local shell and the
