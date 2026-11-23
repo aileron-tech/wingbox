@@ -1,5 +1,17 @@
 # Completion Log
 
+## 2026-11-23 - After the release 0.16.1
+
+### Checks (AGENTS.md section 6)
+- 6.1 PyPI: `curl -s https://pypi.org/pypi/wingbox/0.16.1/json` and the same for `wingbox-http` list two files each (the sdist and the wheel). `uvx --refresh --from "wingbox[http]==0.16.1" wingbox --version` answers `wingbox 0.16.1`; `wingbox mcp --http --help` prints the options of the HTTP transport.
+- 6.1 GitHub release `v0.16.1`: assets `SHA256SUMS`, `wingbox-0.16.1.cdx.json`, `wingbox-0.16.1.mcpb`, `wingbox.mcpb`. The two lines PyPI answers for `wingbox` (wheel `c0450b96...`, sdist `3981e71e...`) are lines of `SHA256SUMS`. `curl -sIL .../releases/latest/download/wingbox.mcpb`: 200.
+- 6.1 Workflows: `publish-mcp` succeeded for the release; the registry answers version 0.16.1, status `active`. `tests` and `docs` of the release commit: see the pull request of this entry.
+- 6.1 Plugin pin: `python3 tools/sync_plugin.py` changed the four manifests to the commit of `v0.16.1` (this change); `tests.test_plugins` passes.
+- 6.1 Homebrew tap: `gh workflow run bump.yml -R aileron-tech/homebrew-wingbox` started; the dependencies of the package did not change.
+- 6.1 Clean install: in a project with a module file beside a package of the same name, `wingbox build .` and `wingbox impact <module> 2 --json` from PyPI list the tool as the only dependent, and `analyze` names the package `__init__.py`, not the tool.
+- 6.2 and 6.3: not applicable. The release changes no command, option, tool, description or install line.
+- 6.4 and 6.5 (the pull request check and the sites): not done for 0.16.1. They are carried to the release that follows in the same working session (C and C++), so that the default version of the action and the site move once.
+
 ## 2026-11-23 - Release 0.16.1
 
 ### Changes
