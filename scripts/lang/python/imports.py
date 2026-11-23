@@ -88,10 +88,12 @@ class BoundPythonLanguage:
     def _resolve_import(self, import_name: str, source_path: str) -> str | None:
         bases, parts = self._bases(source_path, import_name)
         for base in bases:
-            for candidate in (
-                os.path.join(base, *parts) + ".py",
-                os.path.join(base, *parts, "__init__.py"),
-            ):
+            # As Python's finder: in one folder the package `name/__init__.py` is taken before the
+            # module `name.py`. A name without parts (`from . import x`) is the package folder
+            # itself, never a module file that lies beside that folder under the same name.
+            package = os.path.join(base, *parts, "__init__.py")
+            candidates = (package, os.path.join(base, *parts) + ".py") if parts else (package,)
+            for candidate in candidates:
                 target_id = self.path_to_id.get(os.path.normpath(candidate))
                 if target_id is not None:
                     return target_id
