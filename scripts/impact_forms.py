@@ -63,6 +63,9 @@ class ImpactLine:
     # of the language), `declared` (the config file), `inferred` (a marker, a build file, a launch call, an
     # include found without the folders the compiler was given).
     basis: str = ""
+    # Filled for `--summary` only: generated (made from the file or started by it), test, entry-point (a file
+    # nothing else depends on) or other.
+    kind: str = ""
 
 
 @dataclass(frozen=True)
@@ -329,6 +332,161 @@ def found_text(answer: ImpactFound, show_all: bool) -> str:
     if answer.advice:
         lines += ["", "Advice"] + [item.text for item in answer.advice]
     return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# The short form (`--summary`)
+# ---------------------------------------------------------------------------
+
+SUMMARY_FILES = 20     # files named by the short form
+SUMMARY_FOLDERS = 8
+SUMMARY_TEXT_FILES = 8
+_KINDS = ("generated", "test", "entry-point", "other")
+_KIND_KEYS = {"generated": "generated", "test": "tests", "entry-point": "entry-points", "other": "other"}
+
+
+@dataclass(frozen=True)
+class Summary:
+    """The counts of an impact answer and the few files to look at first."""
+
+    file: str
+    direct: int
+    total: int
+    depth: int
+    only: str
+    depths: tuple[int, ...]
+    kinds: tuple[tuple[str, int], ...]         # (generated, tests, entry-points, other) with their counts
+    folders: tuple[tuple[str, int], ...]       # the folders with the most dependents
+    elsewhere: int                             # dependents in the folders not named
+    first: tuple[str, ...]
+    more: int                                  # dependents not named in first
+    full: str                                  # the command that prints the complete list
+    note_fact: str = ""
+    note_text: str = ""
+    affected: Optional[Affected] = None
+
+
+def summary_of(answer: ImpactFound) -> Summary:
+    rows = [(depth, line) for depth, level in enumerate(answer.levels, start=1) for line in level]
+    counts = {kind: sum(1 for _depth, line in rows if (line.kind or "other") == kind) for kind in _KINDS}
+    by_folder: dict[str, int] = {}
+    for _depth, line in rows:
+        folder = line.file.rsplit("/", 1)[0] if "/" in line.file else "."
+        by_folder[folder] = by_folder.get(folder, 0) + 1
+    folders = sorted(by_folder.items(), key=lambda item: (-item[1], item[0]))
+    named = folders[:SUMMARY_FOLDERS]
+    # Nearest depth first; within a depth the generated files, the entry points, the tests, then the others.
+    order = {"generated": 0, "entry-point": 1, "test": 2, "other": 3}
+    ordered = sorted(rows, key=lambda item: (item[0], order[item[1].kind or "other"], item[1].file))
+    first = tuple(line.file for _depth, line in ordered[:SUMMARY_FILES])
+    full = f"wingbox impact {answer.file} {answer.max_depth}" + (f" --only {answer.only}" if answer.only else "")
+    return Summary(
+        answer.file, answer.direct, answer.total, answer.max_depth, answer.only,
+        tuple(len(level) for level in answer.levels), tuple((_KIND_KEYS[kind], counts[kind]) for kind in _KINDS),
+        tuple(named), sum(count for _folder, count in folders[SUMMARY_FOLDERS:]), first, len(rows) - len(first), full,
+        answer.note_fact, answer.note_text, answer.affected,
+    )
+
+
+def _summary_sexp(item: Summary) -> str:
+    only = f" :only {item.only}" if item.only else ""
+    elsewhere = f" :more {item.elsewhere}" if item.elsewhere else ""
+    more = f" :more {item.more}" if item.more else ""
+    out = ([item.note_fact] if item.note_fact else []) + [
+        f"(impact-summary {atom(item.file)} :direct {item.direct} :total {item.total} :depth {item.depth}{only}",
+        f" (depths{''.join(f' {count}' for count in item.depths)})",
+        " (kinds " + " ".join(f":{name} {count}" for name, count in item.kinds) + ")",
+        " (folders" + "".join(f" ({atom(folder)} {count})" for folder, count in item.folders) + elsewhere + ")",
+        " (first" + "".join(f" {atom(path)}" for path in item.first) + more + ")",
+    ]
+    if item.affected is not None:
+        out.append(f" (build :targets {len(item.affected.targets)} :tests {len(item.affected.tests)})")
+    out.append(f' (full "{item.full}"))')
+    return "\n".join(out) + "\n"
+
+
+def summary_sexp(answers: Sequence[ImpactAnswer], header: Optional[GraphHeader]) -> str:
+    parts = [header_sexp(header) + "\n"] if header is not None else []
+    for answer in answers:
+        parts.append(missing_fact(answer) + "\n" if isinstance(answer, ImpactMissing) else _summary_sexp(summary_of(answer)))
+    return "".join(parts)
+
+
+def _summary_json(answer: ImpactAnswer) -> dict[str, Any]:
+    if isinstance(answer, ImpactMissing):
+        return answer_json(answer)
+    item = summary_of(answer)
+    document: dict[str, Any] = {
+        "file": item.file, "summary": True, "direct": item.direct, "total": item.total, "depth": item.depth,
+        "depths": list(item.depths), "kinds": {name.replace("-", "_"): count for name, count in item.kinds},
+        "folders": [{"folder": folder, "files": count} for folder, count in item.folders],
+        "more_in_other_folders": item.elsewhere, "first": list(item.first), "more": item.more, "full": item.full,
+    }
+    if item.only:
+        document["only"] = item.only
+    if item.note_fact:
+        document["note"] = fact_json(item.note_fact)
+    if item.affected is not None:
+        document["build"] = {"targets": len(item.affected.targets), "tests": len(item.affected.tests)}
+    return document
+
+
+def changed_summary_fact(item: Changed) -> str:
+    built = f" :targets {len(item.affected.targets)} :tests {len(item.affected.tests)}" if item.affected is not None else ""
+    return f"(changed-summary {atom(item.symbol)} :line {item.line} :used-by {len(item.used_by)}{built})"
+
+
+def summary_json(
+    answers: Sequence[ImpactAnswer], header: Optional[GraphHeader], changed: Optional[Sequence[Changed]] = None,
+) -> dict[str, Any]:
+    document: dict[str, Any] = {"graph": header_json(header), "impact": [_summary_json(answer) for answer in answers]}
+    if changed is not None:
+        document["changed"] = [
+            {"symbol": item.symbol, "line": item.line, "used_by": len(item.used_by),
+             **({"targets": len(item.affected.targets), "tests": len(item.affected.tests)} if item.affected is not None else {})}
+            for item in changed
+        ]
+    return document
+
+
+def _plural(count: int, one: str, many: str) -> str:
+    return f"{count} {one if count == 1 else many}"
+
+
+def summary_text(answers: Sequence[ImpactAnswer]) -> str:
+    blocks: list[str] = []
+    for answer in answers:
+        if isinstance(answer, ImpactMissing):
+            blocks.append(answer.human + "\n")
+            continue
+        item = summary_of(answer)
+        kinds = dict(item.kinds)
+        what = "test files depend" if item.only else "files depend"
+        if item.total == 1:
+            what = "test file depends" if item.only else "file depends"
+        hops = "hop" if item.depth == 1 else "hops"
+        lines = ([item.note_text, ""] if item.note_text else []) + [
+            f"{item.total} {what} on {item.file} within {item.depth} {hops} ({item.direct} directly).",
+        ]
+        if item.total:
+            lines.append(
+                f"  {_plural(kinds['generated'], 'file', 'files')} made from it or started by it, "
+                f"{_plural(kinds['tests'], 'test file', 'test files')}, "
+                f"{_plural(kinds['entry-points'], 'entry point', 'entry points')}, "
+                f"{_plural(kinds['other'], 'other', 'others')}"
+            )
+            folders = ", ".join(f"{folder} {count}" for folder, count in item.folders)
+            lines.append(f"  By folder: {folders}" + (f", elsewhere {item.elsewhere}" if item.elsewhere else ""))
+            shown = item.first[:SUMMARY_TEXT_FILES]
+            lines.append("  Look at first:")
+            lines += [f"    {path}" for path in shown]
+            if item.total > len(shown):
+                lines.append(f"    ... {item.total - len(shown)} more")
+        if item.affected is not None:
+            lines.append(f"  Build targets: {len(item.affected.targets)}; tests to run: {len(item.affected.tests)}")
+        lines.append(f"  Complete list: {item.full}")
+        blocks.append("\n".join(lines) + "\n")
+    return "\n".join(blocks)
 
 
 def impact_text(answers: Sequence[ImpactAnswer], show_all: bool) -> str:

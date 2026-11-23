@@ -1,5 +1,20 @@
 # Completion Log
 
+## 2026-11-23 - impact --summary; the MCP tool refused only tests in 0.18.0 (#188)
+
+### Why
+- Issue #188, point 2, second proposal: a compact form that caps the lists and shows entry points, tests and generators first. It was left out of 0.18.0 on the implementer's own reading of the rule that an answer is complete, and the report in the issue said "not added". The maintainer had asked for every point of the report; an option that is asked for changes no default, so the rule was no reason.
+- While wiring the option into the MCP server, the call with `only` `tests` turned out to be refused since 0.18.0: `_query` checks the arguments with `_validate_cli_command`, which named `--only` an unknown option. #189 added the parameter with a test of the command line and none through the server.
+
+### Changes
+- `scripts/impact_forms.py`: `ImpactLine.kind`, `Summary`, `summary_of`, `summary_sexp`, `summary_json`, `summary_text`, `changed_summary_fact`. A dependent is counted under one kind: generated (reached by a generation or launch relation), test (the layer `test`), entry point (nothing depends on it), other. The first files: nearest depth first, within a depth generated, entry points, tests, others.
+- `scripts/code_graph_search.py`: `--summary` in `impact_options`, `cmd_impact_summary`, `_dependent_kind` (computed only for the short form: the complete form pays nothing for it). `_validate_cli_command` reads the options of `impact` through `impact_options`: the fix of the MCP call. `--summary` with `--sexp` is an error.
+- `src/wingbox/mcp_server.py`: `analyze_impact` takes `summary`; its description is shortened to stay within 900 characters.
+- `README.md`, `SKILL.md`, `references/sexp-notation.md`.
+- Tests written first: `tests/test_impact_summary.py` (REQ-CS-166, REQ-CS-167), `tests/test_mcp_tools.py` (REQ-MCP-038, and REQ-MCP-039: `only` `tests` through the server).
+
+### On the repository of #177
+- The central header at depth 2: the complete form is 475 lines and 34,610 characters; the short form 7 lines and 1,157 characters, with the same counts (193 direct, 440 in all; 308 tests, 67 entry points, 65 others).
 ## 2026-11-23 - Glama after 0.18.0: A, 4.4 of 5
 
 ### Checks (AGENTS.md section 5 and 6.3)

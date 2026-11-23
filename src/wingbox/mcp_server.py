@@ -420,10 +420,20 @@ def _run_impact(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
     if not targets:
         return ToolAnswer(('(error invalid-argument "impact requires target or targets")',), is_error=True)
     only = "tests" if arguments.get("only") == "tests" else ""
+    options = (["--only", only] if only else []) + (["--summary"] if arguments.get("summary") else [])
+    if arguments.get("summary"):
+        # Counts and the first files, for a file with hundreds of dependents.
+        return _query(
+            server,
+            ["impact", *targets, str(depth), *options],
+            lambda s, ready: s.cmd_impact_summary(ready.graph, targets, depth, "sexp", ready.stale, only)[0],
+            True,
+            capped=False,
+        )
     # The compact form agents read: complete, so it has no list limit to lift.
     return _query(
         server,
-        ["impact", *targets, str(depth), *(["--only", only] if only else [])],
+        ["impact", *targets, str(depth), *options],
         lambda s, ready: s.cmd_impact(ready.graph, targets, depth, "sexp", stale=ready.stale, only=only),
         True,
         capped=False,
@@ -528,13 +538,14 @@ TOOLS: tuple[Tool, ...] = (
     ),
     Tool(
         "analyze_impact",
-        "Lists what a change to one file reaches: the files that depend on it, grouped by depth, each with the "
-        "reason it is on the list, then the files to read first. Use it before editing a file. For one function or "
+        "Lists what a change to one file reaches: the files that depend on it, grouped by depth, each with its "
+        "reason, then the files to read first. Use it before editing a file. For one function or "
         "type use `find_usages`; for the bare import tree of a module use `list_dependencies`. Input: `target` for "
-        "one file, or `targets` for several in one call; each is a path relative to the repository root or a module "
-        "ID, `depth` is how many hops to follow (2 by default), and `only` set to `tests` keeps the test files. "
-        "Output: S-expression lines; with `targets`, one answer per file in the order given, after one line that "
-        "says when the graph was built and how many changed files it misses. The list is complete: it never "
+        "one file, or `targets` for several; each is a path relative to the repository root or a module "
+        "ID, `depth` is how many hops to follow (2 by default), `only` set to `tests` keeps the test files, and "
+        "`summary` true gives counts and the first twenty files instead. "
+        "Output: S-expression lines; with `targets`, one answer per file in the order given, after a line that "
+        "says when the graph was built. The list is complete: it never "
         "stops at 200 items. It only reads the graph and changes nothing."
         + _MISS,
         {
@@ -549,6 +560,13 @@ TOOLS: tuple[Tool, ...] = (
             "only": {
                 "type": "string", "enum": ["all", "tests"], "default": "all",
                 "description": "`tests` lists only the dependents that are test files: the tests to run for the change. Where the CMake files state build targets and tests, the answer then also names the affected targets and tests.",
+            },
+            "summary": {
+                "type": "boolean",
+                "default": False,
+                "description": "True answers in a few lines per file: how many files depend on it by depth and by kind "
+                               "(generated, tests, entry points, others), the folders with the most of them, the first "
+                               "twenty files and the call that gives the complete list. For a file with hundreds of dependents.",
             },
             "all": {
                 "type": "boolean",
