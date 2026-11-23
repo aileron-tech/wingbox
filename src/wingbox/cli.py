@@ -1199,7 +1199,11 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
     if isinstance(shown, str):
         return OutputsFailed(shown)
     view = overview.build_overview(graph, search, os.path.basename(os.path.normpath(root)) or root, advice=shown)
-    view = replace(view, skipped_languages=_skipped_languages(load_script("build_code_graph"), root))
+    view = replace(
+        view,
+        skipped_languages=_skipped_languages(load_script("build_code_graph"), root),
+        not_parsed=_not_parsed_languages(root),
+    )
     generated = date.today().isoformat()
     report = freshness.report_path(root)
     page = freshness.map_path(root)
@@ -1521,6 +1525,15 @@ def _build_outputs(builder: ModuleType, status: int, options) -> int:
         print(f"[wingbox] Skipped {files} {display} file{'' if files == 1 else 's'}: the {display} parser is not "
               f"installed. Run {builder.install_command(name)}, then wingbox build")
     return 0
+
+
+def _not_parsed_languages(root: str) -> tuple[tuple[str, int], ...]:
+    """(language, files) of the files of root in languages Wingbox has no parser for, as the last build counted them."""
+    try:
+        with open(os.path.join(root, ".wingbox", "graph-unparsed.sexp"), "r", encoding="utf-8") as handle:
+            return load_script("source_kinds").read_not_parsed(handle.read())
+    except OSError:
+        return ()
 
 
 def _skipped_languages(builder: ModuleType, root: str) -> tuple[tuple[str, str, int], ...]:

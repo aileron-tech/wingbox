@@ -1,5 +1,24 @@
 # Completion Log
 
+## 2026-11-23 - What the graph does not cover is said (#177)
+
+### Why
+- Issue #177, point 4: keep "not checked" apart from "no violations", and show the languages that are not covered in the answers, apart from a missing parser. On the repository of the issue `wingbox impact` of a header (before C and C++) and of a CMake file answered `no-match` with five Python files of similar names, which reads as "you misspelled it"; the report wrote "0 boundary violations" beside "not checked: 723 files". Recorded as a known gap in the log entry of `docs/assurance` (2026-11-19): nothing counted the source files of a language Wingbox does not parse.
+
+### Changes
+- `scripts/source_kinds.py` (new, standard library): the extensions of the parsed languages with their display names (a copy of the registry, compared by a test) and a table of languages without a parser (build files, shells, shaders, programming languages), by extension or by file name.
+- `scripts/build_code_graph.py`: `discover_files` counts the files of the second table; the build prints `Not in the graph: ...` and writes `.wingbox/graph-unparsed.sexp` (removed when there are none). `*.cmake` and, through the C and C++ language, `CMakeLists.txt` are resolution configs: a change of one rebuilds the graph, because the include folders may differ.
+- `scripts/code_graph_search.py`: `outside_graph` says why an existing file of the repository is not in the graph; `impact` (the three forms) and the no-match answer of `analyze`, `deps`, `rdeps`, `module` use it. The flat `--sexp` form of `impact` keeps `no-match`. The graph fact carries `:not-parsed` and stands before a single `impact` answer when the record is not empty. `scripts/impact_forms.py`: the fields and the three printers.
+- `src/wingbox/overview.py`, `cli.py`: the key finding "Not in this graph: ..." and "not checked" for boundary violations when the unchecked parts hold every module.
+- `README.md` ("What the graph does not cover"), `SKILL.md` (what to do on `not-in-graph`; a text search for code outside the graph), `docs/assurance/known-limits.md` and `tool-errors.md` (C and C++ are no longer listed as not parsed; the rows of an unparsed language and of a file outside the graph).
+- Tests written first, `tests/test_coverage_limits.py`: REQ-CS-146 to REQ-CS-150, REQ-OUT-020.
+
+### Verification on the repository of the issue
+- Build line: 686 CMake, 9 Shell, 4 PowerShell and 2 Lua files not in the graph. `impact` of a CMake file: `not-in-graph`, `not-parsed-language`, exit 1; of the schema file of the generator: `not-in-graph`, `not-source`. The report: "Boundary violations: not checked", the table row "not checked".
+
+### Not done
+- Notices on standard error and at the start of every MCP answer, as for a missing parser: a missing parser can be installed, a language without a parser cannot, so the fact is in the graph fact, the report and the answer about such a file, not in every answer.
+
 ## 2026-11-23 - C and C++ (#177)
 
 ### Why

@@ -16,8 +16,8 @@ The compact form names each thing once:
 One form per asked file. Rows are grouped by depth and, below depth 1, by the file they are reached
 through. A bare path is a plain import; a path is followed by `:via <relation>` when the relation is
 not an import, `:more N` when it depends on N other files of the previous depth too, and the lists
-that say which names it takes. A file that is not in the graph gives `(error no-match <file> ...)`
-in its place.
+that say which names it takes. A name that matches nothing gives `(error no-match <file> ...)` in its
+place; a file of the repository that is not in the graph gives `(error not-in-graph <file> :reason ...)`.
 
 Pure functions: values in, text out.
 """
@@ -44,6 +44,8 @@ class GraphHeader:
     built: str             # when the graph file was written, UTC, 2026-01-31T09:15:00Z
     files: int             # files in the graph
     stale: Optional[int]   # changed files the graph is known to miss; None when nothing checked it
+    # (language, files) of the files of the repository in languages Wingbox has no parser for
+    not_parsed: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -88,19 +90,30 @@ class ImpactMissing:
     asked: str                         # the file as it was asked
     suggested_files: tuple[str, ...]   # files of the graph with a similar name
     human: str                         # the line the text form prints for it
+    # Set when the file exists in the repository and is not in the graph: not-parsed-language (Wingbox has
+    # no parser for it), skipped-language (its parser is not installed), excluded (a skipped folder, a path
+    # Git ignores), not-source (a document, a data file). language is the display name, "" for not-source.
+    reason: str = ""
+    language: str = ""
 
 
 ImpactAnswer = Union[ImpactFound, ImpactMissing]
 
 
 def missing_fact(answer: ImpactMissing) -> str:
+    if answer.reason:
+        language = f' :language "{answer.language}"' if answer.language else ""
+        return f"(error not-in-graph {atom(answer.asked)} :reason {answer.reason}{language})"
     tail = f" :suggestions {' '.join(atom(path) for path in answer.suggested_files)}" if answer.suggested_files else ""
     return f"(error no-match {atom(answer.asked)}{tail})"
 
 
 def header_sexp(header: GraphHeader) -> str:
     stale = "unknown" if header.stale is None else str(header.stale)
-    return f"(graph :built {header.built} :files {header.files} :stale {stale})"
+    not_parsed = ""
+    if header.not_parsed:
+        not_parsed = " :not-parsed (" + " ".join(f'"{language}" {files}' for language, files in header.not_parsed) + ")"
+    return f"(graph :built {header.built} :files {header.files} :stale {stale}{not_parsed})"
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +178,11 @@ def _row_json(line: ImpactLine, depth: int) -> dict[str, Any]:
 
 def answer_json(answer: ImpactAnswer) -> dict[str, Any]:
     if isinstance(answer, ImpactMissing):
+        if answer.reason:
+            outside: dict[str, Any] = {"file": answer.asked, "error": "not-in-graph", "reason": answer.reason}
+            if answer.language:
+                outside["language"] = answer.language
+            return outside
         return {"file": answer.asked, "error": "no-match", "suggestions": list(answer.suggested_files)}
     document: dict[str, Any] = {
         "file": answer.file,
@@ -182,7 +200,10 @@ def answer_json(answer: ImpactAnswer) -> dict[str, Any]:
 def header_json(header: Optional[GraphHeader]) -> Optional[dict[str, Any]]:
     if header is None:
         return None
-    return {"built": header.built, "files": header.files, "stale": header.stale}
+    document: dict[str, Any] = {"built": header.built, "files": header.files, "stale": header.stale}
+    if header.not_parsed:
+        document["not_parsed"] = [{"language": language, "files": files} for language, files in header.not_parsed]
+    return document
 
 
 def impact_json(answers: Sequence[ImpactAnswer], header: Optional[GraphHeader]) -> dict[str, Any]:

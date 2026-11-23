@@ -18,6 +18,19 @@
   file keeps its extension. The preprocessor is not run. The package now depends on
   `tree-sitter-cpp==0.23.4` (extra `cpp`, kept in `all`). **A repository with C or C++ files gets
   a larger graph and a longer build after the upgrade**: those files were left out before.
+- **What the graph does not cover is said.** A question about a file that is in the repository and
+  not in the graph (`impact`, `analyze`, `deps`, `rdeps`, `module`) answers
+  `(error not-in-graph <file> :reason <reason> [:language "<name>"])` and suggests no other file;
+  before, it answered `no-match` with files of similar names. The reasons are
+  `not-parsed-language` (Wingbox has no parser for the language), `skipped-language` (its parser is
+  not installed), `excluded` (a skipped folder, a path Git ignores) and `not-source` (a document, a
+  data file). **A script that reads `error: "no-match"` from `impact --json` for such a file must
+  read `not-in-graph` too**; `--sexp` keeps the `no-match` line of 0.13. A build counts the files
+  of languages it has no parser for (`[code-graph] Not in the graph: 683 CMake files, ...`,
+  `.wingbox/graph-unparsed.sexp`), `REPORT.md` lists them, and an `impact` answer in such a
+  repository starts with the graph fact, which carries `:not-parsed ("CMake" 683 ...)`
+  (`graph.not_parsed` with `--json`). `REPORT.md` writes "not checked" for boundary violations
+  when no part was checked by a rule, where it wrote 0.
 
 ## 0.16.1 - 2026-11-23
 

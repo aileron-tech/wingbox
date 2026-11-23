@@ -37,7 +37,8 @@ class CppLanguage:
     name: str = "cpp"
     result_languages: tuple[str, ...] = ("cpp", "c")
     lsp_result_languages: tuple[str, ...] = ("cpp", "c")
-    project_config_names: tuple[str, ...] = ("compile_commands.json",)
+    # A change of one of them can change the file an include names: the graph is then rebuilt.
+    project_config_names: tuple[str, ...] = ("compile_commands.json", "CMakeLists.txt")
     lsp_command: tuple[str, ...] = ("clangd",)
     lsp_label: str = "C++"
     display_name: str = "C and C++"

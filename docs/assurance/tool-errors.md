@@ -15,7 +15,7 @@ The lines "how it is reported" were read from the README and the tests and run o
 | 1. A missing edge | Yes | No, except for the cases it knows: an unresolved method call, a file it does not know | Only for a file it does not know (1) |
 | 2. An extra edge | No: it adds a file to read or a violation to look at | Each row says why it is listed | No |
 | 3. A stale graph | Yes | Yes: `wingbox-graph-stale` and `:stale N` | No: 0 |
-| 4. A skipped language | Yes | Yes for a language whose parser is missing; no for a language Wingbox does not parse | No: 0 |
+| 4. A skipped language | Yes | Yes: a language whose parser is missing at every answer; a language Wingbox does not parse in the build line, the graph fact (`:not-parsed`), `REPORT.md` and the answer about such a file | No: 0, except a question about such a file (1) |
 | 5. A part that was not checked | Yes | Yes: `boundaries-not-checked`, `boundaries-partial` | With `--strict` always (2); without it only when declared rules were not read (2) |
 | 6. A wrong layer | Yes, when the wrong layer makes a rule not apply | The layer of every module is printed with the rule that placed it; nothing marks one as wrong | No |
 
@@ -32,7 +32,8 @@ A script or a gate that must not act on an incomplete answer reads the facts of 
 | Condition | What is printed | Exit status | Command | Test |
 |---|---|---|---|---|
 | A method call whose receiver type is not in sight | `unresolved-call` rows, apart from the uses | 0 | `wingbox usages <file>::<Class.method>` | `tests/test_usages_command.py::UsagesCommandTests` |
-| The file asked about is not in the graph | `(error no-match <file> :suggestions ...)` in place of the answer | 1 | `wingbox impact <file>` | `tests/test_code_graph_search.py::CodeGraphImpactTest`, `tests/test_output_formats.py::ImpactSeveralFilesTest` |
+| The name asked about matches nothing | `(error no-match <file> :suggestions ...)` in place of the answer | 1 | `wingbox impact <file>` | `tests/test_code_graph_search.py::CodeGraphImpactTest`, `tests/test_output_formats.py::ImpactSeveralFilesTest` |
+| The file asked about is in the repository and not in the graph | `(error not-in-graph <file> :reason not-parsed-language\|skipped-language\|excluded\|not-source ...)`, no suggestions | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module` | `tests/test_coverage_limits.py::OutsideTheGraphTest` |
 | A whole language was left out | see section 4 | | | |
 
 **Independent checks.**
@@ -97,7 +98,7 @@ The exit status stays 0: a script reads `graph.stale` (the README shows the thre
 | Parser missing, at the build | `[code-graph] WARNING: Dart files are skipped (N files): ... To include them: pip install "wingbox[dart]"`; the fact is written to `.wingbox/graph-skipped.sexp` | 0 | `tests/test_language_parsers.py::SkippedLanguageTest` |
 | Parser missing, at every later answer | `(skipped-language dart :files N :add "pip install \"wingbox[dart]\"")`: on standard error of each query command, as the first line of each MCP answer, in the context of the search hook, under the key findings of `REPORT.md` | 0 | `tests/test_skipped_language_notice.py::SkippedLanguageNoticeTest` |
 | Parser missing and no other source in the project | no graph is published; the build stops with the install command | 2 | `tests/test_language_parsers.py::SkippedLanguageTest` |
-| A language Wingbox does not parse | the build prints the suffixes it reads (`Supported source: ...`) and a count per supported language; nothing counts the other source files. A question about such a file: `(error no-match ...)`, exit 1 | 0 for the build | `tests/test_audit_regressions.py::AuditRegressionTest` (the language of a file is known or explicitly none) |
+| A language Wingbox does not parse | the build prints `[code-graph] Not in the graph: N <language> files, ... (no parser for these languages)` and writes one `(not-parsed-language "<language>" :files N)` fact per language to `.wingbox/graph-unparsed.sexp`; the graph fact of an `impact` answer carries `:not-parsed ("<language>" N ...)` (`graph.not_parsed` with `--json`), and it stands before a single answer too; `REPORT.md` lists the languages under the key findings. A question about such a file: `(error not-in-graph <file> :reason not-parsed-language :language "<language>")`, exit 1. Counted are the languages of `scripts/source_kinds.py` | 0 for the build | `tests/test_coverage_limits.py::OutsideTheGraphTest` |
 
 A gate can test for the file: `test ! -e .wingbox/graph-skipped.sexp` after `wingbox build .`. Whether `boundaries --strict` counts a skipped language as "not checked": not assessed.
 

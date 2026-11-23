@@ -346,6 +346,19 @@ is not installed and its N files are not in the graph, so dependents and usages
 in those files are missing from every answer. Say so, ask the user to approve
 the command of `:add`, run it, then run `wingbox build` and query again.
 
+If a command returns `(error not-in-graph <file> :reason ...)`: the file is in
+the repository and the graph does not cover it. Do not look for another ID.
+`not-parsed-language` (Wingbox has no parser for that language) and
+`not-source` (a document, a data file): search the text with `wingbox grep` or
+`rg`, read the file, and say that its dependents are not known to the graph.
+`excluded`: the build left the file out (a skipped folder such as `build/`, a
+path Git ignores). `skipped-language`: the parser is not installed, see the
+`(skipped-language ...)` line. When an `impact` answer starts with
+`(graph ... :not-parsed ("CMake" 683 ...))`, files of those languages may
+depend on the file as well: the list is complete for the files of the graph
+only. For a small change in such code, or in a file outside the graph, a plain
+text search is the right tool.
+
 If a command returns `(error no-match ...)`:
 1. Do NOT retry with the same ID or guess another ID
 2. Run `search` with a broader keyword to find the correct module ID
