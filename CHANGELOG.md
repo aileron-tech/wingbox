@@ -9,6 +9,17 @@
   graph against Doxygen) and `benchmarks/collisions` (Python names that collide, against what the
   interpreter loads). The README names one limit the comparison with Doxygen found: a C++20
   `import` of a module gives no edge.
+- **`impact` of a C or C++ source file is no longer empty.** Nothing includes a `.cpp` file, so the
+  answer was "0 direct, 0 total", which reads as safe to change. It now lists the files that
+  include the header of the file (a header of the same stem that it includes, or one of the same
+  stem in its folder), marked `:basis paired-header`, and names the header in an
+  `(impact-paired-header ...)` note. A source file without such a header answers
+  `(impact-no-includers ...)` and points to `usages`. **A pull request check sees dependents for
+  changed `.cpp` files where it saw none.**
+- `wingbox impact <file> ... --only tests` lists the dependents that are test files: the tests to
+  run for a change. The MCP tool `analyze_impact` takes `only` (`all` or `tests`).
+- `wingbox impact --diff [ref]` answers for every file a diff changes (default: the working tree
+  against `HEAD`) and names, per changed function, the other files that use it.
 
 ## 0.17.0 - 2026-11-23
 

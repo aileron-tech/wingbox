@@ -507,6 +507,20 @@ repository that is not in the graph `(error not-in-graph <file> :reason ...)`
 ([What the graph does not cover](#what-the-graph-does-not-cover)), and the other
 files are still answered.
 
+Three options narrow or widen what `impact` answers:
+
+- `wingbox impact <file> ... --only tests` keeps the dependents that are test
+  files: the tests to run for the change. `:direct` and `:total` count them and
+  the form says `:only tests`.
+- `wingbox impact --diff [ref]` answers for every file a diff changes (`ref`
+  defaults to `HEAD`: the changes of the working tree) and adds one
+  `(changed <file>::<name> :line N :used-by (<file> ...))` fact per changed
+  function with the other files that use it. For a C or C++ function the files
+  that use it through the declaration in its header are included. Both options
+  go together: `wingbox impact --diff --only tests`.
+- A C or C++ source file is answered through its header, see
+  [C and C++ dependency search](#c-and-c-dependency-search).
+
 `wingbox usages` lists every place that uses one symbol, through re-exports and
 aliases, grouped by file, with the line, the column and the kind of use:
 
@@ -1274,7 +1288,7 @@ The server speaks protocol revision 2026-07-28 (requests with per-request
 | `search_source` | The lines of the source files of the graph that hold a text, with file and line; in all files or those whose path matches, 200 matches a call (`pattern`, `path`, `first`) | `grep` |
 | `find_definitions` | Where a function, type or constant is defined; `name` may be a pattern with `.*` (`name`, `kind`: any, function, type) | `find_function`, `find_type`, `entity` |
 | `find_usages` | Every use of one symbol by file, line:column and kind, as text (`symbol`, `all`) | `usages` |
-| `analyze_impact` | What a change to one file or to several reaches, as S-expressions (`target` or `targets`, `depth`) | `impact` |
+| `analyze_impact` | What a change to one file or to several reaches, as S-expressions (`target` or `targets`, `depth`, `only` `tests` for the test files alone) | `impact` |
 | `list_dependencies` | What a module uses or who uses it, hop by hop (`module`, `direction`: out, in; `depth`) | `deps`, `rdeps` |
 | `trace_calls` | Who calls a function, what it calls, or a call path to another one (`function`, `direction`: in, out; `to`; `depth`) | `find_callers`, `find_calls`, `find_callchain` |
 | `list_layers` | The modules by architecture layer | `layers` |
@@ -1610,8 +1624,13 @@ A header and the source file beside it are two modules, and a module ID keeps
 its extension (`studio/src/scene/stage.h`, `studio/src/scene/stage.cpp`).
 `wingbox impact studio/src/scene/stage.h` lists the files that include the header,
 directly and through one other file, tests included. A source file is
-included by nothing, so its impact is empty: start from its header to see who
-uses what it defines.
+included by nothing, so `wingbox impact studio/src/scene/stage.cpp` lists the
+files that include its header (a header of the same stem that it includes, or
+one of the same stem in its folder), each marked `:basis paired-header`, and
+names the header in an `(impact-paired-header ...)` note. A source file with
+no such header and no includers answers with an `(impact-no-includers ...)`
+note instead of an empty list that reads as "safe to change": ask `wingbox
+usages <file>::<name>` for a function it defines.
 
 `wingbox usages <header>::<name>` lists the uses of a function, a type, a
 macro or an enum in the files that include the header directly or through

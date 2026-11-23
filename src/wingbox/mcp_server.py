@@ -419,11 +419,12 @@ def _run_impact(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
     targets, depth = impact_targets(arguments), arguments.get("depth", 2)
     if not targets:
         return ToolAnswer(('(error invalid-argument "impact requires target or targets")',), is_error=True)
+    only = "tests" if arguments.get("only") == "tests" else ""
     # The compact form agents read: complete, so it has no list limit to lift.
     return _query(
         server,
-        ["impact", *targets, str(depth)],
-        lambda s, ready: s.cmd_impact(ready.graph, targets, depth, "sexp", stale=ready.stale),
+        ["impact", *targets, str(depth), *(["--only", only] if only else [])],
+        lambda s, ready: s.cmd_impact(ready.graph, targets, depth, "sexp", stale=ready.stale, only=only),
         True,
         capped=False,
     )
@@ -531,10 +532,10 @@ TOOLS: tuple[Tool, ...] = (
         "reason it is on the list, then the files to read first. Use it before editing a file. For one function or "
         "type use `find_usages`; for the bare import tree of a module use `list_dependencies`. Input: `target` for "
         "one file, or `targets` for several in one call; each is a path relative to the repository root or a module "
-        "ID, and `depth` is how many hops to follow (2 by default). Output: S-expression lines; with `targets`, one "
-        "answer per file in the order given, after one line that says when the graph was built and how many "
-        "changed files it misses. The list is complete: it never stops at 200 items, with or without `all`. It only "
-        "reads the graph and changes nothing."
+        "ID, `depth` is how many hops to follow (2 by default), and `only` set to `tests` keeps the test files. "
+        "Output: S-expression lines; with `targets`, one answer per file in the order given, after one line that "
+        "says when the graph was built and how many changed files it misses. The list is complete: it never "
+        "stops at 200 items. It only reads the graph and changes nothing."
         + _MISS,
         {
             "target": _string("File path relative to the repository root, or a module ID."),
@@ -545,6 +546,10 @@ TOOLS: tuple[Tool, ...] = (
                                "says when the graph was built and how many changed files it misses.",
             },
             "depth": _depth(2),
+            "only": {
+                "type": "string", "enum": ["all", "tests"], "default": "all",
+                "description": "`tests` lists only the dependents that are test files: the tests to run for the change.",
+            },
             "all": {
                 "type": "boolean",
                 "default": False,

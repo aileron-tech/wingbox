@@ -615,7 +615,12 @@ relation is not an import (`generated`, `runs`, `reads`), by `:more N` when it
 depends on N other files of the previous depth as well, by `:basis declared`
 or `:basis inferred` when the source text does not state the edge, and by the
 name lists of its edge. `read-first`
-names the file and its direct dependents. The form is complete: nothing is cut.
+names the file and its direct dependents. With `--only tests` the form says
+`:only tests` and holds the test files alone. Before the form of a C or C++
+source file stands `(impact-paired-header <file> <header>)` (the rows marked
+`:basis paired-header` include that header) or `(impact-no-includers <file>)`.
+`impact --diff [ref]` ends with one `(changed <file>::<name> :line N :used-by
+(<file> ...))` fact per changed function. The form is complete: nothing is cut.
 The `(advice ...)` facts that concern a file follow its form.
 
 `graph` says when the graph file was written (UTC), how many files it holds
