@@ -231,6 +231,125 @@ def cmake_links(root: str, cmake_files: Iterable[str], read_text: Callable[[str]
     return links
 
 
+@dataclass(frozen=True)
+class BuildTarget:
+    """An executable or a library a CMake file builds, with the source files of the repository it names."""
+
+    name: str
+    kind: str                  # executable or library
+    stated: str                # the CMake file
+    sources: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class BuildTest:
+    """A test a CMake file adds: the target it runs, or the files of the repository its command names."""
+
+    name: str
+    target: str                # "" when the command is no build target
+    runs: tuple[str, ...]
+    stated: str
+
+
+_BUILD_CALL = re.compile(r"\b(add_executable|add_library|target_sources|add_test)\s*\(((?:[^()]|\([^()]*\))*)\)", re.IGNORECASE)
+_TARGET_WORDS = frozenset({
+    "WIN32", "MACOSX_BUNDLE", "EXCLUDE_FROM_ALL", "STATIC", "SHARED", "MODULE", "OBJECT", "INTERFACE", "PRIVATE", "PUBLIC",
+    "FILE_SET", "TYPE", "HEADERS", "BASE_DIRS", "FILES",
+})
+_TARGET_FILE = re.compile(r"\$<TARGET_FILE:([A-Za-z0-9_.+-]+)>")
+_TEST_WORDS = frozenset({"WORKING_DIRECTORY", "CONFIGURATIONS", "COMMAND_EXPAND_LISTS"})
+
+
+def _cmake_source(root: str, token: str, source_folder: str, list_folder: str, tops: Sequence[str]) -> Optional[str]:
+    """A CMake argument as a file of the repository. A relative path and `${CMAKE_CURRENT_SOURCE_DIR}` are
+    taken from the folder of the list file that includes the CMake file, then from the folder of the file;
+    `${CMAKE_CURRENT_LIST_DIR}` from the folder of the file; the project variables from the list folders above."""
+    token = token.strip('"')
+    if token.startswith("${CMAKE_CURRENT_LIST_DIR}"):
+        return _cmake_path(root, token[len("${CMAKE_CURRENT_LIST_DIR}"):].lstrip("/\\"), list_folder, tops)
+    return _cmake_path(root, token, source_folder, tops) or _cmake_path(root, token, list_folder, tops)
+
+
+def cmake_targets(
+    root: str, cmake_files: Iterable[str], read_text: Callable[[str], Optional[str]],
+) -> tuple[list[BuildTarget], list[BuildTest]]:
+    """The build targets and the tests the CMake files state literally: `add_executable`, `add_library`,
+    `target_sources`, and `add_test(NAME <test> COMMAND <command> ...)` or `add_test(<test> <command> ...)`.
+    A name written with a variable, an alias and an imported target are left out; so is what a function
+    or a macro of the project adds, which no literal call states."""
+    files = sorted(cmake_files)
+    list_folders = {os.path.dirname(path) for path in files if os.path.basename(path) == "CMakeLists.txt"}
+    sources: dict[str, dict[str, None]] = {}
+    kinds: dict[str, tuple[str, str]] = {}
+    tests: list[tuple[str, list[str], str, str, str, list[str]]] = []
+    for path in files:
+        text = read_text(path)
+        if text is None:
+            continue
+        lowered = text.lower()
+        if "add_executable" not in lowered and "add_library" not in lowered and "add_test" not in lowered \
+                and "target_sources" not in lowered:
+            continue
+        here = os.path.dirname(path)
+        above = []
+        current = here
+        while True:
+            if current in list_folders:
+                above.append(current)
+            if not current:
+                break
+            current = os.path.dirname(current)
+        scope = above[0] if above else here
+        tops = list(reversed(above)) or [""]
+        # A comment may hold a bracket: the calls are read from the text without its comments.
+        code = re.sub(r"#[^\n]*", "", text)
+        for call in _BUILD_CALL.finditer(code):
+            command = call.group(1).lower()
+            tokens = call.group(2).split()
+            if not tokens or "$" in tokens[0]:
+                continue
+            if command == "add_test":
+                if tokens[0] == "NAME":
+                    if len(tokens) < 4 or "COMMAND" not in tokens or "$" in tokens[1]:
+                        continue
+                    name = tokens[1].strip('"')
+                    words = tokens[tokens.index("COMMAND") + 1:]
+                else:
+                    name, words = tokens[0].strip('"'), tokens[1:]
+                arguments: list[str] = []
+                for word in words:
+                    if word in _TEST_WORDS:
+                        break
+                    arguments.append(word)
+                if arguments:
+                    tests.append((name, arguments, path, scope, here, tops))
+                continue
+            if "ALIAS" in tokens or "IMPORTED" in tokens:
+                continue
+            name = tokens[0].strip('"')
+            if command != "target_sources":
+                kinds.setdefault(name, ("executable" if command == "add_executable" else "library", path))
+            found = sources.setdefault(name, {})
+            for token in tokens[1:]:
+                if token in _TARGET_WORDS:
+                    continue
+                source = _cmake_source(root, token, scope, here, tops)
+                if source is not None:
+                    found[source] = None
+    targets = [BuildTarget(name, kind, stated, tuple(sources.get(name, ()))) for name, (kind, stated) in sorted(kinds.items())]
+    known = set(kinds)
+    built: list[BuildTest] = []
+    for name, arguments, stated, scope, here, tops in tests:
+        # The target a test runs: the command itself, or the first `$<TARGET_FILE:<target>>` of its words.
+        command = arguments[0].strip('"')
+        named = [match.group(1) for word in arguments for match in _TARGET_FILE.finditer(word)]
+        target = command if command in known else next((item for item in named if item in known), "")
+        runs = [found for word in arguments if (found := _cmake_source(root, word, scope, here, tops)) is not None]
+        if target or runs:
+            built.append(BuildTest(name, target, tuple(dict.fromkeys(runs)), stated))
+    return targets, sorted(built, key=lambda test: test.name)
+
+
 def merged(links: Iterable[Link]) -> list[Link]:
     """One link per (kind, source, target): a declared one stands for an inferred one of the same pair."""
     best: dict[tuple[str, str, str], Link] = {}

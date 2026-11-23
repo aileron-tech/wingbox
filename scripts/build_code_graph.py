@@ -2218,6 +2218,7 @@ def _generation_edges(context: GraphContext, results: Sequence[FileResult]) -> l
                 for name in sorted(names) if name == "CMakeLists.txt" or name.endswith(".cmake")
             )
     links.extend(generation.cmake_links(root, cmake_files, read_text))
+    build_targets, build_tests = generation.cmake_targets(root, cmake_files, read_text)
 
     edges: list[dict] = []
     lines_of: dict[tuple[str, str], list[int]] = {}
@@ -2238,6 +2239,14 @@ def _generation_edges(context: GraphContext, results: Sequence[FileResult]) -> l
     for (source, target), lines in sorted(lines_of.items()):
         edges.append({"source": source, "target": target, "type": "RUNS", "basis": generation.INFERRED, "from_lines": sorted(set(lines))})
     anchor = next(iter(context.id_to_result), "")
+    # Build targets and tests: no edges, facts of their own section. A source that is no module of the
+    # graph (a file of a language without a parser) is left out of the list of a target.
+    for target in build_targets:
+        edges.append({"source": anchor, "target": anchor, "type": "BUILD_TARGET", "name": target.name, "kind": target.kind,
+                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of]})
+    for test in build_tests:
+        edges.append({"source": anchor, "target": anchor, "type": "BUILD_TEST", "name": test.name, "runs_target": test.target,
+                      "stated": test.stated, "modules": [module_of[path] for path in test.runs if path in module_of]})
     for item in sorted(set(unresolved), key=lambda entry: (entry.path, entry.role)):
         if anchor:
             edges.append({"source": anchor, "target": anchor, "type": "GENERATION_UNRESOLVED", "file": item.path,
@@ -3691,10 +3700,11 @@ def render_sexp(
     # A generation link to a file outside the graph and a path a link names in vain are no edges between
     # modules: they are written in a section of their own, after the edges.
     generation_facts = [e for e in edges if e.get("type") in ("GENERATED_FILE", "GENERATION_UNRESOLVED")]
+    build_facts = [e for e in edges if e.get("type") in ("BUILD_TARGET", "BUILD_TEST")]
     real_edges = [
         e for e in edges
         if e.get("type") != "VIOLATION"
-        and e.get("type") not in ("GENERATED_FILE", "GENERATION_UNRESOLVED")
+        and e.get("type") not in ("GENERATED_FILE", "GENERATION_UNRESOLVED", "BUILD_TARGET", "BUILD_TEST")
         and not (e.get("type") == "REFERENCES" and "reexport" in e.get("relations", []))
     ]
 
@@ -3832,6 +3842,19 @@ def render_sexp(
             fl = edge.get("from_lines", [])
             lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
             lines.append(f"(runs {src} {tgt} :{edge['basis']}{lns})")
+
+    if build_facts:
+        lines.append("")
+        lines.append("; --- build ---")
+        for fact in sorted(build_facts, key=lambda e: (e["type"], e["name"])):
+            modules = "".join(f" {_pid(module)}" for module in sorted(fact["modules"]))
+            stated = f' :in "{_sexp_escape(fact["stated"])}"'
+            if fact["type"] == "BUILD_TARGET":
+                lines.append(f"(target {fact['name']} :kind {fact['kind']}{stated}{modules})")
+            elif fact["runs_target"]:
+                lines.append(f"(ctest {fact['name']} :target {fact['runs_target']}{stated}{modules})")
+            else:
+                lines.append(f"(ctest {fact['name']} :runs{stated}{modules})")
 
     if generation_facts:
         lines.append("")

@@ -616,7 +616,10 @@ depends on N other files of the previous depth as well, by `:basis declared`
 or `:basis inferred` when the source text does not state the edge, and by the
 name lists of its edge. `read-first`
 names the file and its direct dependents. With `--only tests` the form says
-`:only tests` and holds the test files alone. Before the form of a C or C++
+`:only tests` and holds the test files alone; in a graph with `(target ...)`
+and `(ctest ...)` facts (the build targets and tests of the CMake files) it
+is followed by `(affected-targets <file> <target> ...)` and `(affected-tests
+<file> <test> ...)`. Before the form of a C or C++
 source file stands `(impact-paired-header <file> <header>)` (the rows marked
 `:basis paired-header` include that header) or `(impact-no-includers <file>)`.
 `impact --diff [ref]` ends with one `(changed <file>::<name> :line N :used-by

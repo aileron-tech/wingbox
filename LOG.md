@@ -1,5 +1,33 @@
 # Completion Log
 
+## 2026-11-23 - Build targets and tests of CMake as facts; the ones a change reaches (#188)
+
+### Why
+- Issue #188, point 5: for C and C++ the reporter asked for build targets and test targets as nodes, so that "what does this change affect" names the tests and the binaries, not only files. A file list of 300 test sources is not what is given to `ctest`.
+
+### Decisions
+- Facts, not nodes: a target is not a file, and every query that walks modules (impact, deps, layers, cycles) would have to learn to skip it. The facts stand in their own section of the graph file, `; --- build ---`.
+- Read literally, as the generation links are: no CMake is run and no variable is evaluated beyond the four folder variables. What a function or a macro of the project adds is not seen, and the documents say so.
+- Linking is not followed. On the repository of #177 nearly every test executable links the one engine library, so a link rule would name every test for every change. The rule is the compile one: a target is affected when the file or a listed dependent is among its sources.
+- No new option: the answer is part of `impact --only tests`, the question "which tests", and appears only in a graph that has such facts.
+
+### Changes
+- `scripts/generation.py`: `cmake_targets(root, cmake_files, read_text)` -> `BuildTarget` and `BuildTest`; `_cmake_source` resolves a source from the folder of the list file that includes the CMake file, then from the folder of the file.
+- `scripts/build_code_graph.py`: the facts `(target <name> :kind ... :in "<file>" <module> ...)` and `(ctest <name> :target <target> | :runs ... <module> ...)`.
+- `scripts/code_graph_search.py`: the loader (`build_targets`, `build_tests`), `_affected_build`, `impact_answer` with `only` `tests`. `scripts/impact_forms.py`: `Affected`; the two facts in the default form, `targets` and `tests` in JSON, two lines in the text. The flat form of `--sexp` is unchanged.
+- `src/wingbox/mcp_server.py`: the description of the parameter `only` of `analyze_impact`.
+- `README.md`, `SKILL.md`, `references/sexp-notation.md`.
+- Tests written first, `tests/test_build_targets.py`: REQ-CS-164, REQ-CS-165.
+
+### On the repository of #177
+- 767 targets, and 1,671 of the 1,706 names of `add_test`; of the other 35, 8 names are written with a variable and 27 tests run a command kept in a variable.
+- `impact <central header> 2 --only tests`: 308 test files, 307 targets, 1,019 tests. Its source file at depth 1: 146 test files, 148 targets.
+- Build time unchanged within the noise (60 to 64 s, one worker). A change of a CMake file is seen by the next query, which refreshes the graph.
+
+### Not done
+- No reference checks these numbers: the build of that repository was not run here, so CMake's own list of tests (`ctest -N`) was not compared.
+- `target_link_libraries`, build systems other than CMake.
+
 ## 2026-11-23 - wingbox cycles: structure without a layer style (#188)
 
 ### Why
