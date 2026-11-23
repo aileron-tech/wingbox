@@ -1,5 +1,19 @@
 # Completion Log
 
+## 2026-11-23 - After the release 0.17.0: the pull request check, the site, the topics
+
+### What was done (AGENTS.md sections 6.2, 6.4 and 6.5)
+- 6.4, the action: `aileron-tech/wingbox-action` 1.6.1 sets the default Wingbox release to 0.17.0 (`scripts/bump_version.py`). Two Windows jobs of its pull request ran before PyPI served 0.17.0 and failed at the install; restarted, all 15 checks passed. The `test` workflow of the release commit: 14 jobs green, the fixture job on Linux, macOS and Windows with the new default. Then the tag `v1.6.1`, the tag `v1` moved to it, and the release.
+- 6.4, the example pull request the site links: its `wingbox` run was started again; the one comment was updated in place and its review plan says `:wingbox "0.17.0"`.
+- 6.4, the Marketplace page of the action names v1.6.1.
+- 6.4, this repository: `.github/workflows/wingbox.yml` names the action at the commit of `v1.6.1` (it was at `v1.4.2`); the run of that workflow on the pull request of this entry is the check.
+- 6.5, the site: the home page and the FAQ name C and C++ ("Sixteen languages and frameworks"), and the note that Dart needs an extra is removed; type check and build clean, deployed, the live page holds the new text, no horizontal overflow at 1440 and 390 px.
+- 6.2, GitHub topics: the seven topics with the fewest repositories on GitHub (163 to 1,366: `graphify`, `blast-radius`, `impact-analysis`, `code-graph`, `call-graph`, `code-search`, `dependency-graph`) were replaced by `c`, `cpp`, `mcp`, `mcp-server`, `python`, `typescript` and `rust` (93,000 to 1,058,000), at the maintainer's word.
+
+### Not done
+- 6.4, GitLab: the pipeline of the private test project with the released template. Its host and credentials are not on this machine.
+- 6.5: the benchmark pages of the site do not show `benchmarks/cpp` and `benchmarks/collisions`.
+
 ## 2026-11-23 - After the release 0.17.0
 
 ### Checks (AGENTS.md section 6)
