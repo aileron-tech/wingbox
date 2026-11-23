@@ -1,5 +1,13 @@
 # Completion Log
 
+## 2026-11-23 - Release 0.16.1
+
+### Changes
+- Version 0.16.1, core and `packages/wingbox-http` (REQ-HTTP-021): a Python package folder is taken before the module file of the same name (#177, #178). The map-request workflow builds with 0.16.1.
+
+### Motivation
+- Issue #177: the wrong dependencies made the impact of a module four times too large in a repository that has a command line tool beside the package it drives. The maintainer asked for the release.
+
 ## 2026-11-23 - Python: a package folder wins over the module file of the same name (#177)
 
 ### Why
