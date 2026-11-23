@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-23 - Python: a package folder wins over the module file of the same name (#177)
+
+### Why
+- Issue #177: in a repository with a command line tool `<name>.py` beside the package `<name>/` it drives, `wingbox impact` of a module of the package listed 292 files within two steps; a check of the static imports gave 62. The files of the package were listed as importers of the tool.
+
+### Cause
+- `BoundPythonLanguage._resolve_import` (`scripts/lang/python/imports.py`) tried `<base>/<parts>.py` before `<base>/<parts>/__init__.py`. For `from . import x` the parts are empty and the base is the folder of the package, so the first candidate was the module file beside that folder under its name. Every file of the package with such an import got an import edge to the tool and, at depth 2, to everything the tool imports. `import <name>` from any other file took the module file too; Python's finder takes the package folder first.
+
+### Changes
+- `_resolve_import`: in each folder the package `__init__.py` is tried before the module file; a name without parts (`from . import x`, `from .. import x`) has the package `__init__.py` as its only candidate, so a folder without `__init__.py` gives no dependency instead of the file beside it.
+- Tests written first, `tests/test_python_package_and_module.py`: REQ-PY-021 (relative imports at the top of a file, inside a function and inside a method, `from .module import Name`, and the impact within two steps), REQ-PY-022 (`import <name>` and `from <name> import module` mean the package), REQ-PY-023 (a folder without `__init__.py`). All three fail on 0.16.0. `docs/assurance/requirements.md` regenerated.
+
+### Verification
+- The repository and commit of the issue (719 Python files), one worker: 0.16.0 gives 31 direct dependents and 292 within two steps, 226 of them through the tool; the branch gives 31 and 66, the same 66 files as a check written for this change (Python `ast`, package before module file, two steps of reverse imports), none missing and none extra. That check counts 66 where the issue counts 62: its rules for `import a.b` and for names imported from a package are not those of the issue's script, which was not available. The graph has one import edge more (1,590 -> 1,591): the tool now imports the package.
+- Not changed: `from package import name` still looks for `name.py` only, not for a sub-package `name/__init__.py`; `from <name> import module` for a folder without `__init__.py` beside `<name>.py` still names `<name>/module.py`, where Python would read an attribute of `<name>.py`.
+
 ## 2026-11-19 - Release 0.16.0
 
 ### Changes

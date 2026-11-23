@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Python: a package folder beside a module file of the same name (`depot/` and `depot.py`, a
+  package and the command line tool that drives it) is the package again. `from . import crate`
+  in a file of the package named the module file `depot.py` as a dependency, and `import depot`
+  meant `depot.py` although Python takes the package folder first. Every file of the package with
+  such an import became a dependent of `depot.py` and, through it, of everything `depot.py`
+  imports: in the repository of issue #177 `wingbox impact` of one module listed 292 files within
+  two steps where 66 import it directly or through one file. The name now means
+  `depot/__init__.py`, as for Python's finder, and a folder without `__init__.py` is never the
+  module file beside it. A graph built by an earlier version keeps the wrong dependencies until
+  `wingbox build .` is run.
+
 ## 0.16.0 - 2026-11-19
 
 ### Changes
