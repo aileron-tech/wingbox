@@ -1,5 +1,14 @@
 # Completion Log
 
+## 2026-11-23 - Release 0.17.0
+
+### Changes
+- Version 0.17.0, core and `packages/wingbox-http` (REQ-HTTP-021): C and C++ (#181); what the graph does not cover (#182); generated files, launched scripts and the basis of an edge (#183). The map-request workflow builds with 0.17.0.
+- `README.md`: installing only the parsers a repository needs (run in a clean environment: the package without dependencies and PyYAML build a Python graph and skip C and C++ files with the notice; with `tree-sitter` and `tree-sitter-cpp` added they are in the graph; a TypeScript file without its parser stops the build with the package name), and the configuration for OpenCode (run with OpenCode 1.2.10 in a small project: `opencode mcp list` answers "wingbox connected" and the server builds the graph; the form `mcp.servers` of the current online documentation is refused by that version).
+
+### Motivation
+- Issue #177: the maintainer asked for every point of the report to be closed and released. Point 5 of the report (lower the cost of adoption): the parsers stay dependencies of the package, as decided for 0.13, and the README says how to install fewer.
+
 ## 2026-11-23 - Generation and launch links, and the basis of every edge (#177)
 
 ### Why
