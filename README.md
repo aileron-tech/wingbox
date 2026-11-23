@@ -550,11 +550,17 @@ in several files lists the candidates. Kinds: `import`, `re-export`, `call`,
 `type`, `extends` (extends or implements), `reference`. For a method, calls
 whose receiver type is not in sight are listed as `unresolved-call`, never
 guessed. The answer is complete; the text of `--human` lists at most 200 uses
-unless `--all`, and `--json` prints one row per use. The build records which files use each definition; the first
-`usages` after a change also reads every use position (a parallel pass over the
-files, about as long as a build) and keeps them for the next calls. Python,
-TypeScript, JavaScript and Rust have use positions; in
-other languages `usages` names the files that reference the symbol.
+unless `--all`, and `--json` prints one row per use. The build records which files use each definition, without the positions.
+In a repository of up to 300 files the first `usages` after a build reads the
+positions of every file and keeps them. In a larger one it reads the positions
+from the files that hold the name (a few seconds where the build takes a
+minute) and answers; it also starts one process that reads the positions of
+every file (about as long as a build) and keeps them, so the next calls answer
+at once. `WINGBOX_POSITIONS_FILL=0` leaves that process out: every `usages`
+then reads the files that hold its name; `=1` takes that way in a small
+repository too. Python, TypeScript, JavaScript, Rust, C and C++
+have use positions; in other languages `usages` names the files that
+reference the symbol.
 ### Architecture commands, with examples from immich (server)
 
 Version 0.6.0 judges the architecture of each part of a repository by a
@@ -1085,6 +1091,8 @@ are brought in:
   with that line and query commands print it on stderr.
   `WINGBOX_REFRESH_WAIT` (600 s) is the wait of MCP tools and query commands;
   `WINGBOX_CHECK_INTERVAL` (0) spaces out the file-system checks.
+- `WINGBOX_POSITIONS_FILL=0`: the first `usages` after a build starts no
+  process to read the use positions of every file (see `wingbox usages`).
 
 Measured on a shared machine under heavy load (load average 20 to 55), wall
 time, the version before this change and after it, runs interleaved:

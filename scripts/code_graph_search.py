@@ -624,6 +624,12 @@ def _module_id_to_file(module_id: str, root: str) -> str:
 _LAZY_FACTS = ("(use ", "(unresolved-call ", "(unresolved ", "(var ")
 
 
+# Up to this many files the first question that needs use positions fills the whole use file at once,
+# as it always did; above it the question reads the files that hold its name and the fill runs apart.
+# WINGBOX_POSITIONS_FILL=1 takes the second way whatever the size, =0 the second way without the fill.
+_FILL_AT_ONCE_FILES = 300
+
+
 def _load_builder():
     """scripts/build_code_graph.py (it fills use positions), imported by name from this folder as
     `wingbox build` does, so that its worker processes can import it too."""
@@ -681,6 +687,7 @@ class CodeGraph:
         # of the fact (:by or :from, :declared or :inferred); and the paths a generation link names in vain.
         self.generated_from_files: dict[str, list[tuple[str, list[str]]]] = {}
         self.generation_unresolved: list[tuple[str, dict[str, str], list[str]]] = []
+        self._name_positions: dict[str, list[str]] = {}   # name -> its use lines read before the use file has positions
         self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
         self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
         self.entry_roots: dict[str, bool] = {}   # module -> nothing imports it and it imports a composition root
@@ -723,6 +730,7 @@ class CodeGraph:
         self._variables = None
         self._uses_header = ""
         self._use_pairs = None
+        self._name_positions = {}
         self._uses_file_read = False
         self._map_path = path
         self._module_files = {}
@@ -1044,6 +1052,42 @@ class CodeGraph:
             lines = self._use_lines()
         return lines
 
+    def _positions_of(self, name: str) -> list[str]:
+        """The use facts with positions that a question about one name needs. While the use file has no
+        positions, the builder reads only the files that hold the name (use_position_lines), which
+        takes seconds where filling the whole file takes as long as a build, and starts that fill in
+        a process of its own for the questions that follow."""
+        lines = self._use_lines()
+        header = self._uses_header
+        if not header or ":positions no" not in header:
+            return lines
+        mode = os.environ.get("WINGBOX_POSITIONS_FILL", "")
+        if mode not in ("0", "1") and len(self.nodes) <= _FILL_AT_ONCE_FILES:
+            # A small repository: filling the whole use file takes less than the question is worth splitting.
+            return self._positions()
+        if name not in self._name_positions:
+            builder = _load_builder()
+            found = builder.use_position_lines(self._map_path, self._root, name)
+            if isinstance(found, builder.Err):
+                return self._positions()   # the whole fill says why positions are not to be had
+            self._name_positions[name] = found.value
+            builder.start_position_fill(self._map_path, self._root)
+        return self._name_positions[name]
+
+    def unresolved_calls_of(self, member: str) -> list[tuple[str, int, int]]:
+        """(module, line, column) of the calls of a method name that no receiver type resolves."""
+        found: list[tuple[str, int, int]] = []
+        for line in self._positions_of(member):
+            tokens = tokenize(line)
+            if len(tokens) < 4 or tokens[0] != "unresolved-call" or tokens[2] != member:
+                continue
+            source = self.pmap.get(tokens[1], tokens[1])
+            for position in tokens[3:]:
+                match = _USE_POSITION.fullmatch(position)
+                if match:
+                    found.append((source, int(match.group(1)), int(match.group(2))))
+        return found
+
     @property
     def use_pairs(self) -> dict[str, set[str]]:
         """module::name -> modules that use it, from the use lines (no positions needed)."""
@@ -1093,7 +1137,7 @@ class CodeGraph:
         that mention name (a query about one symbol does not parse the whole use file)."""
         marker = f"::{name}"
         found: dict[str, list[UseSite]] = {}
-        for line in self._positions():
+        for line in self._positions_of(name):
             if not line.startswith("(use ") or marker not in line:
                 continue
             parts = line.rstrip(")").split(" ")
@@ -2236,7 +2280,7 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
     unresolved = 0
     if "." in symbol:
         method = symbol.rsplit(".", 1)[1]
-        for source, line, column in g.unresolved_by_member.get(method, []):
+        for source, line, column in g.unresolved_calls_of(method):
             found.append(Usage(_impact_file(g, source), source, line, column, "unresolved-call"))
             unresolved += 1
     with_positions = {usage.module for usage in found}

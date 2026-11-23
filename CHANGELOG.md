@@ -20,6 +20,11 @@
   run for a change. The MCP tool `analyze_impact` takes `only` (`all` or `tests`).
 - `wingbox impact --diff [ref]` answers for every file a diff changes (default: the working tree
   against `HEAD`) and names, per changed function, the other files that use it.
+- **The first `usages` after a build no longer takes as long as the build.** It read the use
+  positions of every file before it answered; it now reads the files that hold the name, answers,
+  and starts one process that fills the rest for the calls that follow. On the repository of
+  issue #177 (2,281 files, one worker): 5 to 6 s where it took 74 s, the same answer;
+  0.6 s once the fill is done, as before. `WINGBOX_POSITIONS_FILL=0` starts no process.
 
 ## 0.17.0 - 2026-11-23
 
