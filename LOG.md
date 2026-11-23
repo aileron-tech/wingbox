@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-23 - Release 0.18.0
+
+### Changes
+- Version 0.18.0, core and `packages/wingbox-http` (REQ-HTTP-021); the map-request workflow builds with it. A minor version: a new command (`wingbox cycles`) and new options of `impact`.
+- In it: `impact` of a C or C++ source file through its header, `--only tests`, `--diff` (#189); the first `usages` after a build (#190); `wingbox cycles` (#191); build targets and tests of CMake files and the ones a change reaches (#192).
+- `README.md`: "When Wingbox is not the right tool" (issue #188, point 6: say where the tool does not apply and what is not measured), three rows in the table of common searches.
+
+### Motivation
+- Issue #188, product feedback after 0.17.0: six gaps. The maintainer asked for the whole list to be closed, measured on the reporter's repository and released.
+
+### Decided, and why
+- Language extras (point 4): unchanged. The parser of every language is a dependency of the package since 0.13 (REQ-DEPS-012); `pip install --no-deps wingbox` with the parsers a repository needs stays the way to a smaller install.
+- A capped "summary" form of `impact` (point 2): not added. An answer of a query command is complete by rule; `--only tests`, a depth of 1 and the affected targets and tests are the narrower answers.
+- A command that writes a layer configuration for a repository without a style (point 3): not added. A style of the library has fixed layer names; layers a project names itself in `.wingbox/config.yaml` are a design of their own. `wingbox cycles` prints the order of the folders such a configuration would start from.
+- A benchmark of agents on multi-step tasks (point 6): not made. The README says so.
+
 ## 2026-11-23 - Build targets and tests of CMake as facts; the ones a change reaches (#188)
 
 ### Why

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.18.0 - 2026-11-23
 
 ### Changes
 
@@ -35,6 +35,8 @@
   `targets` and `tests` in JSON. With `--diff --only tests` every changed function names the
   targets and tests of the files that use it. The MCP tool `analyze_impact` answers the same with `only` set to
   `tests`; the tool list is unchanged.
+- The README says when Wingbox is not the right tool (a text that is not a name, exact C and C++
+  semantics, what is decided at run time) and what has not been measured.
 
 ## 0.17.0 - 2026-11-23
 
