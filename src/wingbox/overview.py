@@ -112,6 +112,7 @@ class Overview:
     capability_breaks: tuple[CapabilityInfo, ...] = ()   # what a file does that its layer may not
     pattern_breaks: tuple[CapabilityInfo, ...] = ()      # pattern checks of the style the code does not follow
     skipped_languages: tuple[tuple[str, str, int], ...] = ()   # (display name, language, files) the build left out
+    not_parsed: tuple[tuple[str, int], ...] = ()   # (language, files) of languages Wingbox has no parser for
 
 
 def _layer_rank(layer: str) -> int:
@@ -475,6 +476,12 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         f'Run `pip install "wingbox[{name}]"`, then `wingbox build`.'
         for display, name, files in view.skipped_languages
     ]
+    if view.not_parsed:
+        listed = ", ".join(f"{_number(files)} {language} file{'' if files == 1 else 's'}" for language, files in view.not_parsed)
+        lines.append(
+            f"- Not in this graph: {listed}. Wingbox has no parser for these languages: what depends on such a "
+            "file, and what it depends on, is not known here."
+        )
     lines += [
         f"- Not checked: part {_code(part)} - {reason}; {_plural(count, 'file')} without a boundary check."
         for part, reason, count in view.not_checked
@@ -488,8 +495,12 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         )
     else:
         lines.append("- No module depends on another one in this graph.")
+    # Zero violations is a result only where a rule looked: with every part unchecked it is "not checked".
+    nothing_checked = bool(view.not_checked) and sum(count for _part, _reason, count in view.not_checked) >= module_count
     lines += [
-        f"- {_plural(len(view.violations), 'boundary violation')} between layers that are set by folders."
+        "- Boundary violations: not checked." + candidates_note
+        if nothing_checked
+        else f"- {_plural(len(view.violations), 'boundary violation')} between layers that are set by folders."
         + candidates_note,
         f"- The layer rules place {_number(placed)} of {_number(module_count)} modules "
         f"({_share(placed, module_count)}): {_number(view.placed_by_path)} by folder, "
@@ -504,7 +515,7 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         f"| Dependencies between modules | {_number(len(view.edges))} |",
         f"| Functions, constants, classes and types | {_number(view.entity_count)} |",
         "| Languages | " + ", ".join(f"{lang} {_number(count)}" for lang, count in view.languages) + " |",
-        f"| Boundary violations | {_number(len(view.violations))} |",
+        f"| Boundary violations | {'not checked' if nothing_checked else _number(len(view.violations))} |",
         "",
         "## Architecture",
         "",

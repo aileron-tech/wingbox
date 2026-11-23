@@ -112,7 +112,7 @@ if __package__:
     from .architecture.plan import PartPlan, layer_folders
     from .architecture.words import DEFAULT_SETTINGS as _MATCH_SETTINGS
     from .architecture.words import levenshtein as _levenshtein
-    from . import fact_json, impact_forms, usages_forms
+    from . import fact_json, impact_forms, source_kinds, usages_forms
     from . import layer_guess as _layer_guess
     from . import portable
 else:
@@ -129,6 +129,7 @@ else:
     import impact_forms
     import layer_guess as _layer_guess
     import portable
+    import source_kinds
     import usages_forms
 
 MAP_SCHEMA_VERSION = 1
@@ -508,9 +509,69 @@ def _no_match_fact(pattern: str, suggestions: Sequence[str]) -> str:
     return f"(error no-match {_q(pattern)})"
 
 
-def _print_no_match(g: CodeGraph, pattern: str) -> None:
-    """Print a structured no-match error with fuzzy suggestions."""
+def _print_no_match(g: CodeGraph, pattern: str, flat: bool = False) -> None:
+    """Print a structured no-match error with fuzzy suggestions; for a file of the repository that is not in
+    the graph, why it is not (flat: the 0.13 form, always no-match)."""
+    outside = None if flat else outside_graph(g, pattern)
+    if outside is not None:
+        print(impact_forms.missing_fact(impact_forms.ImpactMissing(outside.file, (), "", outside.reason, outside.language)))
+        return
     print(_no_match_fact(pattern, CodeGraph._suggest_similar(pattern, g.nodes)))
+
+
+@dataclass(frozen=True)
+class OutsideGraph:
+    """A file of the repository that is not in the graph, and why."""
+
+    file: str       # relative to the graph root
+    reason: str     # not-parsed-language, skipped-language, excluded, not-source
+    language: str   # the display name of its language; "" for not-source
+
+    @property
+    def text(self) -> str:
+        if self.reason == "not-parsed-language":
+            why = f"Wingbox has no parser for {self.language}"
+        elif self.reason == "skipped-language":
+            why = f"the {self.language} parser is not installed"
+        elif self.reason == "excluded":
+            why = f"the build left this {self.language} file out (a skipped folder, a path Git ignores, a minified file)"
+        else:
+            why = "it is not a source file"
+        return (f"{self.file} is not in the graph: {why}. Its dependents are not known here: "
+                f"search the text for its name (wingbox grep, rg).")
+
+
+def _state_text(g: CodeGraph, name: str) -> str:
+    """The text of a record the build wrote beside the graph; "" when there is none."""
+    if not g._map_path:
+        return ""
+    try:
+        with open(os.path.join(os.path.dirname(g._map_path), name), "r", encoding="utf-8") as handle:
+            return handle.read()
+    except OSError:
+        return ""
+
+
+def outside_graph(g: CodeGraph, target: str) -> Optional[OutsideGraph]:
+    """Why a file of the repository is not in the graph; None when target names no existing file under the root."""
+    if not g._root or not target or "::" in target:
+        return None
+    path = portable.local_path(target)
+    absolute = path if os.path.isabs(path) else os.path.join(g._root, path)
+    if not os.path.isfile(absolute):
+        return None
+    relative = portable.relative_posix(absolute, g._root)
+    if relative is None:
+        return None
+    name = os.path.basename(absolute)
+    parsed = source_kinds.parsed_language(name)
+    if parsed is not None:
+        skipped = f"(skipped-language {source_kinds.LANGUAGE_NAMES[parsed]} " in _state_text(g, "graph-skipped.sexp")
+        return OutsideGraph(relative, "skipped-language" if skipped else "excluded", parsed)
+    other = source_kinds.not_parsed_language(name)
+    if other is not None:
+        return OutsideGraph(relative, "not-parsed-language", other)
+    return OutsideGraph(relative, "not-source", "")
 
 
 # ---------------------------------------------------------------------------
@@ -1724,6 +1785,9 @@ def impact_answer(g: CodeGraph, target: str, max_depth: int, advice: Optional[Se
     pattern = _target_to_module_pattern(target, g._root)
     matches = _impact_target_modules(g, target, pattern)
     if not matches:
+        outside = outside_graph(g, target)
+        if outside is not None:
+            return impact_forms.ImpactMissing(outside.file, (), outside.text, outside.reason, outside.language)
         suggestions = CodeGraph._suggest_similar(pattern, g.nodes)
         return impact_forms.ImpactMissing(target, tuple(_impact_file(g, module) for module in suggestions), _no_match_fact(pattern, suggestions))
     root_id, others = matches[0], matches[1:]
@@ -1762,7 +1826,7 @@ def graph_header(g: CodeGraph, stale: Optional[int]) -> impact_forms.GraphHeader
         written = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(os.path.getmtime(g._map_path)))
     except OSError:
         written = "unknown"
-    return impact_forms.GraphHeader(written, len(g.nodes), stale)
+    return impact_forms.GraphHeader(written, len(g.nodes), stale, source_kinds.read_not_parsed(_state_text(g, "graph-unparsed.sexp")))
 
 
 def _print_impact_flat(g: CodeGraph, target: str, max_depth: int, show_all: bool) -> None:
@@ -1772,7 +1836,7 @@ def _print_impact_flat(g: CodeGraph, target: str, max_depth: int, show_all: bool
     pattern = _target_to_module_pattern(target, g._root)
     matches = _impact_target_modules(g, target, pattern)
     if not matches:
-        _print_no_match(g, pattern)
+        _print_no_match(g, pattern, flat=True)
         return
     root_id = matches[0]
     others = matches[1:]
@@ -1853,7 +1917,10 @@ def cmd_impact(
     if form == "human":
         sys.stdout.write(impact_forms.impact_text(answers, show_all))
     else:
-        sys.stdout.write(impact_forms.impact_sexp(answers, graph_header(g, stale) if len(answers) > 1 else None))
+        # The graph fact stands before the answers of several files, and before one answer when files of
+        # the repository are in languages without a parser: its list of dependents cannot name those.
+        header = graph_header(g, stale)
+        sys.stdout.write(impact_forms.impact_sexp(answers, header if len(answers) > 1 or header.not_parsed else None))
     return _impact_status(answers)
 
 

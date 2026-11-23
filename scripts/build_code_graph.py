@@ -155,7 +155,7 @@ try:
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
-        from . import graph_snapshot, layer_guess, portable
+        from . import graph_snapshot, layer_guess, portable, source_kinds
         from .architecture.config import ConfigErr, plan_from_config, read_config
         from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
@@ -194,6 +194,7 @@ try:
         import graph_snapshot
         import layer_guess
         import portable
+        import source_kinds
         from architecture.config import ConfigErr, plan_from_config, read_config
         from architecture.baseline import read_baseline_terms, terms_sexp
         from architecture.facts import (
@@ -445,7 +446,7 @@ RESOLUTION_CONFIG_NAMES = frozenset(
     }
     | {name for language in LANGUAGES for name in language.project_config_names}
 )
-RESOLUTION_CONFIG_PATTERNS = (("tsconfig", ".json"), ("jsconfig", ".json"), ("", ".csproj"), ("", ".sln"))
+RESOLUTION_CONFIG_PATTERNS = (("tsconfig", ".json"), ("jsconfig", ".json"), ("", ".csproj"), ("", ".sln"), ("", ".cmake"))
 SNAPSHOT_SCHEMA_VERSION = 1
 
 
@@ -513,8 +514,10 @@ def discover_files(
     root: str,
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
     snapshot: Optional[TreeSnapshot] = None,
+    not_parsed: Optional[dict[str, int]] = None,
 ) -> list[tuple[str, str, str]]:
-    """Source files under root: (path, language, repository). With snapshot, also record what was seen."""
+    """Source files under root: (path, language, repository). With snapshot, also record what was seen;
+    with not_parsed, count per language the files of languages no parser reads (source_kinds)."""
     results: list[tuple[str, str, str]] = []
     root_path = Path(root).resolve()
 
@@ -567,6 +570,10 @@ def discover_files(
                             _record_file(entry)
                         elif is_resolution_config(entry.name):
                             _record_file(entry)
+                        if language is None and not_parsed is not None:
+                            other = source_kinds.not_parsed_language(entry.name)
+                            if other is not None:
+                                not_parsed[other] = not_parsed.get(other, 0) + 1
         except PermissionError as exc:
             print(
                 f"[code-graph] WARNING: could not scan {dir_path}: {exc}",
@@ -618,6 +625,8 @@ def _dependency_issues(
 OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {name: name for name in PIP_EXTRA_LANGUAGES}
 # What the last build left out, for the readers of the graph: one `(skipped-language ...)` fact per language.
 SKIPPED_FILE = "graph-skipped.sexp"
+# The files of languages Wingbox has no parser for: one `(not-parsed-language "<name>" :files N)` fact per language.
+NOT_PARSED_FILE = "graph-unparsed.sexp"
 
 
 def install_command(language_name: str) -> str:
@@ -643,6 +652,24 @@ def _publish_skipped(root: str, skipped: Sequence[tuple[str, int]]) -> None:
     path = skipped_path(root)
     if skipped:
         _atomic_write_text(path, skipped_language_facts(skipped))
+        return
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+
+
+def not_parsed_text(counts: Mapping[str, int]) -> str:
+    """`2 CMake files, 1 Shell file`: the languages without a parser, most files first."""
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join(f"{files} {language} file{'' if files == 1 else 's'}" for language, files in ordered)
+
+
+def _publish_not_parsed(root: str, counts: Mapping[str, int]) -> None:
+    """Write the record beside the graph, or remove the one of an earlier build when every language is parsed."""
+    path = os.path.join(wingbox_directory(root), NOT_PARSED_FILE)
+    if counts:
+        _atomic_write_text(path, source_kinds.not_parsed_facts(dict(counts)))
         return
     try:
         os.unlink(path)
@@ -4321,7 +4348,8 @@ def _run_build(options: BuilderOptions) -> int:
 
     prepare_wingbox_directory(root)
     snapshot = TreeSnapshot() if options.snapshot_path else None
-    files = discover_files(root, exclusions, snapshot)
+    not_parsed: dict[str, int] = {}
+    files = discover_files(root, exclusions, snapshot, not_parsed)
     language_counts = {
         language.name: sum(
             1 for _, language_name, _ in files if language_name == language.name
@@ -4337,6 +4365,8 @@ def _run_build(options: BuilderOptions) -> int:
     )
     print(f"[code-graph] Found {len(files)} source files ({count_summary})")
     print(f"[code-graph] Supported source: {extensions}")
+    if not_parsed:
+        print(f"[code-graph] Not in the graph: {not_parsed_text(not_parsed)} (no parser for these languages)")
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
     dependency_issues = _dependency_issues(active_language_names)
@@ -4469,6 +4499,7 @@ def _run_build(options: BuilderOptions) -> int:
     _atomic_write_text(uses_path(options.output_path), uses_content)
     publish_layer_guesses(root, nodes, again=options.full_rebuild)
     _publish_skipped(root, skipped_counts)
+    _publish_not_parsed(root, not_parsed)
     if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
     if options.snapshot_path and snapshot is not None:

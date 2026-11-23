@@ -501,8 +501,10 @@ if answer["graph"]["stale"] == 0:                      # the graph misses no cha
 ```
 
 Without `--json` the same call prints `(graph :built 2026-01-31T09:15:00Z :files
-359 :stale 0)` and then one `(impact <file> ...)` form per file; a file that is
-not in the graph gives `(error no-match <file> ...)` in its place and the other
+359 :stale 0)` and then one `(impact <file> ...)` form per file; a name that
+matches nothing gives `(error no-match <file> ...)` in its place, a file of the
+repository that is not in the graph `(error not-in-graph <file> :reason ...)`
+([What the graph does not cover](#what-the-graph-does-not-cover)), and the other
 files are still answered.
 
 `wingbox usages` lists every place that uses one symbol, through re-exports and
@@ -922,6 +924,43 @@ The extras `wingbox[csharp]`, `[java]`, `[go]`, `[ruby]`, `[php]`, `[dart]`,
 `[cpp]` and `[all]` stay valid and name parsers the package already installs.
 `wingbox add <language>` is kept for scripts written for version 0.12: it adds
 nothing and exits 0.
+
+### What the graph does not cover
+
+A repository usually holds more than the languages Wingbox parses: build
+files, shell scripts, shaders, a language without a parser. Those files are
+not in the graph, and Wingbox says so instead of answering around them:
+
+- The build counts them per language:
+
+  ```text
+  [code-graph] Not in the graph: 683 CMake files, 9 Shell files (no parser for these languages)
+  ```
+
+  and writes one `(not-parsed-language "CMake" :files 683)` fact per language
+  to `.wingbox/graph-unparsed.sexp`. `REPORT.md` lists them under the key
+  findings.
+- An `impact` answer in such a repository starts with the graph fact,
+  `(graph :built ... :files 2281 :stale 0 :not-parsed ("CMake" 683 "Shell" 9))`
+  (`graph.not_parsed` with `--json`): the list of dependents is complete for
+  the files of the graph and cannot name a file of those languages.
+- A question about a file that is in the repository and not in the graph
+  (`impact`, `analyze`, `deps`, `rdeps`, `module`) answers
+  `(error not-in-graph <file> :reason <reason> [:language "<name>"])` with exit
+  status 1, and suggests no other file. The reasons: `not-parsed-language`
+  (Wingbox has no parser for it), `skipped-language` (its parser is not
+  installed, see above), `excluded` (a source file the build left out: a
+  skipped folder such as `build/`, a path Git ignores, a minified file) and
+  `not-source` (a document, a data file). For such a file search the text
+  (`wingbox grep`, `rg`): the graph knows nothing about it. `--sexp` keeps the
+  `no-match` line of version 0.13.
+
+The count covers the programming, build and shader languages listed in
+`scripts/source_kinds.py`; a document or a data file is not a language.
+
+`REPORT.md` writes "not checked" for boundary violations when no part of the
+repository has rules that were checked: "0 violations" is written only for
+parts a rule looked at.
 
 ### Keeping the graph fresh
 
