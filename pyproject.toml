@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wingbox"
-version = "0.17.0"
+version = "0.18.0"
 description = "A map of your codebase for AI coding agents: what a change breaks, where a symbol is used, how the architecture is layered. Local, no model."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -83,7 +83,7 @@ dart = ["tree-sitter-dart==0.1.0"]
 cpp = ["tree-sitter-cpp==0.23.4"]
 # The Streamable HTTP transport of the MCP server (`wingbox mcp --http`) is its own distribution,
 # packages/wingbox-http: this package holds no listening code. Same version as wingbox (REQ-HTTP-021).
-http = ["wingbox-http==0.17.0"]
+http = ["wingbox-http==0.18.0"]
 all = [
     "tree-sitter-c-sharp==0.23.5",
     "tree-sitter-java==0.23.5",

@@ -1485,6 +1485,8 @@ anything.
 | Trace dependencies | `deps path/to/module 2` |
 | See what a change will break | `impact path/to/file.py` |
 | The same for several files in one call | `impact path/to/a.py path/to/b.py 2` |
+| The tests to run for a change, with the CMake targets and tests it reaches | `impact path/to/file.cpp --only tests` |
+| What the changes of the working tree or of a branch reach | `impact --diff`, `impact --diff main --only tests` |
 | Find every use of one symbol | `usages path/to/file.py::create_order` |
 | Measure blast radius as a tree | `rdeps path/to/module 2` |
 | Find a class, module, interface, enum, or type | `find_type OrderService` |
@@ -1504,6 +1506,7 @@ anything.
 | Check architecture boundaries and what each layer may do (SQL, HTTP, framework; each line names part, style and rule) | `boundaries all` |
 | Gate on the layer rules: one result line, exit 0 pass, 1 violation, 2 not fully checked, 3 no readable graph | `boundaries all --strict` |
 | Show the layer of every module with its style and rule | `layers` |
+| Files that depend on each other, hubs and the order of the folders, with no layer style | `cycles`, `cycles src` |
 | Check naming conventions | `invariants all` |
 | Inspect changed functions | `diff_functions HEAD~1` |
 
@@ -1790,6 +1793,43 @@ You can then ask an agent to render Mermaid diagrams from the graph:
 Use Wingbox to trace the file upload flow and render a Mermaid sequence diagram.
 Base every participant and edge on the code-graph facts.
 ```
+
+## When Wingbox is not the right tool
+
+Wingbox answers questions about the dependencies between files and names.
+For these, another tool answers better, and an agent or a person should take
+it without asking the graph first:
+
+- **A change inside one function that alters nothing other files see** (no
+  signature, no exported name, no file moved): read the file and run its
+  tests. `wingbox impact <file> --only tests` still names those tests.
+- **A text that is not a name of the code**: a message, an error code, a
+  translation key, a key of a configuration file, a URL. Use a text search
+  (`rg -F`).
+- **A file the graph does not hold**: build scripts, shell, SQL, templates of
+  a language without a parser. The answer is `(error not-in-graph ...)` with
+  the reason; search the text.
+- **Exact C and C++ semantics**: which overload a call takes, what a macro
+  expands to, which branch of an `#if` is compiled, a template instantiated
+  for a type. Wingbox does not run the preprocessor and does not derive
+  types; a compiler-based tool (clangd, the compiler itself) does.
+- **A rename or a signature change that must be complete**: let the language
+  server or the compiler do it and prove it; use `wingbox usages` to see the
+  size of the change beforehand.
+- **What is decided at run time**: reflection, dependency injection by a name
+  built at run time, plugins loaded from a path that is computed. Run the
+  application.
+- **A repository of a few dozen files**: reading them is as fast as asking.
+
+What it is for: a file that many others depend on, a change that crosses
+folders or packages, the tests a change reaches, a codebase the reader does
+not know, and keeping the dependencies between layers or folders in order.
+
+What is measured with an agent: single questions on public repositories in
+TypeScript, Rust and Python, in the section "Measured: 100 questions, with and
+without Wingbox" above. Not measured: the time and the tokens of an agent on
+whole multi-step tasks, and anything with an agent on a C or C++ repository;
+the numbers of `benchmarks/cpp` are about the accuracy of the graph alone.
 
 ## Accuracy and limits
 
