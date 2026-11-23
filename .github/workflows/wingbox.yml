@@ -23,4 +23,4 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0   # the base commit is checked out next to the head
-      - uses: aileron-tech/wingbox-action@8820305e72ac76ce31177438f7a8dd08b0b84437  # v1.6.2
+      - uses: aileron-tech/wingbox-action@fd005a1b80874200635e7110aa2f8f8b2700e611  # v1.6.3
