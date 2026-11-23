@@ -1,0 +1,200 @@
+{
+ "tree": "libuv",
+ "include_roots": [
+  "include",
+  "src"
+ ],
+ "files": 354,
+ "edges": {
+  "reference": 696,
+  "graph": 696,
+  "wrong": [],
+  "wrong_count": 0,
+  "missing": [],
+  "missing_count": 0
+ },
+ "questions": [
+  {
+   "file": "docs/code/plugin/plugin.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 146
+  },
+  {
+   "file": "include/uv/aix.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 1,
+   "tokens": 137
+  },
+  {
+   "file": "include/uv/bsd.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 1,
+   "tokens": 137
+  },
+  {
+   "file": "include/uv/errno.h",
+   "gold": 313,
+   "named": 313,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 312,
+   "tokens": 10040
+  },
+  {
+   "file": "include/uv/posix.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 1,
+   "tokens": 138
+  },
+  {
+   "file": "include/uv/threadpool.h",
+   "gold": 3,
+   "named": 3,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 2,
+   "tokens": 173
+  },
+  {
+   "file": "include/uv/tree.h",
+   "gold": 43,
+   "named": 43,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 6,
+   "tokens": 1256
+  },
+  {
+   "file": "include/uv/version.h",
+   "gold": 313,
+   "named": 313,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 312,
+   "tokens": 10041
+  },
+  {
+   "file": "src/strscpy.h",
+   "gold": 14,
+   "named": 14,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 2,
+   "tokens": 451
+  },
+  {
+   "file": "src/strtok.c",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 106
+  },
+  {
+   "file": "src/unix/darwin-stub.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 144
+  },
+  {
+   "file": "src/unix/internal.h",
+   "gold": 54,
+   "named": 54,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 1650
+  },
+  {
+   "file": "src/win/atomicops-inl.h",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 110
+  },
+  {
+   "file": "src/win/handle-inl.h",
+   "gold": 17,
+   "named": 17,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 548
+  },
+  {
+   "file": "src/win/req-inl.h",
+   "gold": 15,
+   "named": 15,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 491
+  },
+  {
+   "file": "src/win/winapi.h",
+   "gold": 34,
+   "named": 34,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 1002
+  },
+  {
+   "file": "src/win/winsock.h",
+   "gold": 32,
+   "named": 32,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 944
+  },
+  {
+   "file": "test/benchmark-list.h",
+   "gold": 1,
+   "named": 1,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 112
+  },
+  {
+   "file": "test/runner-unix.h",
+   "gold": 6,
+   "named": 6,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 237
+  },
+  {
+   "file": "test/runner-win.h",
+   "gold": 6,
+   "named": 6,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 0,
+   "tokens": 234
+  }
+ ],
+ "complete_and_nothing_extra": 20,
+ "with_a_missing_file": 0
+}

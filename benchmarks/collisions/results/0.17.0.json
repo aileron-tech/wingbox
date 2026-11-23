@@ -1,0 +1,12 @@
+{
+ "wingbox": "wingbox 0.17.0",
+ "python": "3.14.3",
+ "projects": 7,
+ "files": 42,
+ "imports_loaded_by_the_interpreter": 64,
+ "required_edges": 51,
+ "graph_edges": 51,
+ "wrong": [],
+ "missing": [],
+ "accepted_and_not_required": 0
+}

@@ -1,0 +1,21 @@
+{
+ "doxygen": "1.11.0",
+ "files": 132,
+ "edges_of_doxygen": 487,
+ "edges_of_the_list": 488,
+ "in_both": 487,
+ "only_doxygen_count": 0,
+ "only_doxygen_by_form": {
+  "angle": 0,
+  "quoted": 0,
+  "other": 0
+ },
+ "only_doxygen_not_written_in_angle_brackets": [],
+ "only_the_list_count": 1,
+ "only_the_list": [
+  [
+   "port/port.h",
+   "port/port_stdcxx.h"
+  ]
+ ]
+}

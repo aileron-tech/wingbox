@@ -1,0 +1,203 @@
+{
+ "tree": "leveldb",
+ "include_roots": [
+  "",
+  "include",
+  "third_party/googletest/googletest/include",
+  "third_party/googletest/googlemock/include",
+  "third_party/benchmark/include"
+ ],
+ "files": 132,
+ "edges": {
+  "reference": 488,
+  "graph": 488,
+  "wrong": [],
+  "wrong_count": 0,
+  "missing": [],
+  "missing_count": 0
+ },
+ "questions": [
+  {
+   "file": "db/db_impl.h",
+   "gold": 9,
+   "named": 9,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 9,
+   "tokens": 356
+  },
+  {
+   "file": "db/dbformat.h",
+   "gold": 32,
+   "named": 32,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 32,
+   "tokens": 1072
+  },
+  {
+   "file": "db/filename.h",
+   "gold": 13,
+   "named": 13,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 13,
+   "tokens": 476
+  },
+  {
+   "file": "db/log_format.h",
+   "gold": 12,
+   "named": 12,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 12,
+   "tokens": 434
+  },
+  {
+   "file": "db/log_reader.h",
+   "gold": 6,
+   "named": 6,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 6,
+   "tokens": 244
+  },
+  {
+   "file": "db/log_writer.h",
+   "gold": 13,
+   "named": 13,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 13,
+   "tokens": 461
+  },
+  {
+   "file": "db/snapshot.h",
+   "gold": 10,
+   "named": 10,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 10,
+   "tokens": 361
+  },
+  {
+   "file": "db/table_cache.h",
+   "gold": 5,
+   "named": 5,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 5,
+   "tokens": 213
+  },
+  {
+   "file": "include/leveldb/cache.h",
+   "gold": 15,
+   "named": 15,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 15,
+   "tokens": 542
+  },
+  {
+   "file": "include/leveldb/iterator.h",
+   "gold": 39,
+   "named": 39,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 39,
+   "tokens": 1332
+  },
+  {
+   "file": "include/leveldb/status.h",
+   "gold": 66,
+   "named": 66,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 66,
+   "tokens": 2223
+  },
+  {
+   "file": "port/port.h",
+   "gold": 60,
+   "named": 60,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 60,
+   "tokens": 1946
+  },
+  {
+   "file": "table/block.h",
+   "gold": 6,
+   "named": 6,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 6,
+   "tokens": 251
+  },
+  {
+   "file": "table/block_builder.h",
+   "gold": 3,
+   "named": 3,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 3,
+   "tokens": 163
+  },
+  {
+   "file": "table/filter_block.h",
+   "gold": 4,
+   "named": 4,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 4,
+   "tokens": 197
+  },
+  {
+   "file": "util/arena.h",
+   "gold": 12,
+   "named": 12,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 12,
+   "tokens": 426
+  },
+  {
+   "file": "util/env_windows_test_helper.h",
+   "gold": 2,
+   "named": 2,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 2,
+   "tokens": 133
+  },
+  {
+   "file": "util/logging.h",
+   "gold": 35,
+   "named": 35,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 35,
+   "tokens": 1173
+  },
+  {
+   "file": "util/mutexlock.h",
+   "gold": 9,
+   "named": 9,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 9,
+   "tokens": 354
+  },
+  {
+   "file": "util/random.h",
+   "gold": 27,
+   "named": 27,
+   "missing": [],
+   "extra": [],
+   "inferred_rows": 27,
+   "tokens": 939
+  }
+ ],
+ "complete_and_nothing_extra": 20,
+ "with_a_missing_file": 0
+}

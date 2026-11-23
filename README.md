@@ -1621,7 +1621,8 @@ that member. Comments and strings are not uses.
 What is not read: the preprocessor is not run, so every branch of an `#if` is
 read and an include whose name is a macro is skipped; a header that a build
 step generates and that is not in the repository is no dependency; namespaces
-are not followed (`render::blend` is looked up as `blend`); the type of an
+are not followed (`render::blend` is looked up as `blend`); a C++20 `import`
+of a module is not an include and gives no edge; the type of an
 object is not derived, so a method called on an object (`painter.paint()`) is
 listed by `usages Painter.paint` as an unresolved call, never as a use of a
 guessed class; overloads share one name. `build/` is skipped as in every
@@ -1857,7 +1858,7 @@ ours. The full story: [wingbox.dev/story](https://wingbox.dev/story).
 - [Skill workflow and complete command reference](https://github.com/aileron-tech/wingbox/blob/main/SKILL.md)
 - [S-expression map format](https://github.com/aileron-tech/wingbox/blob/main/references/sexp-notation.md)
 - [Composable query language](https://github.com/aileron-tech/wingbox/blob/main/references/scheme-queries.md)
-- Benchmarks: [impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md), [find usages](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/usages/README.md), [comparison with other tools](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md), with charts on [wingbox.dev/benchmarks](https://wingbox.dev/benchmarks)
+- Benchmarks: [impact](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/impact/README.md), [find usages](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/usages/README.md), [comparison with other tools](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/graphify/README.md), [C and C++ includes](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/cpp/README.md), [colliding Python names](https://github.com/aileron-tech/wingbox/blob/main/benchmarks/collisions/README.md), with charts on [wingbox.dev/benchmarks](https://wingbox.dev/benchmarks)
 - [Assurance material](https://github.com/aileron-tech/wingbox/blob/main/docs/assurance/README.md): the requirements with the test that verifies each, the verification plan, the known limits per language, and which wrong answer could hide a defect
 - [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md)
 - [Roadmap](https://github.com/aileron-tech/wingbox/blob/main/ROADMAP.md)

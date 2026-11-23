@@ -1,0 +1,38 @@
+{
+ "doxygen": "1.11.0",
+ "files": 69,
+ "edges_of_doxygen": 158,
+ "edges_of_the_list": 161,
+ "in_both": 157,
+ "only_doxygen_count": 1,
+ "only_doxygen_by_form": {
+  "angle": 0,
+  "quoted": 0,
+  "other": 1
+ },
+ "only_doxygen_not_written_in_angle_brackets": [
+  [
+   "test/module-test.cc",
+   "src/fmt.cc"
+  ]
+ ],
+ "only_the_list_count": 4,
+ "only_the_list": [
+  [
+   "include/fmt/base.h",
+   "include/fmt/format.h"
+  ],
+  [
+   "include/fmt/format.h",
+   "include/fmt/format-inl.h"
+  ],
+  [
+   "src/fmt.cc",
+   "src/format.cc"
+  ],
+  [
+   "src/fmt.cc",
+   "src/os.cc"
+  ]
+ ]
+}
