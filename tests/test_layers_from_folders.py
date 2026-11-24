@@ -74,7 +74,7 @@ class OrderedLayersTest(unittest.TestCase):
             self.assertIn(said, answer.stderr + answer.stdout)
 
     def test_init_writes_the_layers_from_the_order_of_the_folders(self) -> None:
-        """/* REQ-ARCH-058: `wingbox init --from-folders <part>` (`.` for the repository) reads the graph and writes that part into `.wingbox/config.yaml` with `style: declared` and an `order:` of one layer per folder of the part, lowest first: a folder stands below the folders that depend on it; folders that depend on each other are ordered so that the fewest imports go upward. It prints the order and the imports that go upward under it, by pair of folders (`--sexp`: `(layers-from-folders ...)`, `(layer-order ...)`, `(upward ...)`, `(arch-config-written ...)`). A part that has layer rules already is kept unless `--force`; without a graph, and for a part with fewer than two folders, nothing is written and the answer says why. */"""
+        """/* REQ-ARCH-058: `wingbox init --from-folders <part>` (`.` for the repository) reads the graph, updates the project .gitignore and writes that part into `.wingbox/config.yaml` with `style: declared` and an `order:` of one layer per folder of the part, lowest first: a folder stands below the folders that depend on it; folders that depend on each other are ordered so that the fewest imports go upward. It prints the order and the imports that go upward under it, by pair of folders (`--sexp`: `(layers-from-folders ...)`, `(layer-order ...)`, `(upward ...)`, `(arch-config-written ...)`). A part that has layer rules already is kept unless `--force`; without a graph, and for a part with fewer than two folders, nothing is written and the answer says why. */"""
         root = _project(self, FILES)
         early = _run(root, "init", "--from-folders", ".")
         self.assertEqual(1, early.returncode)
@@ -88,6 +88,7 @@ class OrderedLayersTest(unittest.TestCase):
         self.assertIn("(upward . store shop :imports 1)", answer.stdout)
         self.assertEqual(1, answer.stdout.count("(upward "))
         self.assertIn("(arch-config-written .wingbox/config.yaml)", answer.stdout)
+        self.assertEqual(b"/.wingbox/\n", (root / ".gitignore").read_bytes())
         config = (root / ".wingbox" / "config.yaml").read_text(encoding="utf-8")
         self.assertIn("style: declared", config)
         position = [config.index(f"- {layer}: [{layer}]") for layer in ("core", "store", "shop", "app")]

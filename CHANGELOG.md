@@ -72,6 +72,10 @@
 
 ### Changes
 
+- `wingbox init` adds `/.wingbox/` to the project's `.gitignore`.
+  `wingbox install --global-gitignore` opts in to adding `.wingbox/` to Git's
+  global excludes file.
+
 - Two benchmark pages: `benchmarks/cpp` (C and C++ include dependencies of three public
   repositories against a text reference, with that reference checked against `clang -MM` and the
   graph against Doxygen) and `benchmarks/collisions` (Python names that collide, against what the

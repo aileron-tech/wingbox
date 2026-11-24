@@ -1,11 +1,11 @@
 """`wingbox install` and `wingbox uninstall`: put Wingbox in front of your coding assistants.
 
-    wingbox install   [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run] [--sexp]
+    wingbox install   [--assistant NAME ...] [--without ITEM,...] [--global-gitignore] [--yes] [--dry-run] [--sexp]
     wingbox uninstall [--global|--project] [--assistant NAME ...] [--without ITEM,...] [--sexp]
 
-Install writes only your own settings in your home folder; to set up a repository run `wingbox init`
-(it writes only the repository's .wingbox/). It shows what it is about to put in place, as a list of
-items with a checkbox each, grouped by assistant:
+Install writes your assistant settings. With --global-gitignore it also adds .wingbox/ to Git's
+global excludes file. To set up a repository run `wingbox init` (it writes .wingbox/ and updates
+the project's .gitignore). Install shows a list of items with a checkbox each, grouped by assistant:
 
 - skill: the skill (SKILL.md and references/, stamped with the version) in the assistant's skill folder,
   so `/wingbox` exists there;
@@ -19,8 +19,8 @@ items with a checkbox each, grouped by assistant:
 In a terminal the person unticks items and confirms; an agent, a pipe or `--yes` installs everything
 except the items named by `--without` (an item, or ASSISTANT:ITEM for one assistant; `--without none`
 installs everything again). The choice is recorded in ~/.wingbox/installed.sexp, so `wingbox update`
-refreshes only what was installed and a later install keeps it. `wingbox uninstall` removes exactly what
-install added (stamped skill folders, the marked blocks, the hook entries), except the items named by
+refreshes only what was installed and a later install keeps it. `wingbox uninstall` removes the
+stamped skill folders, the marked blocks and the hook entries, except the items named by
 `--without`; `--project` removes what versions 0.2.6 to 0.8.x wrote into a repository.
 """
 from __future__ import annotations
@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import Literal, Mapping, Optional, Union
 
@@ -54,9 +55,9 @@ _HOOK_EVENTS = ("PreToolUse", "PostToolUse", "SessionStart")
 ITEMS = ("skill", "block", "search-hook", "edit-hook", "session-hook", "git-hook")
 HOOK_ITEMS = ("search-hook", "edit-hook", "session-hook", "git-hook")
 PROJECT_INSTALL_REMOVED = (
-    "`wingbox install --project` was removed in 0.9.0: Wingbox writes only to a repository's .wingbox/ and to "
-    "your own settings. To set up this repository run `wingbox init` (writes only .wingbox/); to set up your "
-    "assistants run `wingbox install` (writes only your own settings). `wingbox uninstall --project` removes "
+    "`wingbox install --project` was removed in 0.9.0. To set up this repository run "
+    "`wingbox init` (writes .wingbox/ and updates .gitignore); to set up your "
+    "assistants run `wingbox install` (writes your own settings). `wingbox uninstall --project` removes "
     "what earlier versions wrote into a repository."
 )
 BACKUP_SUFFIX = ".wingbox-bak"
@@ -156,6 +157,7 @@ class Options:
     sexp: bool
     without: Optional[tuple[str, ...]] = None  # items left out (ITEM or ASSISTANT:ITEM); None: the recorded choice
     yes: bool = False  # ask nothing, even in a terminal
+    global_gitignore: bool = False
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,7 @@ def parse_arguments(command: Literal["install", "uninstall"], args: list[str]) -
     dry_run = False
     sexp = False
     yes = False
+    global_gitignore = False
     without: Optional[list[str]] = None
     index = 0
     while index < len(args):
@@ -207,6 +210,8 @@ def parse_arguments(command: Literal["install", "uninstall"], args: list[str]) -
             dry_run = True
         elif argument == "--yes" and command == "install":
             yes = True
+        elif argument == "--global-gitignore" and command == "install":
+            global_gitignore = True
         elif argument == "--sexp":
             sexp = True
         elif argument == "--without" and index + 1 < len(args):
@@ -230,7 +235,8 @@ def parse_arguments(command: Literal["install", "uninstall"], args: list[str]) -
         else:
             return UsageError(f"unknown argument {argument}")
         index += 1
-    return Options(command, scope, tuple(assistants), dry_run, sexp, None if without is None else tuple(without), yes)
+    return Options(command, scope, tuple(assistants), dry_run, sexp, None if without is None else tuple(without),
+                   yes, global_gitignore)
 
 
 def _item_problem(item: str) -> Optional[str]:
@@ -646,6 +652,61 @@ def _read_bytes(path: str) -> Optional[bytes]:
         return None
 
 
+def append_wingbox_ignore(path: str, *, project: bool, dry_run: bool = False) -> bool:
+    """Append the directory rule if needed, preserving the existing file's bytes and line endings."""
+    pattern = b".wingbox/"
+    rule = b"/" + pattern if project else pattern
+    if project and os.path.islink(path):
+        raise OSError("Git does not follow symbolic links in a project's .gitignore")
+    current = _read_bytes(path) or b""
+    for line in reversed(current.splitlines()):
+        line = line.rstrip(b" ")
+        if line == rule or line == pattern:
+            return False
+        if line in (b"!" + rule, b"!" + pattern):
+            break
+    if not dry_run:
+        newline = b"\r\n" if b"\r\n" in current else b"\n"
+        separator = newline if current and not current.endswith(b"\n") else b""
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "ab") as handle:
+            handle.write(separator + rule + newline)
+    return True
+
+
+def _global_ignore_path(home: str) -> str:
+    """Ask Git for its user-level excludes path, falling back to Git's XDG default."""
+    result = subprocess.run(
+        ["git", "config", "--global", "--includes", "--null", "--type=path", "--get", "core.excludesFile"],
+        cwd=home, capture_output=True, check=False, timeout=5,
+    )
+    if result.returncode not in (0, 1) or result.stderr:
+        detail = os.fsdecode(result.stderr).strip()
+        raise OSError(detail or f"git config exited with status {result.returncode}")
+    if result.returncode == 0:
+        path = os.fsdecode(result.stdout.removesuffix(b"\0"))
+        if not os.path.isabs(path):
+            raise OSError("global core.excludesFile must use an absolute path")
+        return path
+    config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    if not os.path.isabs(config_home):
+        raise OSError("XDG_CONFIG_HOME must use an absolute path")
+    return os.path.join(config_home, "git", "ignore")
+
+
+def _install_global_ignore(home: str, dry_run: bool) -> Fact:
+    path = ""
+    try:
+        path = _global_ignore_path(home)
+        changed = append_wingbox_ignore(path, project=False, dry_run=dry_run)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        location = (path,) if path else ()
+        return make_fact("install-failed", *location, what="global-gitignore", reason=str(error))
+    if changed:
+        return make_fact(_verb(dry_run), path, what="global-gitignore")
+    return make_fact("install-kept", path, what="global-gitignore", reason="unchanged")
+
+
 def _read_settings(path: str) -> Union[dict, None, UsageError]:
     text = _read_text(path)
     if text is None:
@@ -758,8 +819,8 @@ def assistant_setup_text() -> str:
         settings["hooks"].setdefault(event, []).append(item_group(PROJECT_HOOK_PROGRAM, key))
     return (
         "# Wingbox for every assistant in this repository\n\n"
-        "Wingbox writes only to this repository's `.wingbox/` folder and to each person's own settings. Each\n"
-        "person can run `wingbox install` once (it writes only their own settings). A team that wants every\n"
+        "Project setup writes into `.wingbox/` and adds it to the project's `.gitignore`. Each\n"
+        "person can run `wingbox install` once to set up their assistant. A team that wants every\n"
         "member's coding assistant to use Wingbox in this repository can instead add these lines by hand to the\n"
         "repository's own files and commit them; they need the `wingbox` command on each member's PATH\n"
         "(`pipx install wingbox` or `uv tool install wingbox`).\n\n"
@@ -790,6 +851,8 @@ def install(options: Options, machine: Machine) -> list[Fact]:
     without = options.without if options.without is not None else recorded_without(machine.home)
     payload = skill_payload(machine.skill_files, machine.version)
     facts: list[Fact] = []
+    if options.global_gitignore:
+        facts.append(_install_global_ignore(scope.root, options.dry_run))
     targets = [target for target in plan_targets(scope, assistants) if _target_selected(target, without)]
     missing = missing_folders(scope, targets)
     for target in targets:

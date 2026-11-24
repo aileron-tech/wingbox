@@ -44,6 +44,24 @@ class SmallRepositoryTest(unittest.TestCase):
         return subprocess.run([sys.executable, "-m", "wingbox", *args], cwd=root, input=stdin, capture_output=True, text=True,
                               env=_environment(str(self.base / "home")), timeout=300)
 
+    def test_init_ignores_the_work_directory_and_preserves_existing_rules(self) -> None:
+        """/* REQ-CLI-048: init adds /.wingbox/ to the project's .gitignore for new and existing projects, preserving other rules and keeping one entry on repeated init. */"""
+        for sources in (0, 1):
+            with self.subTest(sources=sources):
+                root = self.repository(sources)
+                ignore = root / ".gitignore"
+                if sources:
+                    ignore.write_bytes(b"# Existing rules\r\n*.log")
+                args = ("--language", "python", "--style", "layered") if not sources else ()
+                for _ in range(2):
+                    result = self.wingbox(root, "init", *args, "--yes")
+                    self.assertEqual(0, result.returncode, result.stderr)
+                expected = b"# Existing rules\r\n*.log\r\n/.wingbox/\r\n" if sources else b"/.wingbox/\n"
+                self.assertEqual(expected, ignore.read_bytes())
+                ignored = subprocess.run(["git", "check-ignore", ".wingbox/config.yaml"], cwd=root,
+                                         env=_environment(str(self.base / "home")), capture_output=True, text=True)
+                self.assertEqual(0, ignored.returncode, ignored.stderr)
+
     def test_init_on_a_small_repository_writes_a_config_that_build_accepts(self) -> None:
         """/* REQ-ARCH-042: `wingbox init --yes` on a repository with 1, 3 or 11 source files (too few to judge) writes a config.yaml that `wingbox build` accepts: the build exits 0 and writes the graph; a repository with no source file is a new project, which init sets up with --language and --style, and that config is accepted too. */"""
         for sources in (0, 1, 3, 11):
