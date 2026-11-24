@@ -1777,7 +1777,14 @@ or defined inside a macro call (`DEPOT_EXPORT(void heap_put(...)) { ... }`),
 a body after a test macro (`TEST_F(Fixture, Name) { ... }` is a method of
 the fixture), a class defined inside a function, and the functions of a file
 in which the grammar loses track of the blocks (two preprocessor branches
-that open the same one): those are found by their heading at the margin.
+that open the same one): those are found by their heading at the margin. In
+such a file the classes and the headings of their methods are read from the
+text too, and a class keeps what stands between its braces.
+
+What `usages` still cannot see: which class the object of `object.method()`
+belongs to (the call is listed as unresolved under every class with that
+method), and a name that only the file which includes this one declares (a
+source file that a test includes after declaring mocks for it).
 
 Build targets and tests. A build also reads what the CMake files state
 literally: `add_executable` and `add_library` with their source files,

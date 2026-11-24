@@ -39,7 +39,10 @@
   header) answers for the function as a whole.
 - In a file where the grammar meets an error, a class keeps the methods that stand between its
   braces in the text, also where the grammar ends it early, takes it for a return type, or meets a
-  macro on the line before it.
+  macro on the line before it. In such a file the classes and the headings of their methods are
+  read from the text as well; a namespace after a macro on a line of its own is a namespace; a
+  method declared by a googlemock macro (`MOCK_METHOD(void, name, ())`) is a method; a static
+  method handed on by name as an argument is a use of it.
 
 ## 0.19.0 - 2026-11-23
 
