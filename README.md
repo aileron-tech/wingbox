@@ -2055,9 +2055,10 @@ must be verified against the running application.
 
 ### Which languages are supported?
 
-Python, TypeScript, TSX and JavaScript, Rust, C#, Java, Go, Ruby and Ruby on
-Rails, PHP and Laravel (Blade and Livewire), Dart and Flutter, Free Pascal and
-Lazarus, plus infrastructure relationships from Kustomize, Helm and Terraform.
+Python, TypeScript, TSX and JavaScript, Rust, C and C++, C#, Java, Go, Ruby
+and Ruby on Rails, PHP and Laravel (Blade and Livewire), Dart and Flutter,
+Free Pascal and Lazarus, plus infrastructure relationships from Kustomize,
+Helm and Terraform.
 
 ### Which operating systems does it run on?
 

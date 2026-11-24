@@ -308,6 +308,21 @@ if __name__ == "__main__":
 
 
 class ConcurrentRefreshTest(FreshnessTestCase):
+
+    def test_init_can_refresh_in_a_non_ascii_project_with_legacy_output_encoding(self) -> None:
+        """/* REQ-FRESH-057: after init adds a project .gitignore, the next search hook refreshes the graph and supplies context even when the project's name is outside the inherited output encoding. */"""
+        old_root = self.root
+        self.root = old_root.with_name("project-\u0442")
+        old_root.rename(self.root)
+        self.build()
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(0, cli.main(["init", str(self.root), "--yes"]))
+        self.assertIn("shop/pricing", self.context("shop/pricing.py", PYTHONIOENCODING="cp1252"))
+        self.assertTrue(freshness.is_fresh(self.state()))
+        log = (self.root / ".wingbox" / "refresh.log").read_text(encoding="utf-8")
+        self.assertIn(str(self.root), log)
+        self.assertIn("refresh: build", log)
+
     def test_two_hooks_at_once_build_once_and_never_for_zero_changed_files(self) -> None:
         """/* REQ-FRESH-041: two search hooks that run at the same time (Claude Code runs Grep and Read in parallel) after one edit both get context; the marked file is refreshed once, and the second refresh, which finds nothing changed once it holds the lock, ends at once without a build (no "build ... for 0 changed files" in .wingbox/refresh.log). */"""
         self.build()

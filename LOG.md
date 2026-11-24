@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-24 - Release 0.19.1
+
+### Changes
+- Version 0.19.1, core and `packages/wingbox-http` (REQ-HTTP-021); the map-request workflow builds with it. A patch version: fixes and one addition to an existing answer, no new command.
+- In it: the names in `impact` rows of C and C++ (#203); `usages` of C and C++ checked against the compiler and brought to a match in four rounds (#204 to #208).
+- The descriptions name C and C++ where they list the languages: the README answer "Which languages are supported?", the long description of the Codex plugin (it also lacked PHP and Dart; the store text already had them), and the package keywords `c` and `cpp`. The GitHub description, the topics, the skill description and the site already named them.
+
+- Includes project and opt-in global Git ignore rules from #210. The refresh log uses UTF-8 so the next search hook can rebuild after init in a project with a non-ASCII path.
+
+### Motivation
+- The maintainer asked to measure `usages` as well as `impact`, to find the root causes of what is missed and bring it to a full match, then to release and to make the descriptions say that C and C++ are supported.
+
+### Verification
+- `usages` against what the compiler resolves (libclang over the compile commands): libuv 1.48.0 8,266 of 8,266 places, leveldb 1.23 5,111 of 5,111, fmt 11.0.2 with its googletest 5,560 of 5,568. Not a published benchmark: the harness is not in the repository.
+- The repository of #177: the numbers of the earlier reports unchanged, build time unchanged.
+
 ## 2026-11-24 - Ignore the Wingbox work directory during setup
 
 - Project setup now adds `/.wingbox/` to the project's `.gitignore` so Git
