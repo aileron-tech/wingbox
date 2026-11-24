@@ -25,6 +25,7 @@
 ## 2026-11-24 - After the release 0.19.1
 
 ### Checks (AGENTS.md section 6)
+- 6.4 Follow-up: the action's main-branch test workflow (45470320008, attempt 2) passed all 14 jobs. Both v1.6.4 and v1 point to that tested commit. GitHub Marketplace shows v1.6.4, and Wingbox's own pull-request workflow now pins it. Rerunning the live example (44561056389, attempt 5) updated the same comment. Its review plan names Wingbox 0.19.1, and the result and blast-radius counts match attempt 4.
 - 6.1 PyPI: the version JSON for `wingbox` and `wingbox-http` lists the wheel and sdist. All four SHA-256 hashes match the GitHub release's `SHA256SUMS`. `uvx --refresh --from "wingbox[http]==0.19.1" wingbox --version` prints 0.19.1, and `wingbox mcp --http --help` lists the HTTP options.
 - 6.1 GitHub release: `gh release view v0.19.1` lists the checksum, SBOM and both Claude Desktop bundle names. The latest bundle download responds with HTTP 200. The release tag points at the merge of #211. #212 pins the plugins to that tag.
 - 6.1 Clean install: `wingbox init` and `wingbox install --global-gitignore` were run with a temporary home and two repositories. `git check-ignore -v` identifies the expected rule for each. After `wingbox build .`, one `wingbox impact pricing.py cart.py 2 --json` call returns both targets and the expected dependency.
