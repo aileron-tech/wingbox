@@ -7,6 +7,7 @@ declarations around that name.
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 
 import tree_sitter_cpp as _tscpp
 from tree_sitter import Language as _TreeSitterLanguage
@@ -16,7 +17,7 @@ from ..interface import Entity, FileResult, UsePayload
 from ..purpose import infer_purpose
 from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings
-from .symbols import glob_bindings, matching_brace, use_sites
+from .symbols import brace_pairs, glob_bindings, use_sites
 
 _CPP_LANGUAGE = _TreeSitterLanguage(_tscpp.language())
 # Every include of the file, wherever it stands: at the top, in a conditional block, inside a
@@ -127,9 +128,17 @@ def macro_class_name(node: Node) -> str:
     type_node = node.child_by_field_name("type")
     declarator = node.child_by_field_name("declarator")
     body = node.child_by_field_name("body")
-    if type_node is None or declarator is None or body is None or type_node.type not in _RECORDS:
+    if type_node is None or declarator is None or body is None:
         return ""
-    if type_node.child_by_field_name("body") is not None:
+    if type_node.type == "type_identifier":
+        # `MACRO` on a line of its own, then `class Name {`: the grammar takes the macro for the return type
+        # and puts the keyword into an error node.
+        keyword = next((child for child in node.children if child.type == "ERROR"), None)
+        words = node_text(keyword).split() if keyword is not None else []
+        if words and words[0] in ("class", "struct", "union") and declarator.type in ("identifier", "type_identifier"):
+            return node_text(declarator)
+        return ""
+    if type_node.type not in _RECORDS or type_node.child_by_field_name("body") is not None:
         return ""
     # With a base class, `class MACRO Name : public Base {`, the grammar puts `Name : public` into an error
     # node and takes the base for the declarator.
@@ -143,7 +152,9 @@ def macro_class_name(node: Node) -> str:
 def macro_class_bases(node: Node) -> list[str]:
     """The base of a class read by macro_class_name, when it has one: the declarator of the grammar."""
     declarator = node.child_by_field_name("declarator")
-    if declarator is None or not any(child.type == "ERROR" for child in node.children):
+    type_node = node.child_by_field_name("type")
+    if declarator is None or type_node is None or type_node.type not in _RECORDS \
+            or not any(child.type == "ERROR" for child in node.children):
         return []
     base = _plain(node_text(declarator))
     return [base] if base else []
@@ -200,6 +211,7 @@ class _Collector:
         self.abstract: list[str] = []
         self.bases: list[str] = []
         self.macro_classes: list[tuple[int, int, str]] = []   # (index of the class entity, start of its body, name)
+        self.class_bodies: list[tuple[int, int, str]] = []    # the same for the classes the grammar read as classes
         self.seen_records: set[int] = set()
 
     def record(self, node: Node) -> None:
@@ -210,6 +222,7 @@ class _Collector:
             return
         self.seen_records.add(node.id)
         name = _last_segment(node_text(name_node))
+        class_index = len(self.entities)
         bases = unique_strings(
             _plain(node_text(base))
             for clause in node.named_children if clause.type == "base_class_clause"
@@ -226,6 +239,10 @@ class _Collector:
                 if method:
                     methods.append(method)
                     defined.append(_entity(f"{name}.{method}", "function", member))
+                # A class the grammar took for the return type of what follows it.
+                returned = member.child_by_field_name("type")
+                if returned is not None:
+                    nested.append(returned)
             elif member.type == "friend_declaration":
                 # A function defined as a friend inside the class is a function of the file, called by
                 # its plain name.
@@ -247,6 +264,8 @@ class _Collector:
             else:
                 nested.append(member)
         self.entities.append(_entity(name, "class", node, unique_strings(iter(methods)), bases))
+        self.class_bodies.append((len(self.entities) - 1, body.start_byte, name))
+        del class_index
         self.entities.extend(defined)
         self.bases.extend(bases)
         if abstract:
@@ -301,16 +320,21 @@ class _Collector:
         self.bases.extend(bases)
         self.scope(body)
 
-    def adopt(self, source: bytes) -> None:
+    def adopt(self, source: bytes, with_all: bool = False) -> None:
         """The members of a class with a macro that the grammar put outside it. Such a class ends, for the
         grammar, at the first class with a macro nested in it; what follows up to the closing brace of the
-        text stands at file level. A function there is a method of the class, not a function of the file."""
-        extents = []
-        for index, body_start, name in self.macro_classes:
-            end = matching_brace(source, body_start)
-            extents.append((source.count(b"\n", 0, body_start) + 1, source.count(b"\n", 0, end) + 1, index, name))
-        if not extents:
+        text stands at file level. A function there is a method of the class, not a function of the file.
+        with_all: the same for every class of a file in which the grammar met an error, where an ordinary
+        class may be cut short too."""
+        classes = self.macro_classes + (self.class_bodies if with_all else [])
+        if not classes:
             return
+        pairs = brace_pairs(source)
+        newlines = [position for position, byte in enumerate(source) if byte == 10]
+        extents = []
+        for index, body_start, name in classes:
+            end = pairs.get(body_start, len(source))
+            extents.append((bisect_right(newlines, body_start) + 1, bisect_right(newlines, end) + 1, index, name))
         kept: list[Entity] = []
         for position, entity in enumerate(self.entities):
             inside = [extent for extent in extents if extent[0] < entity.line <= extent[1] and extent[2] != position]
@@ -373,6 +397,9 @@ class _Collector:
                 if macro_class_name(child):
                     self.macro_record(child)
                     continue
+                returned = child.child_by_field_name("type")
+                if returned is not None:
+                    self.type_specifier(returned)   # a class the grammar took for the return type
                 name = _function_name(child.child_by_field_name("declarator"))
                 if name and name.upper() == name:
                     # `void Count()\n    LOCK_REQUIRED(mutex) { ... }`: an attribute macro between the
@@ -432,7 +459,7 @@ def parse_cpp(
     collector = _Collector()
     collector.scope(root)
     collector.nested_records(root)
-    collector.adopt(content.encode("utf-8"))
+    collector.adopt(content.encode("utf-8"), with_all=root.has_error)
     if root.has_error:
         # Where the grammar lost track (a block that preprocessor branches open and close), the functions
         # below may stand inside a statement or an error node at any depth: their headings are read from

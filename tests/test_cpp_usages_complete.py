@@ -88,6 +88,17 @@ PROJECT = {
         '#include "gate.h"\n'
         "int use_gate() {\n  Gate gate;\n  gate.Trace();\n  (gate.Open)();\n  GateBase base = MakeBase();\n  return base.base;\n}\n"
     ),
+    # A class the grammar cuts short (a macro before a destructor), and one it takes for a return type.
+    "native/include/buffer.h": (
+        "#pragma once\n#define BUF_CONSTEXPR\n#define BUF_BEGIN\n"
+        "BUF_BEGIN\n"
+        "class Buffer {\n public:\n"
+        "  BUF_CONSTEXPR ~Buffer() { release(); }\n"
+        "  BUF_CONSTEXPR auto capacity() const -> int { return limit(); }\n"
+        "  int limit() const { return 8; }\n"
+        " private:\n  void release();\n};\n"
+        "class Reader {\n public:\n  int read(Buffer& buffer) { return buffer.capacity(); }\n};\n"
+    ),
     "tools/report.py": "class Crate:\n    def Add(self, value):\n        return value\n\n\ndef run(crate):\n    return crate.Add(1)\n",
 }
 
@@ -159,6 +170,13 @@ class CompleteUsagesTest(unittest.TestCase):
         self.assertEqual({"native/include/gate.h:24"}, self.places("lever_force"))
         self.assertIn("native/include/gate.h:22", self.places("native/include/gate.h::Lever.Describe"))
         self.assertEqual(self.places("native/include/depot.h::depot_free"), self.places("depot_free"))
+
+    def test_methods_of_a_class_the_grammar_cuts_short(self) -> None:
+        """/* REQ-CPP-024: in a file where the grammar meets an error, a class keeps the methods that stand between its braces in the text, also where the grammar ends the class early or takes it for the return type of what follows (a macro before a destructor or before `auto`): the methods are methods of the class, calls among them without an object are uses of them, and a class after it is still read. */"""
+        self.assertIn("native/include/buffer.h:7", self.places("native/include/buffer.h::Buffer.release"))
+        self.assertIn("native/include/buffer.h:8", self.places("native/include/buffer.h::Buffer.limit"))
+        self.assertIn("native/include/buffer.h:15", self.places("native/include/buffer.h::Buffer.capacity"))
+        self.assertIn("native/include/buffer.h:15", self.places("capacity"))
 
 
 if __name__ == "__main__":

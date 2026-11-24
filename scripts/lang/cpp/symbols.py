@@ -15,6 +15,7 @@ a build reads every name of every file.
 """
 from __future__ import annotations
 
+import re
 from bisect import bisect_right
 
 import tree_sitter_cpp as _tscpp
@@ -122,33 +123,28 @@ def _segments(node: Node) -> list[Node]:
     return names
 
 
+_BRACE_TOKENS = re.compile(rb"//[^\n]*|/\*.*?\*/|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|[{}]", re.S)
+
+
+def brace_pairs(source: bytes) -> dict[int, int]:
+    """For every opening brace of the text, the position after the brace that closes it: braces in comments,
+    strings and character literals do not count. One pass over the file."""
+    pairs: dict[int, int] = {}
+    stack: list[int] = []
+    for match in _BRACE_TOKENS.finditer(source):
+        token = match.group(0)
+        if token == b"{":
+            stack.append(match.start())
+        elif token == b"}" and stack:
+            pairs[stack.pop()] = match.end()
+    for position in stack:
+        pairs[position] = len(source)
+    return pairs
+
+
 def matching_brace(source: bytes, open_at: int) -> int:
-    """The position after the brace that closes the one at open_at, by the text: braces in comments, strings
-    and character literals do not count. The end of the text when the brace is never closed."""
-    depth, i, n = 0, open_at, len(source)
-    while i < n:
-        c = source[i:i + 1]
-        two = source[i:i + 2]
-        if two == b"//":
-            j = source.find(b"\n", i)
-            i = n if j < 0 else j
-        elif two == b"/*":
-            j = source.find(b"*/", i + 2)
-            i = n if j < 0 else j + 2
-            continue
-        elif c in (b'"', b"'"):
-            j = i + 1
-            while j < n and source[j:j + 1] != c and source[j:j + 1] != b"\n":
-                j += 2 if source[j:j + 1] == b"\\" else 1
-            i = j
-        elif c == b"{":
-            depth += 1
-        elif c == b"}":
-            depth -= 1
-            if depth == 0:
-                return i + 1
-        i += 1
-    return n
+    """The position after the brace that closes the one at open_at, by the text."""
+    return brace_pairs(source).get(open_at, len(source))
 
 
 def _attributed_class(function: Node) -> str:
@@ -171,6 +167,12 @@ def _macro_class(node: Node) -> str:
     type_node = node.child_by_field_name("type")
     declarator = node.child_by_field_name("declarator")
     if type_node is None or declarator is None or node.child_by_field_name("body") is None:
+        return ""
+    if type_node.type == "type_identifier":   # `MACRO` on its own line, then `class Name {`
+        keyword = next((child for child in node.children if child.type == "ERROR"), None)
+        words = _text(keyword).split() if keyword is not None else []
+        if words and words[0] in ("class", "struct", "union") and declarator.type in ("identifier", "type_identifier"):
+            return _text(declarator)
         return ""
     if type_node.type not in ("class_specifier", "struct_specifier", "union_specifier") or type_node.child_by_field_name("body") is not None:
         return ""
@@ -290,17 +292,20 @@ def use_sites(root: Node) -> list[UsePayload]:
     # Inside it a call without an object, `helper()`, and `this->helper()` are calls of a member of the class
     # (or of one of its bases): they are recorded as `Class.helper`, which resolves when the class has it.
     class_spans: list[tuple[int, int, str]] = []
+    # Where the grammar lost track it may end a class early: the extent of a class is then read from the
+    # braces of the text.
+    pairs = brace_pairs(source) if root.has_error or any(macro_classes.values()) else {}
     for body in captures.get("classbody", ()):
         owner = body.parent.child_by_field_name("name") if body.parent is not None else None
         names = _segments(owner) if owner is not None else []
         if names:
-            class_spans.append((body.start_byte, body.end_byte, _text(names[-1])))
+            class_spans.append((body.start_byte, max(body.end_byte, pairs.get(body.start_byte, 0)), _text(names[-1])))
     for function in captures.get("function", ()):
         if macro_classes[function.id]:
             # The grammar may end such a class early (at a class with a macro nested in it): its extent is
             # read from the braces of the text.
             body = function.child_by_field_name("body")
-            class_spans.append((function.start_byte, matching_brace(source, body.start_byte), macro_classes[function.id]))
+            class_spans.append((function.start_byte, pairs.get(body.start_byte, body.end_byte), macro_classes[function.id]))
             continue
         declarator = function.child_by_field_name("declarator")
         while declarator is not None and declarator.type != "function_declarator":
