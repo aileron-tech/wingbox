@@ -891,10 +891,12 @@ wingbox uninstall --without skill          # ... except the named items
 ```
 
 `wingbox install` writes your assistant settings in your home folder
-(`%USERPROFILE%` on Windows). With `--global-gitignore`, it also appends
-`.wingbox/` to the file set by Git's global `core.excludesFile`, or to
+(`%USERPROFILE%` on Windows). Select **Global Git ignore** in the terminal
+checklist or pass `--global-gitignore` to append `.wingbox/` to the file set
+by Git's global `core.excludesFile`, or to
 `$XDG_CONFIG_HOME/git/ignore` (default `~/.config/git/ignore`). The rule
-stays in place after uninstall. Install shows what it is about to put in place, one
+stays in place after uninstall. The checkbox starts unchecked unless you
+pass the flag. Install shows what it is about to put in place, one
 line with a checkbox per item, grouped by assistant:
 
 | Item (`--without`) | What it is |
@@ -906,7 +908,7 @@ line with a checkbox per item, grouped by assistant:
 | `session-hook` | Claude Code: at session start, refreshes a graph older than the code, in the background |
 | `git-hook` | Claude Code: after the agent ran `git switch`, `checkout`, `pull`, `merge`, `rebase`, `reset` or `stash pop`, refreshes the graph in the background |
 
-In a terminal you untick items with the arrow keys and space (or, where the
+In a terminal you toggle items with the arrow keys and space (or, where the
 terminal gives no single keys, by typing their numbers) and press Enter;
 Enter alone installs everything, `q` installs nothing. Started by an agent,
 from a script, in CI or with `--yes`, it asks nothing and installs every item

@@ -19,6 +19,7 @@ _TITLES = {
     "edit-hook": "edit hook: marks the files the agent edits",
     "session-hook": "session-start hook: refreshes a stale graph",
     "git-hook": "git hook: refreshes the graph after git switch, pull, merge ...",
+    "global-gitignore": "Global Git ignore (.wingbox/)",
 }
 
 
@@ -33,7 +34,8 @@ def lines(items: list[Item], cursor: Optional[int] = None, home: str = "") -> li
         mark = "x" if item.ticked else " "
         pointer = ">" if cursor == number - 1 else " "
         path = item.path.replace(home, "~", 1) if home and item.path.startswith(home) else item.path
-        out.append(f"{pointer} {number:>2}. [{mark}] {_TITLES[item.key]}  ({path})")
+        destination = f"  ({path})" if path else ""
+        out.append(f"{pointer} {number:>2}. [{mark}] {_TITLES[item.key]}{destination}")
     return out
 
 
@@ -46,7 +48,7 @@ def numbered(items: list[Item], read_line: Callable[[str], str], write: Callable
     """The fallback without raw keys: numbers toggle items, Enter installs, q quits (None)."""
     while True:
         write("\n".join(lines(items, home=home)) + "\n")
-        answer = read_line("Numbers to untick or tick again (e.g. 3 5), Enter to install, q to quit: ").strip().lower()
+        answer = read_line("Numbers to toggle (e.g. 3 5), Enter to install, q to quit: ").strip().lower()
         if answer in ("q", "quit"):
             return None
         if not answer:
@@ -63,7 +65,7 @@ def with_keys(items: list[Item], read_key: Callable[[], str], write: Callable[[s
     """Arrow keys move, space toggles, Enter installs, q quits (None)."""
     cursor = 0
     while True:
-        write("\033[2J\033[H" + "Wingbox will put these in place (space: untick, Enter: install, q: quit)\r\n"
+        write("\033[2J\033[H" + "Wingbox will put these in place (space: toggle, Enter: install, q: quit)\r\n"
               + "\r\n".join(lines(items, cursor, home)) + "\r\n")
         key = read_key()
         if key == "up":

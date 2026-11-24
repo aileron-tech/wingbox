@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -140,6 +140,29 @@ class WithoutTest(ListTestCase):
 
 
 class TerminalTest(ListTestCase):
+
+    def test_the_global_gitignore_checkbox_is_opt_in_and_can_be_toggled(self) -> None:
+        """/* REQ-INSTALL-049: the terminal shows a Global Git ignore checkbox, unchecked unless --global-gitignore is passed. Toggling it controls writing the global excludes and does not save an assistant --without choice. */"""
+        xdg = self.home / "xdg"
+        ignore = xdg / "git" / "ignore"
+        platform = mock.Mock()
+        platform.RawKeys.return_value = nullcontext(mock.Mock(available=False))
+        for args, mark in ((["--global-gitignore"], "x"), ([], " ")):
+            with self.subTest(args=args):
+                shown = io.StringIO()
+                with mock.patch.dict(os.environ, _child_environment(self.home) | {
+                    "GIT_CONFIG_GLOBAL": str(self.home / ".gitconfig"), "XDG_CONFIG_HOME": str(xdg),
+                }), mock.patch.object(cli, "_platform", return_value=platform), \
+                        mock.patch.object(checklist, "asks", return_value=True), \
+                        mock.patch("builtins.input", side_effect=["3", ""]), redirect_stdout(shown):
+                    status = cli.main(["install", "--assistant", "codex", *args])
+                self.assertEqual(0, status, shown.getvalue())
+                first_git_item = shown.getvalue().partition("Git:\n")[2].splitlines()
+                self.assertEqual(f"   3. [{mark}] Global Git ignore (.wingbox/)", next(iter(first_git_item), ""))
+                self.assertEqual(not args, ignore.exists())
+                self.assertEqual((), self.recorded().without)
+        self.assertEqual(b".wingbox/\n", ignore.read_bytes())
+
     def test_the_numbered_list_toggles_items_and_quits(self) -> None:
         """/* REQ-INSTALL-036: without single-key input the list is numbered: typing numbers toggles those items (a second time ticks again), Enter installs the list as shown, q quits and installs nothing; a word that is not a number of the list is named. */"""
         items = install.install_items(str(self.home), ("claude-code", "codex"), ())

@@ -1,5 +1,11 @@
 # Completion Log
 
+## 2026-11-24 - Global Git ignore in the install checklist
+
+- The terminal checklist exposes the opt-in Git ignore rule under Git. It
+  starts unchecked unless the installer receives `--global-gitignore`. This
+  lets a person add the rule while choosing their assistant settings.
+
 ## 2026-11-24 - Release 0.19.1
 
 ### Changes

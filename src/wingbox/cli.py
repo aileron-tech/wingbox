@@ -53,7 +53,8 @@
 Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
 ~/.agents/skills folder). Without --assistant, install uses those whose
 configuration folder exists in the home folder. Project setup also updates
-.gitignore. Use --global-gitignore to add .wingbox/ to Git's global excludes file.
+.gitignore. Select Global Git ignore or pass --global-gitignore to add
+.wingbox/ to Git's global excludes file.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -1743,16 +1744,17 @@ def _install_command(command: str, rest: list[str], cwd: str) -> int:
 
 
 def _install_choice(options, machine):
-    """The install list: shown and asked in a terminal (a person unticks items), printed with --dry-run; the
-    options with the person's choice as --without, or None when the person quits."""
+    """Show the install checklist and return the choices, or None when the person quits."""
     import dataclasses
 
     from wingbox import checklist, install
 
     assistants = install.chosen_assistants(options, machine)
     without = options.without if options.without is not None else install.recorded_without(machine.home)
-    items = install.install_items(os.path.abspath(machine.home), assistants, without)
     home = os.path.abspath(machine.home)
+    items = install.install_items(home, assistants, without)
+    if items:
+        items.append(install.Item("Git", "global-gitignore", "", options.global_gitignore))
     if options.dry_run and not options.sexp:
         print("Wingbox would put these in place ([ ] left out):")
         print("\n".join(checklist.lines(items, home=home)))
@@ -1767,7 +1769,9 @@ def _install_choice(options, machine):
             answered = checklist.numbered(items, input, sys.stdout.write, home)
     if answered is None:
         return None
-    return dataclasses.replace(options, without=install.without_from_items(answered))
+    *assistant_items, git_ignore = answered
+    return dataclasses.replace(options, without=install.without_from_items(assistant_items),
+                               global_gitignore=git_ignore.ticked)
 
 
 def _package_origin():
