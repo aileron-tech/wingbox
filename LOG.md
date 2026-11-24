@@ -1,5 +1,32 @@
 # Completion Log
 
+## 2026-11-24 - usages of C and C++ against the compiler: the root causes of the missing uses
+
+### Why
+- The maintainer asked for the uses `usages` misses to be found with their root causes and brought to a full match. The reference is the compiler: libclang over the compile commands of a built tree gives, for every function and method declared in the repository, every reference it resolves to it. A question by bare name follows the candidates of an ambiguous answer, as a reader would.
+
+### Root causes, each with a test
+- The grammar gives up on a stretch of a file (two preprocessor branches open the same block; everything below is one error node, or lands inside a statement): the functions there were not read. Now their headings at the margin are read from the text when the tree has an error (`_Collector.headings`), and error nodes are walked like blocks. REQ-CPP-019.
+- A function names itself in its own body (a callback that registers itself again): its name counted as a local of the function. REQ-CPP-019.
+- `label:` then a preprocessor line then a call: the grammar reads `NAME call(args);` as a declaration. REQ-CPP-019.
+- A function declared or defined inside a macro call was a function named like the macro; a prototype with a macro and a pointer return type had its declarator in no field and its name as a type identifier. REQ-CPP-020.
+- A function reached both as its prototype and as its definition (a test includes the source file; two headers repeat a prototype) was attributed to neither, by the rule for names two reachable files declare. For functions the header that comes first by path now stands for it; other kinds keep the rule. REQ-CPP-011, whose text changes with this decision.
+- A class with a macro between the keyword and the name is a function to the grammar, which also ends it at the first such class nested inside: it was no class, and none of its methods existed. Now it is read as a class, its extent taken from the braces of the text (`matching_brace`), and the functions the grammar left outside are its methods (`_Collector.adopt`). REQ-CPP-021.
+- Calls of a method without an object inside the class or inside `Class::method`, calls through `this`, and calls inside a body after a macro call whose first argument is a class (`TEST_F`) were recorded as plain names and dropped. They are recorded as `Class.name` and resolve when the class or a base has the member. Classes defined inside a function are read. REQ-CPP-021.
+- A bare method name was no-match; unresolved calls of a method included calls in files of other languages. REQ-CPP-022.
+
+### Changes
+- `scripts/lang/cpp/parser.py`, `scripts/lang/cpp/symbols.py`, `scripts/lang/symbols.py` (`_from_includes`), `scripts/code_graph_search.py` (`classes_with_method`, the candidates of a method name, same-file duplicates), `scripts/usages_forms.py` (`Candidate.symbol`).
+- `README.md`, `CHANGELOG.md`. Tests: `tests/test_cpp_usages_complete.py`, `tests/test_cpp_language.py`.
+
+### Result (not a published benchmark; the harness is not in the repository)
+- libuv 1.48.0: every use the compiler resolves is listed, for every function. leveldb 1.23: all but one place. fmt 11.0.2 with the googletest it bundles: about 97 %; what is left is listed below.
+- On the repository of #177 the numbers of the earlier reports are unchanged, and so is the build time (69 to 76 s with 0.19.0, 75 to 76 s with this change, one worker).
+
+### Not done
+- fmt: calls through a function's return value (`UnitTest::GetInstance()->AddEnvironment(env)`), methods named without a call (`<< GetDesc`), a few prototypes behind macros of other shapes, explicit template arguments.
+- The type of an object is still not derived: a call on an object is listed as unresolved under every class with that method, not attributed to one.
+
 ## 2026-11-24 - usages of C functions: prototypes behind a macro, a declaration with its definition
 
 ### Why

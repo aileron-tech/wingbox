@@ -348,17 +348,20 @@ class CppUsagesTest(unittest.TestCase):
         self.assertEqual([("src/scene/scene.cpp", 6, "call")], self._sites("src/render/painter.h::Mode.Lit"))
         self.assertEqual([("src/scene/scene.cpp", 5, "unresolved-call")], self._sites("src/render/painter.h::Painter.paint"))
 
-    def test_a_name_two_reachable_headers_declare_is_left_unresolved(self) -> None:
-        """/* REQ-CPP-011: when two headers that a file reaches through its includes both declare a name, a use of the name in that file is attributed to neither; a file that reaches only one of them is listed for that one. */"""
+    def test_a_function_two_reachable_headers_declare_is_one_function(self) -> None:
+        """/* REQ-CPP-011: when two files that a file reaches through its includes both declare a function (the same prototype in two headers, or the prototype in a header and the definition in a source file that is included), a call in that file is a use of that function: it is listed under the header that comes first by path, and `usages <name>` lists it once with the uses of the other declarations. A name of another kind that two reachable headers both define (a type) stays attributed to neither. Until 0.19.0 the function was attributed to neither as well, and its calls were missing from every answer. */"""
         _write(self.root, {
-            "src/audio/mixer.h": "#pragma once\nint volume(int channel);\n",
-            "src/audio/legacy.h": "#pragma once\nint volume(int channel);\n",
-            "src/audio/both.cpp": '#include "audio/mixer.h"\n#include "audio/legacy.h"\nint loud() { return volume(1); }\n',
+            "src/audio/mixer.h": "#pragma once\nint volume(int channel);\nstruct Level { int value; };\n",
+            "src/audio/legacy.h": "#pragma once\nint volume(int channel);\nstruct Level { int value; };\n",
+            "src/audio/both.cpp": '#include "audio/mixer.h"\n#include "audio/legacy.h"\nint loud() { Level level; return volume(1); }\n',
             "src/audio/one.cpp": '#include "audio/mixer.h"\nint quiet() { return volume(0); }\n',
         })
         _wingbox(self.root, "build", ".")
         self.assertEqual([("src/audio/one.cpp", 2, "call")], self._sites("src/audio/mixer.h::volume"))
-        self.assertEqual([], self._sites("src/audio/legacy.h::volume"))
+        self.assertEqual([("src/audio/both.cpp", 3, "call")], self._sites("src/audio/legacy.h::volume"))
+        self.assertEqual([("src/audio/both.cpp", 3, "call"), ("src/audio/one.cpp", 2, "call")], self._sites("volume"))
+        self.assertEqual([], [site for site in self._sites("src/audio/mixer.h::Level") if site[0] == "src/audio/both.cpp"])
+        self.assertEqual([], [site for site in self._sites("src/audio/legacy.h::Level") if site[0] == "src/audio/both.cpp"])
 
 
 if __name__ == "__main__":

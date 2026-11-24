@@ -20,6 +20,18 @@
   file answered with two candidates and no uses; it answers for the function now. With two
   definitions of the name in one file (a prototype and the definition below it) the command
   failed with a Python error.
+- **`usages` of C and C++ code misses far fewer uses.** Checked against what the compiler resolves
+  (libclang over the compile commands of three public repositories), these were missing and are
+  read now: functions below a stretch the grammar cannot read (two preprocessor branches that open
+  the same block); a function declared or defined inside a macro call; a prototype with a macro
+  and a pointer return type; a function that names itself in its own body; a call after a label
+  and a preprocessor line; a function a file reaches both as a prototype and as its definition
+  (it was attributed to neither); classes with an export macro before their name, with the
+  members after a class nested in them; classes defined inside a function; calls of a method
+  without an object, through `this`, and inside the body of a test macro.
+- `usages <name>` of a method name answered no-match; it answers for the class that declares the
+  method, or lists the classes as candidates. Unresolved calls of a C++ method no longer include
+  calls of that name in files of other languages.
 
 ## 0.19.0 - 2026-11-23
 

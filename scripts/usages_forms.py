@@ -56,6 +56,7 @@ class Candidate:
     kind: str
     word: str   # the kind for people
     line: int
+    symbol: str = ""   # the symbol to ask for when it is not the name asked: Class.method for a bare method name
 
 
 @dataclass(frozen=True)
@@ -91,7 +92,7 @@ def usages_sexp(answer: UsagesAnswer) -> str:
     if isinstance(answer, UsagesMissing):
         return answer.fact + "\n"
     if isinstance(answer, UsagesAmbiguous):
-        rows = [f" ({atom(f'{c.file}::{answer.symbol}')} {c.kind} {c.line})" for c in answer.candidates]
+        rows = [f" ({atom(f'{c.file}::{c.symbol or answer.symbol}')} {c.kind} {c.line})" for c in answer.candidates]
         return "\n".join([f"(usages-ambiguous {atom(answer.symbol)} :definitions {len(rows)}"] + rows) + ")\n"
     uses, files = _counts(answer)
     head = (f"(usages {atom(answer.symbol)} {answer.kind} :at {atom(f'{answer.file}:{answer.line}')}"
@@ -115,7 +116,7 @@ def usages_json(answer: UsagesAnswer) -> dict[str, Any]:
         return {"usages": {"symbol": answer.asked, "error": "no-match", "suggestions": list(answer.suggestions)}}
     if isinstance(answer, UsagesAmbiguous):
         return {"usages": {"symbol": answer.symbol, "error": "ambiguous", "candidates": [
-            {"target": f"{c.file}::{answer.symbol}", "file": c.file, "kind": c.kind, "line": c.line} for c in answer.candidates
+            {"target": f"{c.file}::{c.symbol or answer.symbol}", "file": c.file, "kind": c.kind, "line": c.line} for c in answer.candidates
         ]}}
     uses, files = _counts(answer)
     return {"usages": {
@@ -132,9 +133,9 @@ def usages_text(answer: UsagesAnswer, show_all: bool) -> str:
         return answer.fact + "\n"
     if isinstance(answer, UsagesAmbiguous):
         lines = [f"{len(answer.candidates)} definitions of {answer.symbol}; ask for one of them:"]
-        width = max(len(c.file) + len(answer.symbol) + 2 for c in answer.candidates)
+        width = max(len(c.file) + len(c.symbol or answer.symbol) + 2 for c in answer.candidates)
         for c in answer.candidates:
-            name = f"{c.file}::{answer.symbol}"
+            name = f"{c.file}::{c.symbol or answer.symbol}"
             lines.append(f"  {name:<{width}}   {c.word}, line {c.line}")
         return "\n".join(lines) + "\n"
     uses, files = _counts(answer)
