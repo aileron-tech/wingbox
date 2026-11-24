@@ -9,6 +9,18 @@
   languages name what they import. A row without names includes the header and uses nothing of it
   that the graph resolved.
 
+### Fixes
+
+- **`usages` of a C function answered "0 uses" when its prototype starts with a macro**
+  (`UV_EXTERN int uv_timer_start(...)`, an export or visibility macro), or when the grammar lost
+  track of an `extern "C"` block that preprocessor branches open and close: such a prototype was no
+  declaration in the graph, so no call could be a use of it. In libuv 1.48.0, `uv_buf_init` now
+  has 204 uses in 79 files where it had none. An answer of "0 uses" read as safe to change.
+- `usages <name>` of a C or C++ function with a prototype in a header and a definition in a source
+  file answered with two candidates and no uses; it answers for the function now. With two
+  definitions of the name in one file (a prototype and the definition below it) the command
+  failed with a Python error.
+
 ## 0.19.0 - 2026-11-23
 
 ### Changes

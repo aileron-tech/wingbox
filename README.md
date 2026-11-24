@@ -1754,7 +1754,13 @@ resolved.
 `wingbox usages <header>::<name>` lists the uses of a function, a type, a
 macro or an enum in the files that include the header directly or through
 other headers, with their lines; `Type::member` and `Enum::Value` are uses of
-that member. Comments and strings are not uses.
+that member. Comments and strings are not uses. A prototype that starts with
+an export or visibility macro (`DEPOT_API int crate_start(crate_t*, int);`)
+is a declaration like any other. `wingbox usages <name>` answers for a
+function as a whole: the uses of its prototype in a header and of its
+definition in a source file that includes that header, each place once;
+functions of one name in files that share no declaring header (static helpers
+of two files) are listed as candidates.
 
 Build targets and tests. A build also reads what the CMake files state
 literally: `add_executable` and `add_library` with their source files,

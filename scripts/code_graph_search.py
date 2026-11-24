@@ -679,6 +679,8 @@ class CodeGraph:
         self._uses_header = ""
         self._use_pairs: Optional[dict[str, set[str]]] = None
         self._names_used: Optional[dict[tuple[str, str], tuple[str, ...]]] = None
+        self._unloaded_imports: list[str] = []
+        self._includes: Optional[dict[str, set[str]]] = None
         self._uses_file_read = False
         self._map_path = ""
         self._module_files: dict[tuple[str, str], str] = {}  # (root, module) -> file, worked out once
@@ -737,6 +739,8 @@ class CodeGraph:
         self._uses_header = ""
         self._use_pairs = None
         self._names_used = None
+        self._unloaded_imports = []
+        self._includes = None
         self._name_positions = {}
         self._uses_file_read = False
         self._map_path = path
@@ -868,6 +872,8 @@ class CodeGraph:
                 self._symbol_lines.append(line)
                 continue
             if focus is not None and focus not in line and not line.startswith(("(node ", "(code-graph")):
+                if line.startswith("(imports "):
+                    self._unloaded_imports.append(line)   # read on need: who includes a header (includes_of)
                 continue
             tokens = tokenize(line)
             if not tokens:
@@ -1118,6 +1124,22 @@ class CodeGraph:
                         self.pmap.get(parts[1], parts[1]))
             self._use_pairs = found
         return self._use_pairs
+
+    def includes_of(self, module: str) -> set[str]:
+        """The modules a module imports or includes, also when the graph was read for one name only."""
+        if self._includes is None:
+            found: dict[str, set[str]] = {}
+            for source, edges in self.edges_from.items():
+                for edge in edges:
+                    if edge.etype == "imports":
+                        found.setdefault(source, set()).add(edge.target.split("::")[0])
+            for line in self._unloaded_imports:
+                parts = line.split(" ", 3)
+                if len(parts) >= 3:
+                    source, target = parts[1], parts[2].rstrip(")")
+                    found.setdefault(self.pmap.get(source, source), set()).add(self.pmap.get(target, target))
+            self._includes = found
+        return self._includes.get(module, set())
 
     def names_used(self, owner: str, user: str) -> tuple[str, ...]:
         """The names of the module owner that the module user uses, by the use lines; sorted."""
@@ -2388,6 +2410,46 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
     return sorted(found, key=lambda usage: (usage.file, usage.line, usage.column, usage.kind)), unresolved
 
 
+def _one_function(g: CodeGraph, definitions: list[EntityFact]) -> Optional[EntityFact]:
+    """The entity to answer for when several definitions of a name are one C or C++ function, else None.
+
+    One function: its prototypes in headers together with the definitions in source files that include one
+    of those headers (directly or through one other header); or several entities of one file (a prototype
+    and the definition below it). Functions of one name in source files that share no declaring header
+    are different functions (static helpers of two files). The answer is given at the definition in a
+    source file when there is one, else at the first declaration."""
+    if len(definitions) < 2 or any(d.kind != "fn" or g.module_lang(d.module) not in ("cpp", "c") for d in definitions):
+        return None
+    headers = sorted({d.module for d in definitions if d.module.casefold().endswith(_C_HEADER_SUFFIXES)})
+    sources = sorted({d.module for d in definitions if not d.module.casefold().endswith(_C_HEADER_SUFFIXES)})
+    if not headers and len(sources) != 1:
+        return None
+
+    for source in sources if headers else ():
+        direct = g.includes_of(source)
+        reached = direct | {target for through in direct for target in g.includes_of(through)}
+        if not reached.intersection(headers):
+            return None
+    chosen = sources[0] if sources else headers[0]
+    return max((d for d in definitions if d.module == chosen), key=lambda d: d.line)
+
+
+def _usages_together(g: CodeGraph, definitions: list[EntityFact], symbol: str) -> tuple[list[Usage], int]:
+    """The uses of the definitions of one function together, each place once."""
+    found: dict[tuple[str, int, int, str], Usage] = {}
+    unresolved = 0
+    for module in dict.fromkeys(d.module for d in definitions):
+        usages, missing = _usages_of(g, next(d for d in definitions if d.module == module), symbol)
+        unresolved = max(unresolved, missing)
+        for usage in usages:
+            found.setdefault((usage.file, usage.line, usage.column, usage.kind), usage)
+    return [found[key] for key in sorted(found)], unresolved
+
+
+def _candidate_rows(g: CodeGraph, definitions: list[EntityFact]) -> list[tuple[str, EntityFact]]:
+    return sorted(((_impact_file(g, d.module), d) for d in definitions), key=lambda row: (row[0], row[1].line, row[1].kind))
+
+
 def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
     """Every place that uses one symbol, complete; the candidates when a bare name has several definitions.
 
@@ -2397,13 +2459,14 @@ def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
     if not definitions:
         suggestions = CodeGraph._suggest_similar(target, g.nodes)
         return usages_forms.UsagesMissing(target, _no_match_fact(target, suggestions), tuple(suggestions))
-    if len(definitions) > 1:
-        rows = sorted((_impact_file(g, d.module), d) for d in definitions)
+    one = _one_function(g, definitions)
+    if len(definitions) > 1 and one is None:
+        rows = _candidate_rows(g, definitions)
         return usages_forms.UsagesAmbiguous(symbol, tuple(
             usages_forms.Candidate(file_path, d.kind, _KIND_WORDS.get(d.kind, d.kind), d.line) for file_path, d in rows
         ))
-    definition = definitions[0]
-    usages, unresolved = _usages_of(g, definition, symbol)
+    definition = one or definitions[0]
+    usages, unresolved = _usages_together(g, definitions, symbol) if one is not None else _usages_of(g, definition, symbol)
     method = "." in symbol
     return usages_forms.UsagesFound(
         symbol,
@@ -2424,14 +2487,15 @@ def _print_usages_flat(g: CodeGraph, target: str, show_all: bool) -> None:
     if not definitions:
         _print_no_match(g, target)
         return
-    if len(definitions) > 1:
-        rows = sorted((_impact_file(g, d.module), d) for d in definitions)
+    one = _one_function(g, definitions)
+    if len(definitions) > 1 and one is None:
+        rows = _candidate_rows(g, definitions)
         print(f"(usages-ambiguous {symbol} :definitions {len(rows)})")
         for file_path, d in rows:
             print(f"(usages-candidate {d.module}::{symbol} :kind {d.kind} :file {_q(file_path)} :line {d.line})")
         return
-    definition = definitions[0]
-    usages, unresolved = _usages_of(g, definition, symbol)
+    definition = one or definitions[0]
+    usages, unresolved = _usages_together(g, definitions, symbol) if one is not None else _usages_of(g, definition, symbol)
     target_id = f"{definition.module}::{symbol}"
     definition_file = _impact_file(g, definition.module)
     shown = usages if show_all else usages[:_USAGES_LIMIT]
