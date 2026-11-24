@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.1 - 2026-11-24
 
 ### Changes
 
@@ -8,6 +8,9 @@
   header (`(:use build_stage)`, in `reasons` of JSON, "uses ..." in the text), as rows of other
   languages name what they import. A row without names includes the header and uses nothing of it
   that the graph resolved.
+- C and C++ are named wherever the languages are listed: the README answer "Which languages are
+  supported?", the text of the Codex plugin (which also lacked PHP and Dart) and the keywords of
+  the package.
 
 ### Fixes
 
