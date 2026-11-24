@@ -1,5 +1,24 @@
 # Completion Log
 
+## 2026-11-24 - usages of C functions: prototypes behind a macro, a declaration with its definition
+
+### Why
+- The maintainer asked to measure `usages` as well as `impact`. `usages` for C and C++ had been checked against a text search only (said so in the report of issue #177). Checked now against the compiler: libclang over the compile commands of libuv 1.48.0, leveldb 1.23 and fmt 11.0.2, every function, a use being a reference the compiler resolves to it.
+- The check found three faults, all in C-style code:
+  1. A prototype that starts with a macro (`UV_EXTERN uv_buf_t uv_buf_init(...)`) was no declaration. The grammar reads the macro as the type and puts an error node before the declarator, which then stands in no field; and after an `extern "C" {` that one `#ifdef` opens and another closes, it reads the prototypes below as field declarations at file level. Without a declaration in the header, no call in a file that includes it can be a use: `wingbox usages uv_buf_init` answered 0 uses for a function with 163 calls in the build of this machine.
+  2. With the prototype read, a bare name had two definitions (header and source file) and the answer was two candidates.
+  3. Two definitions of one name in one file made the listing of candidates fail: the rows were sorted as tuples that end in an entity.
+
+### Changes
+- `scripts/lang/cpp/parser.py`: `_declared_functions` also takes a function declarator that stands in no field; `_Collector.scope` reads a `field_declaration` outside a class for the functions it declares.
+- `scripts/code_graph_search.py`: `_one_function` (the prototypes in headers and the definitions in source files that include one of them, directly or through one other header, are one function; so are several entities of one file), `_usages_together` (their uses, each place once), `_candidate_rows` (sorted by file and line). `CodeGraph.includes_of`: the include edges stay reachable when the graph is read for one name only, where they are not loaded.
+- `README.md`, `CHANGELOG.md`.
+- Tests written first, `tests/test_cpp_function_usages.py`: REQ-CPP-017, REQ-CPP-018.
+
+### Not done, known from the same check
+- A method called through an object is not resolved (the type of the object is not derived), and `usages <method>` by a bare name answers no-match: in C++ code written with classes most uses the compiler sees are therefore not listed under the function. `usages Class.method` lists such calls as unresolved.
+- Overloads and templates share one name.
+
 ## 2026-11-24 - impact rows of C and C++ name what the file uses
 
 ### Why

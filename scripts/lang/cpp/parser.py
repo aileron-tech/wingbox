@@ -89,8 +89,15 @@ def _function_name(declarator: Node | None) -> str:
 
 
 def _declared_functions(node: Node) -> list[str]:
-    """The functions a declaration declares (`int blend(int, int);`); none for a variable."""
-    names = (_function_name(declarator) for declarator in node.children_by_field_name("declarator"))
+    """The functions a declaration declares (`int blend(int, int);`); none for a variable.
+
+    A prototype that starts with a macro the grammar cannot place (`DEPOT_API crate_t crate_init(int);`)
+    is read with an error node before its declarator, which then stands in no field: such a declarator
+    is taken as well."""
+    declarators = list(node.children_by_field_name("declarator"))
+    declarators += [child for child in node.named_children
+                    if child.type == "function_declarator" and child not in declarators]
+    names = (_function_name(declarator) for declarator in declarators)
     return [name for name in names if name]
 
 
@@ -210,9 +217,11 @@ class _Collector:
                 name = _function_name(child.child_by_field_name("declarator"))
                 if name:
                     self.entities.append(_entity(name, "function", child))
-            elif kind == "declaration":
+            elif kind in ("declaration", "field_declaration"):
+                # `field_declaration` outside a class: what the grammar makes of a prototype after it lost
+                # track of a block (an `extern "C" {` that an `#ifdef` opens and another one closes).
                 type_node = child.child_by_field_name("type")
-                if type_node is not None:
+                if type_node is not None and kind == "declaration":
                     self.type_specifier(type_node)
                 for name in _declared_functions(child):
                     self.entities.append(_entity(name, "function", child))
