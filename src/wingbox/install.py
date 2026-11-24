@@ -3,8 +3,8 @@
     wingbox install   [--assistant NAME ...] [--without ITEM,...] [--global-gitignore] [--yes] [--dry-run] [--sexp]
     wingbox uninstall [--global|--project] [--assistant NAME ...] [--without ITEM,...] [--sexp]
 
-Install writes your assistant settings. With --global-gitignore it also adds .wingbox/ to Git's
-global excludes file. To set up a repository run `wingbox init` (it writes .wingbox/ and updates
+Install writes your assistant settings. Select Global Git ignore or pass --global-gitignore to
+add .wingbox/ to Git's global excludes file. To set up a repository run `wingbox init` (it writes .wingbox/ and updates
 the project's .gitignore). Install shows a list of items with a checkbox each, grouped by assistant:
 
 - skill: the skill (SKILL.md and references/, stamped with the version) in the assistant's skill folder,
@@ -16,7 +16,8 @@ the project's .gitignore). Install shows a list of items with a checkbox each, g
   (SessionStart: refreshes a stale graph in the background), git-hook (PostToolUse on Bash: refreshes the
   graph after the agent ran git switch, checkout, pull, merge, rebase, reset or stash pop).
 
-In a terminal the person unticks items and confirms; an agent, a pipe or `--yes` installs everything
+In a terminal the Global Git ignore checkbox starts unchecked unless --global-gitignore is passed.
+The person toggles items and confirms; an agent, a pipe or `--yes` installs assistant settings
 except the items named by `--without` (an item, or ASSISTANT:ITEM for one assistant; `--without none`
 installs everything again). The choice is recorded in ~/.wingbox/installed.sexp, so `wingbox update`
 refreshes only what was installed and a later install keeps it. `wingbox uninstall` removes the

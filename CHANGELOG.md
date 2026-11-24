@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- The interactive installer shows a Global Git ignore checkbox. Use
+  `--global-gitignore` to preselect it.
+
 ## 0.19.1 - 2026-11-24
 
 ### Changes
