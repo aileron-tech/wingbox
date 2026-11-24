@@ -1743,6 +1743,14 @@ no such header and no includers answers with an `(impact-no-includers ...)`
 note instead of an empty list that reads as "safe to change": ask `wingbox
 usages <file>::<name>` for a function it defines.
 
+A row of `wingbox impact <header>` names what the file uses of the header,
+as the rows of other languages name what they import:
+`native/tests/test_stage.cpp (:use build_stage)`, at most three names and
+`:of N` when there are more. A file that includes the header and has no name
+list uses nothing of it that the graph resolved: a candidate for an include
+that is not needed, or a use through a macro or an object, which is not
+resolved.
+
 `wingbox usages <header>::<name>` lists the uses of a function, a type, a
 macro or an enum in the files that include the header directly or through
 other headers, with their lines; `Type::member` and `Enum::Value` are uses of

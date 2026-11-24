@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- A row of `impact` for a file that includes a C or C++ header names what the file uses of that
+  header (`(:use build_stage)`, in `reasons` of JSON, "uses ..." in the text), as rows of other
+  languages name what they import. A row without names includes the header and uses nothing of it
+  that the graph resolved.
+
 ## 0.19.0 - 2026-11-23
 
 ### Changes
