@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-24 - Issue #188 closed: the two open points are decided
+
+### Decisions of the maintainer
+- Language extras (point 4 of the report): the languages stay in the package, without extras. Every parser remains a dependency (REQ-DEPS-012); the smaller install is `pip install --no-deps wingbox` with the parsers a repository needs.
+- A benchmark of agents on tasks (point 6): not published for now.
+
+### Changes
+- `README.md`, "When Wingbox is not the right tool": "Not measured" became "No measurement is published": the sentence has to stay true.
+- Issue #188: the decisions are posted and the issue is closed. What the report asked for and what each version brought: 0.18.0 (#189 to #192), 0.19.0 (#197, #198).
+
 ## 2026-11-24 - After the release 0.19.0
 
 ### Checks (AGENTS.md section 6)
