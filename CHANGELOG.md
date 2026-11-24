@@ -1,15 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.19.1 - 2026-11-24
 
 ### Changes
+
+- `wingbox init` adds `/.wingbox/` to the project's `.gitignore`.
+  `wingbox install --global-gitignore` opts in to adding `.wingbox/` to Git's
+  global excludes file.
 
 - A row of `impact` for a file that includes a C or C++ header names what the file uses of that
   header (`(:use build_stage)`, in `reasons` of JSON, "uses ..." in the text), as rows of other
   languages name what they import. A row without names includes the header and uses nothing of it
   that the graph resolved.
+- C and C++ are named wherever the languages are listed: the README answer "Which languages are
+  supported?", the text of the Codex plugin (which also lacked PHP and Dart) and the keywords of
+  the package.
 
 ### Fixes
+
+- The background graph refresh writes its log as UTF-8 so it can rebuild after
+  a `.gitignore` change in projects whose paths use characters outside the
+  system's default encoding.
 
 - **`usages` of a C function answered "0 uses" when its prototype starts with a macro**
   (`UV_EXTERN int uv_timer_start(...)`, an export or visibility macro), or when the grammar lost
@@ -71,10 +82,6 @@
 ## 0.18.0 - 2026-11-23
 
 ### Changes
-
-- `wingbox init` adds `/.wingbox/` to the project's `.gitignore`.
-  `wingbox install --global-gitignore` opts in to adding `.wingbox/` to Git's
-  global excludes file.
 
 - Two benchmark pages: `benchmarks/cpp` (C and C++ include dependencies of three public
   repositories against a text reference, with that reference checked against `clang -MM` and the

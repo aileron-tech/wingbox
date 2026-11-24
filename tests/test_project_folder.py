@@ -88,8 +88,11 @@ class ProjectFolderTest(unittest.TestCase):
         kept = (".wingbox/config.yaml", ".wingbox/learned.sexp", ".wingbox/baseline.sexp")
         for name in ("config.yaml", "learned.sexp", "baseline.sexp"):
             (self.root / ".wingbox" / name).write_text("; written by hand\n", encoding="utf-8")
+        global_excludes = self.base / "empty-git-excludes"
+        global_excludes.touch()
         listed = subprocess.run(
-            ["git", "-C", str(self.root), "status", "--porcelain", "--untracked-files=all", ".wingbox"],
+            ["git", "-C", str(self.root), "-c", f"core.excludesFile={global_excludes}",
+             "status", "--porcelain", "--untracked-files=all", ".wingbox"],
             capture_output=True, text=True, check=True,
         ).stdout.split()
         for name in kept:
