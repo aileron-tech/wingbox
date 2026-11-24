@@ -101,6 +101,24 @@ class ImplementationFileTest(unittest.TestCase):
         self.assertNotIn("note", header)
         self.assertEqual({"source"}, {basis for _depth, basis in _rows(header).values()})
 
+    def test_a_row_of_an_include_names_what_the_file_uses(self) -> None:
+        """/* REQ-CPP-016: a row of `impact` whose file includes a C or C++ header carries the names of that header the file uses, as rows of other languages carry the names of an import: `(:use <name> ...)` in the compact form (at most three names, `:of N` when there are more), the same in `reasons` of JSON and in the text. A file that includes the header and uses no name the graph resolved has no name list. For a source file answered through its header the names are those of the header. */"""
+        def names(answer: dict) -> dict[str, list]:
+            return {row["file"]: [(reason["way"], reason["names"], reason["of"]) for reason in row["reasons"]] for row in answer["rows"]}
+
+        header = names(_answer(self.root, "native/src/scene/stage.h", "2"))
+        self.assertEqual([("use", ["build_stage"], 1)], header["native/tests/test_stage.cpp"])
+        self.assertEqual([], header["native/src/play/round.h"])          # includes it, uses nothing of it
+        self.assertEqual([("use", ["play_round"], 1)], header["native/tests/test_round.cpp"])   # depth 2: what it uses of round.h
+        compact = _run(self.root, "impact", "native/src/scene/stage.h", "2").stdout
+        self.assertIn("native/tests/test_stage.cpp (:use build_stage)", compact)
+        human = _run(self.root, "impact", "native/src/scene/stage.h", "--human").stdout
+        self.assertIn("build_stage", human)
+        source = names(_answer(self.root, "native/src/scene/stage.cpp", "1"))
+        self.assertEqual([("use", ["build_stage"], 1)], source["native/tests/test_stage.cpp"])
+        crate = names(_answer(self.root, "native/include/depot/crate.h", "1"))
+        self.assertEqual([("use", ["crate_size"], 1)], crate["native/src/play/round.cpp"])
+
     def test_a_source_file_without_a_header_says_what_the_list_cannot_show(self) -> None:
         """/* REQ-CPP-015: `impact` of a C or C++ source file that nothing includes and that has no header of its name has no rows and a `(impact-no-includers <file>)` note; the text for people says that the include graph does not show who calls what the file defines and names `wingbox usages`, where it used to say "No other module depends on it". */"""
         answer = _answer(self.root, "native/src/lone.cpp")

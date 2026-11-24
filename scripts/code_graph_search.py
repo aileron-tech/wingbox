@@ -678,6 +678,7 @@ class CodeGraph:
         self._variables: Optional[dict[str, list[EntityFact]]] = None
         self._uses_header = ""
         self._use_pairs: Optional[dict[str, set[str]]] = None
+        self._names_used: Optional[dict[tuple[str, str], tuple[str, ...]]] = None
         self._uses_file_read = False
         self._map_path = ""
         self._module_files: dict[tuple[str, str], str] = {}  # (root, module) -> file, worked out once
@@ -735,6 +736,7 @@ class CodeGraph:
         self._variables = None
         self._uses_header = ""
         self._use_pairs = None
+        self._names_used = None
         self._name_positions = {}
         self._uses_file_read = False
         self._map_path = path
@@ -1116,6 +1118,17 @@ class CodeGraph:
                         self.pmap.get(parts[1], parts[1]))
             self._use_pairs = found
         return self._use_pairs
+
+    def names_used(self, owner: str, user: str) -> tuple[str, ...]:
+        """The names of the module owner that the module user uses, by the use lines; sorted."""
+        if self._names_used is None:
+            found: dict[tuple[str, str], list[str]] = {}
+            for key, users in self.use_pairs.items():
+                module, _, name = key.partition("::")
+                for item in users:
+                    found.setdefault((module, item), []).append(name)
+            self._names_used = {pair: tuple(sorted(set(names))) for pair, names in found.items()}
+        return self._names_used.get((owner, user), ())
 
     @property
     def variables_by_name(self) -> dict[str, list[EntityFact]]:
@@ -1608,6 +1621,9 @@ class ImpactRow:
     basis: str = ""   # declared or inferred; "" for an edge the source text states
 
 
+_IMPACT_INCLUDE_NAMES = 3   # as many names as an import edge carries
+
+
 def _impact_rows(g: CodeGraph, start: str, max_depth: int) -> list[list[ImpactRow]]:
     """The levels of _impact_levels, each dependent with the module it is reached through and its edge to it."""
     levels = _impact_levels(g, start, max_depth)
@@ -1624,6 +1640,11 @@ def _impact_rows(g: CodeGraph, start: str, max_depth: int) -> list[list[ImpactRo
             through, edge_type = reached[module][0]
             names = next((edge.names for edge in g.edges_to.get(through, ())
                           if edge.etype == "imports" and edge.source.split("::")[0] == module and edge.names), ())
+            if not names and edge_type == "imports" and g.module_lang(through) in ("cpp", "c"):
+                # An include states no names: the names of the header the file uses come from the use lines.
+                used = g.names_used(through, module)
+                if used:
+                    names = (NameRoute("use", "", used[:_IMPACT_INCLUDE_NAMES], len(used)),)
             # A file that includes the header of the asked source file, not the file itself.
             basis = "paired-header" if not rows and through in paired else _edge_basis(g, module, through, edge_type)
             level_rows.append(ImpactRow(

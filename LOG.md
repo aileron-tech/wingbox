@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-24 - impact rows of C and C++ name what the file uses
+
+### Why
+- The maintainer's remark: `impact` should give the usages too. For Python, TypeScript and Rust a row names what the dependent imports of the file; for C and C++ a row said only that the file includes the header, because an include states no names. The graph had the answer in its use lines, which `usages` reads: in leveldb eight files include one header, and four of them use the function a change would touch.
+
+### Changes
+- `scripts/code_graph_search.py`: `CodeGraph.names_used(owner, user)`, an index of the use lines by pair of modules, built on first need; `_impact_rows` gives a row whose edge is an include of a C or C++ file the names the dependent uses of it, as one `use` route of at most three names with the count. Rows of other languages are unchanged: their edges carry names already.
+- `README.md` (C and C++), `CHANGELOG.md`.
+- Test written first, `tests/test_impact_implementation_files.py`: REQ-CPP-016.
+
+### On the repository of #177
+- The central header at depth 2: 435 of the 440 rows carry names; the answer grows from 34,610 to 49,739 characters; the time of the call did not change (1.6 s against 1.9 s with 0.19.0 on the same graph).
+
+### Not done
+- A row without names is not called an unused include: a use through a macro or through an object whose type is not derived is not resolved.
+
 ## 2026-11-24 - Issue #188 closed: the two open points are decided
 
 ### Decisions of the maintainer
