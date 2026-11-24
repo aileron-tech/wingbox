@@ -1,8 +1,8 @@
-"""Wingbox writes in two places only: the project's .wingbox/ folder and the user's own settings in the home folder.
+"""Check each command's write scope, including the project .gitignore exception for init.
 
 Each user-facing command runs in a temporary git repository with a temporary home folder and a temporary
 folder for temporary files; afterwards every path that changed (created, modified or deleted) must lie under
-<project>/.wingbox/ or under the home folder. A path elsewhere fails the test, which names it.
+<project>/.wingbox/ or under the home folder, except for init's .gitignore update.
 """
 import json
 import os
@@ -22,10 +22,6 @@ FILES = {
     "shop/pricing.py": "class Pricer:\n    def total(self, items):\n        return sum(items)\n",
     "shop/cart.py": "from shop.pricing import Pricer\n\n\ndef pay(items):\n    return Pricer().total(items)\n",
 }
-# Writes outside the two places that are allowed on purpose, each with its reason. None are expected.
-EXCEPTIONS: dict[str, str] = {}
-
-
 def _state(folder: Path) -> dict[str, tuple[int, int]]:
     found = {}
     for path in folder.rglob("*"):
@@ -67,16 +63,18 @@ class WriteZonesTest(unittest.TestCase):
         while freshness.refresh_running(str(self.project)) and time.monotonic() < deadline:
             time.sleep(0.1)
 
-    def outside(self, before: dict, after: dict) -> list[str]:
+    def outside(self, before: dict, after: dict, command: str) -> list[str]:
         changed = {path for path in before.keys() | after.keys() if before.get(path) != after.get(path)}
+        if command == "init":
+            changed.discard(str(self.project / ".gitignore"))
         allowed = (str(self.project / ".wingbox"), str(self.home))
         return sorted(
             path for path in changed
-            if not any(path == root or path.startswith(root + os.sep) for root in allowed) and path not in EXCEPTIONS
+            if not any(path == root or path.startswith(root + os.sep) for root in allowed)
         )
 
     def test_every_command_writes_only_into_wingbox_and_the_home_folder(self) -> None:
-        """/* REQ-ZONE-001: build, init, learn, align (and --learn), place, advice, compare, boundaries, impact, usages, install, update --check, uninstall, the MCP server with --build-missing and every hook (with the background refresh it starts) write only below <project>/.wingbox/ and the user's home folder: no other path of the project, no system temporary file, nothing else; the exceptions are listed in the test with their reason (none). */"""
+        """/* REQ-ZONE-001: build, init, learn, align (and --learn), place, advice, compare, boundaries, impact, usages, plain install, update --check, uninstall, the MCP server with --build-missing and every hook (with its background refresh) write only below <project>/.wingbox/ and the user's home folder. Only init also updates the project's .gitignore. */"""
         def read(path: str) -> dict:
             return {"session_id": "s", "cwd": str(self.project), "tool_name": "Read", "tool_input": {"file_path": path}}
 
@@ -117,7 +115,7 @@ class WriteZonesTest(unittest.TestCase):
             self.wait_for_background_refresh()
             after = {**_state(self.project), **_state(self.home), **_state(self.temp)}
             self.assertNotIn("Traceback", done.stderr, f"{name}: {done.stderr[-2000:]}")
-            problems += [f"{name}: {path}" for path in self.outside(before, after)]
+            problems += [f"{name}: {path}" for path in self.outside(before, after, name)]
         self.assertEqual([], problems)
 
 

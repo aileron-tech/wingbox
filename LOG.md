@@ -1,5 +1,12 @@
 # Completion Log
 
+## 2026-11-24 - Ignore the Wingbox work directory during setup
+
+- Project setup now adds `/.wingbox/` to the project's `.gitignore` so Git
+  skips untracked work files by default.
+- `wingbox install --global-gitignore` adds `.wingbox/` to Git's global
+  excludes file on request, using the user's configured path or Git's default.
+
 ## 2026-11-24 - usages of C and C++ against the compiler, fourth round
 
 ### Root causes of this round (REQ-CPP-025)

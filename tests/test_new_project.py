@@ -59,7 +59,7 @@ class NewProjectTest(unittest.TestCase):
         self.assertFalse((self.root / ".wingbox").exists())
 
     def test_flags_write_the_style_and_its_full_target_layout_and_scaffold_creates_only_folders(self) -> None:
-        """/* REQ-NEW-002: with --language and --style init writes .wingbox/config.yaml (and the .wingbox/.gitignore of the build) with the chosen style and every folder of its target layout proposed; it creates no folder unless --scaffold, which creates the empty target folders and no file. */"""
+        """/* REQ-NEW-002: with --language and --style init writes .wingbox/config.yaml with the chosen style and every folder of its target layout proposed, its other setup files and the project .gitignore. With --scaffold it also creates the empty target folders. */"""
         status, text = _run(["init", str(self.root), "--language", "python", "--style", "hexagonal", "--yes"], home=str(self.home))
         self.assertIn("new project: hexagonal (--style), python, container", text)
         self.assertIn("next: wingbox learn settles the open points", text)
@@ -69,7 +69,7 @@ class NewProjectTest(unittest.TestCase):
         self.assertIn("    style: hexagonal   # chosen: --style", config)
         self.assertIn("- {layer: domain, block: entities, folder: src/domain/entities, proposed: true}", config)
         self.assertEqual({self.root / ".wingbox", self.root / ".wingbox" / "config.yaml", self.root / ".wingbox" / ".gitignore",
-                          self.root / ".wingbox" / "assistant-setup.md"},
+                          self.root / ".wingbox" / "assistant-setup.md", self.root / ".gitignore"},
                          set(self.root.rglob("*")))
         status, text = _run(["init", str(self.root), "--language", "python", "--style", "hexagonal", "--yes", "--force", "--scaffold", "--sexp"],
                             home=str(self.home))
@@ -77,7 +77,8 @@ class NewProjectTest(unittest.TestCase):
         self.assertTrue((self.root / "src" / "domain" / "entities").is_dir())
         self.assertTrue((self.root / "src" / "domain" / "value_objects").is_dir())   # a Python package name
         self.assertTrue((self.root / "src" / "adapters" / "in").is_dir())
-        self.assertEqual([], [p for p in self.root.rglob("*") if p.is_file() and ".wingbox" not in p.parts])
+        self.assertEqual([self.root / ".gitignore"],
+                         [p for p in self.root.rglob("*") if p.is_file() and ".wingbox" not in p.parts])
 
     def test_interactive_init_asks_the_language_and_the_style(self) -> None:
         """/* REQ-NEW-003: on a terminal, init asks the language, lists the styles with numbers and writes the chosen one after a yes. */"""

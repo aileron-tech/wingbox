@@ -28,13 +28,13 @@
                                             Query the code graph: impact, usages, quick, analyze, search, ...
                                             `wingbox impact a.py b.py 2` answers for several files at once
     wingbox infra [arguments]               Build the infrastructure topology (Kustomize, Helm, Terraform)
-    wingbox install [--assistant NAME ...] [--without ITEM,...] [--yes] [--dry-run] [--sexp]
+    wingbox install [--assistant NAME ...] [--without ITEM,...] [--global-gitignore] [--yes] [--dry-run] [--sexp]
                                             Set up your assistants in your own settings: the skill, an
                                             always-on block, the Claude Code hooks; in a terminal shows the
                                             list to untick; items: skill, block, search-hook, edit-hook,
                                             session-hook, git-hook (or ASSISTANT:ITEM; --without none: all)
     wingbox uninstall [--global|--project] [--assistant NAME ...] [--without ITEM,...] [--sexp]
-                                            Remove exactly what install added (except the --without items);
+                                            Remove the installed assistant files and hooks (except --without items);
                                             --project: what versions before 0.9.0 wrote into a repository
     wingbox update [--check] [--dry-run] [--sexp]
                                             Upgrade with the installer that installed Wingbox (pipx, uv
@@ -52,8 +52,8 @@
 
 Assistants: claude-code, codex, gemini, cursor, copilot, agents (the shared
 ~/.agents/skills folder). Without --assistant, install uses those whose
-configuration folder exists in the home folder. Wingbox writes only into a
-project's .wingbox/ and your own settings in the home folder.
+configuration folder exists in the home folder. Project setup also updates
+.gitignore. Use --global-gitignore to add .wingbox/ to Git's global excludes file.
 
 `wingbox build` runs scripts/build_code_graph.py and every query command runs
 scripts/code_graph_search.py, so the options and the output are the ones
@@ -1374,6 +1374,8 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
     part_path = os.path.relpath(parsed.root, base).replace(os.sep, "/") if in_repo else "."
     config_path = os.path.join(base, CONFIG_FILE)
     if not in_repo and os.path.exists(config_path) and not parsed.force:
+        if _init_gitignore(base):
+            return 1
         print(f"(arch-config-kept {q(CONFIG_FILE)} :reason {q('the file exists; wingbox init --force rewrites it')})")
         return 0
     if interactive and not parsed.yes:
@@ -1504,6 +1506,8 @@ def _init_from_folders(args: list[str], cwd: str) -> int:
             return 1
         written = True
         facts.append(f"(arch-config-written {_atom(CONFIG_FILE)})")
+    if _init_gitignore(root):
+        return 1
     if sexp:
         print("\n".join(facts))
         return 0
@@ -1584,9 +1588,21 @@ def _init(args: list[str], cwd: str) -> int:
     return _assistant_setup(root, sexp) if sexp else 0
 
 
+def _init_gitignore(root: str) -> int:
+    from wingbox.install import append_wingbox_ignore
+
+    path = os.path.join(root, ".gitignore")
+    try:
+        append_wingbox_ignore(path, project=True)
+    except OSError as error:
+        print(f"[wingbox] ERROR: cannot update {path}: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _assistant_setup(root: str, sexp: bool) -> int:
     """Save .wingbox/assistant-setup.md and print it (a fact with --sexp) before the report of init: the lines a team
-    may add by hand to the repository's own files. init writes nothing outside .wingbox/."""
+    may add by hand to the repository's own files."""
     from wingbox import install
 
     path = os.path.join(root, *install.ASSISTANT_SETUP_FILE.split("/"))
@@ -1597,6 +1613,8 @@ def _assistant_setup(root: str, sexp: bool) -> int:
             handle.write(text)
     except OSError as error:
         print(f"[wingbox] ERROR: cannot write {path}: {error}", file=sys.stderr)
+        return 1
+    if _init_gitignore(root):
         return 1
     if sexp:
         print(f'(init-assistant-setup "{install.ASSISTANT_SETUP_FILE}" :for "AGENTS.md CLAUDE.md .claude/settings.json")')

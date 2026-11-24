@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -66,6 +67,36 @@ class GlobalInstallTest(InstallTestCase):
         super().setUp()
         (self.home / ".claude").mkdir()
         (self.home / ".codex").mkdir()
+
+    def test_global_gitignore_is_opt_in_and_respects_git_configuration(self) -> None:
+        """/* REQ-INSTALL-048: install --global-gitignore appends .wingbox/ once to Git's configured global excludes file or its XDG default. Plain install and dry run leave it alone. */"""
+        xdg = self.home / "xdg"
+        git_config = self.home / ".gitconfig"
+        default_ignore = xdg / "git" / "ignore"
+        custom_ignore = self.home / "custom ignore"
+        subprocess.run(["git", "init", "-q", str(self.project)], check=True)
+        with mock.patch.dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home),
+                             XDG_CONFIG_HOME=str(xdg), GIT_CONFIG_GLOBAL=str(git_config)):
+            for ignore in (default_ignore, custom_ignore):
+                with self.subTest(ignore=ignore):
+                    original = b"*.log" if ignore == custom_ignore else b""
+                    if ignore == custom_ignore:
+                        subprocess.run(["git", "config", "--global", "core.excludesFile", "~/custom ignore"],
+                                       check=True)
+                        ignore.write_bytes(original)
+                    for args in ((), ("--global-gitignore", "--dry-run")):
+                        result = self.run_command("install", *args)
+                        self.assertEqual(0, install.exit_status(result), result)
+                        self.assertEqual(original, ignore.read_bytes() if ignore.exists() else b"")
+                    result = self.run_command("install", "--global-gitignore")
+                    self.assertEqual(0, install.exit_status(result), result)
+                    result = self.run_command("install", "--global-gitignore")
+                    self.assertIn("install-kept", self.heads(result))
+                    self.assertEqual((original + b"\n" if original else b"") + b".wingbox/\n",
+                                     ignore.read_bytes())
+                    ignored = subprocess.run(["git", "check-ignore", ".wingbox/index.sexp"], cwd=self.project,
+                                             capture_output=True, text=True)
+                    self.assertEqual(0, ignored.returncode, ignored.stderr)
 
     def test_fresh_install_writes_skill_block_and_hook_for_detected_assistants(self) -> None:
         """/* REQ-INSTALL-001: `wingbox install` must detect the assistants by their configuration folders and write, for each, the stamped skill, the always-on block and (Claude Code) the PreToolUse hook; assistants without a folder get nothing. */"""
@@ -262,14 +293,14 @@ class ProjectInstallTest(InstallTestCase):
         install._write_record(install.record_path(str(self.home)), entries, False, "install")
 
     def test_project_install_is_refused_and_writes_nothing(self) -> None:
-        """/* REQ-INSTALL-010: `wingbox install --project` (removed in 0.9.0) must exit non-zero, write nothing, and say that `wingbox init` sets up the repository (writes only .wingbox/), `wingbox install` sets up the assistants (writes only your own settings), and `wingbox uninstall --project` removes what earlier versions wrote. */"""
+        """/* REQ-INSTALL-010: `wingbox install --project` (removed in 0.9.0) must exit non-zero, write nothing, and direct project setup to `wingbox init`, assistant setup to `wingbox install`, and legacy cleanup to `wingbox uninstall --project`. */"""
         (self.home / ".claude").mkdir()
         before = snapshot(self.base)
         stderr = io.StringIO()
         with redirect_stdout(io.StringIO()), redirect_stderr(stderr), mock.patch.dict(os.environ, {"HOME": str(self.home)}):
             status = cli.main(["install", "--project"])
         self.assertNotEqual(0, status)
-        for words in ("wingbox init", "writes only .wingbox/", "wingbox install", "your own settings", "uninstall --project", "0.9.0"):
+        for words in ("wingbox init", "updates .gitignore", "wingbox install", "your own settings", "uninstall --project", "0.9.0"):
             self.assertIn(words, stderr.getvalue())
         self.assertEqual(before, snapshot(self.base))
 

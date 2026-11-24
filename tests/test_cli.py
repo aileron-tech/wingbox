@@ -141,7 +141,7 @@ class WingboxInitTest(unittest.TestCase):
         _layered_project(self.root)
 
     def test_init_prints_the_styles_and_writes_the_config(self) -> None:
-        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and the layer -> folders mapping (and the .wingbox/.gitignore of the build, and .wingbox/assistant-setup.md: the lines a team may add by hand), creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
+        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and layer -> folders mapping, .wingbox/.gitignore, .wingbox/assistant-setup.md and the project .gitignore, creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
         before = {path for path in self.root.rglob("*")}
         status, text = _run(["init", str(self.root)])
         self.assertEqual(0, status, text)
@@ -160,7 +160,7 @@ class WingboxInitTest(unittest.TestCase):
         self.assertIn("missing:", text)
         created = {path for path in self.root.rglob("*")} - before
         self.assertEqual({self.root / ".wingbox", self.root / ".wingbox" / "config.yaml", self.root / ".wingbox" / ".gitignore",
-                          self.root / ".wingbox" / "assistant-setup.md"}, created)
+                          self.root / ".wingbox" / "assistant-setup.md", self.root / ".gitignore"}, created)
         self.assertIn("To have every member's assistant use Wingbox here", text)
 
     def test_init_keeps_an_existing_config_unless_forced(self) -> None:

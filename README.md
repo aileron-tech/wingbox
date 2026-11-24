@@ -126,13 +126,12 @@ Wingbox is safe to run on code that must not leave the company:
 | Command | Writes to |
 |---|---|
 | `wingbox build` (and the refresh after a change) | the repository's `.wingbox/` |
-| `wingbox init` (project setup) | the repository's `.wingbox/` |
-| `wingbox install` (your assistants) | your own settings in your home folder (the assistants' files, `~/.wingbox/`) |
+| `wingbox init` (project setup) | the project's `.wingbox/` and `.gitignore` |
+| `wingbox install` (your assistants) | the assistants' files and `~/.wingbox/`, plus Git's global excludes file with `--global-gitignore` |
 
 Three tests of the repository keep this true: the package imports no module
 that opens network connections, the map page loads no outside resource, and
-every command run in a temporary repository with a temporary home folder
-changes no path outside `.wingbox/` and that home folder.
+the write-scope test checks the project and home paths each command may change.
 
 ## See it in action
 
@@ -700,7 +699,8 @@ graph, C and C++ included.
 ### The architecture of each part: `wingbox init`
 
 `wingbox init [PATH] [--force] [--sexp] [--details]` splits the repository into parts and
-judges the architecture style of each, then writes `.wingbox/config.yaml`:
+judges the architecture style of each, then writes `.wingbox/config.yaml` and
+adds `/.wingbox/` to the project's `.gitignore`:
 
 ```
 $ wingbox init
@@ -859,9 +859,9 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   style and the guesses). Nobody needs to edit the file by hand; it starts
   with a header of instructions (what each key means, the rule that decides a
   file's layer, how to move a folder, what to run after a change), rewritten
-  on every write, so that an agent asked to change it does so correctly. Commit `.wingbox/`: its `.gitignore` keeps out
-  the generated files (index, cache, report, map), so the folder shares
-  `config.yaml`, `learned.sexp`, `decisions.sexp` and `baseline.sexp`.
+  on every write, so that an agent asked to change it does so correctly. To
+  share `config.yaml`, `learned.sexp`, `decisions.sexp` and `baseline.sexp`
+  through Git, force-add those files explicitly.
 
 If `.wingbox/config.yaml` exists, `init` keeps it and only prints the
 candidates; `--force` rewrites it. `wingbox build` reads the file when it
@@ -884,13 +884,17 @@ wingbox install                            # every assistant whose configuration
 wingbox install --dry-run                  # print the list and every file it would write, change nothing
 wingbox install --assistant codex          # only the named assistants (repeatable)
 wingbox install --without git-hook         # leave items out: ITEM or ASSISTANT:ITEM, comma separated
+wingbox install --global-gitignore         # add .wingbox/ to Git's global excludes file
 wingbox install --yes                      # ask nothing, even in a terminal
-wingbox uninstall                          # remove exactly what install added
+wingbox uninstall                          # remove installed assistant settings
 wingbox uninstall --without skill          # ... except the named items
 ```
 
-`wingbox install` writes only your own settings in your home folder
-(`%USERPROFILE%` on Windows). It shows what it is about to put in place, one
+`wingbox install` writes your assistant settings in your home folder
+(`%USERPROFILE%` on Windows). With `--global-gitignore`, it also appends
+`.wingbox/` to the file set by Git's global `core.excludesFile`, or to
+`$XDG_CONFIG_HOME/git/ignore` (default `~/.config/git/ignore`). The rule
+stays in place after uninstall. Install shows what it is about to put in place, one
 line with a checkbox per item, grouped by assistant:
 
 | Item (`--without`) | What it is |
@@ -923,9 +927,8 @@ Assistants are found by their folders in the home directory: `~/.claude`,
 | GitHub Copilot, CLI and VS Code (`copilot`) | `~/.copilot/skills/wingbox` | `~/.copilot/copilot-instructions.md` |
 | Shared Agent Skills folder of `npx skills` (`agents`) | `~/.agents/skills/wingbox` | none |
 
-**For a whole team.** Wingbox writes nothing into a repository outside
-`.wingbox/`. `wingbox init` prints, and saves in `.wingbox/assistant-setup.md`
-(meant to be committed), the lines a team may add by hand to the repository's
+**For a whole team.** `wingbox init` prints and saves in
+`.wingbox/assistant-setup.md` the lines a team may add by hand to the repository's
 own files so that every member's assistant uses Wingbox there: the always-on
 block for `AGENTS.md` and `CLAUDE.md`, and the four hook entries for a
 committed `.claude/settings.json` (they run `wingbox` from `PATH`).
@@ -1233,8 +1236,8 @@ project root.
 | `map.html` | People | An interactive map of the code graph: one file, opens in a browser (`wingbox open`), works without a network connection |
 | `graph-*`, `refresh.*` | Wingbox | What keeps the graph fresh: the facts of each module and what they were read from, the sizes and times of the sources at the build, the folder it was built from, the files changed since (see "Keeping the graph fresh") |
 | `.gitignore` | git | Ignores every file above and itself, so that a plain `wingbox build` leaves `git status` clean and a file you write into `.wingbox/` later stays in the repository |
-| `config.yaml`, `learned.sexp`, `baseline.sexp` | People and agents | The architecture of each part, what `wingbox learn` learned, the known rule breaks (`wingbox init`, `learn`, `align --learn`); not ignored, commit them |
-| `decisions.sexp` | People and Wingbox | The advice each build gave and what became of it; started once the project is set up (`wingbox init`, `learn`, `align --learn` or `advice`), not ignored, commit it |
+| `config.yaml`, `learned.sexp`, `baseline.sexp` | People and agents | The architecture of each part, what `wingbox learn` learned, and the known rule breaks (`wingbox init`, `learn`, `align --learn`) |
+| `decisions.sexp` | People and Wingbox | The advice each build gave and what became of it; started once the project is set up (`wingbox init`, `learn`, `align --learn` or `advice`) |
 
 On the map, click a file to see its blast radius: the files that depend on it
 move onto rings, one ring per hop. The layers view stacks the architecture
@@ -1242,10 +1245,8 @@ layers as planes in 3D and can be turned with the mouse. A link such as
 `map.html#select=src/app.ts` opens the map on that file.
 
 The generated files are rewritten on every build and never committed thanks to
-`.wingbox/.gitignore`; you can also ignore the whole folder. In a repository nobody has set up with
-`wingbox init`, a build leaves nothing for git to show; `config.yaml`, `learned.sexp`, `baseline.sexp` and
-`decisions.sexp` appear once they are written, on purpose, since they record what people and agents
-decided. A `.wingbox/`
+`.wingbox/.gitignore`. `wingbox init` ignores the whole folder at the project
+level. Files already tracked by Git continue to be tracked. A `.wingbox/`
 folder copied or moved to another place is read as it is but never refreshed
 there: queries say `rebuild`. Wingbox deletes nothing outside `.wingbox/`;
 `wingbox update` names files that versions before 0.4.1 left in a project
