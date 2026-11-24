@@ -22,6 +22,20 @@
 - `usages` against what the compiler resolves (libclang over the compile commands): libuv 1.48.0 8,266 of 8,266 places, leveldb 1.23 5,111 of 5,111, fmt 11.0.2 with its googletest 5,560 of 5,568. Not a published benchmark: the harness is not in the repository.
 - The repository of #177: the numbers of the earlier reports unchanged, build time unchanged.
 
+## 2026-11-24 - After the release 0.19.1
+
+### Checks (AGENTS.md section 6)
+- 6.1 PyPI: the version JSON for `wingbox` and `wingbox-http` lists the wheel and sdist. All four SHA-256 hashes match the GitHub release's `SHA256SUMS`. `uvx --refresh --from "wingbox[http]==0.19.1" wingbox --version` prints 0.19.1, and `wingbox mcp --http --help` lists the HTTP options.
+- 6.1 GitHub release: `gh release view v0.19.1` lists the checksum, SBOM and both Claude Desktop bundle names. The latest bundle download responds with HTTP 200. The release tag points at the merge of #211. #212 pins the plugins to that tag.
+- 6.1 Clean install: `wingbox init` and `wingbox install --global-gitignore` were run with a temporary home and two repositories. `git check-ignore -v` identifies the expected rule for each. After `wingbox build .`, one `wingbox impact pricing.py cart.py 2 --json` call returns both targets and the expected dependency.
+- 6.1 Tests: the local Python 3.13 suite ran 875 tests (one skip) on the release source and on the plugin pin. The Windows hook failure from #210 was reproduced locally with `PYTHONIOENCODING=cp1252` and fixed in #211. The Linux and Windows release PR jobs passed. The tag-time documentation run saw old plugin pins before #212, as expected in section 6.1.
+- 6.1 Homebrew: the manual bump workflow (45469972978) installed and tested the formula, then pushed a formula naming 0.19.1. The plugin-pin matrix on main (45469776711) passed all nine cells.
+- 6.2 Descriptions: the README and installed skill describe the new ignore rules. The GitHub summary and topics already name C and C++. The core package keywords and the Codex description now include C and C++.
+- 6.3 Listings: `publish-mcp` succeeded and the official registry returns 0.19.1 active. The tool list, transport, and default install command are unchanged, so the other MCP listings do not need a content update. The Claude Desktop bundle is present on the release.
+- 6.4 GitLab: both templates on the action's main branch name 0.19.1. The private test project's host and credentials are unavailable here; this run could not verify the live merge request.
+- 6.4 GitHub Action: #41 merged the 0.19.1 default. Unit and fixture jobs passed on Linux, macOS and Windows. The two Linux jobs that saw the old PyPI index passed on retry. The macOS package job was still queued on attempt 2 of run 45470320008, so the action tag and live example verification were still pending at this check.
+- 6.5 Site: deployed the 0.19.1 docs to wingbox.dev. Playwright verified the new ignore option and GitLab example on the live home and pull-request-check pages. Both pages loaded with no horizontal overflow at 1440 and 390 pixels.
+
 ## 2026-11-24 - Ignore the Wingbox work directory during setup
 
 - Project setup now adds `/.wingbox/` to the project's `.gitignore` so Git
