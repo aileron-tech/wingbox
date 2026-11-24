@@ -1888,9 +1888,10 @@ not know, and keeping the dependencies between layers or folders in order.
 
 What is measured with an agent: single questions on public repositories in
 TypeScript, Rust and Python, in the section "Measured: 100 questions, with and
-without Wingbox" above. Not measured: the time and the tokens of an agent on
-whole multi-step tasks, and anything with an agent on a C or C++ repository;
-the numbers of `benchmarks/cpp` are about the accuracy of the graph alone.
+without Wingbox" above. No measurement is published for the time and the
+tokens of an agent on whole multi-step tasks, or for an agent on a C or C++
+repository; the numbers of `benchmarks/cpp` are about the accuracy of the
+graph alone.
 
 ## Accuracy and limits
 
