@@ -1,5 +1,15 @@
 # Completion Log
 
+## 2026-11-24 - usages of C and C++ against the compiler, third round
+
+### Root causes of this round (REQ-CPP-024)
+- An ordinary class cut short: a macro before a destructor or before `auto` makes the grammar end the class at that member, and the methods after it stand at file level as functions. In a file with an error, every class now takes the functions between its braces in the text (`adopt(with_all=True)`); the braces of a file are paired in one pass (`brace_pairs`), which replaces the scan per class.
+- A class the grammar takes for the return type of the member after it, and a class after a macro on a line of its own (`MACRO` then `class Name {`, read as a function with the return type `MACRO` and an error node `class`).
+
+### Result (not a published benchmark)
+- libuv 1.48.0 and leveldb 1.23: every use the compiler resolves is listed. fmt 11.0.2 with its googletest: 5,514 of 5,568 places; what is left are calls on the return value of a call, methods handed on by name across files and a few macro shapes.
+- The repository of #177: the numbers of the earlier reports unchanged; build 73.7 and 73.9 s with one worker.
+
 ## 2026-11-24 - usages of C and C++ against the compiler, second round
 
 ### Why

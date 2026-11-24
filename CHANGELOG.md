@@ -37,6 +37,9 @@
   method of an outer class named inside a nested class; a method called through brackets. A
   question that names one file of a C or C++ function (`usages src/timer.c::uv_timer_start`, or the
   header) answers for the function as a whole.
+- In a file where the grammar meets an error, a class keeps the methods that stand between its
+  braces in the text, also where the grammar ends it early, takes it for a return type, or meets a
+  macro on the line before it.
 
 ## 0.19.0 - 2026-11-23
 
