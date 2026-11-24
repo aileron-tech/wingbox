@@ -99,6 +99,24 @@ PROJECT = {
         " private:\n  void release();\n};\n"
         "class Reader {\n public:\n  int read(Buffer& buffer) { return buffer.capacity(); }\n};\n"
     ),
+    # A namespace after a macro line, a method declared by a mock macro, a static method handed on by name.
+    "native/include/meter.h": (
+        "#pragma once\n#define NS_BEGIN\n#define MOCK_METHOD(result, name, arguments) result name arguments\n"
+        "int CountIf(int* list, bool (*keep)(int));\n"
+        "NS_BEGIN\n"
+        "namespace tools {\n"
+        "inline auto to_digit(char c) -> int { return c - 48; }\n"
+        "class Meter {\n public:\n"
+        "  MOCK_METHOD(void, on_tick, ());\n"
+        "  static bool Passed(int x) { return x > 0; }\n"
+        "  int Count(int* list);\n"
+        "};\n"
+        "}\n"
+    ),
+    "native/src/meter.cpp": (
+        '#include "meter.h"\n'
+        "int tools::Meter::Count(int* list) {\n  on_tick();\n  return CountIf(list, Passed) + to_digit(49);\n}\n"
+    ),
     "tools/report.py": "class Crate:\n    def Add(self, value):\n        return value\n\n\ndef run(crate):\n    return crate.Add(1)\n",
 }
 
@@ -177,6 +195,12 @@ class CompleteUsagesTest(unittest.TestCase):
         self.assertIn("native/include/buffer.h:8", self.places("native/include/buffer.h::Buffer.limit"))
         self.assertIn("native/include/buffer.h:15", self.places("native/include/buffer.h::Buffer.capacity"))
         self.assertIn("native/include/buffer.h:15", self.places("capacity"))
+
+    def test_namespaces_mocks_and_methods_handed_on_by_name(self) -> None:
+        """/* REQ-CPP-025: a namespace that follows a macro on a line of its own (`NS_BEGIN`, then `namespace tools {`) is read as a namespace: its functions are functions and the names declared in it are no locals of a function. In a file where the grammar met an error, the classes and the headings of their methods are also read from the text. A method declared by a googlemock macro (`MOCK_METHOD(void, on_tick, ());`) is a method of its name. A static method handed on by name as an argument inside a method of its class (`CountIf(list, Passed)`) is a use of it. */"""
+        self.assertEqual({"native/src/meter.cpp:4"}, self.places("to_digit"))
+        self.assertIn("native/src/meter.cpp:3", self.places("native/include/meter.h::Meter.on_tick"))
+        self.assertIn("native/src/meter.cpp:4", self.places("native/include/meter.h::Meter.Passed"))
 
 
 if __name__ == "__main__":

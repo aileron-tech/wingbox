@@ -67,6 +67,7 @@ _NAMES = Query(_CPP_LANGUAGE, """
 (call_expression function: (field_expression field: (field_identifier) @method))
 (call_expression function: (field_expression field: (template_method name: (field_identifier) @method)))
 (call_expression function: (parenthesized_expression (field_expression field: (field_identifier) @method)))
+(call_expression function: (field_expression field: (dependent_name (template_method name: (field_identifier) @method))))
 
 (parameter_declaration type: (type_identifier) @vexing declarator: (abstract_function_declarator))
 
@@ -142,6 +143,37 @@ def brace_pairs(source: bytes) -> dict[int, int]:
     return pairs
 
 
+_TEXT_CLASS = re.compile(
+    rb"(?<![A-Za-z0-9_])(?P<enum>enum[ \t]+)?(?:class|struct)[ \t\r\n]+(?:[A-Z_][A-Z0-9_]*[ \t\r\n]+)?"
+    rb"(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*(?:<[^;{}]*>[ \t\r\n]*)?(?:final[ \t\r\n]*)?(?::[^;{}()]*)?\{"
+)
+
+
+def text_classes(source: bytes, pairs: dict[int, int]) -> list[tuple[str, int, int]]:
+    """(name, the position of the opening brace, the position after the closing one) of every class and
+    struct the text of a file declares with a body, found without the grammar: for a file in which the
+    grammar met an error and may have lost a class. `enum class` is no class."""
+    found: list[tuple[str, int, int]] = []
+    for match in _TEXT_CLASS.finditer(source):
+        if match.group("enum"):
+            continue
+        body = match.end() - 1
+        if body not in pairs:
+            continue   # the brace stands in a comment or a string: an example, not a class
+        found.append((match.group("name").decode("utf-8", "replace"), body, pairs[body]))
+    return found
+
+
+def enclosing_brace(opens: list[int], pairs: dict[int, int], position: int) -> int:
+    """The opening brace of the innermost block around a position, or -1 at the level of the file."""
+    index = bisect_right(opens, position) - 1
+    while index >= 0:
+        if pairs[opens[index]] > position:
+            return opens[index]
+        index -= 1
+    return -1
+
+
 def matching_brace(source: bytes, open_at: int) -> int:
     """The position after the brace that closes the one at open_at, by the text."""
     return brace_pairs(source).get(open_at, len(source))
@@ -160,6 +192,14 @@ def _attributed_class(function: Node) -> str:
     scope = declarator.child_by_field_name("scope") if declarator is not None else None
     names = _segments(scope) if scope is not None else []
     return _text(names[-1]) if names else ""
+
+
+def _has_function_declarator(function: Node) -> bool:
+    declarator = function.child_by_field_name("declarator")
+    while declarator is not None and declarator.type != "function_declarator":
+        declarator = declarator.child_by_field_name("declarator") or next(
+            (child for child in declarator.named_children if child.type.endswith("declarator")), None)
+    return declarator is not None
 
 
 def _macro_class(node: Node) -> str:
@@ -203,7 +243,10 @@ def use_sites(root: Node) -> list[UsePayload]:
     # A class written with a macro before its name is, to the grammar, a function (see macro_class_name
     # of the parser): it is a class here, not a function with locals.
     macro_classes = {node.id: _macro_class(node) for node in captures.get("function", ())}
-    functions = sorted((node.start_byte, node.end_byte) for node in captures.get("function", ()) if not macro_classes[node.id])
+    # A function has a function declarator. What the grammar calls a function without one is a block it
+    # misread (a namespace after a macro line): the names declared in it are no locals.
+    functions = sorted((node.start_byte, node.end_byte) for node in captures.get("function", ())
+                       if not macro_classes[node.id] and _has_function_declarator(node))
     spans: list[tuple[int, int]] = []
     for start, end in functions:
         if not spans or start >= spans[-1][1]:
@@ -331,6 +374,12 @@ def use_sites(root: Node) -> list[UsePayload]:
             first = parameters.named_children[0] if parameters is not None and parameters.named_children else None
             if first is not None and _text(first).isidentifier():
                 class_spans.append((function.start_byte, function.end_byte, _text(first)))
+    if root.has_error:
+        # Classes the grammar lost: read from the text.
+        known_starts = {start for start, _end, _name in class_spans}
+        for name, body, end in text_classes(source, pairs):
+            if body not in known_starts:
+                class_spans.append((body, end, name))
     class_spans.sort()
     class_starts = [start for start, _end, _name in class_spans]
 
@@ -361,12 +410,22 @@ def use_sites(root: Node) -> list[UsePayload]:
         # A method named without a call (`os << Describe`, a method handed on as a value): only the names
         # that a class of this file declares as a method are tried, to keep the list of uses short.
         own_methods = {_text(node) for node in captures.get("methodname", ())}
-        if own_methods:
-            for node in captures.get("name", ()):
-                if node.id in called or node.id in declared_ids or node.id in inside or _text(node) not in own_methods:
-                    continue
-                for owner in classes_at(node.start_byte):
-                    found.append({"path": [owner], "member": _text(node), "at": [_position(node), _position(node)]})
+        for node in captures.get("name", ()):
+            if node.id in called or node.id in declared_ids or node.id in inside:
+                continue
+            # Also a name handed on as an argument of a call (`CountIf(list, ShouldRun)`): a static method of
+            # the class around it, declared in another file.
+            parent = node.parent
+            argument = parent is not None and (
+                parent.type == "argument_list" or (parent.type == "pointer_expression" and parent.parent is not None
+                                                   and parent.parent.type == "argument_list"))
+            if not argument and _text(node) not in own_methods:
+                continue
+            index = span_of(node.start_byte)
+            if index >= 0 and _text(node) in local_names[index]:
+                continue
+            for owner in classes_at(node.start_byte):
+                found.append({"path": [owner], "member": _text(node), "at": [_position(node), _position(node)]})
     for node in captures.get("method", ()):
         expression = node.parent
         if expression is not None and expression.type != "field_expression":

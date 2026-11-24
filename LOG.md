@@ -1,5 +1,21 @@
 # Completion Log
 
+## 2026-11-24 - usages of C and C++ against the compiler, fourth round
+
+### Root causes of this round (REQ-CPP-025)
+- The names declared in a namespace counted as locals of a function, and its functions were not read, where the namespace follows a macro on a line of its own (`MACRO`, then `namespace name {`): the grammar reads a function named `namespace`, and what is declared inside a function is local. A function is now a definition with a function declarator; anything else the grammar calls a function is a block.
+- Classes the tree does not hold at all in a file with an error: the classes (`class`/`struct Name ... {`, not inside a comment or a string) and the headings of the methods that stand directly in their bodies are read from the text (`text_classes`, `classes_of_the_text`).
+- A friend function defined in a class was taken for a method when the class took what stands between its braces.
+- `MOCK_METHOD(result, name, (arguments));` and `MOCK_METHODn(name, signature);` declare the method `name`.
+- A static method handed on by name as an argument (`CountIf(list, ShouldRun)`) inside a method of a class declared in another file.
+- A method whose name the grammar leaves in an error node before an attribute macro; `object.template name<T>()`.
+- A class example in a comment (`// class Foo {`) is no class: its brace is not a brace of the code.
+
+### Result (not a published benchmark)
+- libuv 1.48.0: 8,266 of 8,266 places. leveldb 1.23: 5,111 of 5,111. fmt 11.0.2 with its googletest: 5,560 of 5,568.
+- The eight places left in fmt: seven calls of C library functions in a source file that a test compiles after declaring its own versions of them (the file itself includes no declaration of those), and one constructor initialiser the grammar reads as a bit field.
+- The repository of #177: unchanged numbers, build 73.2 and 73.4 s with one worker.
+
 ## 2026-11-24 - usages of C and C++ against the compiler, third round
 
 ### Root causes of this round (REQ-CPP-024)

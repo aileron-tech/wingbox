@@ -17,7 +17,7 @@ from ..interface import Entity, FileResult, UsePayload
 from ..purpose import infer_purpose
 from ..source import add_import_line, detect_naming, file_hash
 from ..treesitter import node_text, unique_strings
-from .symbols import brace_pairs, glob_bindings, use_sites
+from .symbols import brace_pairs, enclosing_brace, glob_bindings, text_classes, use_sites
 
 _CPP_LANGUAGE = _TreeSitterLanguage(_tscpp.language())
 # Every include of the file, wherever it stands: at the top, in a conditional block, inside a
@@ -43,7 +43,13 @@ _PURE_VIRTUAL = re.compile(r"=\s*0\s*;?\s*$")
 # A function heading at the margin: `static void name(int a,\n    int b) {`.
 _HEADING = re.compile(
     r"^(?:[A-Za-z_][\w \t\*&:<>,]*?[ \t\*&])?(?P<name>[A-Za-z_~][\w:~]*)[ \t]*"
-    r"\((?:[^;{}()]|\([^;{}()]*\))*\)[ \t\r\n]*(?:const[ \t\r\n]*)?(?:noexcept[ \t\r\n]*)?\{",
+    r"\((?:[^;{}()]|\([^;{}()]*\))*\)[^;{}()=]*\{",
+    re.M,
+)
+# The heading of a method, at any indentation: `  CONSTEXPR auto size() const noexcept -> int {`.
+_METHOD_HEADING = re.compile(
+    rb"^[ \t]*(?:[A-Za-z_][\w \t\*&:<>,\[\]]*?[ \t\*&])?(?P<name>~?[A-Za-z_]\w*)[ \t]*"
+    rb"\((?:[^;{}()]|\([^;{}()]*\))*\)[^;{}()=]*\{",
     re.M,
 )
 _NO_FUNCTIONS = frozenset({"if", "for", "while", "switch", "return", "sizeof", "defined", "do", "else", "catch"})
@@ -118,6 +124,51 @@ def _function_name(declarator: Node | None) -> str:
     if not segments:
         return ""
     return f"{segments[-2]}.{segments[-1]}" if len(segments) > 1 else segments[-1]
+
+
+_MOCK_METHOD = re.compile(r"^MOCK_(?:CONST_)?METHOD(\d*)\w*\s*\((.*)\)\s*;?\s*$", re.S)
+
+
+def _mock_method(text: str) -> str:
+    """The method a googlemock macro declares: `MOCK_METHOD(void, name, (int));` (the second argument) or
+    `MOCK_METHOD1(name, void(int));` (the first). "" for any other text."""
+    match = _MOCK_METHOD.match(text.strip())
+    if match is None:
+        return ""
+    arguments: list[str] = []
+    depth, current = 0, []
+    for character in match.group(2):
+        if character in "(<[":
+            depth += 1
+        elif character in ")>]":
+            depth -= 1
+        if character == "," and depth == 0:
+            arguments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    arguments.append("".join(current).strip())
+    position = 0 if match.group(1) else 1
+    name = arguments[position] if position < len(arguments) else ""
+    return name if name.isidentifier() else ""
+
+
+_NAME_BEFORE_BRACKET = re.compile(r"\s*(~?[A-Za-z_]\w*)\s*\(")
+
+
+def _attributed_name(definition: Node) -> str:
+    """The name of a function whose heading has an attribute macro after the parameters,
+    `void Retire()\n    LOCK_REQUIRED(mutex) { ... }`, when the grammar reads the macro as the function and
+    puts `Retire()` into an error node before it. "" for any other definition."""
+    declarator = definition.child_by_field_name("declarator")
+    if declarator is None or declarator.type != "function_declarator":
+        return ""
+    macro = declarator.child_by_field_name("declarator")
+    if macro is None or macro.type != "identifier" or node_text(macro).upper() != node_text(macro):
+        return ""
+    error = next((child for child in definition.children if child.type == "ERROR"), None)
+    match = _NAME_BEFORE_BRACKET.match(node_text(error)) if error is not None else None
+    return match.group(1) if match else ""
 
 
 def macro_class_name(node: Node) -> str:
@@ -212,6 +263,7 @@ class _Collector:
         self.bases: list[str] = []
         self.macro_classes: list[tuple[int, int, str]] = []   # (index of the class entity, start of its body, name)
         self.class_bodies: list[tuple[int, int, str]] = []    # the same for the classes the grammar read as classes
+        self.friends: set[int] = set()                         # id() of the functions defined as friends in a class
         self.seen_records: set[int] = set()
 
     def record(self, node: Node) -> None:
@@ -235,7 +287,7 @@ class _Collector:
         abstract = False
         for member in _members(body):
             if member.type == "function_definition":
-                method = _function_name(member.child_by_field_name("declarator"))
+                method = _attributed_name(member) or _function_name(member.child_by_field_name("declarator"))
                 if method:
                     methods.append(method)
                     defined.append(_entity(f"{name}.{method}", "function", member))
@@ -246,15 +298,19 @@ class _Collector:
             elif member.type == "friend_declaration":
                 # A function defined as a friend inside the class is a function of the file, called by
                 # its plain name.
+                friends: list[Entity] = []
                 for inner in member.named_children:
                     if inner.type == "function_definition":
                         friend = _function_name(inner.child_by_field_name("declarator"))
                         if friend:
-                            defined.append(_entity(friend, "function", inner))
+                            friends.append(_entity(friend, "function", inner))
                     elif inner.type == "declaration":
-                        defined.extend(_entity(friend, "function", inner) for friend in _declared_functions(inner))
+                        friends.extend(_entity(friend, "function", inner) for friend in _declared_functions(inner))
+                defined.extend(friends)
+                self.friends.update(id(friend) for friend in friends)   # functions of the file: never adopted
             elif member.type in ("field_declaration", "declaration"):
-                declared = _declared_functions(member)
+                mocked = _mock_method(node_text(member))
+                declared = [mocked] if mocked else _declared_functions(member)
                 methods.extend(declared)
                 if declared and _PURE_VIRTUAL.search(node_text(member)):
                     abstract = True
@@ -338,13 +394,39 @@ class _Collector:
         kept: list[Entity] = []
         for position, entity in enumerate(self.entities):
             inside = [extent for extent in extents if extent[0] < entity.line <= extent[1] and extent[2] != position]
-            if entity.kind == "function" and "." not in entity.name and inside:
+            if entity.kind == "function" and "." not in entity.name and inside and id(entity) not in self.friends:
                 owner = self.entities[max(inside, key=lambda extent: extent[0])[2]]   # the innermost class
                 if entity.name not in owner.methods:
                     owner.methods.append(entity.name)
                 continue
             kept.append(entity)
         self.entities = kept
+
+    def classes_of_the_text(self, source: bytes) -> None:
+        """For a file in which the grammar met an error: the classes the text declares that the tree does
+        not hold, and for every class of the text the methods whose heading stands directly in its body.
+        `adopt` then gives each class the functions the grammar left at the level of the file."""
+        pairs = brace_pairs(source)
+        opens = sorted(pairs)
+        newlines = [position for position, byte in enumerate(source) if byte == 10]
+        by_body = {body_start: index for index, body_start, _name in self.class_bodies + self.macro_classes}
+        for name, body, end in text_classes(source, pairs):
+            index = by_body.get(body)
+            if index is None:
+                index = len(self.entities)
+                line = bisect_right(newlines, body) + 1
+                self.entities.append(Entity(name=name, kind="class", line=line, methods=[], decorators=[], bases=[]))
+                self.class_bodies.append((index, body, name))
+                by_body[body] = index
+            owner = self.entities[index]
+            for match in _METHOD_HEADING.finditer(source, body + 1, end):
+                method = match.group("name").decode("utf-8", "replace")
+                if method in _NO_FUNCTIONS or method.upper() == method or method in owner.methods:
+                    continue
+                if b"friend" in source[match.start():match.start("name")].split():
+                    continue   # a friend defined in the class is a function of the file
+                if enclosing_brace(opens, pairs, match.start("name")) == body:
+                    owner.methods.append(method)
 
     def nested_records(self, root: Node) -> None:
         """Classes defined inside a function body (a comparator local to a test): read like any class."""
@@ -400,12 +482,21 @@ class _Collector:
                 returned = child.child_by_field_name("type")
                 if returned is not None:
                     self.type_specifier(returned)   # a class the grammar took for the return type
-                name = _function_name(child.child_by_field_name("declarator"))
+                declarator = child.child_by_field_name("declarator")
+                body = child.child_by_field_name("body")
+                if declarator is not None and declarator.type == "identifier" and node_text(declarator) == "namespace" and body is not None:
+                    # `MACRO` on a line, then `namespace name {`: the grammar reads a function named
+                    # `namespace`. Its body is the body of the namespace.
+                    self.scope(body)
+                    continue
+                name = _attributed_name(child) or _function_name(child.child_by_field_name("declarator"))
                 if name and name.upper() == name:
                     # `void Count()\n    LOCK_REQUIRED(mutex) { ... }`: an attribute macro between the
                     # parameters and the body. The grammar reads a variable `Count()` and a function named
                     # like the macro; the function is the name before it.
                     before = child.prev_named_sibling
+                    if before is not None and before.type == "labeled_statement" and before.named_children:
+                        before = before.named_children[-1]   # `public:` with the declaration after it
                     declarator = before.child_by_field_name("declarator") if before is not None and before.type in ("declaration", "field_declaration") else None
                     inner = declarator.child_by_field_name("declarator") if declarator is not None and declarator.type == "init_declarator" else None
                     if inner is not None and inner.type in ("identifier", "field_identifier"):
@@ -459,6 +550,8 @@ def parse_cpp(
     collector = _Collector()
     collector.scope(root)
     collector.nested_records(root)
+    if root.has_error:
+        collector.classes_of_the_text(content.encode("utf-8"))
     collector.adopt(content.encode("utf-8"), with_all=root.has_error)
     if root.has_error:
         # Where the grammar lost track (a block that preprocessor branches open and close), the functions
