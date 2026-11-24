@@ -1762,6 +1762,23 @@ definition in a source file that includes that header, each place once;
 functions of one name in files that share no declaring header (static helpers
 of two files) are listed as candidates.
 
+Methods: `wingbox usages Crate.Add` lists the calls of the method. A call
+inside the class, or inside `Crate::method`, without an object (`Grow()`) and
+a call through `this` are uses of the method; so is `Crate::Default()` and
+`&Crate::Add`. A call on an object, `crate.Add(1)`, is listed as an
+`unresolved-call`: the type of `crate` is not derived, so the call is shown
+under every class that has an `Add`, in C and C++ files only. `wingbox usages
+Add`, the bare name, answers for the one class that declares it, or lists the
+classes (and a function of that name) as candidates.
+
+Read as written in real code: a class with an export macro between the
+keyword and its name (`class CRATE_API Crate { ... };`), a function declared
+or defined inside a macro call (`DEPOT_EXPORT(void heap_put(...)) { ... }`),
+a body after a test macro (`TEST_F(Fixture, Name) { ... }` is a method of
+the fixture), a class defined inside a function, and the functions of a file
+in which the grammar loses track of the blocks (two preprocessor branches
+that open the same one): those are found by their heading at the margin.
+
 Build targets and tests. A build also reads what the CMake files state
 literally: `add_executable` and `add_library` with their source files,
 `target_sources`, and `add_test` in both forms. The graph holds one

@@ -1166,6 +1166,14 @@ class CodeGraph:
             self._variables = found
         return self._variables
 
+    def classes_with_method(self, name: str) -> list[EntityFact]:
+        """The C and C++ classes that declare a method of this name, by file and line."""
+        found = [
+            entity for entities in self.entity_by_name.values() for entity in entities
+            if entity.kind == "cls" and name in entity.methods and self.module_lang(entity.module) in ("cpp", "c")
+        ]
+        return sorted(found, key=lambda entity: (entity.module, entity.line, entity.name))
+
     def definitions_named(self, name: str) -> list[EntityFact]:
         """Entities of the graph and module-level variables named name."""
         return [*self.entity_by_name.get(name, []), *self.variables_by_name.get(name, [])]
@@ -2397,7 +2405,12 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
     unresolved = 0
     if "." in symbol:
         method = symbol.rsplit(".", 1)[1]
+        # A call on an object of unknown type can be a call of this method only in a file of its language
+        # (C and C++ count as one).
+        family = {"c": "cpp"}.get(g.module_lang(definition.module), g.module_lang(definition.module))
         for source, line, column in g.unresolved_calls_of(method):
+            if {"c": "cpp"}.get(g.module_lang(source), g.module_lang(source)) != family:
+                continue
             found.append(Usage(_impact_file(g, source), source, line, column, "unresolved-call"))
             unresolved += 1
     with_positions = {usage.module for usage in found}
@@ -2456,14 +2469,24 @@ def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
     target is Name, <file or module>::Name, or either with Class.method.
     """
     symbol, definitions = _usages_definitions(g, target)
-    if not definitions:
+    # Two entities of one name in one file are one thing to ask about (a prototype and its definition, two
+    # local classes of two functions): the later one stands for it.
+    definitions = list({(d.module, d.name, d.kind): d for d in definitions}.values())
+    # A bare name that C or C++ classes declare as a method: each class is a candidate, `Class.name`.
+    classes = g.classes_with_method(symbol) if "::" not in target and "." not in symbol else []
+    if not definitions and len(classes) == 1:
+        return usages_answer(g, f"{_impact_file(g, classes[0].module)}::{classes[0].name}.{symbol}")
+    if not definitions and not classes:
         suggestions = CodeGraph._suggest_similar(target, g.nodes)
         return usages_forms.UsagesMissing(target, _no_match_fact(target, suggestions), tuple(suggestions))
     one = _one_function(g, definitions)
-    if len(definitions) > 1 and one is None:
-        rows = _candidate_rows(g, definitions)
+    if classes or (len(definitions) > 1 and one is None):
+        rows = _candidate_rows(g, definitions) if one is None else [(_impact_file(g, one.module), one)]
         return usages_forms.UsagesAmbiguous(symbol, tuple(
             usages_forms.Candidate(file_path, d.kind, _KIND_WORDS.get(d.kind, d.kind), d.line) for file_path, d in rows
+        ) + tuple(
+            usages_forms.Candidate(_impact_file(g, c.module), "method", f"method of {c.name}", c.line, f"{c.name}.{symbol}")
+            for c in classes
         ))
     definition = one or definitions[0]
     usages, unresolved = _usages_together(g, definitions, symbol) if one is not None else _usages_of(g, definition, symbol)

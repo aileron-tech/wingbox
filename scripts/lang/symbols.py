@@ -24,6 +24,7 @@ _SEPARATORS: dict[str, Optional[str]] = {
 # Languages whose only import is the inclusion of a whole file: no name is renamed or hidden on the way,
 # so what a name means behind the includes is decided by the files they reach, not by the route to them.
 _INCLUDE_LANGUAGES = frozenset({"cpp", "c"})
+_HEADER_SUFFIXES = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
 _MAX_DEPTH = 16
 _ENDLESS = _MAX_DEPTH + 1  # the height of a chain of glob imports that no search follows to its end
 # Entity kinds whose methods a call can name: classes, structs, enums, interfaces, traits.
@@ -409,7 +410,16 @@ class SymbolIndex:
             found = [holder for holder in holders if holder in reached and name in self._defined[holder]]
         else:
             found = [holder for holder in reached if holder in holders and name in self._defined[holder]]
-        return Symbol(found[0], name) if len(found) == 1 else None
+        if len(found) == 1:
+            return Symbol(found[0], name)
+        if len(found) > 1 and all(self._entities.get(holder, {}).get(name, {}).get("kind") == "function" for holder in found):
+            # A function is written twice by design: its prototype in a header and its definition in a
+            # source file, or the same prototype in two headers. A file that reaches both (it includes
+            # the source file, or both headers) uses that one function: the prototype of a header, the
+            # first by path, stands for it.
+            headers = sorted(holder for holder in found if self._results[holder].path.casefold().endswith(_HEADER_SUFFIXES))
+            return Symbol((headers or sorted(found))[0], name)
+        return None
 
     def member(self, ref: ModuleRef, name: str, depth: int = 0, seen: frozenset = frozenset()) -> Optional[Target]:
         """name inside the module ref: a child module, or a name the module defines or re-exports."""
