@@ -65,8 +65,11 @@ _NAMES = Query(_CPP_LANGUAGE, """
 (call_expression function: (qualified_identifier) @call)
 (call_expression function: (field_expression field: (field_identifier) @method))
 (call_expression function: (field_expression field: (template_method name: (field_identifier) @method)))
+(call_expression function: (parenthesized_expression (field_expression field: (field_identifier) @method)))
 
 (parameter_declaration type: (type_identifier) @vexing declarator: (abstract_function_declarator))
+
+(function_declarator declarator: (field_identifier) @methodname)
 
 ; The classes of the file, to know which class a position is in.
 (class_specifier name: (_) @classname body: (field_declaration_list) @classbody)
@@ -148,6 +151,21 @@ def matching_brace(source: bytes, open_at: int) -> int:
     return n
 
 
+def _attributed_class(function: Node) -> str:
+    """The class of a method whose heading the grammar split at an attribute macro: the declaration before
+    the function is `Type Class::name(...)`, read as a variable. "" when there is no such declaration."""
+    before = function.prev_named_sibling
+    if before is None or before.type != "declaration":
+        return ""
+    declarator = before.child_by_field_name("declarator")
+    while declarator is not None and declarator.type != "qualified_identifier":
+        declarator = declarator.child_by_field_name("declarator") or next(
+            (child for child in declarator.named_children if child.type.endswith("declarator") or child.type == "qualified_identifier"), None)
+    scope = declarator.child_by_field_name("scope") if declarator is not None else None
+    names = _segments(scope) if scope is not None else []
+    return _text(names[-1]) if names else ""
+
+
 def _macro_class(node: Node) -> str:
     """The name of a class the grammar read as a function (`class MACRO Name { ... }`), else ""."""
     type_node = node.child_by_field_name("type")
@@ -156,6 +174,10 @@ def _macro_class(node: Node) -> str:
         return ""
     if type_node.type not in ("class_specifier", "struct_specifier", "union_specifier") or type_node.child_by_field_name("body") is not None:
         return ""
+    error = next((child for child in node.children if child.type == "ERROR"), None)
+    named = next((child for child in error.named_children if child.type in ("identifier", "type_identifier")), None) if error else None
+    if named is not None:   # `class MACRO Name : public Base {`
+        return _text(named)
     return _text(declarator) if declarator.type in ("identifier", "type_identifier") else ""
 
 
@@ -291,6 +313,11 @@ def use_sites(root: Node) -> list[UsePayload]:
         names = _segments(scope) if scope is not None else []
         if names:
             class_spans.append((function.start_byte, function.end_byte, _text(names[-1])))
+        elif scoped is not None and scoped.type == "identifier" and _text(scoped).upper() == _text(scoped) \
+                and _attributed_class(function):
+            # `bool Mock::Verify(void* mock)\n    LOCK_REQUIRED(mutex) { ... }`: the body the grammar gives to
+            # a function named like the macro is the body of Mock::Verify.
+            class_spans.append((function.start_byte, function.end_byte, _attributed_class(function)))
         elif scoped is not None and scoped.type == "identifier" and _text(scoped).upper() == _text(scoped):
             # A body written after a macro call, `TEST_F(Fixture, Name) { ... }`: the frameworks that do
             # this make it a method of a class derived from the first argument. A call inside it is tried
@@ -302,24 +329,39 @@ def use_sites(root: Node) -> list[UsePayload]:
     class_spans.sort()
     class_starts = [start for start, _end, _name in class_spans]
 
-    def class_at(position: int) -> str:
+    def classes_at(position: int) -> list[str]:
+        """The classes around a position, innermost first: a member of an outer class is in sight too."""
+        found_names: list[str] = []
         index = bisect_right(class_starts, position) - 1
         while index >= 0:
-            start, end, name = class_spans[index]
-            if position < end:
-                return name
+            _start, end, name = class_spans[index]
+            if position < end and name not in found_names:
+                found_names.append(name)
             index -= 1
-        return ""
+        return found_names
+
+    def class_at(position: int) -> str:
+        names = classes_at(position)
+        return names[0] if names else ""
 
     if class_spans:
         # `Model model(Options());` reads as the declaration of a function `model` with a parameter of the
         # type `Options()`: the name before the brackets is the function of a call.
+        called = {node.id for node in captures.get("call", ())}
         for node in [*captures.get("call", ()), *captures.get("vexing", ())]:
             if node.type not in ("identifier", "type_identifier"):
                 continue
-            owner = class_at(node.start_byte)
-            if owner:
+            for owner in classes_at(node.start_byte):
                 found.append({"path": [owner], "member": _text(node), "at": [_position(node), _position(node)]})
+        # A method named without a call (`os << Describe`, a method handed on as a value): only the names
+        # that a class of this file declares as a method are tried, to keep the list of uses short.
+        own_methods = {_text(node) for node in captures.get("methodname", ())}
+        if own_methods:
+            for node in captures.get("name", ()):
+                if node.id in called or node.id in declared_ids or node.id in inside or _text(node) not in own_methods:
+                    continue
+                for owner in classes_at(node.start_byte):
+                    found.append({"path": [owner], "member": _text(node), "at": [_position(node), _position(node)]})
     for node in captures.get("method", ()):
         expression = node.parent
         if expression is not None and expression.type != "field_expression":

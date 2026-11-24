@@ -1,5 +1,24 @@
 # Completion Log
 
+## 2026-11-24 - usages of C and C++ against the compiler, second round
+
+### Why
+- The first round left one place in leveldb and about 190 in fmt (with the googletest it bundles). The maintainer asked for a full match.
+
+### Root causes of this round, each with a test (REQ-CPP-023)
+- A question that named one file of a function (`db/repair.cc::RepairDB`, the candidate a bare name lists) answered for that file alone, without the calls bound to the prototype in the header. It answers for the function: `_function_parts`.
+- `class MACRO Name : public Base {`: the grammar puts the name into an error node and takes the base for the declarator. The body it gives such a class may run on over the classes that follow, so the body is read like a file scope and the brace extents of the text decide what belongs to which class (`macro_record`, `adopt`).
+- An attribute macro after the parameters: `void Open()\n  LOCKED(m) { ... }` (a variable and a function named like the macro, to the grammar), `void Trace() LOCKED(m);` (an error node and a declaration of the macro), `Type Class::name(...) LOCKED(m) { ... }` outside the class (the class of the body is read from the declaration before it).
+- `MACRO Result name();` where the grammar joins `Result name` into the name.
+- A function defined as a friend inside a class.
+- A method of an outer class used inside a nested class, and a method named without a call (`os << Describe`): tried as a member of every class around the position, for the method names the classes of the file declare.
+- `(object.method)()`.
+- `Class.method` where the file also holds a function `Class` (a constructor read as a function) or a second type of that name (an alias in the other branch of an `#if`).
+
+### Result (not a published benchmark)
+- libuv 1.48.0 and leveldb 1.23: every use the compiler resolves is listed, for every function. fmt 11.0.2 with its googletest: 5,506 of 5,568 places.
+- What is left in fmt: calls on the return value of a call (`buffer.get_allocator().get()`, `ts.get_background()` where the method has a macro before `auto`), methods handed on by name in a file other than the one that declares the class, two or three more macro shapes, one explicit `template` call.
+
 ## 2026-11-24 - usages of C and C++ against the compiler: the root causes of the missing uses
 
 ### Why

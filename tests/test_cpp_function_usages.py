@@ -66,10 +66,11 @@ class FunctionUsagesTest(unittest.TestCase):
         _run(cls.root, "build", ".")
 
     def test_a_prototype_behind_an_export_macro_is_a_declaration(self) -> None:
-        """/* REQ-CPP-017: a function prototype that starts with a macro (`DEPOT_API int crate_start(...);`, an export or visibility macro, also inside `extern "C"`) is a declaration of its header, as a prototype without one is: the calls in the files that include the header are uses of it. Before, such a function had no declaration in the graph and `usages` of it answered "0 uses". */"""
+        """/* REQ-CPP-017: a function prototype that starts with a macro (`DEPOT_API int crate_start(...);`, an export or visibility macro, also inside `extern "C"`) is a declaration of its header, as a prototype without one is: the calls in the files that include the header are uses of it, and a question that names the header or the source file answers for the function as a whole. Before, such a function had no declaration in the graph and `usages` of it answered "0 uses". */"""
         answer, places = _places(self.root, "native/include/depot.h::crate_start")
         self.assertEqual("native/include/depot.h", answer["file"])
-        self.assertEqual({"native/src/loader.c:3", "native/tests/test_crate.c:2"}, places)   # crate.c uses its own definition
+        # Asked by the header, the answer is for the function: the call in the file that defines it counts too.
+        self.assertEqual({"native/src/loader.c:3", "native/tests/test_crate.c:2", "native/src/crate.c:6"}, places)
         _answer, plain = _places(self.root, "native/include/depot.h::crate_plain")
         self.assertIn("native/tests/test_crate.c:2", plain)
         _answer, returned = _places(self.root, "native/include/depot.h::crate_init")

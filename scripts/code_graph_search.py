@@ -2447,6 +2447,28 @@ def _one_function(g: CodeGraph, definitions: list[EntityFact]) -> Optional[Entit
     return max((d for d in definitions if d.module == chosen), key=lambda d: d.line)
 
 
+def _function_parts(g: CodeGraph, definition: EntityFact, symbol: str) -> list[EntityFact]:
+    """The prototypes and definitions that are one C or C++ function with definition, when the question
+    names one of its files (`src/timer.c::uv_timer_start`, or the header): the prototypes in headers and
+    the definitions in source files that include one of them. A function of the same name in a source
+    file that includes none of those headers is another function and is left out; [definition] when the
+    file asked is such a file, or the symbol is no C or C++ function."""
+    if "." in symbol or definition.kind != "fn" or g.module_lang(definition.module) not in ("cpp", "c"):
+        return [definition]
+    named = [d for d in g.definitions_named(symbol) if d.kind == "fn" and g.module_lang(d.module) in ("cpp", "c")]
+    headers = sorted({d.module for d in named if d.module.casefold().endswith(_C_HEADER_SUFFIXES)})
+    if not headers:
+        return [definition]
+    related = set(headers)
+    for source in {d.module for d in named} - related:
+        direct = g.includes_of(source)
+        if (direct | {target for through in direct for target in g.includes_of(through)}).intersection(headers):
+            related.add(source)
+    if definition.module not in related:
+        return [definition]
+    return [d for d in named if d.module in related]
+
+
 def _usages_together(g: CodeGraph, definitions: list[EntityFact], symbol: str) -> tuple[list[Usage], int]:
     """The uses of the definitions of one function together, each place once."""
     found: dict[tuple[str, int, int, str], Usage] = {}
@@ -2472,6 +2494,13 @@ def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
     # Two entities of one name in one file are one thing to ask about (a prototype and its definition, two
     # local classes of two functions): the later one stands for it.
     definitions = list({(d.module, d.name, d.kind): d for d in definitions}.values())
+    if "." in symbol and any(d.kind != "fn" for d in definitions):
+        # `Class.method`: the owner is the class, not a function of the same name (its constructor), and of
+        # two types of that name (an alias in one preprocessor branch, the class in the other) the one
+        # that declares the method.
+        definitions = [d for d in definitions if d.kind != "fn"]
+        declaring = [d for d in definitions if symbol.split(".", 1)[1] in d.methods]
+        definitions = declaring or definitions
     # A bare name that C or C++ classes declare as a method: each class is a candidate, `Class.name`.
     classes = g.classes_with_method(symbol) if "::" not in target and "." not in symbol else []
     if not definitions and len(classes) == 1:
@@ -2489,7 +2518,8 @@ def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
             for c in classes
         ))
     definition = one or definitions[0]
-    usages, unresolved = _usages_together(g, definitions, symbol) if one is not None else _usages_of(g, definition, symbol)
+    together = definitions if one is not None else _function_parts(g, definition, symbol)
+    usages, unresolved = _usages_together(g, together, symbol) if len(together) > 1 else _usages_of(g, definition, symbol)
     method = "." in symbol
     return usages_forms.UsagesFound(
         symbol,

@@ -32,6 +32,11 @@
 - `usages <name>` of a method name answered no-match; it answers for the class that declares the
   method, or lists the classes as candidates. Unresolved calls of a C++ method no longer include
   calls of that name in files of other languages.
+- More of the same check: a class with a macro before its name and a base class after it; methods
+  with an attribute macro after their parameters; a function defined as a friend inside a class; a
+  method of an outer class named inside a nested class; a method called through brackets. A
+  question that names one file of a C or C++ function (`usages src/timer.c::uv_timer_start`, or the
+  header) answers for the function as a whole.
 
 ## 0.19.0 - 2026-11-23
 

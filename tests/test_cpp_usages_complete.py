@@ -66,6 +66,28 @@ PROJECT = {
         "int by_object() {\n  Crate crate;\n  crate.Add(1);\n  struct Local { static int Twice(int x) { return 2 * x; } };\n"
         "  return Local::Twice(crate.Size()) + Crate::Default()->Size();\n}\n"
     ),
+    # More shapes of real code: a base class after the macro, attribute macros after the parameters, a friend
+    # function, a method named without a call from a nested class, a call in brackets.
+    "native/include/gate.h": (
+        "#pragma once\n#define GATE_API\n#define GATE_LOCKED(mutex)\n"
+        "struct GateBase { int base; };\n"
+        "GATE_API GateBase MakeBase();\n"
+        "class GATE_API Gate : public GateBase {\n public:\n"
+        "  void Open()\n      GATE_LOCKED(mutex_) {\n    Count();\n  }\n"
+        "  void Trace() GATE_LOCKED(mutex_);\n"
+        "  int Count() const { return 1; }\n"
+        "  int mutex_;\n};\n"
+        "class Lever {\n public:\n"
+        "  friend int lever_force(const Lever& lever) { return lever.arm_; }\n"
+        "  static const char* Describe() { return \"lever\"; }\n"
+        "  class Printer {\n   public:\n    const char* (*Pick())() { return Describe; }\n  };\n"
+        "  int Pull() { return lever_force(*this); }\n"
+        "  int arm_;\n};\n"
+    ),
+    "native/src/gate.cpp": (
+        '#include "gate.h"\n'
+        "int use_gate() {\n  Gate gate;\n  gate.Trace();\n  (gate.Open)();\n  GateBase base = MakeBase();\n  return base.base;\n}\n"
+    ),
     "tools/report.py": "class Crate:\n    def Add(self, value):\n        return value\n\n\ndef run(crate):\n    return crate.Add(1)\n",
 }
 
@@ -127,6 +149,16 @@ class CompleteUsagesTest(unittest.TestCase):
             add = self.places("native/include/crate.h::Crate.Add")
         self.assertIn("native/tests/test_crate.cpp:9", add)
         self.assertFalse([place for place in add if place.startswith("tools/")], add)
+
+    def test_more_shapes_of_real_code(self) -> None:
+        """/* REQ-CPP-023: read as written in real C++: a class with a macro before its name and a base class after it; a method with an attribute macro between its parameters and its body, or after the parameters of its declaration; a prototype whose macro makes the grammar join the return type and the name; a function defined as a friend inside a class (a function of the file, called by its plain name); a method of an outer class named without a call inside a class nested in it; a method called through brackets, `(object.method)()`. A question that names one file of a C or C++ function answers for the function: its prototypes and its definition. */"""
+        self.assertIn("native/include/gate.h:10", self.places("native/include/gate.h::Gate.Count"))
+        self.assertIn("native/src/gate.cpp:4", self.places("native/include/gate.h::Gate.Trace"))
+        self.assertIn("native/src/gate.cpp:5", self.places("native/include/gate.h::Gate.Open"))
+        self.assertEqual({"native/src/gate.cpp:6"}, self.places("MakeBase"))
+        self.assertEqual({"native/include/gate.h:24"}, self.places("lever_force"))
+        self.assertIn("native/include/gate.h:22", self.places("native/include/gate.h::Lever.Describe"))
+        self.assertEqual(self.places("native/include/depot.h::depot_free"), self.places("depot_free"))
 
 
 if __name__ == "__main__":
