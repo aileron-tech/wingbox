@@ -111,7 +111,9 @@ def _function_name(declarator: Node | None) -> str:
             wrapped = _function_name(inner[0].child_by_field_name("declarator"))
             if wrapped:
                 return wrapped
-    segments = [segment for segment in _plain(node_text(name)).split("::") if segment]
+    # `MACRO Result name();`: the grammar takes the macro for the type and `Result name` for the name.
+    written = node_text(name).split()
+    segments = [segment for segment in _plain(written[-1] if written else "").split("::") if segment]
     if not segments:
         return ""
     return f"{segments[-2]}.{segments[-1]}" if len(segments) > 1 else segments[-1]
@@ -127,9 +129,24 @@ def macro_class_name(node: Node) -> str:
     body = node.child_by_field_name("body")
     if type_node is None or declarator is None or body is None or type_node.type not in _RECORDS:
         return ""
-    if type_node.child_by_field_name("body") is not None or declarator.type not in ("identifier", "type_identifier"):
+    if type_node.child_by_field_name("body") is not None:
         return ""
-    return node_text(declarator)
+    # With a base class, `class MACRO Name : public Base {`, the grammar puts `Name : public` into an error
+    # node and takes the base for the declarator.
+    error = next((child for child in node.children if child.type == "ERROR"), None)
+    named = next((child for child in error.named_children if child.type in ("identifier", "type_identifier")), None) if error else None
+    if named is not None:
+        return node_text(named)
+    return node_text(declarator) if declarator.type in ("identifier", "type_identifier") else ""
+
+
+def macro_class_bases(node: Node) -> list[str]:
+    """The base of a class read by macro_class_name, when it has one: the declarator of the grammar."""
+    declarator = node.child_by_field_name("declarator")
+    if declarator is None or not any(child.type == "ERROR" for child in node.children):
+        return []
+    base = _plain(node_text(declarator))
+    return [base] if base else []
 
 
 def _declared_functions(node: Node) -> list[str]:
@@ -138,6 +155,13 @@ def _declared_functions(node: Node) -> list[str]:
     A prototype that starts with a macro the grammar cannot place (`DEPOT_API crate_t crate_init(int);`)
     is read with an error node before its declarator, which then stands in no field: such a declarator
     is taken as well."""
+    # `void Trace() LOCKED(mutex);`: the grammar reads `Trace()` as an error and the attribute macro as the
+    # function that is declared. The function is the name in the error.
+    error = next((child for child in node.children if child.type == "ERROR"), None)
+    attributed = next((child for child in error.named_children if child.type == "init_declarator"), None) if error else None
+    attributed_name = attributed.child_by_field_name("declarator") if attributed is not None else None
+    if attributed_name is not None and attributed_name.type in ("identifier", "field_identifier"):
+        return [node_text(attributed_name)]
     declarators = list(node.children_by_field_name("declarator"))
     names = [name for name in (_function_name(declarator) for declarator in declarators) if name]
     if names:
@@ -202,6 +226,16 @@ class _Collector:
                 if method:
                     methods.append(method)
                     defined.append(_entity(f"{name}.{method}", "function", member))
+            elif member.type == "friend_declaration":
+                # A function defined as a friend inside the class is a function of the file, called by
+                # its plain name.
+                for inner in member.named_children:
+                    if inner.type == "function_definition":
+                        friend = _function_name(inner.child_by_field_name("declarator"))
+                        if friend:
+                            defined.append(_entity(friend, "function", inner))
+                    elif inner.type == "declaration":
+                        defined.extend(_entity(friend, "function", inner) for friend in _declared_functions(inner))
             elif member.type in ("field_declaration", "declaration"):
                 declared = _declared_functions(member)
                 methods.extend(declared)
@@ -254,32 +288,18 @@ class _Collector:
 
     def macro_record(self, node: Node) -> None:
         """A class written with a macro between the keyword and its name (`class DEPOT_API Crate { ... };`),
-        which the grammar reads as a function named Crate that returns `class DEPOT_API`: its members are
-        the statements of that body."""
+        which the grammar reads as a function named Crate that returns `class DEPOT_API`. What the grammar
+        takes for the body of that function is not the body of the class: it may end early (at a class
+        with a macro nested in it) or run on over the classes that follow. So the statements of that body
+        are read like the declarations of a file, and `adopt` then gives each class the functions that
+        stand between its braces in the text."""
         name = macro_class_name(node)
-        self.macro_classes.append((len(self.entities), node.child_by_field_name("body").start_byte, name))
-        methods: list[str] = []
-        defined: list[Entity] = []
-        stack = list(reversed(node.child_by_field_name("body").named_children))
-        while stack:
-            member = stack.pop()
-            if member.type == "labeled_statement":          # `public:` with the declaration after it
-                stack.extend(reversed(member.named_children))
-            elif member.type == "function_definition":
-                method = _function_name(member.child_by_field_name("declarator"))
-                if method:
-                    methods.append(method)
-                    defined.append(_entity(f"{name}.{method}", "function", member))
-            elif member.type in ("declaration", "field_declaration"):
-                methods.extend(_declared_functions(member))
-                type_node = member.child_by_field_name("type")
-                if type_node is not None:
-                    self.type_specifier(type_node)
-            elif member.type in _RECORDS or member.type == "enum_specifier":
-                self.type_specifier(member)
-        self.macro_classes[-1] = (len(self.entities), self.macro_classes[-1][1], name)
-        self.entities.append(_entity(name, "class", node, unique_strings(iter(methods)), []))
-        self.entities.extend(defined)
+        body = node.child_by_field_name("body")
+        self.macro_classes.append((len(self.entities), body.start_byte, name))
+        bases = macro_class_bases(node)
+        self.entities.append(_entity(name, "class", node, [], bases))
+        self.bases.extend(bases)
+        self.scope(body)
 
     def adopt(self, source: bytes) -> None:
         """The members of a class with a macro that the grammar put outside it. Such a class ends, for the
@@ -337,7 +357,9 @@ class _Collector:
                 body = child.child_by_field_name("body")
                 if body is not None:
                     self.scope(body)
-            elif kind in _BLOCKS:
+            elif kind in _BLOCKS or kind == "labeled_statement":
+                # labeled_statement: `public:` with the declaration after it, in a class the grammar took
+                # for a function (macro_record).
                 self.scope(child)
             elif kind in _RECORDS or kind == "enum_specifier":
                 self.type_specifier(child)
@@ -352,6 +374,16 @@ class _Collector:
                     self.macro_record(child)
                     continue
                 name = _function_name(child.child_by_field_name("declarator"))
+                if name and name.upper() == name:
+                    # `void Count()\n    LOCK_REQUIRED(mutex) { ... }`: an attribute macro between the
+                    # parameters and the body. The grammar reads a variable `Count()` and a function named
+                    # like the macro; the function is the name before it.
+                    before = child.prev_named_sibling
+                    declarator = before.child_by_field_name("declarator") if before is not None and before.type in ("declaration", "field_declaration") else None
+                    inner = declarator.child_by_field_name("declarator") if declarator is not None and declarator.type == "init_declarator" else None
+                    if inner is not None and inner.type in ("identifier", "field_identifier"):
+                        self.entities.append(_entity(node_text(inner), "function", before))
+                        continue
                 if name:
                     self.entities.append(_entity(name, "function", child))
             elif kind == "function_declarator" and node.type == "ERROR":
@@ -365,7 +397,18 @@ class _Collector:
                 type_node = child.child_by_field_name("type")
                 if type_node is not None and kind == "declaration":
                     self.type_specifier(type_node)
-                for name in _declared_functions(child):
+                declared = _declared_functions(child)
+                if not declared:
+                    # `void Trace() LOCK_EXCLUDED(mutex);`: with an attribute macro after the parameters the
+                    # grammar reads a variable `Trace` initialised with `()`. At the level of a file or a
+                    # class, a name followed by empty brackets declares a function.
+                    declarator = child.child_by_field_name("declarator")
+                    inner = declarator.child_by_field_name("declarator") if declarator is not None and declarator.type == "init_declarator" else None
+                    value = declarator.child_by_field_name("value") if inner is not None else None
+                    if inner is not None and inner.type in ("identifier", "field_identifier") and value is not None \
+                            and node_text(value).replace(" ", "") == "()":
+                        declared = [node_text(inner)]
+                for name in declared:
                     self.entities.append(_entity(name, "function", child))
             elif kind == "preproc_function_def" or (kind == "preproc_def" and node_text(child.child_by_field_name("value")).strip()):
                 # A macro with a value is a name other files use; `#define GUARD_H` alone is an include guard.
