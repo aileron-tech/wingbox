@@ -43,6 +43,28 @@ class CSharpUsing:
     alias: str | None
     is_static: bool
     line: int = 0   # the 1-based line of the using directive
+    is_global: bool = False   # `global using`: it holds for every file of the project
+    inner: bool = False   # written in a namespace: in its block, or after a file-scoped namespace declaration
+
+
+@dataclass(frozen=True)
+class CSharpFileScope:
+    """What decides which type a simple name written in a file binds to.
+
+    declared: (full type name, declared `partial`) of every type of the file. levels: the namespaces the
+    compiler searches, nearest first (the own namespace, the usings written in it, each enclosing namespace,
+    the global namespace, the usings of the file); a name binds in the first level that has it. ordered is
+    false for a file that declares types in several namespaces: its names are searched in every namespace of
+    `levels` alike. global_usings: the namespaces of its `global using` directives. explicit: the targets of
+    alias and static usings, which name a type in full. referenced: the capitalized identifiers of the file.
+    """
+
+    declared: tuple[tuple[str, bool], ...]
+    levels: tuple[tuple[str, ...], ...]
+    ordered: bool
+    global_usings: tuple[str, ...]
+    explicit: frozenset[str]
+    referenced: frozenset[str]
 
 
 def _simple_type_name(node: Node) -> str:
@@ -160,7 +182,7 @@ def _entity(node: Node) -> Entity | None:
     )
 
 
-def _parse_using(node: Node) -> CSharpUsing | None:
+def _parse_using(node: Node, inner: bool = False) -> CSharpUsing | None:
     named_children = list(node.named_children)
     if not named_children:
         return None
@@ -173,6 +195,75 @@ def _parse_using(node: Node) -> CSharpUsing | None:
         alias=alias,
         is_static=bool(re.search(r"\busing\s+static\b", text)),
         line=node.start_point[0] + 1,
+        is_global=any(child.type == "global" for child in node.children),
+        inner=inner,
+    )
+
+
+def _usings(root: Node) -> list[CSharpUsing]:
+    """Every using directive of the file: those of the file itself and those written in a namespace."""
+    usings: list[CSharpUsing] = []
+    pending: list[tuple[Node, bool]] = [(root, False)]
+    while pending:
+        node, inner = pending.pop(0)
+        for child in node.named_children:
+            if child.type == "file_scoped_namespace_declaration":
+                inner = True
+            elif child.type == "using_directive":
+                using = _parse_using(child, inner)
+                if using is not None:
+                    usings.append(using)
+            elif child.type == "namespace_declaration":
+                body = child.child_by_field_name("body")
+                if body is not None:
+                    pending.append((body, True))
+    return usings
+
+
+def _is_partial(node: Node) -> bool:
+    return any(
+        child.type == "modifier" and node_text(child) == "partial"
+        for child in node.named_children
+    )
+
+
+def _namespace_chain(namespace: str) -> list[str]:
+    """The namespace, each namespace that encloses it and the global namespace (""), nearest first."""
+    chain = [namespace] if namespace else []
+    while chain and "." in chain[-1]:
+        chain.append(chain[-1].rpartition(".")[0])
+    return [*chain, ""]
+
+
+def csharp_file_scope(content: str) -> CSharpFileScope:
+    root = Parser(_CSHARP_LANGUAGE).parse(content.encode("utf-8")).root_node
+    declarations = [
+        (namespace, name, _is_partial(node))
+        for namespace, node in _declarations(root)
+        if (name := node_text(node.child_by_field_name("name")))
+    ]
+    namespaces = unique_strings(namespace or "." for namespace, _name, _partial in declarations)
+    usings = _usings(root)
+    plain = [using for using in usings if using.alias is None and not using.is_static]
+    inner = tuple(unique_strings(using.target for using in plain if using.inner))
+    outer = tuple(unique_strings(using.target for using in plain if not using.inner))
+    chains = [_namespace_chain("" if namespace == "." else namespace) for namespace in namespaces or ["."]]
+    ordered = len(chains) == 1
+    if ordered:
+        own, *enclosing = chains[0]
+        levels = [(own,), inner, *((namespace,) for namespace in enclosing), outer]
+    else:
+        levels = [tuple(dict.fromkeys(name for chain in chains for name in chain)), inner, outer]
+    return CSharpFileScope(
+        declared=tuple(
+            (f"{namespace}.{name}" if namespace else name, partial)
+            for namespace, name, partial in declarations
+        ),
+        levels=tuple(level for level in levels if level),
+        ordered=ordered,
+        global_usings=tuple(unique_strings(using.target for using in plain if using.is_global)),
+        explicit=frozenset(using.target for using in usings if using.alias is not None or using.is_static),
+        referenced=frozenset(_referenced_type_names(root)) - {name for _namespace, name, _partial in declarations},
     )
 
 
@@ -202,12 +293,7 @@ def parse_csharp_treesitter(
     entities = [entity for entity, _ in entity_nodes]
     declared_names = {entity.name for entity in entities}
     namespace = declarations[0][0] if declarations else ""
-    usings = [
-        using
-        for node in root.named_children
-        if node.type == "using_directive"
-        if (using := _parse_using(node)) is not None
-    ]
+    usings = _usings(root)
     referenced_types = [
         name
         for name in _referenced_type_names(root)
@@ -242,9 +328,11 @@ def parse_csharp_treesitter(
                 line=using.line,
             ))
 
-    if namespace:
+    # The own namespace, the namespaces that enclose it and the global one: which of them a name binds to is
+    # decided where the declarations of every file are known (BoundCSharpLanguage).
+    for enclosing in _namespace_chain(namespace):
         for type_name in referenced_types:
-            candidate = f"{namespace}.{type_name}"
+            candidate = f"{enclosing}.{type_name}" if enclosing else type_name
             imports.append(candidate)
             imported_names.append(ImportedName(
                 local_name=type_name,

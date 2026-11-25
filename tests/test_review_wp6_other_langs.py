@@ -189,5 +189,103 @@ class GoModuleFileTest(unittest.TestCase):
             self.assertEqual(expected, path)
 
 
+class CSharpTypeBindingTest(unittest.TestCase):
+    def test_a_partial_class_links_every_file_that_declares_it(self) -> None:
+        """/* REQ-CSHARP-9610: A type declared partial in several files of one namespace and project links its user to each of them; other duplicates stay unlinked. */"""
+        built = _Built({
+            "Domain/Customer.Part1.cs": "namespace Acme.Domain;\n\npublic partial class Customer\n{\n    public string Name = \"\";\n}\n",
+            "Domain/Customer.Part2.cs": "namespace Acme.Domain;\n\npublic partial class Customer\n{\n    public int Age;\n}\n",
+            "Domain/Twice.A.cs": "namespace Acme.Domain;\n\npublic class Twice {}\n",
+            "Domain/Twice.B.cs": "namespace Acme.Domain;\n\npublic class Twice {}\n",
+            "Services/OrderService.cs": (
+                "using Acme.Domain;\n\nnamespace Acme.Services;\n\n"
+                "public class OrderService\n{\n    Customer c;\n    Twice t;\n}\n"
+            ),
+            "Services/Same.cs": "namespace Acme.Domain;\n\npublic class Same\n{\n    Customer c;\n}\n",
+            "Services/Static.cs": (
+                "using static Acme.Domain.Customer;\n\nnamespace Acme.Services;\n\npublic class Static {}\n"
+            ),
+        })
+        parts = {"Domain/Customer.Part1.cs", "Domain/Customer.Part2.cs"}
+        self.assertEqual(parts, built.dependencies("Services/OrderService.cs"))
+        self.assertEqual(parts, built.dependencies("Services/Same.cs"))
+        self.assertEqual(parts, built.dependencies("Services/Static.cs"))
+
+    def test_partial_declarations_of_two_projects_are_two_types(self) -> None:
+        """/* REQ-CSHARP-9611: Partial declarations of one name in two projects are not one type: a file binds the one of its own project, a file of a third project none. */"""
+        built = _Built({
+            "Api/Api.csproj": "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />\n",
+            "Api/Program.cs": "public partial class Program {}\n",
+            "Api/Startup.cs": "namespace Api;\n\npublic class Startup\n{\n    Program p;\n}\n",
+            "Jobs/Jobs.csproj": "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />\n",
+            "Jobs/Program.cs": "public partial class Program {}\n",
+            "Tests/Tests.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+            "Tests/ApiTests.cs": "namespace Tests;\n\npublic class ApiTests\n{\n    Program p;\n}\n",
+        })
+        self.assertEqual({"Api/Program.cs"}, built.dependencies("Api/Startup.cs"))
+        self.assertEqual(set(), built.dependencies("Tests/ApiTests.cs"))
+
+    def test_a_type_of_an_enclosing_namespace_is_found(self) -> None:
+        """/* REQ-CSHARP-9612: A C# name binds to a type of an enclosing namespace and of the global namespace. */"""
+        built = _Built({
+            "Services/OrderService.cs": "namespace Acme.Services;\n\npublic class OrderService {}\n",
+            "Root.cs": "public class Root {}\n",
+            "Services/Inner/Deep.cs": (
+                "namespace Acme.Services.Inner;\n\npublic class Deep\n{\n    OrderService s;\n    Root r;\n}\n"
+            ),
+            "Program.cs": "var root = new Root();\n",
+        })
+        self.assertEqual({"Services/OrderService.cs", "Root.cs"}, built.dependencies("Services/Inner/Deep.cs"))
+        self.assertEqual({"Root.cs"}, built.dependencies("Program.cs"))
+
+    def test_a_using_inside_a_namespace_is_read(self) -> None:
+        """/* REQ-CSHARP-9613: A using directive written inside a namespace block, or after a file-scoped namespace, brings in the types of its namespace. */"""
+        built = _Built({
+            "Domain/Order.cs": "namespace Acme.Domain;\n\npublic class Order {}\n",
+            "Services/UsingInside.cs": (
+                "namespace Acme.Services2\n{\n    using Acme.Domain;\n\n"
+                "    public class UsingInside\n    {\n        Order o;\n    }\n}\n"
+            ),
+            "Services/UsingAfter.cs": (
+                "namespace Acme.Services3;\n\nusing Acme.Domain;\n\npublic class UsingAfter\n{\n    Order o;\n}\n"
+            ),
+        })
+        self.assertEqual({"Services/UsingInside.cs", "Services/UsingAfter.cs"}, built.dependents("Domain/Order.cs"))
+        self.assertIn("Acme.Domain", built.results["Services/UsingInside.cs"].imports)
+
+    def test_a_global_using_holds_for_the_files_of_its_project(self) -> None:
+        """/* REQ-CSHARP-9614: A global using of one file brings in its namespace for every file of the same project, and for no file of another project. */"""
+        built = _Built({
+            "App/App.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+            "App/GlobalUsings.cs": "global using Acme.Domain;\n",
+            "App/Domain/Money.cs": "namespace Acme.Domain;\n\npublic record Money(decimal V);\n",
+            "App/Services/GlobalUser.cs": "namespace Acme.Other;\n\npublic class GlobalUser\n{\n    Money m;\n}\n",
+            "App/Program.cs": "var m = new Money(1);\n",
+            "Tool/Tool.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+            "Tool/Runner.cs": "namespace Acme.Tool;\n\npublic class Runner\n{\n    Money m;\n}\n",
+        })
+        self.assertEqual({"App/Services/GlobalUser.cs", "App/Program.cs"}, built.dependents("App/Domain/Money.cs"))
+
+    def test_a_type_of_the_own_namespace_hides_the_one_a_using_brings(self) -> None:
+        """/* REQ-CSHARP-9615: A name binds to the type of the nearest namespace: a type a using directive brings in gives no edge when the own namespace declares the name, and a name two usings bring in gives none. */"""
+        built = _Built({
+            "Dup/A/Thing.cs": "namespace Acme.A;\n\npublic class Thing {}\n\npublic class OnlyA {}\n",
+            "Dup/B/Thing.cs": "namespace Acme.B;\n\npublic class Thing {}\n",
+            "Dup/C/Thing.cs": "namespace Acme.C;\n\npublic class Thing {}\n",
+            "Dup/B/UsesThing.cs": (
+                "using Acme.A;\n\nnamespace Acme.B;\n\npublic class UsesThing\n{\n    Thing t;\n    OnlyA a;\n}\n"
+            ),
+            "Dup/D/Both.cs": (
+                "using Acme.A;\nusing Acme.C;\n\nnamespace Acme.D;\n\npublic class Both\n{\n    int Thing;\n}\n"
+            ),
+            "Dup/D/Named.cs": (
+                "using Other = Acme.A.Thing;\n\nnamespace Acme.B;\n\npublic class Named\n{\n    Other o;\n    Thing t;\n}\n"
+            ),
+        })
+        self.assertEqual({"Dup/B/Thing.cs", "Dup/A/Thing.cs"}, built.dependencies("Dup/B/UsesThing.cs"))
+        self.assertEqual(set(), built.dependencies("Dup/D/Both.cs"))
+        self.assertEqual({"Dup/A/Thing.cs", "Dup/B/Thing.cs"}, built.dependencies("Dup/D/Named.cs"))
+
+
 if __name__ == "__main__":
     unittest.main()
