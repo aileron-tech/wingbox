@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -476,6 +479,401 @@ class DeepTreeTest(unittest.TestCase):
             self.assertIn(name, entities)
         self.assertEqual(_DEPTH, len(entities["Holder"]["methods"]))
         self.assertEqual(["member0", f"member{_DEPTH - 1}"], [entities["Holder"]["methods"][0], entities["Holder"]["methods"][-1]])
+
+
+def _cmake(files: dict[str, str]):
+    """The targets and the tests `generation.cmake_targets` reads from a folder of files."""
+    from scripts import generation
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(os.path.realpath(directory))
+        _write(root, files)
+
+        def read_text(relative: str) -> str | None:
+            return (root / relative).read_text(encoding="utf-8")
+
+        cmake_files = [name for name in files if name.endswith(("CMakeLists.txt", ".cmake"))]
+        targets, tests = generation.cmake_targets(str(root), cmake_files, read_text)
+    return {target.name: target for target in targets}, {test.name: test for test in tests}
+
+
+_CMAKE_SOURCES = {f"lib/{name}": "int f();\n" for name in ("core.cpp", "detail.cpp", "extra.cpp", "src/deep.cpp", "one.cc")}
+
+
+class CMakeTargetsTest(unittest.TestCase):
+    def test_sources_given_through_a_variable_set_once_are_read(self) -> None:
+        """/* REQ-CS-9650: A target whose sources are a variable that the same CMake file sets once, at its top level, with literal values has those sources; a variable with one value is also read inside a path. */"""
+        targets, _tests = _cmake({
+            **_CMAKE_SOURCES,
+            "lib/CMakeLists.txt": (
+                "# sources through a variable\n"
+                "set(CORE_SOURCES core.cpp\n    detail.cpp)\n"
+                "add_library(core STATIC ${CORE_SOURCES})\n"
+                "set(SRC_DIR src)\n"
+                'set(QUOTED "extra.cpp;${CMAKE_CURRENT_SOURCE_DIR}/core.cpp")\n'
+                "add_library(deep STATIC ${SRC_DIR}/deep.cpp \"${QUOTED}\")\n"
+                "add_library(plain STATIC extra.cpp)\n"
+                "add_library(iface INTERFACE)\n"
+            ),
+        })
+        self.assertEqual(("lib/core.cpp", "lib/detail.cpp"), targets["core"].sources)
+        self.assertEqual(("lib/src/deep.cpp", "lib/extra.cpp", "lib/core.cpp"), targets["deep"].sources)
+        self.assertEqual([False, False, False, False], [targets[name].unread for name in ("core", "deep", "plain", "iface")])
+
+    def test_a_variable_that_is_not_set_once_literally_stays_unread_and_marks_the_target(self) -> None:
+        """/* REQ-CS-9651: A variable set twice, appended to, set in a block, set after its use, filled by file(GLOB) or set in no place of the file is not substituted, and neither is a generator expression: the target is marked as one whose sources were not all read. */"""
+        targets, _tests = _cmake({
+            **_CMAKE_SOURCES,
+            "lib/CMakeLists.txt": (
+                "set(TWICE core.cpp)\nset(TWICE detail.cpp)\nadd_library(twice STATIC ${TWICE})\n"
+                "set(GROWN core.cpp)\nlist(APPEND GROWN detail.cpp)\nadd_library(grown STATIC ${GROWN})\n"
+                "if(WIN32)\n  set(GUARDED core.cpp)\nendif()\nadd_library(guarded STATIC ${GUARDED})\n"
+                "add_library(early STATIC ${LATE})\nset(LATE core.cpp)\n"
+                "file(GLOB GLOBBED *.cc)\nadd_library(globbed STATIC)\ntarget_sources(globbed PRIVATE ${GLOBBED})\n"
+                "add_library(outside STATIC extra.cpp ${FROM_PARENT})\n"
+                "add_library(expression OBJECT $<$<CONFIG:Debug>:core.cpp> detail.cpp)\n"
+                "set(NESTED ${OTHER_LIST})\nadd_library(nested STATIC ${NESTED})\n"
+                "add_library(made STATIC extra.cpp ${CMAKE_CURRENT_BINARY_DIR}/made.cpp)\n"
+            ),
+        })
+        for name in ("twice", "grown", "guarded", "early", "globbed", "nested"):
+            self.assertEqual(((), True), (targets[name].sources, targets[name].unread), name)
+        self.assertEqual((("lib/extra.cpp",), True), (targets["outside"].sources, targets["outside"].unread))
+        self.assertEqual((("lib/detail.cpp",), True), (targets["expression"].sources, targets["expression"].unread))
+        self.assertEqual((("lib/extra.cpp",), False), (targets["made"].sources, targets["made"].unread))
+
+    def test_a_bracket_comment_holds_no_target(self) -> None:
+        """/* REQ-CS-9652: A call written in a bracket comment `#[[ ... ]]` or `#[==[ ... ]==]` of a CMake file creates no target and no test. */"""
+        targets, tests = _cmake({
+            **_CMAKE_SOURCES,
+            "lib/CMakeLists.txt": (
+                "add_library(before STATIC core.cpp)\n"
+                "#[[ a bracket comment\nadd_executable(ghost detail.cpp)\n]]\n"
+                "#[==[ another ]] one\nadd_test(NAME ghost_run COMMAND before)\n]==] add_library(after STATIC extra.cpp)\n"
+                "add_test(NAME real COMMAND before) #[[ unclosed\nadd_library(lost STATIC core.cpp)\n"
+            ),
+        })
+        self.assertEqual(["after", "before"], sorted(targets))
+        self.assertEqual(["real"], sorted(tests))
+
+    def test_a_hash_in_a_quoted_argument_is_no_comment(self) -> None:
+        """/* REQ-CS-9653: A `#` inside a quoted argument of a CMake call does not start a comment: the call and the calls after it are read. */"""
+        targets, tests = _cmake({
+            **_CMAKE_SOURCES,
+            "lib/CMakeLists.txt": (
+                "add_executable(unit_tests core.cpp)   # a comment with a bracket )\n"
+                'add_test(NAME hash COMMAND unit_tests "--tag=#1")\n'
+                'add_test(NAME escaped COMMAND unit_tests "--name=\\"#2\\"") # "quoted" comment\n'
+                "add_test(NAME after_hash COMMAND unit_tests)\n"
+            ),
+        })
+        self.assertEqual(["unit_tests"], sorted(targets))
+        self.assertEqual({"hash": "unit_tests", "escaped": "unit_tests", "after_hash": "unit_tests"},
+                         {name: test.target for name, test in tests.items()})
+
+    def test_a_quoted_test_name_is_kept_whole(self) -> None:
+        """/* REQ-CS-9654: The name of `add_test(NAME "quoted name" ...)` is the text between the quotes. */"""
+        _targets, tests = _cmake({
+            **_CMAKE_SOURCES,
+            "lib/CMakeLists.txt": (
+                "add_executable(unit_tests core.cpp)\n"
+                'add_test(NAME "quoted name" COMMAND unit_tests --x)\n'
+                'add_test("short quoted" unit_tests)\n'
+            ),
+        })
+        self.assertEqual(["quoted name", "short quoted"], sorted(tests))
+        self.assertEqual("unit_tests", tests["quoted name"].target)
+
+
+class CMakeAnswerTest(unittest.TestCase):
+    """The same through the command: the graph facts and what `impact --only tests` answers."""
+
+    FILES = {
+        "CMakeLists.txt": "cmake_minimum_required(VERSION 3.20)\nproject(demo)\nadd_subdirectory(lib)\n",
+        "lib/CMakeLists.txt": (
+            "set(CORE_SOURCES core.cpp)\n"
+            "add_library(core STATIC ${CORE_SOURCES})\n"
+            "file(GLOB GLOB_SRC *.cc)\n"
+            "add_library(glob_lib STATIC ${GLOB_SRC})\n"
+            "add_executable(unit_tests test_core.cpp)\n"
+            'add_test(NAME "quoted name" COMMAND unit_tests "--tag=#1")\n'
+        ),
+        "lib/core.h": "int core();\n",
+        "lib/core.cpp": '#include "core.h"\nint core() { return 1; }\n',
+        "lib/globbed.cc": "int globbed() { return 2; }\n",
+        "lib/test_core.cpp": '#include "core.h"\nint main() { return core(); }\n',
+    }
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        folder = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(folder.cleanup)
+        cls.root = Path(os.path.realpath(folder.name))
+        _write(cls.root, cls.FILES)
+        cls.built = cls._run("build", ".")
+        cls.graph = (cls.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8")
+
+    @classmethod
+    def _run(cls, *args: str) -> subprocess.CompletedProcess:
+        source = Path(__file__).resolve().parents[1] / "src"
+        environment = dict(os.environ, PYTHONPATH=str(source) + os.pathsep + os.environ.get("PYTHONPATH", ""), WINGBOX_JOBS="1")
+        return subprocess.run([sys.executable, "-m", "wingbox", *args], capture_output=True, env=environment,
+                              cwd=str(cls.root), timeout=180, text=True)
+
+    def test_the_graph_marks_a_target_whose_sources_were_not_read(self) -> None:
+        """/* REQ-CS-9655: The `target` fact of a target whose source list was not all read carries `:sources unread`; a target read through a variable set once lists its sources, and a test named with a space is written quoted. */"""
+        facts = [line for line in self.graph.splitlines() if line.startswith(("(target ", "(ctest "))]
+        self.assertEqual(4, len(facts), self.built.stderr)
+        self.assertRegex(self.graph, r'\(target core :kind library :in "lib/CMakeLists.txt" \w+\)')
+        self.assertIn('(target glob_lib :kind library :sources unread :in "lib/CMakeLists.txt")', self.graph)
+        self.assertIn('(ctest "quoted name" :target unit_tests :in "lib/CMakeLists.txt")', self.graph)
+
+    def test_impact_names_the_target_of_the_variable_and_the_unread_targets(self) -> None:
+        """/* REQ-CS-9656: `wingbox impact <file> --only tests` names a target that holds the file through a variable, and after it the targets whose sources were not all read: `(unread-targets <file> <target> ...)`, `unread_targets` in JSON, a line in the text. */"""
+        compact = self._run("impact", "lib/core.cpp", "--only", "tests").stdout
+        self.assertIn("(affected-targets lib/core.cpp core unit_tests)", compact)
+        self.assertIn('(affected-tests lib/core.cpp "quoted name")', compact)
+        self.assertIn("(unread-targets lib/core.cpp glob_lib)", compact)
+        document = json.loads(self._run("impact", "lib/core.cpp", "--only", "tests", "--json").stdout)
+        answer = document["impact"][0] if "impact" in document else document
+        self.assertEqual((["core", "unit_tests"], ["quoted name"], ["glob_lib"]),
+                         (answer["targets"], answer["tests"], answer["unread_targets"]))
+        human = self._run("impact", "lib/core.cpp", "--only", "tests", "--human").stdout
+        self.assertIn("Build targets whose sources were not all read: glob_lib", human)
+
+
+_PHP_HELPERS = {
+    "composer.json": '{"autoload": {"psr-4": {"App\\\\": "app/"}, "files": ["app/Support/helpers.php"]}}\n',
+    "app/Support/helpers.php": (
+        "<?php\n\nif (! function_exists('format_money')) {\n"
+        "    function format_money(int $v): string { return (string) $v; }\n}\n"
+    ),
+    "app/Support/functions.php": (
+        "<?php\n\nnamespace App\\Support;\n\nfunction ns_helper(): int { return 1; }\n\n"
+        "function unused_helper(): int { return strlen('x'); }\n\nconst LIMIT = 5;\n"
+    ),
+}
+
+
+class PhpFunctionsTest(unittest.TestCase):
+    def test_functions_and_constants_of_a_file_are_entities(self) -> None:
+        """/* REQ-PHP-9660: A PHP function and a constant declared outside a class are entities of their file, a function inside `if (! function_exists())` too; a method and a class constant are not listed twice. */"""
+        built = _Built({
+            **_PHP_HELPERS,
+            "app/Models/Post.php": "<?php\n\nnamespace App\\Models;\n\nclass Post\n{\n    const KIND = 'p';\n\n    public function title() { return ''; }\n}\n",
+        })
+        self.assertEqual("function", _entities(built, "app/Support/helpers.php")["format_money"]["kind"])
+        functions = _entities(built, "app/Support/functions.php")
+        self.assertEqual("function", functions["App\\Support\\ns_helper"]["kind"])
+        self.assertEqual(["constant"], functions["App\\Support\\LIMIT"].get("decorators"))
+        self.assertEqual(["App\\Models\\Post", "App\\Models\\Post::title"], list(_entities(built, "app/Models/Post.php")))
+
+    def test_use_function_and_use_const_are_dependencies(self) -> None:
+        """/* REQ-PHP-9661: `use function` and `use const`, also in a group, make the file depend on the file that declares the function or the constant, with the line of the statement. */"""
+        built = _Built({
+            **_PHP_HELPERS,
+            "app/Support/more.php": "<?php\n\nnamespace App\\More;\n\nfunction first() {}\n\nfunction second() {}\n",
+            "app/Http/UserController.php": (
+                "<?php\n\nnamespace App\\Http;\n\nuse function App\\Support\\ns_helper;\nuse const App\\Support\\LIMIT;\n\n"
+                "class UserController\n{\n    public function index() { return 1; }\n}\n"
+            ),
+            "app/Http/Grouped.php": (
+                "<?php\n\nnamespace App\\Http;\n\nuse function App\\More\\{first, second as other};\n\nclass Grouped {}\n"
+            ),
+        })
+        self.assertEqual({"app/Support/functions.php"}, built.dependencies("app/Http/UserController.php"))
+        self.assertEqual({"app/Support/more.php"}, built.dependencies("app/Http/Grouped.php"))
+        self.assertEqual(
+            {"php-function:\\App\\Support\\ns_helper": [5], "php-const:\\App\\Support\\LIMIT": [6]},
+            built.results["app/Http/UserController.php"].import_lines,
+        )
+
+    def test_a_call_links_the_one_file_that_declares_the_function(self) -> None:
+        """/* REQ-PHP-9662: A call of a function links the file that declares it: the function of the own namespace, else the global one; a qualified name by its namespace. A function two files declare, a method and a function of PHP itself give no edge. */"""
+        built = _Built({
+            **_PHP_HELPERS,
+            "app/Support/twice_a.php": "<?php\n\nfunction twice() {}\n",
+            "app/Support/twice_b.php": "<?php\n\nfunction twice() {}\n",
+            "app/Http/LegacyController.php": (
+                "<?php\n\nnamespace App\\Http;\n\nclass LegacyController\n{\n"
+                "    public function show() { return format_money(3) . twice() . strlen('x') . $this->ns_helper(); }\n}\n"
+            ),
+            "app/Support/Caller.php": (
+                "<?php\n\nnamespace App\\Support;\n\nclass Caller\n{\n    public function run() { return ns_helper(); }\n}\n"
+            ),
+            "app/Http/Qualified.php": (
+                "<?php\n\nnamespace App\\Http;\n\nuse App\\Support;\n\nclass Qualified\n{\n"
+                "    public function run() { return \\App\\Support\\ns_helper() + Support\\unused_helper(); }\n}\n"
+            ),
+        })
+        self.assertEqual({"app/Support/helpers.php"}, built.dependencies("app/Http/LegacyController.php"))
+        self.assertEqual({"app/Support/functions.php"}, built.dependencies("app/Support/Caller.php"))
+        self.assertEqual({"app/Support/functions.php"}, built.dependencies("app/Http/Qualified.php"))
+
+    def test_a_file_required_by_its_folder_is_a_dependency(self) -> None:
+        """/* REQ-PHP-9663: `require_once __DIR__ . '/path'`, `dirname(__FILE__)` and `dirname(__DIR__)` name a file by the folder of the requiring file: it is a dependency, with the line; a path of another form gives no edge. */"""
+        built = _Built({
+            **_PHP_HELPERS,
+            "app/Http/Controllers/LegacyController.php": (
+                "<?php\n\nnamespace App\\Http\\Controllers;\n\n"
+                "require_once __DIR__ . '/../../Support/helpers.php';\n"
+                "include(dirname(__FILE__) . '/local.php');\n"
+                "require dirname(__DIR__, 2) . '/Support/functions.php';\n"
+                "require $base . '/local.php';\n"
+                "include 'other.php';\n\n"
+                "class LegacyController {}\n"
+            ),
+            "app/Http/Controllers/local.php": "<?php\n\nreturn [];\n",
+            "app/Http/Controllers/other.php": "<?php\n\nreturn [];\n",
+        })
+        self.assertEqual(
+            {"app/Support/helpers.php", "app/Http/Controllers/local.php", "app/Support/functions.php"},
+            built.dependencies("app/Http/Controllers/LegacyController.php"),
+        )
+        lines = built.results["app/Http/Controllers/LegacyController.php"].import_lines
+        self.assertEqual([[5], [6], [7]], [lines[name] for name in sorted(lines, key=lambda name: lines[name])])
+
+
+_BLADE_APP = {
+    "composer.json": '{"autoload": {"psr-4": {"App\\\\": "app/"}}}\n',
+    "app/Support/Fmt.php": "<?php\n\nnamespace App\\Support;\n\nclass Fmt {}\n",
+    "app/Models/Post.php": "<?php\n\nnamespace App\\Models;\n\nclass Post {}\n",
+    "app/Models/Profile.php": "<?php\n\nnamespace App\\Models;\n\nclass Profile {}\n",
+    "app/Enums/Status.php": "<?php\n\nnamespace App\\Enums;\n\nenum Status: string { case Active = 'a'; }\n",
+    "app/View/Components/Alert.php": (
+        "<?php\n\nnamespace App\\View\\Components;\n\nclass Alert\n{\n"
+        "    public function render() { return view('components.alert'); }\n}\n"
+    ),
+    "app/View/Components/Forms/DateInput.php": "<?php\n\nnamespace App\\View\\Components\\Forms;\n\nclass DateInput {}\n",
+    "resources/views/components/alert.blade.php": "<div>{{ $slot }}</div>\n",
+    "resources/views/components/panel.blade.php": "<div>panel</div>\n",
+}
+
+
+class PhpBladeClassesTest(unittest.TestCase):
+    def test_a_template_depends_on_the_classes_it_names(self) -> None:
+        """/* REQ-PHP-9664: A Blade template depends on the class of `@inject('name', 'Class')`, of `@use('Class')` and of a qualified `\\Name\\Space\\Class::` written in it; a name in a comment, in `@verbatim` or without `::` gives no edge. */"""
+        built = _Built({
+            **_BLADE_APP,
+            "resources/views/users/index.blade.php": (
+                "@inject('fmt', 'App\\Support\\Fmt')\n@use('App\\Models\\Post')\n"
+                "<p>{{ \\App\\Enums\\Status::Active->value }} {{ App\\Models\\Profile::count() }}</p>\n"
+            ),
+            "resources/views/users/quiet.blade.php": (
+                "{{-- \\App\\Models\\Profile::count() --}}\n@verbatim {{ \\App\\Models\\Post::all() }} @endverbatim\n"
+                "<p>App\\Models\\Post and $x\\App\\Models\\Post::y and @@use('App\\Support\\Fmt')</p>\n"
+            ),
+        })
+        self.assertEqual(
+            {"app/Support/Fmt.php", "app/Models/Post.php", "app/Enums/Status.php", "app/Models/Profile.php"},
+            built.dependencies("resources/views/users/index.blade.php"),
+        )
+        self.assertEqual(set(), built.dependencies("resources/views/users/quiet.blade.php"))
+
+    def test_a_component_tag_links_the_component_class(self) -> None:
+        """/* REQ-PHP-9665: `<x-alert>` depends on the class `View\\Components\\Alert` of the application as well as on the anonymous view; a tag with only a view depends on the view, and `<x-forms.date-input>` on `Forms\\DateInput`. */"""
+        built = _Built({
+            **_BLADE_APP,
+            "resources/views/page.blade.php": "<x-alert type=\"info\" />\n<x-panel />\n<x-forms.date-input />\n<x-missing />\n",
+        })
+        self.assertEqual(
+            {"app/View/Components/Alert.php", "resources/views/components/alert.blade.php",
+             "resources/views/components/panel.blade.php", "app/View/Components/Forms/DateInput.php"},
+            built.dependencies("resources/views/page.blade.php"),
+        )
+
+    def test_a_mailable_view_and_a_route_action_string_are_dependencies(self) -> None:
+        """/* REQ-PHP-9666: `$this->view('emails.welcome')` depends on the view, and a route action written `'Controller@method'` on the controller: by its full name, or as `Http\\Controllers\\<name>` of the application when one class has it. */"""
+        built = _Built({
+            **_BLADE_APP,
+            "app/Mail/Welcome.php": (
+                "<?php\n\nnamespace App\\Mail;\n\nclass Welcome\n{\n"
+                "    public function build() { return $this->view('emails.welcome'); }\n}\n"
+            ),
+            "resources/views/emails/welcome.blade.php": "<p>hi</p>\n",
+            "app/Http/Controllers/LegacyController.php": "<?php\n\nnamespace App\\Http\\Controllers;\n\nclass LegacyController\n{\n    public function show() {}\n}\n",
+            "app/Http/Controllers/Admin/PanelController.php": "<?php\n\nnamespace App\\Http\\Controllers\\Admin;\n\nclass PanelController\n{\n    public function show() {}\n}\n",
+            "routes/web.php": "<?php\n\nuse Illuminate\\Support\\Facades\\Route;\n\nRoute::get('/l', 'LegacyController@show');\nRoute::get('/n', 'NoSuchController@show');\nRoute::get('/m', 'mailto@example');\n",
+            "routes/api.php": "<?php\n\nuse Illuminate\\Support\\Facades\\Route;\n\nRoute::post('/p', 'App\\Http\\Controllers\\Admin\\PanelController@show');\n",
+        })
+        self.assertEqual({"resources/views/emails/welcome.blade.php"}, built.dependencies("app/Mail/Welcome.php"))
+        self.assertEqual({"app/Http/Controllers/LegacyController.php"}, built.dependencies("routes/web.php"))
+        self.assertEqual({"app/Http/Controllers/Admin/PanelController.php"}, built.dependencies("routes/api.php"))
+
+
+_RAILS_MODELS = {
+    f"app/models/{stem}.rb": f"class {name} < ApplicationRecord\nend\n"
+    for stem, name in (
+        ("batch", "Batch"), ("status", "Status"), ("person", "Person"), ("box", "Box"), ("address", "Address"),
+        ("dish", "Dish"), ("company", "Company"), ("child", "Child"), ("analysis", "Analysis"), ("house", "House"),
+        ("post", "Post"),
+    )
+}
+
+
+class RubyRailsNamesTest(unittest.TestCase):
+    def test_has_many_names_are_singularized_as_rails_does(self) -> None:
+        """/* REQ-RUBY-9670: `has_many` of a plural in -ches, -shes, -xes, -sses, -uses, -ies and of an irregular plural (people, children, analyses) is an association with the model of the singular name. */"""
+        plurals = ("batches", "statuses", "people", "boxes", "addresses", "dishes", "companies", "children",
+                   "analyses", "houses", "posts")
+        built = _Built({
+            **_RAILS_MODELS,
+            "app/models/application_record.rb": "class ApplicationRecord\nend\n",
+            "app/models/user.rb": (
+                "class User < ApplicationRecord\n" + "".join(f"  has_many :{plural}\n" for plural in plurals) + "end\n"
+            ),
+        })
+        associated = {
+            target for (source, target), relations in built.relations.items()
+            if source == "app/models/user.rb" and "association" in relations
+        }
+        self.assertEqual(set(_RAILS_MODELS), associated)
+
+    def test_the_singular_rules(self) -> None:
+        """/* REQ-RUBY-9671: The singular of a Rails association name follows the rules of Rails; a word that is not a plural is left as it is. */"""
+        from scripts.lang.ruby.imports import _singularize
+
+        for plural, singular in (
+            ("batches", "batch"), ("statuses", "status"), ("people", "person"), ("boxes", "box"),
+            ("addresses", "address"), ("buses", "bus"), ("aliases", "alias"), ("wishes", "wish"),
+            ("categories", "category"), ("men", "man"), ("women", "woman"), ("children", "child"),
+            ("mice", "mouse"), ("wives", "wife"), ("wolves", "wolf"), ("heroes", "hero"), ("quizzes", "quiz"),
+            ("matrices", "matrix"), ("indices", "index"), ("crises", "crisis"), ("movies", "movie"),
+            ("news", "news"), ("series", "series"), ("sheep", "sheep"), ("glass", "glass"), ("cases", "case"),
+            ("responses", "response"), ("line_items", "line_item"), ("shoes", "shoe"), ("data", "datum"),
+        ):
+            self.assertEqual(singular, _singularize(plural), plural)
+
+    def test_a_scoped_constant_names_at_least_its_scope(self) -> None:
+        """/* REQ-RUBY-9672: `User::LIMIT`, with LIMIT defined in a concern that User includes, is a dependency on the file of `User`: a scoped name that resolves nowhere is resolved by its longest leading part; a name two files define stays unlinked. */"""
+        built = _Built({
+            "app/models/concerns/trackable.rb": "module Trackable\n  LIMIT = 5\nend\n",
+            "app/models/user.rb": "class User\n  include Trackable\nend\n",
+            "app/models/twin_a.rb": "module Twin\n  class Part\n  end\nend\n",
+            "app/models/twin_b.rb": "module Twin\n  class Part\n  end\nend\n",
+            "app/services/limits.rb": (
+                "class Limits\n  def top\n    User::LIMIT + Missing::Thing::VALUE\n  end\n\n"
+                "  def twin\n    Twin::Part::SIZE\n  end\nend\n"
+            ),
+        })
+        self.assertEqual({"app/models/user.rb"}, built.dependencies("app/services/limits.rb"))
+
+    def test_the_autoload_path_scan_is_linear(self) -> None:
+        """/* REQ-RUBY-9673: The autoload paths of config/application.rb are read in linear time: 100 KB of one line of `autoload_paths` without a path, or of unclosed `Rails.root.join(`, within a second; the paths of a real line are still found. */"""
+        from scripts.lang.ruby.imports import _autoload_join_arguments
+
+        self.assertEqual(
+            ["'lib'", "'app', 'extras'", '"vendor/x"'],
+            list(_autoload_join_arguments(
+                "config.autoload_paths << Rails.root.join('lib')\n"
+                "config.autoload_once_paths += [config.root.join('app', 'extras')]; config.autoload_paths << Rails.root.join(\"vendor/x\")\n"
+                "config.eager_load_paths << Rails.root.join('skipped')\n"
+            )),
+        )
+        for content in ("autoload_paths " * 7_000, "config.autoload_paths << " + "Rails.root.join(" * 6_500):
+            started = time.perf_counter()
+            self.assertEqual([], list(_autoload_join_arguments(content)))
+            self.assertLess(time.perf_counter() - started, 1.0)
 
 
 if __name__ == "__main__":
