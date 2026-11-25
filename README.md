@@ -1207,6 +1207,15 @@ not in the graph, and Wingbox says so instead of answering around them:
   `not-source` (a document, a data file). For such a file search the text
   (`wingbox grep`, `rg`): the graph knows nothing about it. `--sexp` keeps the
   `no-match` line of version 0.13.
+- One source file never stops a build. A file the parser fails on
+  (`parser-failed`), a file that cannot be read (`unreadable`), binary content
+  under a source extension, which is a NUL byte in the first 8 KB (`binary`),
+  and a file whose path holds a line break or another control character
+  (`file-name`) are left out. The build prints one warning with their number
+  and the first of them, maps every other file and writes one
+  `(not-parsed-file "<path>" :reason <reason>)` fact per file to
+  `.wingbox/graph-unparsed.sexp`; a question about such a file answers
+  `not-in-graph` with that reason.
 
 The count covers the programming, build and shader languages listed in
 `scripts/source_kinds.py`; a document or a data file is not a language.

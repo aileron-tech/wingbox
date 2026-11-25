@@ -525,7 +525,8 @@ class OutsideGraph:
     """A file of the repository that is not in the graph, and why."""
 
     file: str       # relative to the graph root
-    reason: str     # not-parsed-language, skipped-language, excluded, not-source
+    reason: str     # not-parsed-language, skipped-language, excluded, not-source, or why the build left this
+                    # one file out (a key of source_kinds.UNPARSED_FILE_REASONS: parser-failed, binary, ...)
     language: str   # the display name of its language; "" for not-source
 
     @property
@@ -536,6 +537,8 @@ class OutsideGraph:
             why = f"the {self.language} parser is not installed"
         elif self.reason == "excluded":
             why = f"the build left this {self.language} file out (a skipped folder, a path Git ignores, a minified file)"
+        elif self.reason in source_kinds.UNPARSED_FILE_REASONS:
+            why = source_kinds.UNPARSED_FILE_REASONS[self.reason].format(language=self.language)
         else:
             why = "it is not a source file"
         return (f"{self.file} is not in the graph: {why}. Its dependents are not known here: "
@@ -571,6 +574,9 @@ def outside_graph(g: CodeGraph, target: str) -> Optional[OutsideGraph]:
     name = os.path.basename(absolute)
     parsed = source_kinds.parsed_language(name)
     if parsed is not None:
+        left_out = source_kinds.read_unparsed_files(_state_text(g, "graph-unparsed.sexp")).get(relative)
+        if left_out is not None:
+            return OutsideGraph(relative, left_out, parsed)
         skipped = f"(skipped-language {source_kinds.LANGUAGE_NAMES[parsed]} " in _state_text(g, "graph-skipped.sexp")
         return OutsideGraph(relative, "skipped-language" if skipped else "excluded", parsed)
     other = source_kinds.not_parsed_language(name)
