@@ -18,7 +18,10 @@ Model: dirty marking plus a lazy refresh.
 This module is imported by the hooks: it reads and writes small JSON files and
 calls stat; it never imports the builder. Writes are atomic (temporary file and
 rename) and serialised by a lock file (`portable.lock`, released by the system
-when its process dies, so a crashed writer leaves no stale lock).
+when its process dies, so a crashed writer leaves no stale lock). Nothing is
+written through a symbolic link at `.wingbox` or below it: the folder, the
+lock files, the check marker and the refresh log are opened with
+`portable.open_unlinked`, which raises `LinkRefused` (an OSError) instead.
 
 Settings (environment):
 - WINGBOX_AUTO_REFRESH=0 turns the refresh off; a dirty graph is then reported
@@ -36,6 +39,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from contextlib import contextmanager
@@ -297,7 +301,7 @@ def write_json_atomic(path: str, value: object) -> None:
     import tempfile  # here: the fast path of the hooks never writes
 
     directory = os.path.dirname(path)
-    os.makedirs(directory, exist_ok=True)
+    portable().make_folder(directory)   # never through a link; a link in place of the file itself is replaced
     descriptor, temporary = tempfile.mkstemp(dir=directory, prefix="." + os.path.basename(path) + ".", suffix=".tmp")
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
@@ -333,9 +337,9 @@ def write_state(root: str, state: State) -> None:
 @contextmanager
 def state_lock(root: str) -> Iterator[None]:
     """Serialise read-modify-write of the state between processes."""
-    os.makedirs(state_directory(root), exist_ok=True)
-    with open(_state_file(root, LOCK_NAME), "a+", encoding="utf-8") as handle:
-        helpers = portable()
+    helpers = portable()
+    helpers.make_folder(state_directory(root))
+    with helpers.open_unlinked(_state_file(root, LOCK_NAME), "a+", encoding="utf-8") as handle:
         helpers.lock(handle)
         try:
             yield
@@ -640,10 +644,14 @@ Freshness = Union[Fresh, Stale, Unmanaged, Unconfirmed]
 
 
 def built_here(root: str, snapshot: Optional[Snapshot]) -> Optional[Unconfirmed]:
-    """None when the snapshot says the graph was built from root; else why it cannot be refreshed."""
+    """None when the snapshot says the graph was built from root; else why it cannot be refreshed.
+
+    The builder records an absolute root. Any other value (".", "", a relative folder: a snapshot somebody
+    wrote or committed) names no folder: resolved against the current folder it would confirm whatever folder
+    the command runs in, so it confirms nothing."""
     if snapshot is None:
         return Unconfirmed("no-snapshot")
-    if os.path.realpath(snapshot.root) != os.path.realpath(root):
+    if not os.path.isabs(snapshot.root) or os.path.realpath(snapshot.root) != os.path.realpath(root):
         return Unconfirmed("moved")
     return None
 
@@ -680,7 +688,7 @@ def _check_due(root: str) -> bool:
     except OSError:
         pass
     try:
-        with open(marker, "a", encoding="utf-8", newline="\n"):
+        with portable().open_unlinked(marker, "a", encoding="utf-8", newline="\n"):
             pass
         os.utime(marker)
     except OSError as error:
@@ -704,12 +712,14 @@ def note_outside_changes(root: str) -> Optional[State]:
 
 
 def refresh_running(root: str) -> bool:
+    helpers = portable()
     try:
-        handle = open(refresh_lock_path(root), "a+", encoding="utf-8")
+        handle = helpers.open_unlinked(refresh_lock_path(root), "a+", encoding="utf-8")
+    except helpers.LinkRefused:
+        raise   # not "no refresh runs": a refresh must not be started through the link either
     except OSError:
         return False
     with handle:
-        helpers = portable()
         if not helpers.lock(handle, blocking=False):
             return True
         helpers.unlock(handle)
@@ -720,23 +730,49 @@ def _package_parent() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+# refresh.log is appended to by every refresh. Past the limit, the refresh that starts keeps only its end.
+REFRESH_LOG_LIMIT = 1_000_000
+REFRESH_LOG_KEPT = 200_000
+
+
+def _cap_refresh_log(path: str) -> None:
+    """Keep refresh.log from growing without bound: a log larger than REFRESH_LOG_LIMIT bytes is cut down to
+    its last REFRESH_LOG_KEPT bytes, from the first whole line. The caller has refused a link at path."""
+    try:
+        if os.path.getsize(path) <= REFRESH_LOG_LIMIT:
+            return
+    except OSError:
+        return   # no log yet
+    with portable().open_unlinked(path, "r+b") as log:
+        log.seek(-REFRESH_LOG_KEPT, os.SEEK_END)
+        tail = log.read()
+        log.seek(0)
+        log.write(tail[tail.find(b"\n") + 1:])
+        log.truncate()
+
+
 def start_refresh(root: str) -> "subprocess.Popen":
     """Start `python -P -m wingbox.refresh root` detached: its own session, output to .wingbox/refresh.log.
     -P: the refresh runs in the project folder and must import the installed Wingbox, never a folder of
     the project (wingbox/launch.py).
 
     The hook's stdout and stderr are not inherited, so Claude Code does not wait
-    for the refresh when the hook returns before it ends.
+    for the refresh when the hook returns before it ends. The log is never opened through a symbolic link
+    (LinkRefused, and no refresh starts) and is kept under a fixed size (_cap_refresh_log).
     """
     import subprocess  # here: the fast path of the hooks starts nothing
     from wingbox.launch import module_command
-    os.makedirs(state_directory(root), exist_ok=True)
+    helpers = portable()
+    log_path = refresh_log_path(root)
+    helpers.refuse_links(log_path)
+    helpers.make_folder(state_directory(root))
+    _cap_refresh_log(log_path)
     environment = dict(os.environ)
     parent = _package_parent()
     environment["PYTHONPATH"] = os.pathsep.join(
         item for item in (parent, environment.get("PYTHONPATH", "")) if item
     )
-    with open(refresh_log_path(root), "ab") as log:
+    with helpers.open_unlinked(log_path, "ab") as log:
         return subprocess.Popen(
             [*module_command(sys.executable, "wingbox.refresh"), root],
             stdin=subprocess.DEVNULL,
@@ -836,21 +872,44 @@ def stale_line(result: Freshness, root: str = ".") -> str:
     return f"(wingbox-graph-stale :reason {result.reason} :changed-files {result.changed})"
 
 
+# The languages a build can leave out for want of their parser, as the builder names them (scripts/lang,
+# PIP_EXTRA_LANGUAGES; a test keeps the two equal). Listed here because the hooks never import the builder.
+SKIPPABLE_LANGUAGES = frozenset(("csharp", "java", "go", "ruby", "php", "dart", "cpp"))
+_SKIPPED_FACT = re.compile(r"\(skipped-language ([a-z]+) :files (\d{1,9}) ")
+
+
 def skipped_languages_line(root: str) -> str:
     """The facts of the languages the last build left out because their parser is not installed, one per line:
     `(skipped-language csharp :files 214 :add "pip install \\"wingbox[csharp]\\"")`; empty when the build parsed
-    them all. Every reader of the graph passes it on (query commands on stderr, MCP answers, the hook context)."""
+    them all. Every reader of the graph passes it on (query commands on stderr, MCP answers, the hook context).
+
+    The record is a file in the project, so its text is never passed on: only the language (one the builder
+    can skip) and the number of files are read from each line, and the fact is written again with the command
+    Wingbox itself gives for that language. Anything else in the file gives no note."""
     try:
         with open(_state_file(root, SKIPPED_NAME), "r", encoding="utf-8") as handle:
             text = handle.read()
-    except OSError:
+    except (OSError, ValueError):
         return ""
-    return "\n".join(line for line in text.splitlines() if line.startswith("(skipped-language "))
+    files: dict[str, int] = {}
+    for line in text.splitlines():
+        match = _SKIPPED_FACT.match(line)
+        if match and match.group(1) in SKIPPABLE_LANGUAGES:
+            files.setdefault(match.group(1), int(match.group(2)))
+    return "\n".join(
+        f'(skipped-language {name} :files {count} :add "pip install \\"wingbox[{name}]\\"")' for name, count in files.items()
+    )
+
+
+def skipped_notes(result: Freshness, root: str) -> str:
+    """The skipped-language facts a reader of the graph passes on. None for a graph that was not built in this
+    folder: its .wingbox/ came with a clone or a copy, and says nothing about the parsers installed here."""
+    return "" if isinstance(result, Unconfirmed) else skipped_languages_line(root)
 
 
 def notes(result: Freshness, root: str) -> str:
     """What a reader says before an answer from the graph: the stale line, then the skipped languages."""
-    return "\n".join(line for line in (stale_line(result, root), skipped_languages_line(root)) if line)
+    return "\n".join(line for line in (stale_line(result, root), skipped_notes(result, root)) if line)
 
 
 def known_stale(result: Freshness) -> Optional[int]:

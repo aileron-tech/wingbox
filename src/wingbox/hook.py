@@ -337,7 +337,11 @@ def answer_file(graph: LightGraph, query: FileQuery) -> list[str]:
     count = dependents(graph, {short_id})[short_id]
     lines = [f"(wingbox-file {atom(relative)} :module {atom(graph.module(short_id))} :dependents {count})"]
     if count:
-        lines.append(f'(wingbox-hint "before changing it: wingbox impact {relative}")')
+        import shlex   # here: only an answer with a hint needs it
+
+        # The path is a file name of the project: quoted, so that the command an agent copies is one command
+        # with one argument whatever characters the name holds; a plain path stays as it is.
+        lines.append(f"(wingbox-hint {atom('before changing it: wingbox impact ' + shlex.quote(relative))})")
     return lines
 
 
@@ -524,7 +528,8 @@ def context_for(payload: object, cwd: str) -> str:
     if not lines:
         return note
     # Context from a graph that left a language out says so: the answer may miss files of that language.
-    skipped = freshness.skipped_languages_line(found[0])
+    # (A graph that was not built here gives no such note: freshness.skipped_notes.)
+    skipped = freshness.skipped_notes(fresh, found[0])
     notes = ([note] if note else []) + (skipped.splitlines() if skipped else [])
     return capped([f"(wingbox-graph {atom(_graph_name(graph))})"] + notes + lines)
 

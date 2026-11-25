@@ -631,11 +631,20 @@ def created_folders(entries: list[Installed]) -> frozenset[str]:
 # ---------------------------------------------------------------------------
 
 def _read_text(path: str) -> Optional[str]:
+    """The text of a file, None when there is none. A file that cannot be read (no permission, a folder in its
+    place, not UTF-8) raises OSError: install and uninstall answer with a fact for that file (_reason)."""
     try:
         with open(path, "r", encoding="utf-8", newline="") as handle:
             return handle.read()
     except FileNotFoundError:
         return None
+    except UnicodeDecodeError as error:
+        raise OSError(f"not UTF-8 text (byte {error.start})") from error
+
+
+def _reason(error: OSError) -> str:
+    """Why a file could not be read or written, without its path: the fact names the file."""
+    return error.strerror or str(error)
 
 
 def _write_text(path: str, text: str) -> None:
@@ -653,19 +662,26 @@ def _read_bytes(path: str) -> Optional[bytes]:
         return None
 
 
+def _names_wingbox(line: bytes) -> bool:
+    """Whether a line of an ignore file is a rule about the folder .wingbox: `.wingbox/`, `/.wingbox/`,
+    `.wingbox/*`, `!.wingbox/config.yaml`, `**/.wingbox`. A comment and another name that only contains it are not."""
+    rule = line.strip()
+    return bool(rule) and not rule.startswith(b"#") and b".wingbox" in rule.lstrip(b"!").split(b"/")
+
+
 def append_wingbox_ignore(path: str, *, project: bool, dry_run: bool = False) -> bool:
-    """Append the directory rule if needed, preserving the existing file's bytes and line endings."""
+    """Append the directory rule if needed, preserving the existing file's bytes and line endings.
+
+    A file that already has a rule about .wingbox is left as it is, whatever the rule says: a team that
+    ignores `.wingbox/*` and excepts `config.yaml` to commit it wrote that on purpose, and a rule appended
+    after theirs would override it."""
     pattern = b".wingbox/"
     rule = b"/" + pattern if project else pattern
     if project and os.path.islink(path):
         raise OSError("Git does not follow symbolic links in a project's .gitignore")
     current = _read_bytes(path) or b""
-    for line in reversed(current.splitlines()):
-        line = line.rstrip(b" ")
-        if line == rule or line == pattern:
-            return False
-        if line in (b"!" + rule, b"!" + pattern):
-            break
+    if any(_names_wingbox(line) for line in current.splitlines()):
+        return False
     if not dry_run:
         newline = b"\r\n" if b"\r\n" in current else b"\n"
         separator = newline if current and not current.endswith(b"\n") else b""
@@ -771,9 +787,16 @@ def _install_hook(target: Target, command: HookProgram, dry_run: bool, keys: tup
         return make_fact("install-kept", target.path, what="hook", assistant=target.assistants, reason="unchanged")
     if not dry_run:
         backup = target.path + BACKUP_SUFFIX
-        if settings is not None and not os.path.exists(backup):
+        backed_up = settings is not None and not os.path.exists(backup)
+        if backed_up:
             shutil.copy2(target.path, backup)
-        _write_text(target.path, settings_text(merged))
+        try:
+            _write_text(target.path, settings_text(merged))
+        except OSError:
+            if backed_up:   # the settings stay as they were: no backup of them is left behind
+                os.chmod(backup, 0o600)   # the copy of a read-only file is read-only: Windows removes none
+                os.remove(backup)
+            raise
     return make_fact(_verb(dry_run), target.path, what="hook", assistant=target.assistants)
 
 
@@ -800,6 +823,17 @@ def _write_record(path: str, entries: list[Installed], dry_run: bool, verb: str)
 
 def _read_record_file(home: str) -> list[Installed]:
     return read_record(_read_text(record_path(home)) or "")
+
+
+def record_failure(home: str, command: str = "install") -> Optional[Fact]:
+    """The `<command>-failed` fact for a record ~/.wingbox/installed.sexp that exists and cannot be read; None
+    otherwise. Install and uninstall stop on it before they write anything: the record says which folders an
+    earlier install created and which items the person left out."""
+    try:
+        _read_record_file(home)
+    except OSError as error:
+        return make_fact(f"{command}-failed", record_path(home), what="record", reason=_reason(error))
+    return None
 
 
 def scope_of(options_scope: ScopeKind, machine: Machine) -> Scope:
@@ -843,8 +877,15 @@ def chosen_assistants(options: Options, machine: Machine) -> tuple[str, ...]:
 
 
 def install(options: Options, machine: Machine) -> list[Fact]:
-    """Put the ticked items in place in the user's own settings (global only), record the choice."""
+    """Put the ticked items in place in the user's own settings (global only), record the choice.
+
+    A file that cannot be read or written (no permission, a folder in its place, not UTF-8) is an
+    `install-failed` fact with the file and the reason; the other items are put in place and the record is
+    written all the same, so that `wingbox uninstall` knows what to remove."""
     scope = Scope("global", os.path.abspath(machine.home))
+    unreadable = record_failure(machine.home)
+    if unreadable is not None:
+        return [unreadable]
     recorded = _read_record_file(machine.home)
     assistants = chosen_assistants(options, machine)
     if not assistants:
@@ -857,18 +898,25 @@ def install(options: Options, machine: Machine) -> list[Fact]:
     targets = [target for target in plan_targets(scope, assistants) if _target_selected(target, without)]
     missing = missing_folders(scope, targets)
     for target in targets:
-        if target.what == "skill":
-            facts.append(_install_skill(target, payload, machine.version, options.dry_run))
-        elif target.what == "block":
-            facts.append(_install_block(target, options.dry_run))
-        else:
-            keys = tuple(key for key in HOOK_ITEMS if is_selected("claude-code", key, without))
-            facts.append(_install_hook(target, machine.hook_program, options.dry_run, keys))
+        try:
+            if target.what == "skill":
+                facts.append(_install_skill(target, payload, machine.version, options.dry_run))
+            elif target.what == "block":
+                facts.append(_install_block(target, options.dry_run))
+            else:
+                keys = tuple(key for key in HOOK_ITEMS if is_selected("claude-code", key, without))
+                facts.append(_install_hook(target, machine.hook_program, options.dry_run, keys))
+        except OSError as error:
+            facts.append(make_fact("install-failed", target.path, what=target.what, assistant=target.assistants,
+                                   reason=_reason(error)))
     facts.extend(make_fact("install-left-out", item.path, what=item.key, assistant=(item.assistant,))
                  for item in install_items(scope.root, assistants, without) if not item.ticked)
     created = tuple(folder for folder in missing if options.dry_run or os.path.isdir(folder))
     entries = with_installed(recorded, scope, assistants, created, without)
-    facts.extend(_write_record(record_path(machine.home), entries, options.dry_run, "install"))
+    try:
+        facts.extend(_write_record(record_path(machine.home), entries, options.dry_run, "install"))
+    except OSError as error:
+        facts.append(make_fact("install-failed", record_path(machine.home), what="record", reason=_reason(error)))
     return facts
 
 
@@ -939,9 +987,14 @@ def _remove_hook(target: Target, keys: frozenset[str] = frozenset(HOOK_ITEMS)) -
 
 
 def uninstall(options: Options, machine: Machine) -> list[Fact]:
+    """Remove what install put in place. A file that cannot be read or written is kept, with the reason
+    (`uninstall-kept`), like a block with unbalanced markers and settings that are not JSON."""
     scope = scope_of(options.scope, machine)
     removing = options.assistants or ASSISTANTS
     keeping = options.without or ()
+    unreadable = record_failure(machine.home, "uninstall")
+    if unreadable is not None:
+        return [unreadable]
     entries = _read_record_file(machine.home)
     remaining_entries = without_installed(entries, scope, removing, ())
     staying = next(
@@ -958,17 +1011,24 @@ def uninstall(options: Options, machine: Machine) -> list[Fact]:
             continue
         if target.what != "hook" and not any(is_selected(name, target.what, keeping) for name in target.assistants):
             continue   # named by --without: it stays
-        if target.what == "skill":
-            facts.extend(_remove_skill(target, payload))
-        elif target.what == "block":
-            facts.extend(_remove_block(target))
-        else:
-            facts.extend(_remove_hook(target, frozenset(key for key in HOOK_ITEMS if is_selected("claude-code", key, keeping))))
+        try:
+            if target.what == "skill":
+                facts.extend(_remove_skill(target, payload))
+            elif target.what == "block":
+                facts.extend(_remove_block(target))
+            else:
+                facts.extend(_remove_hook(target, frozenset(key for key in HOOK_ITEMS if is_selected("claude-code", key, keeping))))
+        except OSError as error:
+            facts.append(make_fact("uninstall-kept", target.path, what=target.what, assistant=target.assistants,
+                                   reason=_reason(error)))
     recorded = next((entry.folders for entry in entries if entry.scope == scope.kind and entry.root == scope.root), ())
     removed, left = _remove_empty_folders(recorded)
     facts.extend(make_fact("uninstall-removed", folder, what="folder") for folder in removed)
     remaining_entries = without_installed(entries, scope, removing, left)
-    facts.extend(_write_record(record_path(machine.home), remaining_entries, False, "uninstall"))
+    try:
+        facts.extend(_write_record(record_path(machine.home), remaining_entries, False, "uninstall"))
+    except OSError as error:
+        facts.append(make_fact("uninstall-failed", record_path(machine.home), what="record", reason=_reason(error)))
     return facts
 
 

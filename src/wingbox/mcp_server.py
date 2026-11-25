@@ -257,7 +257,7 @@ class Server:
         helpers = freshness.portable()
         builder = cli.load_script("build_code_graph")
         builder.prepare_wingbox_directory(self._repository)
-        handle = open(os.path.join(builder.wingbox_directory(self._repository), "first-build.lock"), "a+", encoding="utf-8")
+        handle = helpers.open_unlinked(os.path.join(builder.wingbox_directory(self._repository), "first-build.lock"), "a+", encoding="utf-8")
         if not helpers.lock(handle, blocking=False) or self._lock_busy(builder._lock_path(self._repository)):
             handle.close()
             if not self._waiting:
@@ -278,7 +278,7 @@ class Server:
     def _lock_busy(path: str) -> bool:
         helpers = freshness.portable()
         try:
-            with open(path, "a+", encoding="utf-8") as handle:
+            with helpers.open_unlinked(path, "a+", encoding="utf-8") as handle:
                 if helpers.lock(handle, blocking=False):
                     helpers.unlock(handle)
                     return False

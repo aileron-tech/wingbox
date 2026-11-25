@@ -103,14 +103,24 @@ def main(args: list[str]) -> int:
         return 2
     root = os.path.realpath(args[0])
     builder = cli.load_script("build_code_graph")
-    os.makedirs(freshness.state_directory(root), exist_ok=True)
-    with open(freshness.refresh_lock_path(root), "a+", encoding="utf-8") as refresh_lock, open(
-        builder._lock_path(root), "a+", encoding="utf-8"
-    ) as build_lock:
-        portable = cli.load_script("portable")
-        portable.lock(refresh_lock)
-        portable.lock(build_lock)  # waits for a `wingbox build` in progress
-        return refresh(root)
+    portable = cli.load_script("portable")
+    try:
+        portable.make_folder(freshness.state_directory(root))
+        with portable.open_unlinked(freshness.refresh_lock_path(root), "a+", encoding="utf-8") as refresh_lock, portable.open_unlinked(
+            builder._lock_path(root), "a+", encoding="utf-8"
+        ) as build_lock:
+            portable.lock(refresh_lock)
+            portable.lock(build_lock)  # waits for a `wingbox build` in progress
+            return refresh(root)
+    except portable.LinkRefused as error:
+        # Nothing is written through a symbolic link at .wingbox or below it. The failure is recorded, so
+        # that the same marks do not start this refresh again and again.
+        print(f"[wingbox] refresh: {error}", file=sys.stderr)
+        try:
+            freshness.update_state(root, lambda current: freshness.after_failure(current, current.generation, "linked-path"))
+        except OSError as unrecorded:
+            print(f"[wingbox] refresh: the failure is not recorded: {unrecorded}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

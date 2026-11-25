@@ -290,9 +290,10 @@ def cache_path(root: str) -> str:
 
 
 def prepare_wingbox_directory(root: str) -> None:
-    """Create ROOT/.wingbox/ and its .gitignore (kept when a person rewrote it)."""
+    """Create ROOT/.wingbox/ and its .gitignore (kept when a person rewrote it). A .wingbox that is a symbolic
+    link is refused (portable.LinkRefused, an OSError): nothing is written through it."""
     folder = wingbox_directory(root)
-    os.makedirs(folder, exist_ok=True)
+    portable.make_folder(folder)
     path = os.path.join(folder, ".gitignore")
     # Two processes may prepare the folder at once (two MCP servers started together): portable.read_text
     # waits a moment on Windows while the other one is replacing the file.
@@ -782,8 +783,12 @@ def _builder_fingerprint(
 
 
 def _atomic_write_text(path: str, content: str) -> None:
-    """Atomically replace a text file after durable same-directory staging."""
+    """Atomically replace a text file after durable same-directory staging.
+
+    Below a project's .wingbox the folder is never reached through a symbolic link (portable.LinkRefused). A
+    link in place of the file itself is replaced by the regular file: the rename does not follow it."""
     directory = os.path.dirname(os.path.abspath(path))
+    portable.refuse_links(directory)
     descriptor, temporary_path = tempfile.mkstemp(
         dir=directory,
         prefix=f".{os.path.basename(path)}.",
@@ -4291,6 +4296,8 @@ def start_position_fill(map_path: str, root: str) -> bool:
     if os.environ.get("WINGBOX_POSITIONS_FILL", "1") == "0":
         return False
     lock = os.path.join(os.path.dirname(os.path.abspath(map_path)), POSITIONS_LOCK)
+    if portable.linked_part(lock) is not None:
+        return False   # no lock and no use file through a symbolic link at .wingbox or below it
     try:
         if time.time() - os.path.getmtime(lock) < _POSITIONS_LOCK_SECONDS:
             return False
@@ -5000,7 +5007,7 @@ def main(args: Optional[list[str]] = None) -> int:
     lock_path = _lock_path(options.root)
     try:
         prepare_wingbox_directory(options.root)
-        lock_file = open(lock_path, "a+", encoding="utf-8")
+        lock_file = portable.open_unlinked(lock_path, "a+", encoding="utf-8")
     except OSError as error:
         print(
             f"[code-graph] ERROR: could not open build lock {lock_path}: {error}",

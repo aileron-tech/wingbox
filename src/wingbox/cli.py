@@ -255,7 +255,7 @@ def _append(path: str, lines: list[str]) -> Optional[str]:
         return None
     try:
         _prepare_wingbox(os.path.dirname(os.path.dirname(path)))
-        with open(path, "a", encoding="utf-8", newline="\n") as handle:
+        with _platform().open_unlinked(path, "a", encoding="utf-8", newline="\n") as handle:
             handle.write("\n".join(lines) + "\n")
     except OSError as error:
         return f"cannot write {path}: {error}"
@@ -642,11 +642,11 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
     try:
         _prepare_wingbox(root)
         if bases:   # nothing learned and no style change: the config stays as it is
-            with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
+            with _platform().open_unlinked(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(render_config(RepositoryPlan(tuple(parts), plan.value.roots), library, today,
                                            list_files(root, skip, frozenset())))
             facts.append(f"(align-config-written {q(CONFIG_FILE)})")
-        with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8", newline="\n") as handle:
+        with _platform().open_unlinked(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(f"; written by wingbox align --learn on {today}: rule breaks known at that time\n")
             handle.write('; an entry may state who accepted it, why and until when: :owner "<who>" :reason "<why>" '
                          ":expires YYYY-MM-DD\n")
@@ -1047,17 +1047,21 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
     skip = frozenset(builder.SKIP_DIRS)
     try:
         _prepare_wingbox(root)
-        with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
+        with _platform().open_unlinked(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(render_config(RepositoryPlan(tuple(parts), plan.roots), library, today, list_files(root, skip, frozenset())))
-        with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8", newline="\n") as handle:
+        with _platform().open_unlinked(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8", newline="\n") as handle:
             handle.write("\n".join(agent_learn.learned_lines(entries, today, mode, styles, counts)) + "\n")
     except OSError as error:
         print(f"[wingbox] ERROR: {error}", file=sys.stderr)
         return 1
-    _append(_store(root)[0], [
+    unlogged = _append(_store(root)[0], [
         f"(learned-by-agent {q(e.part)} {q(e.folder)} {e.value} :because {q(e.because)} :mode {mode.mode} :at {today})"
         for e in entries if e.kind == "layer" and (e.part, e.folder) not in stated
     ])
+    if unlogged and _platform().linked_part(_store(root)[0]):
+        # The decision log is a symbolic link: nothing was written through it, and the command says so.
+        print(f"[wingbox] ERROR: {unlogged}", file=sys.stderr)
+        return 1
     with _quiet(verbose):
         status = _build(build_arguments([root], root))
     search = load_script("code_graph_search")
@@ -1212,11 +1216,13 @@ def write_outputs(root: str, graph_path: str) -> OutputsResult:
     report = freshness.report_path(root)
     page = freshness.map_path(root)
     directory = os.path.dirname(page)
+    portable = _platform()
     try:
-        os.makedirs(directory, exist_ok=True)
-        with open(report, "w", encoding="utf-8", newline="\n") as handle:
+        # Never through a symbolic link at .wingbox or below it (a clone may hold one): LinkRefused, an OSError.
+        portable.make_folder(directory)
+        with portable.open_unlinked(report, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(overview.render_report(view, generated, _version()))
-        with open(page, "w", encoding="utf-8", newline="\n") as handle:
+        with portable.open_unlinked(page, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(map_page.render_map(view, generated, _version(), map_page.read_assets()))
     except OSError as error:
         return OutputsFailed(f"cannot write {directory}: {error}")
@@ -1395,10 +1401,10 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
             with open(config_path, "r", encoding="utf-8") as handle:
                 existing = handle.read()
             block = text.split("parts:\n", 1)[1]
-            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
+            with _platform().open_unlinked(config_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(with_header(existing.rstrip("\n") + "\n" + block, library, date.today().isoformat()))
         else:
-            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
+            with _platform().open_unlinked(config_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
     except OSError as error:
         print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
@@ -1499,7 +1505,7 @@ def _init_from_folders(args: list[str], cwd: str) -> int:
         roots = tuple(sorted({*plan.value.roots, base}, key=lambda item: (-len(item), item)))
         try:
             _prepare_wingbox(root)
-            with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
+            with _platform().open_unlinked(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(render_config(RepositoryPlan(parts, roots), load_library(), date.today().isoformat(),
                                            list_files(root, skip, frozenset())))
         except OSError as error:
@@ -1572,7 +1578,7 @@ def _init(args: list[str], cwd: str) -> int:
     else:
         try:
             _prepare_wingbox(os.path.dirname(os.path.dirname(config_path)))
-            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
+            with _platform().open_unlinked(config_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(render_config(plan, library, date.today().isoformat(), paths))
         except OSError as error:
             print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
@@ -1610,7 +1616,7 @@ def _assistant_setup(root: str, sexp: bool) -> int:
     text = install.assistant_setup_text()
     try:
         _prepare_wingbox(root)
-        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        with _platform().open_unlinked(path, "w", encoding="utf-8", newline="\n") as handle:
             handle.write(text)
     except OSError as error:
         print(f"[wingbox] ERROR: cannot write {path}: {error}", file=sys.stderr)
@@ -1634,6 +1640,8 @@ def _build(arguments: list[str]) -> int:
         print(f"[wingbox] build: {options.error}\n{BUILD_USAGE}", file=sys.stderr)
         return 2
     root = options.value.root
+    # A .wingbox that is a symbolic link is refused before anything is built: main() prints which link.
+    _platform().refuse_links(freshness.state_directory(root))
     # The build clears the marks of the hooks it includes.
     generation = freshness.read_state(root).generation
     status = int(builder.main(arguments))
@@ -1732,6 +1740,10 @@ def _install_command(command: str, rest: list[str], cwd: str) -> int:
         print(f"[wingbox] {command}: {options.message}", file=sys.stderr)
         return 2
     machine = _machine(cwd)
+    unreadable = install.record_failure(machine.home, options.command)
+    if unreadable is not None:   # before the list is shown: the record says what an earlier install chose
+        _print_facts([unreadable], options.sexp)
+        return 1
     if options.command == "install":
         chosen = _install_choice(options, machine)
         if chosen is None:
@@ -1862,9 +1874,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         # is read, never imported.
         sys.path[:] = without_starting_folder(sys.path, os.getcwd(), os.path.dirname(_PACKAGE_DIR))
     # A Windows console with a legacy code page must never stop a command on a character it cannot show.
-    _platform().utf8_streams()
+    portable = _platform()
+    portable.utf8_streams()
     try:
         return _run(argv)
+    except portable.LinkRefused as error:
+        # A write below .wingbox would have gone through a symbolic link (a repository may commit one): nothing
+        # was written through it. Writers with an error path of their own report it there; this is for the rest
+        # (a query whose refresh would write, the first build of the MCP server).
+        print(f"[wingbox] ERROR: {error}", file=sys.stderr)
+        return 1
     except BrokenPipeError:
         # Point stdout at the null device so the interpreter does not report the closed pipe at exit.
         try:
@@ -1976,7 +1995,7 @@ def _refresh_before_query(args: list[str], cwd: str) -> Optional[int]:
     line = freshness.stale_line(result, root)
     if line:
         print(f"[wingbox] WARNING: {line}", file=sys.stderr)
-    for skipped in freshness.skipped_languages_line(root).splitlines():
+    for skipped in freshness.skipped_notes(result, root).splitlines():
         print(f"[wingbox] NOTE: {skipped}", file=sys.stderr)
     return freshness.known_stale(result)
 
