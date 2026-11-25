@@ -12,9 +12,14 @@ def node_text(node: Node | None) -> str:
 
 
 def walk_named(node: Node) -> Iterator[Node]:
-    yield node
-    for child in node.named_children:
-        yield from walk_named(child)
+    """node and every named node below it, each before the nodes below it, in source order. What is
+    still to visit is kept in a list, not on the call stack: a chain of thousands of calls is a tree
+    that deep."""
+    todo = [node]
+    while todo:
+        current = todo.pop()
+        yield current
+        todo.extend(reversed(current.named_children))
 
 
 def unique_strings(values: Iterator[str]) -> list[str]:
