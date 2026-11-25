@@ -7,6 +7,7 @@ Everything here is pure: no file access, no clock.
 from __future__ import annotations
 
 import re
+import shlex
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -338,12 +339,34 @@ def _plural(count: int, noun: str) -> str:
     return f"{_number(count)} {noun}" if count == 1 else f"{_number(count)} {noun}s"
 
 
+_LINE_BREAK = re.compile(r"[\r\n]+")
+_BACKTICKS = re.compile(r"`+")
+
+
+def _one_line(text: str) -> str:
+    """Text that stays inside one table cell: a line break is a space and a pipe is escaped."""
+    return _LINE_BREAK.sub(" ", text).replace("|", "\\|")
+
+
 def _cell(text: str) -> str:
-    return text.replace("|", "\\|").replace("\n", " ")
+    """Words in a cell or a sentence, which may hold text of the repository (a rule it declares, a folder
+    name): no HTML tag or comment, link or image starts in them."""
+    return _one_line(text.replace("\\", "\\\\").replace("<", "&lt;").replace("[", "\\[").replace("!", "\\!"))
 
 
 def _code(text: str) -> str:
-    return "`" + _cell(text).replace("`", "'") + "`"
+    return "`" + _one_line(text).replace("`", "'") + "`"
+
+
+def _span(text: str) -> str:
+    """Text of the repository (a line of source) as a code span, in which nothing is Markdown or HTML: the
+    fence is longer than any run of backticks in the text."""
+    text = _one_line(text).strip()
+    if not text:
+        return ""
+    fence = "`" * (max(map(len, _BACKTICKS.findall(text)), default=0) + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
 
 
 def _layer_cell(module: ModuleInfo) -> str:
@@ -401,7 +424,7 @@ def _capabilities(view: Overview) -> list[str]:
     ]
     shown = [item for item in view.capability_breaks if item.severity == "violation"] + list(view.pattern_breaks)
     lines += [
-        f"| {_code(item.file)} | {item.kind} | {item.layer} | {item.line or '-'} | {_cell(item.evidence)} | {_cell(item.rule)} |"
+        f"| {_code(item.file)} | {item.kind} | {item.layer} | {item.line or '-'} | {_span(item.evidence)} | {_cell(item.rule)} |"
         for item in shown[:_TOP_ADVICE]
     ]
     if len(shown) > _TOP_ADVICE:
@@ -427,7 +450,7 @@ def _recommendations(view: Overview) -> list[str]:
         ]
         lines += [
             f"| {item.kind} | {_code(item.target)} | {_cell(item.reason)} | {_cell(item.style)}: {_cell(item.rule)} "
-            f"| {_cell(item.evidence)} |"
+            f"| {_span(item.evidence)} |"
             for item in view.advice[:_TOP_ADVICE]
         ]
         if len(view.advice) > _TOP_ADVICE:
@@ -482,7 +505,7 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         if view.violation_candidates else ""
     )
     lines: list[str] = [
-        f"# Wingbox report: {view.project}",
+        f"# Wingbox report: {_cell(view.project)}",
         "",
         f"Generated on {generated} by wingbox {tool_version} from the code graph of this project.",
         "Open `map.html` in this folder for the interactive map.",
@@ -669,12 +692,14 @@ def render_report(view: Overview, generated: str, tool_version: str) -> str:
         lines.append("No entry point stands out: every module with dependencies also has dependents.")
 
     lines += ["", "## Next steps", ""]
-    if top:
+    # A command to paste: the file name is one quoted word, and a name with a line break is not put on a line.
+    example = next((module.file for module in top if module.file.isprintable()), None)
+    if example is not None:
         lines += [
             "Check what a change will reach before you make it:",
             "",
             "```",
-            f"wingbox impact {top[0].file}",
+            f"wingbox impact {shlex.quote(example)}",
             "```",
             "",
         ]
