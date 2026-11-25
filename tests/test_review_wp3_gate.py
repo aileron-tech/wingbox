@@ -476,6 +476,16 @@ class ExemptNamesTest(_Gate):
                                       "export const job = [main, routes0];\n")
         self.assertEqual([("src/models/job", "src/routes/routes0")], self.violations(self.project(files)))
 
+    def test_a_composition_root_of_another_part_does_not_exempt_a_file(self) -> None:
+        """/* REQ-ARCH-9324: a file of a layer that nothing imports and that imports a file named container.ts of another part is judged by the rules of its own part: its import of a route from the models folder is a violation. */"""
+        files = {f"packages/{part}/{name}": text for part in ("app", "core") for name, text in LAYERED.items()}
+        files["packages/core/src/repositories/container.ts"] = "export const container = 1;\n"
+        files["packages/app/src/models/job.ts"] = (
+            "import { container } from '../../../core/src/repositories/container';\n"
+            "import { routes0 } from '../routes/routes0';\nexport const job = [container, routes0];\n")
+        self.assertEqual([("packages/app/src/models/job", "packages/app/src/routes/routes0")],
+                         self.violations(self.project(files)))
+
     def test_composition_roots_and_tests_keep_their_exemption(self) -> None:
         """/* REQ-ARCH-9323: a composition root that only other composition roots and tests import (main.ts, and the container.ts it imports), a test, and a test helper that only tests import, may import every layer: no violation is stated for them. */"""
         files = dict(LAYERED)

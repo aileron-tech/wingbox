@@ -763,14 +763,14 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   `composition*.*`, `app.module.*`, `dependencyinjection.*` or `wire.go`
   (`index.ts` in the part folder or one folder below it), or a file that
   imports a name that starts the application (`NestFactory`, a
-  nest-commander command); a file that nothing imports and that imports a
-  composition root is an entry point and exempt too. The names are in
+  nest-commander command). The names are in
   `scripts/architecture/styles/index.toml`. The exemption holds while only
   tests and composition roots import the file. Once a file of a layer
   imports it, it could pass any import on, so it is judged like any file of
   its folder: `src/models/container.ts` imported by a model is a domain
   file, and a test helper imported by production code takes the layer of
-  the files beside it.
+  the files beside it. Importing a file named `main.*` does not exempt the
+  importing file either.
 
 - **Target layout.** For each part with a style, `init` lists the full layout
   of that style: one folder per layer and the building blocks of the domain

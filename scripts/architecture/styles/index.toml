@@ -70,7 +70,8 @@ files = ["main.*", "program.*", "startup.*", "bootstrap.*", "container.*", "comp
 # A file that imports one of these names starts the application, whatever its name
 # ("module:name"): a Nest bootstrap, a nest-commander CLI command.
 imports = ["@nestjs/core:NestFactory", "nest-commander:Command", "nest-commander:CommandRunner", "nest-commander:CommandFactory", "nest-commander:SubCommand"]
-# A file that nothing imports and that imports a composition root is an entry point too (a worker bootstrap).
+# A file that nothing imports and that imports a composition root is an entry point too (a worker bootstrap),
+# unless a rule sets its layer: then a file of a layer imports that composition root, and both are judged.
 
 [domain_blocks]
 # The building blocks of the domain tier. Each style's [target] says where they live.

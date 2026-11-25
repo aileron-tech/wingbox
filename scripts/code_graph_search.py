@@ -3007,8 +3007,8 @@ def _judged_names(g: CodeGraph) -> dict[str, ModuleLabel]:
     rule is stated for them. A file of a layer that imports one of them would reach every layer through
     it, so such a file is judged like any file of its folder instead: a composition root by the layer of
     its own label, a test by the layer of the files beside it. A file that only composition roots and
-    tests import keeps the exemption. Worked out once per graph, to a fixed point: a file that a judged
-    file imports is judged too.
+    tests (and files in no layer) import keeps the exemption. Worked out once per graph, to a fixed
+    point: a file that a judged file imports is judged too.
     """
     if g.gate.judged is not None:
         return g.gate.judged
@@ -3024,11 +3024,8 @@ def _judged_names(g: CodeGraph) -> dict[str, ModuleLabel]:
         for module, label in exempt.items():
             if module in judged or module in unplaced:
                 continue
-            if not any(
-                labels[other].part == label.part
-                and (other in judged or (other not in exempt and _layer_is_certain(g, other)))
-                for other in importers[module]
-            ):
+            if not any(other in judged or (other not in exempt and _layer_is_certain(g, other))
+                       for other in importers[module]):
                 continue
             if label.layer != "test":
                 as_label: Optional[ModuleLabel] = replace(label, root=False)
@@ -3053,7 +3050,8 @@ def _judged_label(g: CodeGraph, module_id: str) -> ModuleLabel:
 
 def _is_entry_root(g: CodeGraph, module_id: str) -> bool:
     """A composition root by its label that no file of a layer imports (`_judged_names`), or an entry point:
-    nothing imports it and it imports such a composition root."""
+    nothing imports it and it imports such a composition root. A file whose layer a rule sets is never
+    an entry point this way: the root it imports is judged, because a file of a layer imports it."""
     if module_id not in g.entry_roots:
         judged = _judged_names(g)
 
