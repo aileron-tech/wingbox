@@ -533,6 +533,8 @@ USED_THROUGH_A_BARREL = {
     "src/barrel.ts": 'export { default as Knob } from "./button";\n',
     "src/uses_named.ts": 'import Button from "./button";\nexport function make(): string { return new Button().render(); }\n',
     "src/uses_barrel.ts": 'import { Knob } from "./barrel";\nexport const k = new Knob();\n',
+    "src/other.ts": "export function alone(): number { return 1; }\n",
+    "src/uses_other.ts": 'import { alone } from "./other";\nexport const v = alone();\n',
 }
 
 
@@ -570,6 +572,20 @@ class IncompleteUsagesTest(TemporaryProject):
         self.assertNotIn(":incomplete", complete)
         self.assertIn(" (src/uses_barrel.ts import 1:10 call 2:22)\n", complete)
         self.assertNotIn("incomplete", json.loads(run(self.root, "usages", "src/button.ts::Button", "--json")[1])["usages"])
+
+    def test_the_mark_belongs_to_the_answer_not_to_the_loaded_graph(self) -> None:
+        """/* REQ-CS-9252: on one loaded graph (the MCP server keeps it between calls) the answer for a symbol
+        whose users all hold its name carries no `incomplete` mark, also after an answer for another symbol
+        that was incomplete. */"""
+        write_tree(self.root, USED_THROUGH_A_BARREL)
+        build(self.root)
+        os.environ["WINGBOX_POSITIONS_FILL"] = "0"
+        graph = code_graph_search.CodeGraph()
+        self.assertIsInstance(graph.load(str(self.root / ".wingbox" / "index.sexp"), str(self.root)), code_graph_search.MapLoadOk)
+        self.assertEqual("positions-pending", code_graph_search.usages_answer(graph, "src/button.ts::Button").incomplete)
+        second = code_graph_search.usages_answer(graph, "src/other.ts::alone")
+        self.assertEqual(("", ["src/uses_other.ts", "src/uses_other.ts"]), (second.incomplete, [site.file for site in second.sites]))
+        self.assertEqual("positions-pending", code_graph_search.usages_answer(graph, "src/button.ts::Button").incomplete)
 
     def test_a_missing_or_stale_use_file_is_said_in_the_answer(self) -> None:
         """/* REQ-CS-9251: when the use file of the graph is missing, or belongs to another build of the graph,

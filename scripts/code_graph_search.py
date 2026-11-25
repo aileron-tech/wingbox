@@ -705,11 +705,10 @@ class CodeGraph:
         self._includes: Optional[dict[str, set[str]]] = None
         self._uses_file_read = False
         # Why the use facts are not those of the use file ("" when they are): no-use-file, stale-use-file,
-        # unreadable-use-file. Whether positions were read for the files that hold one name only, and the
-        # modules an answer then lists without the positions they have.
+        # unreadable-use-file. And whether the positions last asked for (_positions_of) were read in the
+        # files that hold the name only.
         self._uses_gap = ""
         self._positions_pending = False
-        self._positions_missed: set[str] = set()
         self._map_path = ""
         self._module_files: dict[tuple[str, str], str] = {}  # (root, module) -> file, worked out once
         self.pmap: dict[str, str] = {}
@@ -773,7 +772,6 @@ class CodeGraph:
         self._uses_file_read = False
         self._uses_gap = ""
         self._positions_pending = False
-        self._positions_missed = set()
         self._map_path = path
         self._module_files = {}
         self.pmap = {}
@@ -1136,6 +1134,7 @@ class CodeGraph:
         positions, the builder reads only the files that hold the name (use_position_lines), which
         takes seconds where filling the whole file takes as long as a build, and starts that fill in
         a process of its own for the questions that follow."""
+        self._positions_pending = False
         lines = self._use_lines()
         header = self._uses_header
         if not header or ":positions no" not in header:
@@ -2515,13 +2514,15 @@ _USAGES_LIMIT = usages_forms.USAGES_LIMIT
 
 @dataclass(frozen=True)
 class Usage:
-    """One place that uses the symbol; line 0 when its language has no use positions."""
+    """One place that uses the symbol; line 0 when its language has no use positions, or when the positions
+    of its file are not read yet (pending)."""
 
     file: str
     module: str
     line: int
     column: int
     kind: str
+    pending: bool = False
 
 
 def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact]]:
@@ -2584,7 +2585,7 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
         users = g.use_pairs.get(target, set())
         for source in sorted(users - with_positions):
             found.append(Usage(_impact_file(g, source), source, 0, 0, "reference"))
-        g._positions_missed.update(usage.module for usage in found if not usage.line and usage.module in users)
+        found = [replace(usage, pending=True) if not usage.line and usage.module in users else usage for usage in found]
     return sorted(found, key=lambda usage: (usage.file, usage.line, usage.column, usage.kind)), unresolved
 
 
@@ -2694,7 +2695,7 @@ def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
         definition.line,
         tuple(usages_forms.Site(usage.file, usage.line, usage.column, usage.kind) for usage in usages),
         unresolved,
-        g._uses_gap or ("positions-pending" if g._positions_missed else ""),
+        g._uses_gap or ("positions-pending" if any(usage.pending for usage in usages) else ""),
     )
 
 
