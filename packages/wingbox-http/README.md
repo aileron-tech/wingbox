@@ -33,12 +33,12 @@ wingbox mcp --http --root /path/to/project --host 0.0.0.0 --port 8765 \
 
 | Option | Meaning |
 |---|---|
-| `--root DIR` | The repository to serve (default: the current directory) |
+| `--root DIR` | Where the search for the code graph starts (default: the current directory): the project that holds DIR is served, and the first log line names it |
 | `--host ADDRESS` | Address to listen on (default `127.0.0.1`). Any other address needs a token |
 | `--port N` | Port (default `8765`) |
 | `--token-file FILE` | Read the token from the first line of FILE instead of `WINGBOX_HTTP_TOKEN` |
 | `--tls-cert FILE`, `--tls-key FILE` | Serve HTTPS with this certificate and key |
-| `--allow-origin ORIGIN` | Also accept browser requests from this origin; repeatable |
+| `--allow-origin ORIGIN` | Also accept browser requests from this origin and let its pages read the answers (the preflight is answered, the answers carry `Access-Control-Allow-Origin`); repeatable |
 | `--build-missing` | Build the code graph in the background when the repository has none |
 
 Without arguments the server listens on `127.0.0.1` only and asks for no
@@ -77,13 +77,24 @@ file of the graph, runs a command you give it, or deletes anything.
 
 - The token is a shared secret of at least 32 characters, compared in constant
   time. It is taken from the environment or a file, never from the command
-  line, and is never logged.
+  line, and is never logged: an option the command does not know is refused by
+  its name, without repeating what was typed after it.
 - Listening on any address other than loopback is refused without a token.
 - Without `--tls-cert` and `--tls-key` the token travels unencrypted: use them,
   or put the port behind a TLS proxy or a private network.
 - A request with an `Origin` header that is not a loopback origin or one given
   with `--allow-origin` is answered 403, so a web page cannot call the server
-  through the browser of someone on the same network.
+  through the browser of someone on the same network. Only an origin given
+  with `--allow-origin` gets the headers that let a page read an answer
+  (`Access-Control-Allow-Origin`, the answer to the `OPTIONS` preflight). A
+  loopback origin passes without the option and gets none of them: that is
+  what keeps a page of another local site from reading a listener that asks
+  for no token.
+- At most 64 connections are open and 16 calls run or wait at a time; beyond
+  that the answer is 503. The header and the body of a request must arrive
+  within 30 seconds in all. A call that still waits for its turn when its
+  client closes the connection is not run; a running call cannot be
+  interrupted.
 
 ## Protocol
 

@@ -1528,12 +1528,22 @@ library, listens and answers, and opens no connection of its own.
 - Any other address is refused without a token of at least 32 characters, from
   `WINGBOX_HTTP_TOKEN` or `--token-file FILE`. Clients send it as
   `Authorization: Bearer <token>`; it is never read from the command line and
-  never logged.
+  never logged: an option the command does not know is refused by its name,
+  without repeating what was typed after it.
 - `--tls-cert` and `--tls-key` serve HTTPS. Without them the token travels
   unencrypted: keep the port inside a private network or behind a TLS proxy.
-- A browser request from a foreign origin is answered 403 (`--allow-origin`
-  adds one). `GET` and `DELETE` are answered 405: the server keeps no session
-  and opens no stream of its own.
+- A browser request from a foreign origin is answered 403. `--allow-origin
+  ORIGIN` adds one and lets its pages read the answers: its preflight
+  (`OPTIONS`) is answered, and the answers carry `Access-Control-Allow-Origin`.
+  Requests from loopback origins pass without the option but never get such a
+  header: its absence is what keeps a page of another local site from reading
+  a listener that asks for no token. `GET` and `DELETE` are answered 405: the
+  server keeps no session and opens no stream of its own.
+- What a client can hold is bounded, with or without a token: at most 64 open
+  connections and 16 calls running or waiting, beyond which the answer is 503;
+  the header and the body of a request must arrive within 30 seconds in all;
+  and a call that still waits for its turn when its client closes the
+  connection is not run. A call that is running cannot be interrupted.
 - A call that runs longer than a second, such as `build_graph` on a large
   repository, is answered as an event stream with a keep-alive line every ten
   seconds, so an idle timeout on the way does not cut it.

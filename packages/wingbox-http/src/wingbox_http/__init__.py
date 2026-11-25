@@ -42,14 +42,14 @@ def main(args: list[str], cwd: str, env: Optional[Mapping[str, str]] = None) -> 
         return 2
     scheme = "https" if chosen.tls is not None else "http"
     host = f"[{chosen.host}]" if ":" in chosen.host else chosen.host
-    print(f"[wingbox] MCP server {cli._version()} on {scheme}://{host}:{httpd.server_address[1]}{transport.ENDPOINT} for {chosen.root}", file=log)
-    if isinstance(chosen.access, transport.Open):
-        print("[wingbox] no token is set: any program on this machine can call the tools", file=log)
-    elif chosen.tls is None and not settings.is_loopback(chosen.host):
-        print("[wingbox] WARNING: no TLS: the token travels unencrypted; pass --tls-cert and --tls-key or put a TLS proxy in front", file=log)
     try:
         if chosen.build_missing:
             server.start_first_build()
+        print(f"[wingbox] MCP server {cli._version()} on {scheme}://{host}:{httpd.server_address[1]}{transport.ENDPOINT} for {mcp_server.serving(server)}", file=log)
+        if isinstance(chosen.access, transport.Open):
+            print("[wingbox] no token is set: any program on this machine can call the tools", file=log)
+        elif chosen.tls is None and not settings.is_loopback(chosen.host):
+            print("[wingbox] WARNING: no TLS: the token travels unencrypted; pass --tls-cert and --tls-key or put a TLS proxy in front", file=log)
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
