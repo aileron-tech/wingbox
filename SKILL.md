@@ -174,7 +174,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `usages <symbol>` | Every use of one symbol (`Name`, `<file>::Name`, `<file>::Class.method`) through re-exports and aliases, by file, `line:col` and kind (import, re-export, call, type, extends, reference; `unresolved-call` for a method call whose receiver type is not in sight); a name defined in several files lists the candidates | `usages src/billing/invoice.ts::Invoice` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
-| `impact <file\|id> [<file\|id> ...] [depth] [--only tests] [--summary]`, `impact --diff [ref]` | Blast radius of each file asked, one answer per file in the order given: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; a last argument that is a number is the depth; with several files the answer opens with `(graph :built ... :files N :stale N)`; a file that is not in the graph gives `(error no-match ...)` in its place and exit status 1; ends with the advice that concerns the file. `--only tests` keeps the test files (the tests to run) and, where the CMake files state targets and tests, adds `(affected-targets <file> <target> ...)` and `(affected-tests <file> <test> ...)`; `--summary` answers in a few lines for a file with hundreds of dependents: `(impact-summary <file> :direct N :total M ...)` with the counts by depth and kind, the folders, twenty files to look at first and the command of the complete list; `--diff [ref]` answers for the files a diff changes (default: the working tree against `HEAD`) and adds `(changed <file>::<name> :line N :used-by (...))` per changed function; a C or C++ source file is answered through its header, rows marked `:basis paired-header` | `impact src/billing/invoice.service.ts src/billing/tax.ts 2`, `impact --diff --only tests` |
+| `impact <file\|id> [<file\|id> ...] [depth] [--only tests] [--summary]`, `impact --diff [ref]` | Blast radius of each file asked, one answer per file in the order given: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; a last argument that is a number is the depth; with several files the answer opens with `(graph :built ... :files N :stale N)`; a file that is not in the graph gives `(error no-match ...)` in its place and exit status 1; ends with the advice that concerns the file. `--only tests` keeps the test files (the tests to run) and, where the CMake files state targets and tests, adds `(affected-targets <file> <target> ...)` and `(affected-tests <file> <test> ...)`, and `(unread-targets <file> <target> ...)` for the targets whose source list was not all read; `--summary` answers in a few lines for a file with hundreds of dependents: `(impact-summary <file> :direct N :total M ...)` with the counts by depth and kind, the folders, twenty files to look at first and the command of the complete list; `--diff [ref]` answers for the files a diff changes (default: the working tree against `HEAD`) and adds `(changed <file>::<name> :line N :used-by (...))` per changed function; a C or C++ source file is answered through its header, rows marked `:basis paired-header` | `impact src/billing/invoice.service.ts src/billing/tax.ts 2`, `impact --diff --only tests` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id> [--lines]` | Single module with edges; `--lines`: each `imports` and `refs` fact names the line of the statement it is read from (`:line 7`, `:lines 3 9`), in the file of its source module | `module operatives.controller --lines` |
 | `wingbox init --from-folders PART [--force] [--sexp]` | For a part no layer style fits (`.` is the repository, or a folder): read the graph and write the part into `.wingbox/config.yaml` with `style: declared` and `order:`, one layer per folder, lowest first; adds `/.wingbox/` to the project ignore file and prints the order and upward imports. Then `wingbox build .`, `wingbox boundaries`; `wingbox align --learn` accepts today's upward imports | `wingbox init --from-folders engine/src` |
@@ -464,16 +464,27 @@ it, and `data-flow ... :pipeline` when the call replaces its own argument
 (`data = stage.process(data)`), in the order of the configuration list. Names
 computed any other way stay unlinked.
 
-C# indexing follows namespaces and referenced local types; Java indexing
-follows packages, explicit imports, and referenced wildcard types. Unused
-namespace or wildcard imports do not create guessed edges. Go indexing resolves
-local module imports to the source files that make up the imported package.
+C# indexing follows namespaces and referenced local types: a name binds as the
+compiler searches (the own namespace, the usings written in it, each enclosing
+namespace, the global namespace, then the usings of the file and the `global
+using` directives of its project folder), a type declared `partial` in several
+files of one project links each of them, and a name that two namespaces of one
+step declare stays unlinked. Java indexing follows packages, explicit imports,
+and referenced wildcard types, also a class used only through static members,
+`::` or `@`, and the default package. Unused namespace or wildcard imports do
+not create guessed edges. Go indexing resolves local module imports to the
+source files that make up the imported package, and links the files of one
+package (its `_test.go` files too) through the package-level names they use
+of each other; a name that two files of the package declare stays unlinked,
+and a method called on a value links no file.
 Standard .NET `bin`/`obj` output and Go `vendor` dependencies are excluded.
 
 Ruby indexing discovers `.rb` and `.rake` files and resolves explicit requires,
 local constants, Rails application roots, statically configured autoload roots,
-project acronyms, concerns, associations, callbacks, jobs, mailers, and spec
-references. It never boots Rails. Reopened or otherwise ambiguous constants and
+project acronyms, concerns, associations (their names made singular by the
+rules of Rails), callbacks, jobs, mailers, and spec references; a scoped
+constant that resolves nowhere links the file of its scope. It never boots
+Rails. Reopened or otherwise ambiguous constants and
 polymorphic associations remain unlinked instead of producing guessed edges.
 Rails relation flags are preserved as `:association`, `:concern`, `:callback`,
 `:job`, `:mailer`, or `:spec` in the generated map.
@@ -483,7 +494,12 @@ classes through the `autoload.psr-4` and `autoload-dev.psr-4` prefixes of every
 `composer.json` in the repository, longest prefix first, and follows `use`
 aliases, inheritance, traits, Blade `@extends`/`@include*`/`@component`/`@each`
 directives, `<x-*>` components, Livewire aliases and registrations, Eloquent
-associations, events and jobs. `view()` references resolve through
+associations, events and jobs. Functions and constants declared outside a
+class are entities: `use function`, `use const`, a call of a function one file
+declares and `require __DIR__ . '/...'` are edges, and so are the classes a
+Blade template names (`@inject`, `@use`, a qualified name before `::`), the
+class of an `<x-*>` component, `$this->view()` and a route action written
+`'Controller@method'`. `view()` references resolve through
 `resources/views` and through view namespaces registered with `loadViewsFrom`
 or `View::addNamespace`. It never boots Laravel. Unresolved or ambiguous class,
 view and component names remain unlinked, and a duplicate class declaration
@@ -499,8 +515,11 @@ its header (`:basis paired-header`), and says `(impact-no-includers ...)` when
 it has no header: an empty list there does not mean nothing uses it. An include is
 looked for beside the including file (a quoted name), then in the include
 folders of `compile_commands.json` (at the root, in `build/` or one level
-below), without that file in the folders the CMake files name, and last, for
-a quoted name, as the one file whose path ends with the written name. A system
+below), without that file, or for a file that no entry of it covers, in the
+folders the CMake files name, and last, for a quoted name, as the one file
+whose path ends with the written name, the case of the letters not compared
+when nothing else answers. An include found without the folders a compiler
+was given is marked `inferred`. A system
 header, a library outside the repository and an ambiguous name create no
 edge. `wingbox usages <header>::<name>` lists the uses of a function, type,
 macro or enum in the files that include the header; a method called on an
@@ -512,7 +531,7 @@ Dart indexing discovers `.dart` files and reads each one with a tree-sitter
 Dart grammar: classes, mixins, enums, extension types, extensions, type
 aliases, top-level functions, the members of each type, and `extends`, `with`,
 `implements` and `on`. It resolves `import` and `export` directives and
-`part`/`part of` pairs. A `package:<name>/path.dart` URI whose name is the
+`part`/`part of` pairs, a `part of` that names its library included. A `package:<name>/path.dart` URI whose name is the
 top-level `name:` of a `pubspec.yaml` in the repository resolves to
 `lib/path.dart` of that package, the nearest owning pubspec first, so a Dart
 monorepo links across its packages. A relative URI resolves to the neighbouring

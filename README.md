@@ -514,7 +514,8 @@ Four options narrow or widen what `impact` answers:
   targets and tests, two more facts follow: `(affected-targets <file> <target>
   ...)`, the targets that compile the file or one of its listed dependents,
   and `(affected-tests <file> <test> ...)`, the names to give to `ctest -R`
-  (`targets` and `tests` in JSON); see
+  (`targets` and `tests` in JSON); `(unread-targets <file> <target> ...)`
+  names the targets whose source list was not all read; see
   [C and C++ dependency search](#c-and-c-dependency-search).
 - `wingbox impact --diff [ref]` answers for every file a diff changes (`ref`
   defaults to `HEAD`: the changes of the working tree) and adds one
@@ -1660,7 +1661,11 @@ builds a project-local constant index and follows conservative Zeitwerk naming
 rules, so changing a shared model, concern, service, job, or mailer can reveal
 its likely callers and affected specs.
 
-The default Ruby map does not boot Rails. Ambiguous reopened constants remain
+The default Ruby map does not boot Rails. An association name is made singular
+by the rules of Rails (`has_many :statuses` is `Status`, `:people` is
+`Person`), and a scoped constant that resolves nowhere links the file of its
+scope (`User::LIMIT`, with `LIMIT` defined in a concern that `User` includes,
+links `User`). Ambiguous reopened constants remain
 unlinked, polymorphic associations stay open, and external or dynamic Ruby
 calls are not guessed. This keeps blast-radius results useful without executing
 application code.
@@ -1673,7 +1678,13 @@ Wingbox reads every `composer.json` (the root manifest and a module's nested
 one) and merges `autoload.psr-4` with `autoload-dev.psr-4`, the longest matching
 prefix first, as Composer does. A `.php` file is indexed as PHP, a `.blade.php`
 file as Blade: classes, interfaces, traits, enums, methods, attributes, `use`
-aliases and grouped uses, `extends`, `implements` and trait use.
+aliases and grouped uses, `extends`, `implements` and trait use. A function
+and a constant declared outside a class are entities too: `use function` and
+`use const` link the file that declares them, a call links the one file that
+declares the function (the namespace of the calling file first, then the
+global functions, as PHP looks them up), and `require __DIR__ . '/path.php'`
+(also `include`, `_once`, `dirname(__FILE__)` and `dirname(__DIR__)`) links
+the required file.
 
 Laravel conventions become edges. `view('users.show')`, `View::make(...)` and
 `view()->make(...)` name the template; a namespaced `admin::nav` uses the
@@ -1685,7 +1696,14 @@ component resolves through `Livewire::component(...)` registrations, its flat
 or dotted alias under `App\Livewire` or a module's `Livewire` folder, or its
 `livewire.<alias>` template; a component class that extends
 `Livewire\Component` also links to the template named after it
-(`App\Livewire\Chat\FileUpload` to `livewire.chat.file-upload`).
+(`App\Livewire\Chat\FileUpload` to `livewire.chat.file-upload`). An `<x-alert>`
+tag also links the class `View\Components\Alert` of the application when it
+has one, and a template links the classes it names: `@inject('name',
+'Class')`, `@use('Class')` and a qualified `\App\Models\Post::` in its code.
+`$this->view('emails.welcome')` names the template of a mailable, and a route
+action written `'HomeController@index'` links the controller: the class of
+that full name, else the one class `Http\Controllers\HomeController` of the
+application.
 
 Eloquent associations create edges when the first argument is `X::class`
 (`belongsTo`, `hasOne`, `hasMany`, the through and morph variants);
@@ -1697,7 +1715,10 @@ are service, `app/Events` is domain, and tests are test.
 
 The map is conservative: a class name that no file declares, or that several
 files declare without a single PSR-4 owner, creates no edge, and so do an alias
-with several targets and a view in several view directories. IDE-helper stubs
+with several targets and a view in several view directories. A function that
+two files declare creates no edge either, nor does a constant used without
+`use const`, a `require` whose path is not built from `__DIR__`, or a route
+action in a group that sets another namespace. IDE-helper stubs
 such as `_ide_helper_models.php` do not shadow the real class: the file the
 PSR-4 map autoloads wins. A Livewire alias that the application registers
 dynamically, in a loop over a directory for example, is left unlinked unless it
@@ -1721,12 +1742,19 @@ this order:
    order. A header has no entry of its own and takes the folders of the entries
    of the nearest folder. CMake writes the file with
    `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`.
-2. Without that file, the folders the CMake files of the repository name
+2. Without that file, and for a file that no entry of it covers (a database
+   of part of the tree: no translation unit in the folder of the file or
+   above it), the folders the CMake files of the repository name
    literally in `target_include_directories` and `include_directories`
    (`${CMAKE_CURRENT_SOURCE_DIR}`, `${CMAKE_CURRENT_LIST_DIR}`,
-   `${PROJECT_SOURCE_DIR}`, `${CMAKE_SOURCE_DIR}` or a relative path).
+   `${PROJECT_SOURCE_DIR}`, `${CMAKE_SOURCE_DIR}` or a relative path), and
+   after them, for such a file, every include folder of the database.
 3. Last, for a quoted name, the one file of the repository whose path ends
-   with the written name.
+   with the written name, and then the one file the name names when the case
+   of its letters is not compared (`"Core.h"` for `core.h`).
+
+An include found by step 2 or 3 is marked `inferred` in the graph: no
+compiler was given that folder for that file.
 
 A name that none of these finds is no dependency: a system header, a library
 outside the repository, a path that two files end with. A name in angle
@@ -1791,9 +1819,16 @@ source file that a test includes after declaring mocks for it).
 
 Build targets and tests. A build also reads what the CMake files state
 literally: `add_executable` and `add_library` with their source files,
-`target_sources`, and `add_test` in both forms. The graph holds one
+`target_sources`, and `add_test` in both forms. A source list may name a
+variable that the same CMake file sets once, at its top level, with literal
+values (`set(CORE_SOURCES core.cpp detail.cpp)`): its values are read, and a
+variable with one value is read inside a path too (`${SRC_DIR}/core.cpp`).
+Nothing else is evaluated: a variable set twice, appended to, set inside
+`if()` or another block, set in another file or filled by `file(GLOB ...)`
+stays unread, and so does a generator expression. The graph holds one
 `(target <name> :kind executable|library :in "<CMake file>" <module> ...)`
-fact per target and one `(ctest <name> :target <target> ...)` or
+fact per target, with `:sources unread` after the kind when an argument of
+its source list was not read, and one `(ctest <name> :target <target> ...)` or
 `(ctest <name> :runs ... <module> ...)` fact per test: the target the test
 runs (its command, or a `$<TARGET_FILE:<target>>` among its words) and the
 files of the repository its command names, a Python script for one.
@@ -1815,10 +1850,15 @@ not followed: a test of an executable that links a library and includes none
 of its headers is not named for a change inside that library. With `--diff
 --only tests` each `(changed ...)` fact carries `:targets (...) :tests (...)`
 as well: those of the file and of the files that use the changed function,
-usually far fewer than those of every dependent of the file. Not read: a
+usually far fewer than those of every dependent of the file. The targets
+marked `:sources unread` that the answer does not already name follow in
+`(unread-targets <file> <target> ...)` (`unread_targets` in JSON, a line in
+the text): the file may be one of their sources, so they are named, not left
+out. Not read: a
 target or a test whose name is written with a variable, what a function or a
 macro of the project adds, a command kept in a variable, an alias and an
-imported target.
+imported target. A call inside a comment, the bracket form `#[[ ... ]]`
+included, is no call.
 
 What is not read: the preprocessor is not run, so every branch of an `#if` is
 read and an include whose name is a macro is skipped; a header that a build
@@ -1846,7 +1886,9 @@ project module, so neither creates an edge.
 A file is indexed from its own text: classes, mixins, enums, extension types,
 extensions, type aliases and functions, with the members of each class, its
 `extends`, `with`, `implements` and `on` types, and `class A = B with M`. A
-`part`/`part of` pair links the library and its parts in both directions. The
+`part`/`part of` pair links the library and its parts in both directions,
+also when the part names its library (`part of app.main;` links the file that
+declares `library app.main;`). The
 generated parts that `build_runner` writes (`*.g.dart`, `*.freezed.dart`) are
 never required to exist: an import or a part directive whose file is missing
 adds nothing, so a fresh clone builds before code generation has run, and a
