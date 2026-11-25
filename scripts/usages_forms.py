@@ -9,7 +9,10 @@ the order of their first use, each kind followed by its line:column positions:
 
 The head says the symbol, the kind of its definition and where it is defined (file:line). A kind
 without positions (`(lib/a.pas reference)`) is a file of a language that has no use positions.
-`:unresolved N` is said only when N method calls have a receiver whose type is not in sight. A name
+`:unresolved N` is said only when N method calls have a receiver whose type is not in sight.
+`:incomplete <reason>` is said when the list may miss uses: `positions-pending` (the positions of the use
+file are still being read; a file listed without a position uses the symbol), `no-use-file`,
+`stale-use-file`, `unreadable-use-file` (only the references the graph itself holds are listed). A name
 with several definitions gives `(usages-ambiguous Name :definitions 2 (<file>::Name cls 4) ...)`:
 each candidate is written as it can be asked.
 
@@ -48,6 +51,7 @@ class UsagesFound:
     line: int
     sites: tuple[Site, ...]   # sorted by file and position
     unresolved: int      # how many of the sites are unresolved calls
+    incomplete: str = ""  # why the list may miss uses: positions-pending, no-use-file, stale-use-file, unreadable-use-file
 
 
 @dataclass(frozen=True)
@@ -96,7 +100,8 @@ def usages_sexp(answer: UsagesAnswer) -> str:
         return "\n".join([f"(usages-ambiguous {atom(answer.symbol)} :definitions {len(rows)}"] + rows) + ")\n"
     uses, files = _counts(answer)
     head = (f"(usages {atom(answer.symbol)} {answer.kind} :at {atom(f'{answer.file}:{answer.line}')}"
-            f" :uses {uses} :files {files}" + (f" :unresolved {answer.unresolved}" if answer.unresolved else ""))
+            f" :uses {uses} :files {files}" + (f" :unresolved {answer.unresolved}" if answer.unresolved else "")
+            + (f" :incomplete {answer.incomplete}" if answer.incomplete else ""))
     by_file: dict[str, dict[str, list[str]]] = {}
     for site in answer.sites:
         kinds = by_file.setdefault(site.file, {})
@@ -122,9 +127,23 @@ def usages_json(answer: UsagesAnswer) -> dict[str, Any]:
     return {"usages": {
         "symbol": answer.symbol, "kind": answer.kind, "file": answer.file, "line": answer.line,
         "uses": uses, "files": files, "unresolved": answer.unresolved,
+        # Only when the list may miss uses: a complete answer keeps its keys.
+        **({"incomplete": answer.incomplete} if answer.incomplete else {}),
         "rows": [{"file": site.file, "line": site.line or None, "column": site.column if site.line else None, "kind": site.kind}
                  for site in answer.sites],
     }}
+
+
+_INCOMPLETE_TEXT = {
+    "positions-pending": "Not complete yet: the positions of the uses are still being read. A file listed without a "
+                         "position uses the symbol; ask again for every line and column.",
+    "no-use-file": "Not complete: the use file of the graph is missing, so only the references the graph itself "
+                   "holds are listed. Run wingbox build.",
+    "stale-use-file": "Not complete: the use file belongs to another build of the graph, so only the references the "
+                      "graph itself holds are listed. Run wingbox build.",
+    "unreadable-use-file": "Not complete: the use file of the graph cannot be read, so only the references the graph "
+                           "itself holds are listed. Run wingbox build.",
+}
 
 
 def usages_text(answer: UsagesAnswer, show_all: bool) -> str:
@@ -144,6 +163,8 @@ def usages_text(answer: UsagesAnswer, show_all: bool) -> str:
     if answer.unresolved:
         summary += f"; {_plural(answer.unresolved, 'unresolved call')} (receiver type not in sight)"
     lines.append(f"  {summary}")
+    if answer.incomplete:
+        lines.append(f"  {_INCOMPLETE_TEXT.get(answer.incomplete, answer.incomplete)}")
     if not answer.sites:
         return "\n".join(lines) + "\n"
     lines.append("")
@@ -154,7 +175,8 @@ def usages_text(answer: UsagesAnswer, show_all: bool) -> str:
             current = site.file
             lines.append(current)
         where = f"{site.line}:{site.column}" if site.line else "-"
-        detail = site.kind if site.line else "reference (no use positions for this language)"
+        pending = answer.incomplete == "positions-pending"
+        detail = site.kind if site.line else "use (position not read yet)" if pending else "reference (no use positions for this language)"
         lines.append(f"  {where}   {detail}")
     hidden = len(answer.sites) - len(shown)
     if hidden:

@@ -24,6 +24,7 @@ Pure functions: values in, text out.
 """
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Union
 
@@ -435,7 +436,8 @@ def summary_of(answer: ImpactFound) -> Summary:
     order = {"generated": 0, "entry-point": 1, "test": 2, "other": 3}
     ordered = sorted(rows, key=lambda item: (item[0], order[item[1].kind or "other"], item[1].file))
     first = tuple(line.file for _depth, line in ordered[:SUMMARY_FILES])
-    full = f"wingbox impact {answer.file} {answer.max_depth}" + (f" --only {answer.only}" if answer.only else "")
+    # A command line: a file name with a space, a bracket or another character a shell reads is quoted for it.
+    full = f"wingbox impact {shlex.quote(answer.file)} {answer.max_depth}" + (f" --only {answer.only}" if answer.only else "")
     return Summary(
         answer.file, answer.direct, answer.total, answer.max_depth, answer.only,
         tuple(len(level) for level in answer.levels), tuple((_KIND_KEYS[kind], counts[kind]) for kind in _KINDS),
@@ -457,7 +459,7 @@ def _summary_sexp(item: Summary) -> str:
     ]
     if item.affected is not None:
         out.append(f" (build :targets {len(item.affected.targets)} :tests {len(item.affected.tests)})")
-    out.append(f' (full "{item.full}"))')
+    out.append(f" (full {atom(item.full)}))")
     return "\n".join(out) + "\n"
 
 
