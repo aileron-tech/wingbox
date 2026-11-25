@@ -560,7 +560,9 @@ def outside_graph(g: CodeGraph, target: str) -> Optional[OutsideGraph]:
     path = portable.local_path(target)
     absolute = path if os.path.isabs(path) else os.path.join(g._root, path)
     if not os.path.isfile(absolute):
-        return None
+        absolute = os.path.join(os.getcwd(), path)   # as a file argument is read: from the root, then from here
+        if not os.path.isfile(absolute):
+            return None
     relative = portable.relative_posix(absolute, g._root)
     if relative is None:
         return None
@@ -1259,15 +1261,29 @@ class CodeGraph:
     def resolve_module(self, pattern: str) -> list[str]:
         """Find module IDs: exact > suffix > substring > case-insensitive substring.
 
+        An argument that names a file (see _names_file) is the module whose file it is, or nothing: only a
+        module pattern is matched by its parts. A suffix match starts at a path or name boundary (`core`
+        is app/core, not app/hardcore). An empty pattern matches nothing.
+
         Returns an empty list when nothing matches (caller should use
         _print_no_match to report the failure with suggestions).
         """
+        if not pattern.strip():
+            return []
+        exact = _exact_module(self, pattern)
+        if exact is not None:
+            return [exact]
+        if _names_file(self, pattern):
+            return []
         resolved_pattern = self.resolve_alias(pattern)
         if resolved_pattern in self.nodes:
             return [resolved_pattern]
         if pattern in self.nodes:
             return [pattern]
-        suffix_matches = [nid for nid in self.nodes if nid.endswith("/" + pattern) or nid.endswith(pattern)]
+        suffix_matches = [
+            nid for nid in self.nodes
+            if nid.endswith(pattern) and (len(nid) == len(pattern) or not (nid[-len(pattern) - 1] + pattern[0]).isalnum())
+        ]
         if suffix_matches:
             return sorted(suffix_matches)
         sub_matches = [nid for nid in self.nodes if pattern in nid]
@@ -1371,32 +1387,61 @@ def _collect_rdep_mods(g: CodeGraph, nid: str) -> dict[str, str]:
     return seen
 
 
+def _shortest_depths(start: str, hops: int, neighbours: Callable[[str], dict[str, str]]) -> dict[str, int]:
+    """module -> the fewest hops from start to it, for start (0) and every module within hops of it."""
+    depths = {start: 0}
+    frontier = [start]
+    for depth in range(1, hops + 1):
+        found: list[str] = []
+        for module in frontier:
+            for other in neighbours(module):
+                if other not in depths:
+                    depths[other] = depth
+                    found.append(other)
+        if not found:
+            break
+        frontier = found
+    return depths
+
+
+def _walk_tree(
+    start: str, visited: set[str], max_depth: int, first_depth: int,
+    emit: Callable[[int, str, str, bool], None], neighbours: Callable[[str], dict[str, str]],
+) -> None:
+    """Emit the tree below start, depth first, as `deps` and `rdeps` print it: every module within the depth
+    on one line at its shortest depth, where it is followed further. A module that is already listed and
+    comes up again is emitted with the cycle mark and not followed, as versions up to 0.13 printed it. A
+    module that a longer path reaches before its shortest one is not emitted there: followed at the longer
+    depth (or not at all, at the last depth) it hid the modules behind it."""
+    shortest = _shortest_depths(start, max_depth - first_depth + 1, neighbours)
+
+    def below(module: str, depth: int) -> None:
+        if depth > max_depth:
+            return
+        for other, edge_type in sorted(neighbours(module).items()):
+            listed = other in visited
+            if not listed and first_depth - 1 + shortest[other] < depth:
+                continue
+            emit(depth, edge_type, other, listed)
+            if not listed:
+                visited.add(other)
+                below(other, depth + 1)
+
+    below(start, first_depth)
+
+
 def _walk_deps(
     g: CodeGraph, nid: str, visited: set[str], max_depth: int, depth: int,
     emit: Callable[[int, str, str, bool], None],
 ) -> None:
-    if depth > max_depth:
-        return
-    for tgt, etype in sorted(_collect_dep_mods(g, nid).items()):
-        cycle = tgt in visited
-        emit(depth, etype, tgt, cycle)
-        if not cycle:
-            visited.add(tgt)
-            _walk_deps(g, tgt, visited, max_depth, depth + 1, emit)
+    _walk_tree(nid, visited, max_depth, depth, emit, functools.partial(_collect_dep_mods, g))
 
 
 def _walk_rdeps(
     g: CodeGraph, nid: str, visited: set[str], max_depth: int, depth: int,
     emit: Callable[[int, str, str, bool], None],
 ) -> None:
-    if depth > max_depth:
-        return
-    for src, etype in sorted(_collect_rdep_mods(g, nid).items()):
-        cycle = src in visited
-        emit(depth, etype, src, cycle)
-        if not cycle:
-            visited.add(src)
-            _walk_rdeps(g, src, visited, max_depth, depth + 1, emit)
+    _walk_tree(nid, visited, max_depth, depth, emit, functools.partial(_collect_rdep_mods, g))
 
 
 # ---------------------------------------------------------------------------
@@ -1502,11 +1547,12 @@ def _read_edge_lines(tokens: list[str]) -> tuple[int, ...]:
     return ()
 
 
-def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> None:
+def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> int:
+    """Print the module with its entities and edges; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     for nid in matches:
         node = g.nodes[nid]
@@ -1520,32 +1566,37 @@ def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> None:
         for e in sorted(g.edges_to.get(nid, []), key=lambda x: (x.etype, x.source)):
             if e.source.split("::")[0] != nid:
                 print(_edge_sexp(e, lines))
+    return 0
 
 
-def cmd_deps(g: CodeGraph, module_id: str, max_depth: int) -> None:
+def cmd_deps(g: CodeGraph, module_id: str, max_depth: int) -> int:
+    """Print the dependency tree of a module; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     for start in matches:
         visited: set[str] = {start}
         print(f"(deps-root {start} :lang {g.module_lang(start)})")
         _walk_deps(g, start, visited, max_depth, 1,
                    lambda d, et, tgt, cyc: print(f"(dep {start} {tgt} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+    return 0
 
 
-def cmd_rdeps(g: CodeGraph, module_id: str, max_depth: int) -> None:
+def cmd_rdeps(g: CodeGraph, module_id: str, max_depth: int) -> int:
+    """Print the tree of the modules that depend on a module; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     for start in matches:
         visited: set[str] = {start}
         print(f"(rdeps-root {start} :lang {g.module_lang(start)})")
         _walk_rdeps(g, start, visited, max_depth, 1,
                     lambda d, et, src, cyc: print(f"(rdep {start} {src} :lang {g.module_lang(src)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1934,28 +1985,72 @@ def _rerun(command: str) -> str:
 _FOLDER_MODULE_FILES = ("/index", "/__init__", "/mod")
 
 
-def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]:
-    """Modules named by an impact target.
+def _names_file(g: CodeGraph, target: str) -> bool:
+    """Whether an argument names a file and not a module pattern: its name has the extension of a programming
+    language, parsed or not (`operatives.service` has none), or a file of that path is on disk under the
+    graph root or the current folder (a document, a data file)."""
+    path = portable.local_path(target)
+    name = os.path.basename(path)
+    if source_kinds.parsed_language(name) is not None or source_kinds.not_parsed_language(name) is not None:
+        return True
+    return any(os.path.isfile(os.path.join(base, path)) for base in (g._root, os.getcwd()) if base)
 
-    A file that shares its name with another one is a module named by its full
-    path (src/tool.py next to src/tool.ts), so the path as given is tried first.
-    An index file is the module of its folder (src/lib/index.ts -> src/lib).
-    """
-    target = portable.local_path(target)
-    as_given = target.replace(os.sep, "/")
-    if g._root and os.path.isabs(target):
-        relative = portable.relative_posix(target, g._root)
-        if relative is not None:
-            as_given = relative
-    if as_given.startswith("./"):
-        as_given = as_given[2:]
-    if as_given in g.nodes:
-        return [as_given]
-    if pattern in g.nodes:
-        return [pattern]
-    for suffix in _FOLDER_MODULE_FILES:
-        if pattern.endswith(suffix) and pattern[: -len(suffix)] in g.nodes:
-            return [pattern[: -len(suffix)]]
+
+def _root_relative(g: CodeGraph, target: str, from_cwd: bool = False) -> Optional[str]:
+    """A path as given, written relative to the graph root with /: an absolute path, a path relative to the
+    root or, with from_cwd, a path relative to the current folder. None for a path outside the root."""
+    path = portable.local_path(target)
+    if from_cwd and not os.path.isabs(path):
+        path = os.path.join(os.getcwd(), path)
+    if os.path.isabs(path):
+        return portable.relative_posix(path, g._root) if g._root else None
+    relative = path.replace(os.sep, "/")
+    return relative[2:] if relative.startswith("./") else relative
+
+
+def _module_of_file(g: CodeGraph, relative: str) -> Optional[str]:
+    """The module whose module ID, or whose file, is the path given (relative to the graph root).
+
+    A file that shares its name with another one is a module named by its full path (src/tool.py next to
+    src/tool.ts), so the path as given is tried first. An index file is the module of its folder
+    (src/lib/index.ts -> src/lib). A module found by the path without its extension is taken only when its
+    file is that path (app/tool.cs is not the module of app/tool.rs) or is not on disk to compare."""
+    if relative in g.nodes:
+        return relative
+    stem = _target_to_module_pattern(relative, "")
+    if stem == relative:
+        return None
+    for module in (stem, *(stem[: -len(suffix)] for suffix in _FOLDER_MODULE_FILES if stem.endswith(suffix))):
+        if module not in g.nodes:
+            continue
+        file = _impact_file(g, module)
+        # The same file also when the path given reaches it through a link.
+        if file in (relative, module) or (g._root and file == portable.relative_posix(os.path.join(g._root, relative), g._root)):
+            return module
+    return None
+
+
+def _exact_module(g: CodeGraph, target: str) -> Optional[str]:
+    """The module an argument names exactly: by its module ID or by the path of its file, absolute or relative
+    to the graph root; the path of a file is then read relative to the current folder. None for anything
+    else: a file is never answered for another file whose name is like it."""
+    relative = _root_relative(g, target)
+    module = _module_of_file(g, relative) if relative else None
+    if module is None and _names_file(g, target):
+        from_cwd = _root_relative(g, target, from_cwd=True)
+        if from_cwd and from_cwd != relative:
+            module = _module_of_file(g, from_cwd)
+    return module
+
+
+def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]:
+    """Modules named by an impact target: the module a file path or a module ID names exactly (see
+    _exact_module); for an argument that names no file, the modules its pattern matches."""
+    exact = _exact_module(g, target)
+    if exact is not None:
+        return [exact]
+    if not target.strip() or _names_file(g, target):
+        return []
     return g.resolve_module(pattern)
 
 
@@ -2379,8 +2474,9 @@ def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact
     owner = symbol.split(".", 1)[0]
     if not separator:
         return symbol, g.definitions_named(owner)
-    pattern = _target_to_module_pattern(file_part, g._root)
-    modules = _impact_target_modules(g, file_part, pattern)[:1]
+    # A file path names one module; a module pattern may match several, and the definitions of all of them
+    # are found: the caller lists them as candidates instead of answering for the first.
+    modules = _usages_modules(g, file_part)
     found = [entity for module in modules for entity in g.definitions_named(owner) if entity.module == module]
     if found or not modules:
         return symbol, found
@@ -2389,10 +2485,15 @@ def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact
         entity
         for target, sites in g.uses_named(owner).items()
         if target.endswith(f"::{owner}")
-        and any(source == modules[0] and kind == "re-export" for source, _line, _column, kind in sites)
+        and any(source in modules and kind == "re-export" for source, _line, _column, kind in sites)
         for entity in g.definitions_named(owner)
         if entity.module == target.rsplit("::", 1)[0]
     ]
+
+
+def _usages_modules(g: CodeGraph, file_part: str) -> list[str]:
+    """The modules the part before `::` of a usages target names."""
+    return _impact_target_modules(g, file_part, _target_to_module_pattern(file_part, g._root))
 
 
 def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[Usage], int]:
@@ -2566,34 +2667,48 @@ def _print_usages_flat(g: CodeGraph, target: str, show_all: bool) -> None:
     print(f"(usages-summary {target_id} :uses {resolved_count} :files {files} :unresolved {unresolved})")
 
 
-def cmd_usages(g: CodeGraph, target: str, form: str = "sexp", show_all: bool = False) -> None:
+def _usages_status(g: CodeGraph, target: str, answer: usages_forms.UsagesAnswer) -> int:
+    """1 when the file a usages target names (`<file>::Name`) is not in the graph, else 0: an unknown bare
+    name is an answer, a file that is not there is not."""
+    file_part, separator, _symbol = target.rpartition("::")
+    missing = isinstance(answer, usages_forms.UsagesMissing) and bool(separator) and not _usages_modules(g, file_part)
+    return 1 if missing else 0
+
+
+def cmd_usages(g: CodeGraph, target: str, form: str = "sexp", show_all: bool = False) -> int:
     """Print every place that uses one symbol, by file, with line:column and the kind of use.
 
     form is "sexp" (the compact form agents read, complete), "json" (the same content), "human" (text, at
     most 200 uses unless show_all) or "flat" (the facts of versions up to 0.13, with the same limit). A bare
-    name defined in several files lists the candidates instead of mixing them.
+    name defined in several files lists the candidates instead of mixing them. Returns 1 when the file the
+    target names is not in the graph, but for "flat", which answers 0 as those versions did.
     """
     if form == "flat":
         _print_usages_flat(g, target, show_all)
-    elif form == "json":
-        print(fact_json.render(usages_forms.usages_json(usages_answer(g, target))))
+        return 0
+    answer = usages_answer(g, target)
+    if form == "json":
+        print(fact_json.render(usages_forms.usages_json(answer)))
     elif form == "human":
-        sys.stdout.write(usages_forms.usages_text(usages_answer(g, target), show_all))
+        sys.stdout.write(usages_forms.usages_text(answer, show_all))
     else:
-        sys.stdout.write(usages_forms.usages_sexp(usages_answer(g, target)))
+        sys.stdout.write(usages_forms.usages_sexp(answer))
+    return _usages_status(g, target, answer)
 
 
-def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> None:
+def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> int:
+    """Print the flow from an entity of a module; returns 1 when the module is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     start_mod = matches[0]
     full_id = f"{start_mod}::{entity_name}"
 
     visited: set[str] = set()
     _trace_flow(g, full_id, visited, 0)
+    return 0
 
 
 def _trace_flow(
@@ -2621,21 +2736,21 @@ def _trace_flow(
                 _trace_flow(g, edge.target, visited, depth + 1)
 
 
-def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None:
-    """Output the minimal set of files for a change boundary.
+def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> int:
+    """Output the minimal set of files for a change boundary; returns 1 when the name is not in the graph.
 
     When files_only is True, emit one bare file path per line instead of sexp.
     """
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     nid = matches[0]
     node = g.nodes.get(nid)
     if not node:
         print(f"(error no-node {_q(nid)})")
-        return
+        return 1
 
     target_file = g.module_to_file(nid)
     import_mods = _collect_dep_mods(g, nid)
@@ -2649,7 +2764,7 @@ def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None
             if path not in seen:
                 seen.add(path)
                 print(path)
-        return
+        return 0
 
     lang = g.module_lang(nid)
     print(f"(boundary {nid} :lang {lang} :file {_q(target_file)} :purpose {_q(node.purpose)})")
@@ -2660,20 +2775,21 @@ def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None
     for mod, etype in sorted(dependent_mods.items()):
         print(f"(boundary-rdep {nid} {mod} :lang {g.module_lang(mod)} :file {_q(g.module_to_file(mod))} :relation {etype})")
     print(f"(boundary-summary {nid} :total {1 + len(import_mods) + len(dependent_mods)} :deps {len(import_mods)} :rdeps {len(dependent_mods)})")
+    return 0
 
 
-def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
-    """Full architectural analysis of a module."""
+def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> int:
+    """Full architectural analysis of a module; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     nid = matches[0]
     node = g.nodes.get(nid)
     if not node:
         print(f"(error no-node {_q(nid)})")
-        return
+        return 1
 
     target_file = _impact_file(g, nid)
     ents = g.entities.get(nid, [])
@@ -2740,6 +2856,7 @@ def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
                   ref_targets, data_flow_targets, call_targets,
                   importers, referencers, key_entity_usage,
                   boundary_files, show_all)
+    return 0
 
 
 def _analyze_sexp(
@@ -4071,11 +4188,46 @@ def cmd_find_callchain(g: CodeGraph, src_fn: str, tgt_fn: str, max_depth: int) -
     print(f"(callchain-none {_q(src_fn)} -> {_q(tgt_fn)} :max-depth {max_depth})")
 
 
+_BRACKET_LINE = ("(", ")", "[", "]", "{", "}")
+
+
+def _indentation(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def _method_at(lines: list[str], entity: EntityFact, last: int, index: int) -> Optional[str]:
+    """Which definition of a class holds the line at index (0-based), read from the text of the class, lines
+    entity.line to last: `Class.method` for a line of a method, `Class` for a line of the class that is in no
+    method, None for a line that is not in the class (its own line, its closing bracket, code after it).
+
+    The graph names the methods of a class without their lines, so the lines are found here: the members of
+    a class are the lines at the smallest indentation below that of its first line, and a method starts at
+    the member line that holds its name. A member line that is only a bracket (the end of a signature over
+    several lines, a brace on a line of its own) belongs to what is above it."""
+    first = entity.line - 1
+    own = _indentation(lines[first])
+    deeper = [_indentation(line) for line in lines[first + 1:last] if line.strip() and _indentation(line) > own]
+    if deeper and _indentation(lines[index]) <= own:
+        return None
+    member = min(deeper) if deeper else own
+    for above in range(index, first, -1):
+        line = lines[above]
+        if not line.strip() or _indentation(line) != member:
+            continue
+        for method in entity.methods:
+            if re.search(rf"(?<![\w$]){re.escape(method)}(?![\w$])", line):
+                return f"{entity.name}.{method}"
+        if not line.lstrip().startswith(_BRACKET_LINE):
+            break
+    return entity.name
+
+
 def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
     """Search function bodies using the supported linear pattern grammar.
 
-    For each function in the code graph, reads the source file and searches
-    the function body (from definition line to next entity or EOF).
+    For each function and each class with methods of the code graph, reads the source file and searches the
+    body (from the definition line to the next definition of the file, or to its end). A line of a method is
+    named `<module>::<Class>.<method>` (see _method_at). Only files of the graph are read (see _source_file).
     """
     parsed_pattern = parse_search_pattern(pattern)
     if isinstance(parsed_pattern, SearchPatternErr):
@@ -4083,50 +4235,37 @@ def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
         return
     results: list[tuple[str, str, int, str]] = []  # (module::fn, file, match_line, match_text)
 
-    # Group entities by file for efficient reading
-    file_entities: dict[str, list[tuple[str, EntityFact]]] = {}
-    for mod, ent_list in g.entities.items():
-        fpath = g.module_to_file(mod)
-        if fpath == mod:
-            continue  # file not found on disk
-        for ent in ent_list:
-            if ent.kind == "fn":
-                file_entities.setdefault(fpath, []).append((mod, ent))
+    def searched(entity: EntityFact) -> bool:
+        return entity.kind == "fn" or (entity.kind in ("cls", "mod") and bool(entity.methods))
 
-    for fpath, fn_list in sorted(file_entities.items()):
-        if not os.path.isfile(fpath):
-            continue
+    files = sorted((g.module_to_file(mod), mod) for mod, ent_list in g.entities.items() if any(map(searched, ent_list)))
+    for fpath, mod in files:
+        located = _source_file(g, mod)
+        if located is None:
+            continue  # not on disk, or not a file that may be read
         try:
-            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
+            lines = _read_source_lines(located[0])
         except OSError as error:
             print(
                 f"(error source-read-failed {_q(fpath)} {_q(str(error))})"
             )
             continue
 
-        # Sort functions by line number to determine body ranges
-        sorted_fns = sorted(fn_list, key=lambda x: x[1].line)
-
-        for idx, (mod, ent) in enumerate(sorted_fns):
+        # Sort the definitions by line number to determine body ranges
+        ordered = sorted(g.entities[mod], key=lambda entity: entity.line)
+        for idx, ent in enumerate(ordered):
             start = ent.line - 1  # 0-indexed
-            if start < 0 or start >= len(lines):
+            if not searched(ent) or start < 0 or start >= len(lines):
                 continue
-            # End at next entity's line or +100 lines, whichever is smaller
-            if idx + 1 < len(sorted_fns):
-                end = min(sorted_fns[idx + 1][1].line - 1, start + 100, len(lines))
-            else:
-                end = min(start + 100, len(lines))
-
+            # End at the next definition of the file, or at its end
+            end = min(ordered[idx + 1].line - 1, len(lines)) if idx + 1 < len(ordered) else len(lines)
             for line_idx in range(start, end):
                 line = lines[line_idx]
-                if search_pattern_matches(parsed_pattern.value, line):
-                    results.append((
-                        f"{mod}::{ent.name}",
-                        fpath,
-                        line_idx + 1,
-                        line.rstrip(),
-                    ))
+                if not search_pattern_matches(parsed_pattern.value, line):
+                    continue
+                holder = ent.name if ent.kind == "fn" else _method_at(lines, ent, end, line_idx)
+                if holder is not None:
+                    results.append((f"{mod}::{holder}", fpath, line_idx + 1, _one_line(line.rstrip())))
 
     if not results:
         print(f"(grep-functions-empty {_q(pattern)})")
@@ -4225,6 +4364,28 @@ def _source_file(g: CodeGraph, module: str) -> Optional[tuple[str, str]]:
     return real, relative.replace(os.sep, "/")
 
 
+# The characters besides the line feed at which str.splitlines ends a line: a carriage return, a vertical
+# tab, a form feed, the file, group and record separators, NEL, the line and the paragraph separator.
+_LINE_LIKE = str.maketrans({character: " " for character in "\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"})
+
+
+def _read_source_lines(path: str) -> list[str]:
+    """The lines of a source file as the graph numbers them: a line ends at a line feed, and a carriage
+    return before it belongs to the line end. Nothing else ends a line: the parsers count line feeds, so a
+    form feed inside a line must not shift the numbers of the lines below it."""
+    with open(path, "r", encoding="utf-8", errors="replace", newline="") as handle:
+        lines = handle.read().split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return [line[:-1] if line.endswith("\r") else line for line in lines]
+
+
+def _one_line(text: str) -> str:
+    """The text of a source line as an answer prints it: a character at which a reader of lines would end the
+    line (see _LINE_LIKE) is a space, so the answer keeps one fact a line."""
+    return text.translate(_LINE_LIKE)
+
+
 def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Optional[int] = None) -> None:
     """The lines of one source file of the graph, or of one definition in it, numbered and quoted.
 
@@ -4247,8 +4408,7 @@ def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Opt
         return
     real, shown_path = located
     try:
-        with open(real, "r", encoding="utf-8", errors="replace") as handle:
-            text_lines = handle.read().splitlines()
+        text_lines = _read_source_lines(real)
     except OSError as error:
         print(f"(error source-read-failed {_q(shown_path)} {_q(error.strerror or type(error).__name__)})")
         return
@@ -4269,7 +4429,7 @@ def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Opt
     for number in range(start, min(end, start + SOURCE_LINE_LIMIT - 1) + 1):
         text = text_lines[number - 1]
         cut = f" :cut {len(text)}" if len(text) > SOURCE_LINE_CHARS else ""
-        line = f'(line {number} "{_escaped(text[:SOURCE_LINE_CHARS])}"{cut})'
+        line = f'(line {number} "{_escaped(_one_line(text[:SOURCE_LINE_CHARS]))}"{cut})'
         if printed and characters + len(line) > SOURCE_CHAR_LIMIT:
             break
         printed.append(line)
@@ -4357,8 +4517,7 @@ def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, fir
             continue
         read.add(real)
         try:
-            with open(real, "r", encoding="utf-8", errors="replace") as handle:
-                text_lines = handle.read().splitlines()
+            text_lines = _read_source_lines(real)
         except OSError:
             unread += 1
             continue
@@ -4370,7 +4529,7 @@ def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, fir
             if matches < first or full:
                 continue
             cut = f" :cut {len(text)}" if len(text) > GREP_LINE_CHARS else ""
-            line = f'(match {_q(shown_path)} {number} "{_escaped(text[:GREP_LINE_CHARS])}"{cut})'
+            line = f'(match {_q(shown_path)} {number} "{_escaped(_one_line(text[:GREP_LINE_CHARS]))}"{cut})'
             if len(printed) == GREP_MATCH_LIMIT or (printed and characters + len(line) > GREP_CHAR_LIMIT):
                 full = True
                 continue
@@ -4961,24 +5120,32 @@ class _SchemeEval:
     def _collect_deps(
         self, nid: str, visited: set[str], max_depth: int, depth: int, result: set[str],
     ) -> None:
-        if depth > max_depth:
-            return
-        for tgt in _collect_dep_mods(self._g, nid):
-            result.add(tgt)
-            if tgt not in visited:
-                visited.add(tgt)
-                self._collect_deps(tgt, visited, max_depth, depth + 1, result)
+        # Level by level: a module is followed from the nearest depth that reaches it, so none within the
+        # depth is left out because a longer path came first.
+        frontier = [nid]
+        for _depth in range(depth, max_depth + 1):
+            found: list[str] = []
+            for module in frontier:
+                for tgt in _collect_dep_mods(self._g, module):
+                    result.add(tgt)
+                    if tgt not in visited:
+                        visited.add(tgt)
+                        found.append(tgt)
+            frontier = found
 
     def _collect_rdeps(
         self, nid: str, visited: set[str], max_depth: int, depth: int, result: set[str],
     ) -> None:
-        if depth > max_depth:
-            return
-        for src in _collect_rdep_mods(self._g, nid):
-            result.add(src)
-            if src not in visited:
-                visited.add(src)
-                self._collect_rdeps(src, visited, max_depth, depth + 1, result)
+        frontier = [nid]
+        for _depth in range(depth, max_depth + 1):
+            found: list[str] = []
+            for module in frontier:
+                for src in _collect_rdep_mods(self._g, module):
+                    result.add(src)
+                    if src not in visited:
+                        visited.add(src)
+                        found.append(src)
+            frontier = found
 
     @staticmethod
     def _to_set(val: object) -> set[str]:
@@ -5155,6 +5322,9 @@ def _extract_query_paths(
 def _validate_cli_command(args: list[str]) -> Optional[str]:
     if not args:
         return None
+    # `grep` and `query` say what is wrong with an empty text in their own words.
+    if args[0] not in ("grep", "query") and any(not argument.strip() for argument in args[1:]):
+        return f"{args[0]}: an argument is empty"
     pattern_commands = {
         "entity",
         "search",
@@ -5377,9 +5547,9 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
         return cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only), None
     if cmd == "usages" and len(args) >= 2:
         if form == "json":
-            return 0, usages_forms.usages_json(usages_answer(g, args[1]))
-        cmd_usages(g, args[1], form, show_all)
-        return 0, None
+            answer = usages_answer(g, args[1])
+            return _usages_status(g, args[1], answer), usages_forms.usages_json(answer)
+        return cmd_usages(g, args[1], form, show_all), None
     return _run_fact_command(g, args, sexp_path, show_all, strict), None
 
 
@@ -5387,11 +5557,11 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
     """Run a command whose answer is a list of fact lines; they are printed as they are found."""
     cmd = args[0]
     if cmd == "analyze" and len(args) >= 2:
-        cmd_analyze(g, args[1], show_all=show_all)
+        return cmd_analyze(g, args[1], show_all=show_all)
     elif cmd == "boundary" and len(args) >= 2:
         files_only = "--files-only" in args
         module_arg = [a for a in args[1:] if a != "--files-only"][0]
-        cmd_boundary(g, module_arg, files_only=files_only)
+        return cmd_boundary(g, module_arg, files_only=files_only)
     elif cmd == "quick" and len(args) >= 2:
         cmd_quick(g, args[1], sexp_path, show_all=show_all)
     elif cmd == "module" and len(args) >= 2:
@@ -5399,18 +5569,18 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         if not module_args:
             print(f"(error invalid-argument {_q('module requires a module ID')})")
             return 2
-        cmd_module(g, module_args[0], lines="--lines" in args)
+        return cmd_module(g, module_args[0], lines="--lines" in args)
     elif cmd == "deps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
-        cmd_deps(g, args[1], depth)
+        return cmd_deps(g, args[1], depth)
     elif cmd == "rdeps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
-        cmd_rdeps(g, args[1], depth)
+        return cmd_rdeps(g, args[1], depth)
     elif cmd == "entity" and len(args) >= 2:
         entity_args = [argument for argument in args[1:] if argument != "--positions"]
         cmd_entity(g, entity_args[0], positions="--positions" in args)
     elif cmd == "flow" and len(args) >= 3:
-        cmd_flow(g, args[1], args[2])
+        return cmd_flow(g, args[1], args[2])
     elif cmd == "search" and len(args) >= 2:
         search_args = [argument for argument in args[1:] if argument != "--lines"]
         if not search_args:
