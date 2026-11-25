@@ -690,7 +690,7 @@ class TypeScriptReaderTests(unittest.TestCase):
         self.assertEqual({"a", "b", "c", "d", "e"}, {target for _source, target in _imports(edges, "broken")})
         self.assertEqual({"a", "b", "c"}, {target for _source, target in _imports(edges, "conflict")})
         self.assertEqual({"a"}, {target for _source, target in _imports(edges, "whole")})
-        self.assertEqual(2, errors.count("WARNING: syntax error in"))
+        self.assertEqual(2, errors.count("WARNING: the TypeScript parser could not read all of"))
         self.assertNotIn("whole.ts", errors)
 
     def test_the_build_names_the_files_left_out_as_minified(self) -> None:

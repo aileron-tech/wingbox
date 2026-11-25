@@ -378,14 +378,16 @@ def parse_typescript_treesitter(
 
     occurrences = _ts_dependency_occurrences(root)
     if root.has_error:
-        # What stands after a syntax error is not in the tree: the import and re-export statements of
-        # the file are read from its text as well, so that one unclosed bracket costs no dependency.
+        # What stands after a place the grammar cannot read is not in the tree: the import and re-export
+        # statements of the file are read from its text as well, so that it costs no dependency. The cause
+        # is more often syntax the grammar does not know yet (`export type * from`, a tagged template with
+        # type arguments) than an error in the file, so the message does not call it one.
         known = {specifier for specifier, _form, _line in occurrences}
         occurrences.extend((specifier, "value", line) for specifier, line in _text_static_imports(root, content)
                            if specifier not in known)
         print(
-            f"[code-graph] WARNING: syntax error in {path}: its imports are read from the text as well; "
-            "a declaration after the error may be missing",
+            f"[code-graph] WARNING: the TypeScript parser could not read all of {path}: its imports are read "
+            "from the text as well; a declaration after the part it could not read may be missing",
             file=sys.stderr,
         )
     imports = _ts_dependency_specifiers(occurrences)
