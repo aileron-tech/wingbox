@@ -911,7 +911,11 @@ def _learn_command(args: list[str], cwd: str) -> int:
         return found
 
     if apply_from is not None:
-        text = sys.stdin.read() if apply_from == "-" else open(os.path.join(cwd, apply_from), encoding="utf-8").read()
+        try:
+            text = sys.stdin.read() if apply_from == "-" else Path(os.path.join(cwd, apply_from)).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            print(f"[wingbox] ERROR: cannot read the answer {apply_from}: {error}", file=sys.stderr)
+            return 2
         parts = {p.path: (p.style, frozenset(top_folders(by_path[p.path].files)) | frozenset(folder_paths(by_path[p.path].files)))
                  for p in styled}
         answer = agent_learn.parse_answer(text, parts, library)

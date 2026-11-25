@@ -347,6 +347,19 @@ class ConfigWriteTest(ProjectCase):
         self.assertIsInstance(agent_learn.parse_answer('(layer . zone service :because "read\torder.ts")\n', parts, LIBRARY),
                               agent_learn.AnswerOk)
 
+    def test_an_answer_file_that_cannot_be_read_is_an_error(self) -> None:
+        """/* REQ-LEARN-9445: `wingbox learn --apply FILE` with a file that does not exist, or that is not UTF-8, names the file and the reason on stderr and exits 2; nothing is saved. */"""
+        _layered(self.root)
+        self.assertEqual(0, self.run_cli("build", str(self.root))[0])
+        status, out, err = self.run_cli("learn", "--apply", "nosuch.sexp", "--sexp")
+        self.assertEqual(2, status, out + err)
+        self.assertIn("ERROR: cannot read the answer nosuch.sexp: ", err)
+        (self.root / "answer.sexp").write_bytes(b'(style . caf\xe9)\n')
+        status, out, err = self.run_cli("learn", "--apply", "answer.sexp", "--sexp")
+        self.assertEqual(2, status, out + err)
+        self.assertIn("ERROR: cannot read the answer answer.sexp: ", err)
+        self.assertFalse((self.root / ".wingbox" / "learned.sexp").exists())
+
     def test_a_style_change_through_learn_gives_a_config_the_build_reads(self) -> None:
         """/* REQ-LEARN-9416: `wingbox learn --apply` with `(style . hexagonal)` on a part whose config lists the layers of another style writes the folders the new style places, not the old `layers:` block: the config passes the check, the build after it succeeds and the exit status is 0. */"""
         _layered(self.root)
