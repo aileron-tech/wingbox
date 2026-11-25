@@ -332,6 +332,20 @@ def _raw_post(message, extra: bytes = b"") -> bytes:
             + b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\nConnection: close\r\n\r\n" + body)
 
 
+def _until(condition, seconds: float = 15.0) -> bool:
+    """Wait until condition() holds; False when it does not within the time."""
+    deadline = time.monotonic() + seconds
+    while not condition():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.02)
+    return True
+
+
+def _handler_threads() -> int:
+    return sum(1 for thread in threading.enumerate() if "process_request_thread" in thread.name)
+
+
 def _status(answer: bytes) -> int:
     return int(answer.split(b" ", 2)[1]) if answer.startswith(b"HTTP/1.1 ") else 0
 
@@ -478,23 +492,21 @@ class ListenerTest(unittest.TestCase):
         reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
         self.assertEqual(64, listener.Limits().connections)
         with Running(lambda line: reply, limits={"connections": 3}) as running:
-            threads = threading.active_count()
+            threads = _handler_threads()   # of listeners of earlier tests; they can only become fewer
             held = [running.idle() for _ in range(3)]
             try:
-                time.sleep(0.3)
-                self.assertEqual(3, threading.active_count() - threads)
+                self.assertTrue(_until(lambda: running.httpd._open == 3), running.httpd._open)
                 for _ in range(5):
                     with running.idle() as extra:
                         answer = _read_all(extra)
                     self.assertEqual(503, _status(answer), answer[:120])
                     self.assertIn(b"Connection: close", answer)
-                self.assertEqual(3, threading.active_count() - threads)
+                self.assertEqual(3, running.httpd._open)
+                self.assertLessEqual(_handler_threads() - threads, 3)
             finally:
                 for client in held:
                     client.close()
-            deadline = time.monotonic() + 10
-            while threading.active_count() > threads and time.monotonic() < deadline:
-                time.sleep(0.05)
+            self.assertTrue(_until(lambda: running.httpd._open == 0), running.httpd._open)
             status, _, body = running.post(_message("ping"))
             self.assertEqual((200, reply), (status, json.loads(body)))
 
@@ -548,9 +560,9 @@ class ListenerTest(unittest.TestCase):
                 answers[number] = running.post(_message("ping", number), {"Accept": "application/json"})
 
             taken = [threading.Thread(target=call, args=(number,)) for number in (1, 2)]
-            for thread in taken:
+            for count, thread in enumerate(taken, start=1):
                 thread.start()
-                time.sleep(0.3)
+                self.assertTrue(_until(lambda: running.httpd._taken == count), running.httpd._taken)   # one runs, one waits
             answer = running.raw(_raw_post(_message("ping", 3)))
             self.assertEqual(503, _status(answer), answer[:200])
             self.assertIn(b"Retry-After: ", answer)
@@ -578,13 +590,15 @@ class ListenerTest(unittest.TestCase):
         with Running(handle) as running:
             first = threading.Thread(target=running.post, args=(_message("tools/call", 1, {"name": "slow"}), {"Accept": "application/json"}))
             first.start()
-            time.sleep(0.3)
+            self.assertTrue(_until(lambda: seen == [1]), seen)   # the first call runs; every later one waits for it
             for number in (2, 3, 4):
                 with running.idle() as client:
                     accept = b"" if number == 2 else b"Accept: application/json, text/event-stream\r\n"
                     client.sendall(_raw_post(_message("tools/call", number, {"name": "abandoned"}), accept))
-                    time.sleep(0.2)
-            time.sleep(listener.WATCH_SECONDS * 3 + 1.2)   # every waiting connection has looked at its client
+                    self.assertTrue(_until(lambda: running.httpd._taken == 2), running.httpd._taken)   # it is in the queue
+                # the client is gone: its connection sees that within a few looks and takes the call out
+                self.assertTrue(_until(lambda: running.httpd._taken == 1), running.httpd._taken)
+            self.assertTrue(_until(lambda: running.log.getvalue().count("left before the answer") == 3), running.log.getvalue())
             release.set()
             first.join(timeout=20)
             status, _, body = running.post(_message("ping", 9))
