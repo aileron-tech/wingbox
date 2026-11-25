@@ -242,29 +242,35 @@ def _declaration_info(node: Node, namespace: str) -> _DeclarationInfo | None:
 def _collect_declarations(root: Node) -> list[_DeclarationInfo]:
     declarations: list[_DeclarationInfo] = []
 
-    def scan(children: tuple[Node, ...], namespace: str) -> None:
-        current = namespace
-        for node in children:
-            if node.type == "namespace_definition":
-                name = _namespace_name(node)
-                body = _namespace_body(node)
-                if body is not None:
-                    scan(body.named_children, name)
-                    current = ""
-                else:
-                    current = name
-                continue
-            if node.type in _DECLARATION_NODES:
-                info = _declaration_info(node, current)
-                if info is not None:
-                    declarations.append(info)
-                scan(node.named_children, current)
-                continue
-            if node.type in ("anonymous_class", "namespace_use_declaration"):
-                continue
-            scan(node.named_children, current)
-
-    scan(root.named_children, "")
+    # One frame per list of siblings: [the siblings, the index of the next one, the namespace in force].
+    # A stack of frames in place of recursion: an expression of a thousand operands is a thousand levels deep.
+    frames: list[list] = [[root.named_children, 0, ""]]
+    while frames:
+        frame = frames[-1]
+        children, index, current = frame
+        if index >= len(children):
+            frames.pop()
+            continue
+        frame[1] = index + 1
+        node = children[index]
+        if node.type == "namespace_definition":
+            name = _namespace_name(node)
+            body = _namespace_body(node)
+            if body is not None:
+                frame[2] = ""
+                frames.append([body.named_children, 0, name])
+            else:
+                frame[2] = name
+            continue
+        if node.type in _DECLARATION_NODES:
+            info = _declaration_info(node, current)
+            if info is not None:
+                declarations.append(info)
+            frames.append([node.named_children, 0, current])
+            continue
+        if node.type in ("anonymous_class", "namespace_use_declaration"):
+            continue
+        frames.append([node.named_children, 0, current])
     declarations.sort(key=lambda info: info.declaration.line)
     return declarations
 
@@ -507,7 +513,8 @@ def _walk_dependencies(
         if name:
             add_relation_target(f"php-symbol:{name}", relation)
 
-    def visit(node: Node, in_declaration: bool) -> None:
+    def visit(node: Node, in_declaration: bool) -> bool | None:
+        """Read one node; the answer is `in_declaration` for its children, None when they are not read."""
         node_type = node.type
         child_in_declaration = in_declaration
         if node_type in _DECLARATION_NODES:
@@ -516,7 +523,7 @@ def _walk_dependencies(
             child_in_declaration = False
 
         if node_type == "namespace_use_declaration":
-            return
+            return None
 
         if node_type in ("base_clause", "class_interface_clause"):
             for child in node.named_children:
@@ -631,10 +638,15 @@ def _walk_dependencies(
                 if right is not None and right.type in _NAME_NODES:
                     add_reference(node_text(right).strip())
 
-        for child in node.named_children:
-            visit(child, child_in_declaration)
+        return child_in_declaration
 
-    visit(root, False)
+    # In document order, with a stack in place of recursion (see _collect_declarations).
+    pending: list[tuple[Node, bool]] = [(root, False)]
+    while pending:
+        node, in_declaration = pending.pop()
+        child_in_declaration = visit(node, in_declaration)
+        if child_in_declaration is not None:
+            pending.extend((child, child_in_declaration) for child in reversed(node.named_children))
     return imports, relations
 
 

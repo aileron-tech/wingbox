@@ -248,9 +248,12 @@ def _entity(name: str, kind: str, node: Node, methods: list[str] | None = None, 
 def _members(body: Node) -> list[Node]:
     """The member declarations of a class body, those inside template and conditional blocks included."""
     members: list[Node] = []
-    for child in body.named_children:
+    # A stack in place of recursion: a chain of a thousand `#elif` is a thousand blocks deep.
+    pending = list(reversed(body.named_children))
+    while pending:
+        child = pending.pop()
         if child.type in _BLOCKS:
-            members.extend(_members(child))
+            pending.extend(reversed(child.named_children))
         else:
             members.append(child)
     return members
@@ -456,17 +459,21 @@ class _Collector:
             self.entities.append(Entity(name=entity_name, kind="function", line=line, methods=[], decorators=[], bases=[]))
 
     def scope(self, node: Node) -> None:
-        """The declarations of a file, a namespace or a block."""
-        for child in node.named_children:
+        """The declarations of a file, a namespace or a block. The blocks inside (a namespace, a branch of
+        a conditional) are read in place from a stack of (parent, declaration), not by recursion: a chain
+        of a thousand `#elif` is a thousand blocks deep."""
+        pending = [(node, child) for child in reversed(node.named_children)]
+        while pending:
+            node, child = pending.pop()
             kind = child.type
             if kind == "namespace_definition":
                 body = child.child_by_field_name("body")
                 if body is not None:
-                    self.scope(body)
+                    pending.extend((body, inner) for inner in reversed(body.named_children))
             elif kind in _BLOCKS or kind == "labeled_statement":
                 # labeled_statement: `public:` with the declaration after it, in a class the grammar took
                 # for a function (macro_record).
-                self.scope(child)
+                pending.extend((child, inner) for inner in reversed(child.named_children))
             elif kind in _RECORDS or kind == "enum_specifier":
                 self.type_specifier(child)
             elif kind == "type_definition":
@@ -487,7 +494,7 @@ class _Collector:
                 if declarator is not None and declarator.type == "identifier" and node_text(declarator) == "namespace" and body is not None:
                     # `MACRO` on a line, then `namespace name {`: the grammar reads a function named
                     # `namespace`. Its body is the body of the namespace.
-                    self.scope(body)
+                    pending.extend((body, inner) for inner in reversed(body.named_children))
                     continue
                 name = _attributed_name(child) or _function_name(child.child_by_field_name("declarator"))
                 if name and name.upper() == name:

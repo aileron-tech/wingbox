@@ -420,5 +420,63 @@ class ManifestReadingTest(unittest.TestCase):
                 self.assertIn("Cannot read the compilation database", built.log.getvalue())
 
 
+_DEPTH = 3_000   # operands of one expression, or branches of one conditional: three times what aborted a build
+
+
+def _entities(built: _Built, path: str) -> dict[str, dict]:
+    return {entity["name"]: entity for entity in built.results[path].entities}
+
+
+class DeepTreeTest(unittest.TestCase):
+    def test_a_php_expression_of_three_thousand_operands_is_read(self) -> None:
+        """/* REQ-PHP-9640: A PHP file with a concatenation of 3,000 operands is parsed: its class, its methods and its dependencies are those of the file. */"""
+        chain = " .\n        ".join("'a'" for _ in range(_DEPTH))
+        built = _Built({
+            **_PHP_APP,
+            "app/Reports/Report.php": (
+                "<?php\n\nnamespace App\\Reports;\n\nuse App\\Models\\Post;\n\nclass Report\n{\n"
+                f"    const TEXT = {chain};\n\n"
+                "    public function post(): Post { return new Post(); }\n}\n"
+            ),
+        })
+        self.assertEqual({"app/Models/Post.php"}, built.dependencies("app/Reports/Report.php"))
+        self.assertEqual(["post"], _entities(built, "app/Reports/Report.php")["App\\Reports\\Report"].get("methods"))
+
+    def test_a_ruby_expression_of_three_thousand_operands_is_read(self) -> None:
+        """/* REQ-RUBY-9641: A Ruby file with a sum of 3,000 operands is parsed: its class, its constant and its dependencies are those of the file. */"""
+        chain = " +\n    ".join("'a'" for _ in range(_DEPTH))
+        built = _Built({
+            "lib/limits.rb": "module Limits\n  MAX = 3\nend\n",
+            "lib/report.rb": (
+                "require_relative 'limits'\n\nclass Report\n"
+                f"  TEXT = {chain}\n\n"
+                "  def size\n    Limits::MAX\n  end\nend\n"
+            ),
+        })
+        self.assertEqual({"lib/limits.rb"}, built.dependencies("lib/report.rb"))
+        entities = _entities(built, "lib/report.rb")
+        self.assertEqual(["size"], entities["Report"].get("methods"))
+        self.assertIn("Report::TEXT", entities)
+
+    def test_a_cpp_conditional_of_three_thousand_branches_is_read(self) -> None:
+        """/* REQ-CPP-9642: A C++ header with 3,000 #elif branches, at file level and in a class, is parsed: the functions of every branch and the include are those of the file. */"""
+        branches = "#if MODE == 0\nint mode0();\n" + "".join(
+            f"#elif MODE == {index}\nint mode{index}();\n" for index in range(1, _DEPTH)
+        ) + "#endif\n"
+        members = "#if MODE == 0\n    int member0();\n" + "".join(
+            f"#elif MODE == {index}\n    int member{index}();\n" for index in range(1, _DEPTH)
+        ) + "#endif\n"
+        built = _Built({
+            "src/dep.h": "int dep();\n",
+            "src/modes.h": f'#include "dep.h"\n{branches}\nstruct Holder {{\n{members}}};\n\nint after();\n',
+        })
+        self.assertEqual({"src/dep.h"}, built.dependencies("src/modes.h"))
+        entities = _entities(built, "src/modes.h")
+        for name in ("mode0", f"mode{_DEPTH - 1}", "after", "Holder"):
+            self.assertIn(name, entities)
+        self.assertEqual(_DEPTH, len(entities["Holder"]["methods"]))
+        self.assertEqual(["member0", f"member{_DEPTH - 1}"], [entities["Holder"]["methods"][0], entities["Holder"]["methods"][-1]])
+
+
 if __name__ == "__main__":
     unittest.main()
