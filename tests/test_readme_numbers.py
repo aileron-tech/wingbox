@@ -37,7 +37,7 @@ class ReadmeNumbersTest(unittest.TestCase):
         self.assertEqual([], offenders)
 
     def test_the_sentences_around_the_comparison_table_follow_the_result_files(self) -> None:
-        """/* REQ-DOC-9965: beside its table, the comparison section of the README names the Wingbox versions that benchmarks/graphify/results/versions.txt records for the tests the table summarises (`wingbox_test_b` for the FastAPI row, `wingbox_test_c` and `wingbox_test_d` for the others) and no other, and its sentence on the size of the answers gives the two numbers of the same sentence of the generated report, which are the means of `tokens_chars_div_4` over the questions CodeGraph answers in the result files. */"""
+        """/* REQ-DOC-009: beside its table, the comparison section of the README names the Wingbox versions that benchmarks/graphify/results/versions.txt records for the tests the table summarises (`wingbox_test_b` for the FastAPI row, `wingbox_test_c` and `wingbox_test_d` for the others) and no other, and its sentence on the size of the answers gives the two numbers of the same sentence of the generated report, which are the means of `tokens_chars_div_4` over the questions CodeGraph answers in the result files. */"""
         import json
 
         readme = (ROOT / "README.md").read_text(encoding="utf-8")

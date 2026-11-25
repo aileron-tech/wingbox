@@ -63,7 +63,7 @@ class LocalOnlyTest(unittest.TestCase):
         self.assertEqual([], offenders)
 
     def test_no_way_of_writing_a_network_import_escapes_the_check(self) -> None:
-        """/* REQ-SEC-9945: the check of REQ-SEC-001 reads the imports with `ast`, so it names a network module however it is imported: second in `import os, socket`, as `from urllib import request`, `import urllib.request as r`, `import socketserver`, `from http import client`, inside a function or under `if`, and through `__import__("socket")` or `importlib.import_module("http.client")`; `urllib.parse`, a relative import and a module whose name only starts like one (`sockets`, `http_helpers`) pass. */"""
+        """/* REQ-SEC-021: the check of REQ-SEC-001 reads the imports with `ast`, so it names a network module however it is imported: second in `import os, socket`, as `from urllib import request`, `import urllib.request as r`, `import socketserver`, `from http import client`, inside a function or under `if`, and through `__import__("socket")` or `importlib.import_module("http.client")`; `urllib.parse`, a relative import and a module whose name only starts like one (`sockets`, `http_helpers`) pass. */"""
         for source, modules in (
             ("import os, socket\n", ["socket"]),
             ("from urllib import request\n", ["urllib.request"]),

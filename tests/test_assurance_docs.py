@@ -129,7 +129,7 @@ class RequirementsIndexTest(unittest.TestCase):
 
 
     def test_an_id_that_two_tests_carry_is_refused(self) -> None:
-        """/* REQ-DOC-9940: an id belongs to one test: when two tests carry the same id (one behaviour checked twice, or two behaviours under one number), `tools/requirements_index.py` and `--check` exit 1, name on standard error each such id with the tests that carry it, and write nothing, so the index never lists one id for two behaviours; once every test has its own id the index is written; no id of this repository is carried by two tests. */"""
+        """/* REQ-DOC-008: an id belongs to one test: when two tests carry the same id (one behaviour checked twice, or two behaviours under one number), `tools/requirements_index.py` and `--check` exit 1, name on standard error each such id with the tests that carry it, and write nothing, so the index never lists one id for two behaviours; once every test has its own id the index is written; no id of this repository is carried by two tests. */"""
         with tempfile.TemporaryDirectory() as tmp:
             script = stand_in(Path(tmp))
             index = Path(tmp) / "docs" / "assurance" / "requirements.md"

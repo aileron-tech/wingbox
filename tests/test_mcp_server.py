@@ -250,7 +250,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn(":validated", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_usages_returns_the_text_answer(self) -> None:
-        """/* REQ-MCP-9953: the `find_usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
+        """/* REQ-MCP-046: the `find_usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,
@@ -329,7 +329,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse((self.root / ".wingbox").exists())
 
     def test_build_graph_builds_nothing_where_there_is_no_repository(self) -> None:
-        """/* REQ-MCP-9910: started without --build-missing in a folder that is in no source repository (source files, but no .git and no project manifest at or above it), `build_graph` answers what every other tool answers there, a tool error that says there is no repository here, and writes no .wingbox/ folder. */"""
+        """/* REQ-MCP-041: started without --build-missing in a folder that is in no source repository (source files, but no .git and no project manifest at or above it), `build_graph` answers what every other tool answers there, a tool error that says there is no repository here, and writes no .wingbox/ folder. */"""
         (self.root / "notes.txt").write_text("hello\n", encoding="utf-8")
         (self.root / "tool.py").write_text("def run():\n    return 1\n", encoding="utf-8")
         session = McpSession(self.root, [_initialize(), _call(2, "list_files", {}), _call(3, "build_graph", {}), _call(4, "build_graph", {"full": True})])
@@ -339,7 +339,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertFalse((self.root / ".wingbox").exists())
 
     def test_the_server_names_the_project_whose_graph_it_serves(self) -> None:
-        """/* REQ-MCP-9911: --root is where the search for the code graph starts, not a boundary: `wingbox mcp --root <project>/shop` serves the graph of <project>, and its first log line and its `instructions` name <project> (the log line also the --root it was given); started at the project folder itself, both name that folder only. */"""
+        """/* REQ-MCP-042: --root is where the search for the code graph starts, not a boundary: `wingbox mcp --root <project>/shop` serves the graph of <project>, and its first log line and its `instructions` name <project> (the log line also the --root it was given); started at the project folder itself, both name that folder only. */"""
         _make_shop(self.root)
         built = McpSession(self.root, [_initialize(), _call(2, "build_graph", {})])
         self.assertFalse(built.reply(2)["result"]["isError"], built.reply(2))
@@ -356,7 +356,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertIn(f"the code graph of {self.root}. ", modern.reply(1)["result"]["instructions"])
 
     def test_a_message_nested_too_deeply_is_a_parse_error_and_the_server_goes_on(self) -> None:
-        """/* REQ-MCP-9912: a line of 200,000 opening brackets, which the JSON reader gives up on with a recursion error, is answered -32700 with a null id like any other text that is not JSON; the server goes on and answers the next request, and exits 0 at the end of its input. */"""
+        """/* REQ-MCP-043: a line of 200,000 opening brackets, which the JSON reader gives up on with a recursion error, is answered -32700 with a null id like any other text that is not JSON; the server goes on and answers the next request, and exits 0 at the end of its input. */"""
         session = McpSession(self.root, ["[" * 200_000, '{"a":' * 200_000, _request(5, "ping")])
         self.assertEqual(0, session.returncode, session.stderr[-2000:])
         self.assertEqual(3, len(session.messages))
@@ -366,7 +366,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn("Traceback", session.stderr)
 
     def test_an_empty_item_of_a_list_argument_is_refused(self) -> None:
-        """/* REQ-MCP-9913: an empty string as an item of `targets` (analyze_impact) or of `exclude_dirs` (build_graph) is refused as an invalid argument that names the parameter, as an empty `target`, `symbol`, `scope` or `ref` is: no file is answered for in its place, and nothing is built; the input schema states the rule (`minLength` 1 for the items). */"""
+        """/* REQ-MCP-044: an empty string as an item of `targets` (analyze_impact) or of `exclude_dirs` (build_graph) is refused as an invalid argument that names the parameter, as an empty `target`, `symbol`, `scope` or `ref` is: no file is answered for in its place, and nothing is built; the input schema states the rule (`minLength` 1 for the items). */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,
@@ -401,7 +401,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertEqual({"type": "string", "minLength": 1}, schemas["build_graph"]["exclude_dirs"]["items"])
 
     def test_a_tool_answer_of_more_than_200_lines_stops_there_unless_all_is_set(self) -> None:
-        """/* REQ-MCP-9914: through `tools/call`, an answer without its own list limit stops at 200 lines and ends with one line that says how many are hidden and to call again with all=true, and with `all: true` it is complete: for a tool that prints the answer of one command (`list_files` on 230 files) and for `find_definitions` without a kind, which filters the answer of a command first. */"""
+        """/* REQ-MCP-045: through `tools/call`, an answer without its own list limit stops at 200 lines and ends with one line that says how many are hidden and to call again with all=true, and with `all: true` it is complete: for a tool that prints the answer of one command (`list_files` on 230 files) and for `find_definitions` without a kind, which filters the answer of a command first. */"""
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         (self.root / "pkg").mkdir()
         for number in range(230):

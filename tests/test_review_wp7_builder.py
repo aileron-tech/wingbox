@@ -136,7 +136,7 @@ class ResolutionConfigChangeTest(ProjectTestCase):
         self.assertIsInstance(result, graph_update.Updated, result)
 
     def test_a_remapped_typescript_alias_stays_remapped_after_an_unrelated_edit(self) -> None:
-        """/* REQ-FRESH-9700: after tsconfig.json maps an alias to another folder, the incremental build publishes the graph of a build from nothing, and so does the partial update of a later edit of an unrelated file; `usages` of the newly aliased definition gives the same answer in both. */"""
+        """/* REQ-FRESH-058: after tsconfig.json maps an alias to another folder, the incremental build publishes the graph of a build from nothing, and so does the partial update of a later edit of an unrelated file; `usages` of the newly aliased definition gives the same answer in both. */"""
         root = self.project(TYPESCRIPT_ALIAS)
         self.assertEqual(0, _build(root)[0])
         _write(root, {"tsconfig.json": _alias("libB")})
@@ -153,7 +153,7 @@ class ResolutionConfigChangeTest(ProjectTestCase):
         self.assertEqual(_answer(fresh, "usages", "src/libA/util.ts::foo"), _answer(root, "usages", "src/libA/util.ts::foo"))
 
     def test_usages_asked_before_the_alias_moved_are_not_answered_again(self) -> None:
-        """/* REQ-FRESH-9701: `usages` asked before a tsconfig.json change fills the use file and the walk cache; after the change and a build, `usages` of the old and of the new target answer as after a build from nothing. */"""
+        """/* REQ-FRESH-059: `usages` asked before a tsconfig.json change fills the use file and the walk cache; after the change and a build, `usages` of the old and of the new target answer as after a build from nothing. */"""
         root = self.project(TYPESCRIPT_ALIAS)
         self.assertEqual(0, _build(root)[0])
         self.assertIn("src/main.ts", "\n".join(_answer(root, "usages", "src/libA/util.ts::foo")))
@@ -165,7 +165,7 @@ class ResolutionConfigChangeTest(ProjectTestCase):
             self.assertEqual(_answer(fresh, "usages", target), _answer(root, "usages", target), target)
 
     def test_a_moved_composer_namespace_root_stays_moved_after_an_unrelated_edit(self) -> None:
-        """/* REQ-FRESH-9702: after composer.json moves a PSR-4 namespace to another folder, the incremental build and the partial update of a later edit of an unrelated file publish the graph of a build from nothing, with the same `usages` answer. */"""
+        """/* REQ-FRESH-060: after composer.json moves a PSR-4 namespace to another folder, the incremental build and the partial update of a later edit of an unrelated file publish the graph of a build from nothing, with the same `usages` answer. */"""
         root = self.project(COMPOSER)
         self.assertEqual(0, _build(root)[0])
         _write(root, {"composer.json": json.dumps({"autoload": {"psr-4": {"App\\": "lib/"}}})})
@@ -180,7 +180,7 @@ class ResolutionConfigChangeTest(ProjectTestCase):
         self.assertEqual(_answer(fresh, "usages", "lib/Service.php::Service"), _answer(root, "usages", "lib/Service.php::Service"))
 
     def test_another_include_folder_of_the_compilation_database_stays_after_an_unrelated_edit(self) -> None:
-        """/* REQ-FRESH-9703: after compile_commands.json names another include folder, the incremental build and the partial update of a later edit of an unrelated file publish the graph of a build from nothing, with the same `usages` answer. */"""
+        """/* REQ-FRESH-061: after compile_commands.json names another include folder, the incremental build and the partial update of a later edit of an unrelated file publish the graph of a build from nothing, with the same `usages` answer. */"""
         root = self.project(CPP)
         _write(root, {"compile_commands.json": _compile_commands(root, "a")})
         self.assertEqual(0, _build(root)[0])
@@ -227,7 +227,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
     """A file that cannot be parsed is left out and recorded; every other file is mapped."""
 
     def test_a_parser_that_raises_on_one_file_leaves_that_file_out(self) -> None:
-        """/* REQ-CS-9710: when the parser raises on one file (RecursionError), the build ends with status 0 and publishes the graph of the other files; it prints one notice with the number of files left out, the file and the error; `.wingbox/graph-unparsed.sexp` holds `(not-parsed-file "<file>" :reason parser-failed)`; the file is not in the build cache; `impact` of it answers `(error not-in-graph <file> :reason parser-failed :language "Python")` with status 1, and `--human` says the parser failed. */"""
+        """/* REQ-CS-220: when the parser raises on one file (RecursionError), the build ends with status 0 and publishes the graph of the other files; it prints one notice with the number of files left out, the file and the error; `.wingbox/graph-unparsed.sexp` holds `(not-parsed-file "<file>" :reason parser-failed)`; the file is not in the build cache; `impact` of it answers `(error not-in-graph <file> :reason parser-failed :language "Python")` with status 1, and `--human` says the parser failed. */"""
         root = self.project(SHOP)
         failing = _failing_on("generated.py", RecursionError("maximum recursion depth exceeded"))
         with mock.patch.object(builder, "parse_file", failing):
@@ -252,7 +252,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         self.assertIn("shop/cart.py", _query(root, "impact", "shop/pricing.py").stdout)
 
     def test_long_expressions_of_generated_code_never_end_the_build(self) -> None:
-        """/* REQ-CS-9711: a Python file with a `+` chain of 1,000 terms and a Go file with a string concatenation of 1,200 lines do not end the build: status 0, no traceback, the other files are in the graph, and a question about each of the two files is answered either from the graph or with `not-in-graph ... :reason parser-failed`. */"""
+        """/* REQ-CS-221: a Python file with a `+` chain of 1,000 terms and a Go file with a string concatenation of 1,200 lines do not end the build: status 0, no traceback, the other files are in the graph, and a question about each of the two files is answered either from the graph or with `not-in-graph ... :reason parser-failed`. */"""
         chain = "TOTAL = " + " + ".join(str(number) for number in range(1000)) + "\n"
         concatenation = "package api\n\nvar descriptor = \"\" +\n" + "".join(f'\t"line {number}" +\n' for number in range(1200)) + '\t""\n'
         root = self.project({
@@ -277,7 +277,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
                     self.assertIn(f"(impact {name} ", answer)
 
     def test_a_file_that_cannot_be_read_is_left_out(self) -> None:
-        """/* REQ-CS-9712: a source file that cannot be opened is left out with `:reason unreadable`; the build ends with status 0 and maps the other files. */"""
+        """/* REQ-CS-222: a source file that cannot be opened is left out with `:reason unreadable`; the build ends with status 0 and maps the other files. */"""
         root = self.project(SHOP)
         failing = _failing_on("generated.py", PermissionError(13, "Permission denied"))
         with mock.patch.object(builder, "parse_file", failing):
@@ -287,7 +287,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         self.assertIn(":nodes 3 ", _graph(root))
 
     def test_the_record_follows_the_next_build_and_no_patch_touches_such_a_file(self) -> None:
-        """/* REQ-FRESH-9713: a change of a file the build left out is never patched into the graph (the partial update does not apply, the build decides again), a changed file that cannot be parsed now is not patched in either, and a build that parses every file removes the record. */"""
+        """/* REQ-FRESH-062: a change of a file the build left out is never patched into the graph (the partial update does not apply, the build decides again), a changed file that cannot be parsed now is not patched in either, and a build that parses every file removes the record. */"""
         root = self.project(SHOP)
         failing = _failing_on("generated.py", RecursionError("maximum recursion depth exceeded"))
         with mock.patch.object(builder, "parse_file", failing):
@@ -303,7 +303,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         self.assertIn(":nodes 4 ", _graph(root))
 
     def test_a_worker_process_that_dies_loses_only_its_file(self) -> None:
-        """/* REQ-CS-9714: when the process that parses one file dies, the files of the other processes and the files not parsed yet are parsed all the same, and only that file comes back as left out (`parser-failed`, the process that parsed it died). */"""
+        """/* REQ-CS-223: when the process that parses one file dies, the files of the other processes and the files not parsed yet are parsed all the same, and only that file comes back as left out (`parser-failed`, the process that parsed it died). */"""
         root = self.project({f"pkg/m{number}.py": f"VALUE = {number}\n" for number in range(8)} | {"pkg/dies.py": "VALUE = 0\n"})
         parent = os.getpid()
         real = builder.parse_file
@@ -330,7 +330,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
                 self.assertIn("died", left_out[0].detail)
 
     def test_a_manifest_that_is_not_utf8_is_named_and_the_build_goes_on(self) -> None:
-        """/* REQ-CS-9715: a nested composer.json with a byte that is not UTF-8 does not end the build: status 0, a warning that names the file, and the imports of the other manifest are resolved. */"""
+        """/* REQ-CS-224: a nested composer.json with a byte that is not UTF-8 does not end the build: status 0, a warning that names the file, and the imports of the other manifest are resolved. */"""
         root = self.project({
             "composer.json": json.dumps({"autoload": {"psr-4": {"App\\": "app/"}}}),
             "app/Service.php": SERVICE % 1,
@@ -345,7 +345,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         self.assertIn("public/index.php", _query(root, "impact", "app/Service.php").stdout)
 
     def test_binding_goes_on_without_the_manifest_its_reader_fails_on(self) -> None:
-        """/* REQ-CS-9716: when binding a language raises while it reads a manifest, the manifest is named in one warning and the language is bound again with that file excluded; an error that names no manifest is raised as it is. */"""
+        """/* REQ-CS-225: when binding a language raises while it reads a manifest, the manifest is named in one warning and the language is bound again with that file excluded; an error that names no manifest is raised as it is. */"""
         root = self.folder()
         manifest = root / "packages" / "old" / "composer.json"
         manifest.parent.mkdir(parents=True)
@@ -381,7 +381,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
 
 class BinaryContentTest(ProjectTestCase):
     def test_binary_content_under_a_source_extension_is_not_parsed(self) -> None:
-        """/* REQ-CS-9720: a file whose first 8 KB hold a NUL byte is not parsed, whatever its extension: the build leaves it out with `:reason binary`, and `impact` of it answers `(error not-in-graph <file> :reason binary :language "TypeScript")`. A text file is parsed whatever its size, and so is a file whose first NUL byte comes after 8 KB. */"""
+        """/* REQ-CS-226: a file whose first 8 KB hold a NUL byte is not parsed, whatever its extension: the build leaves it out with `:reason binary`, and `impact` of it answers `(error not-in-graph <file> :reason binary :language "TypeScript")`. A text file is parsed whatever its size, and so is a file whose first NUL byte comes after 8 KB. */"""
         root = self.project({
             "src/a.ts": "export function a(): number { return 1; }\n",
             "src/late.ts": "// " + "x" * 9000 + "\nexport const late = '\\0';\n".replace("\\0", "\0"),
@@ -424,7 +424,7 @@ class NoForgedFactTest(ProjectTestCase):
     """Nothing read from a repository becomes a line of its own in a file of the graph."""
 
     def test_a_member_name_with_a_line_break_adds_no_fact(self) -> None:
-        """/* REQ-SEC-9730: a TypeScript member name that holds line breaks and the text of a fact adds no fact to the graph: no line of `.wingbox/index.sexp` starts with the forged text, the graph loads, `impact` of the file the forged fact names lists no dependent, and `analyze` of the file with the name answers. */"""
+        """/* REQ-SEC-017: a TypeScript member name that holds line breaks and the text of a fact adds no fact to the graph: no line of `.wingbox/index.sexp` starts with the forged text, the graph loads, `impact` of the file the forged fact names lists no dependent, and `analyze` of the file with the name answers. */"""
         root = self.project({
             "src/attack.ts": 'export const table = {\n  [`x\n' + FORGED + '\n(node evil ts "forged")\n`]: 1,\n};\n',
             "src/billing.ts": "export function bill() { return 1; }\n",
@@ -440,7 +440,7 @@ class NoForgedFactTest(ProjectTestCase):
         self.assertNotIn("invalid-map", _query(root, "analyze", "src/attack.ts").stdout)
 
     def test_no_name_puts_a_control_character_into_a_written_line(self) -> None:
-        """/* REQ-SEC-9731: whatever control character or line separator (line feed, carriage return, vertical tab, NEL, U+2028, U+2029, NUL) stands in a module path, a purpose, an entity name, a base, a decorator, a method or a variable name, the graph file and the use file hold one fact per line with the character written as an escape, and the reader loads the graph with every node. */"""
+        """/* REQ-SEC-018: whatever control character or line separator (line feed, carriage return, vertical tab, NEL, U+2028, U+2029, NUL) stands in a module path, a purpose, an entity name, a base, a decorator, a method or a variable name, the graph file and the use file hold one fact per line with the character written as an escape, and the reader loads the graph with every node. */"""
         breaks = ("\n", "\r", "\x0b", "\x0c", "\x1c", "\x85", "\u2028", "\u2029", "\x00", "\t")
         nodes = []
         for number, character in enumerate(breaks):
@@ -472,7 +472,7 @@ class NoForgedFactTest(ProjectTestCase):
 
     @unittest.skipIf(os.name == "nt", "a file name cannot hold a line break on Windows")
     def test_a_file_whose_name_holds_a_line_break_is_left_out_with_a_notice(self) -> None:
-        """/* REQ-SEC-9732: a source file whose name holds a line break is left out of the graph with a notice and a `(not-parsed-file ... :reason file-name)` fact that stays on one line; the graph holds no forged line and answers for the other files; a question about the file answers `not-in-graph ... :reason file-name`; and such a file created later is not patched into the graph. */"""
+        """/* REQ-SEC-019: a source file whose name holds a line break is left out of the graph with a notice and a `(not-parsed-file ... :reason file-name)` fact that stays on one line; the graph holds no forged line and answers for the other files; a question about the file answers `not-in-graph ... :reason file-name`; and such a file created later is not patched into the graph. */"""
         root = self.project(SHOP)
         odd = 'shop/ev\n(node evil py "forged")\n.py'
         _write(root, {odd: "from shop.pricing import order_total\n"})
@@ -495,7 +495,7 @@ class NoForgedFactTest(ProjectTestCase):
 
 class ShortIdentifierTest(ProjectTestCase):
     def test_two_repositories_never_share_a_short_identifier(self) -> None:
-        """/* REQ-CS-9740: the short IDs of two repositories of a workspace never coincide (`data-bridge` with 22 modules next to `db`): the build publishes a graph that loads, and `impact` of a module of `db` lists its importer. */"""
+        """/* REQ-CS-227: the short IDs of two repositories of a workspace never coincide (`data-bridge` with 22 modules next to `db`): the build publishes a graph that loads, and `impact` of a module of `db` lists its importer. */"""
         files = {f"data-bridge/m{number:02d}.py": f"def f{number}():\n    return {number}\n" for number in range(22)}
         files["db/core.py"] = "def query():\n    return 1\n"
         files["db/user.py"] = "from db.core import query\n\n\ndef use():\n    return query()\n"
@@ -512,7 +512,7 @@ class ShortIdentifierTest(ProjectTestCase):
         self.assertIn("(impact data-bridge/m20.py :direct 0 :total 0", _query(root, "impact", "data-bridge/m20.py").stdout)
 
     def test_a_prefix_never_ends_in_a_digit_and_is_an_atom(self) -> None:
-        """/* REQ-CS-9741: whatever the repositories are named (a name that ends in a digit, that is the prefix of another, that holds brackets, quotes, spaces or a colon, an empty name), every module has a short ID of its own, made of a prefix that does not end in a digit and a number, and the prefix is an atom; a name that had a usable prefix keeps it (`project` pr, `agent-hub` ah, `proto` next to `project` pro). */"""
+        """/* REQ-CS-228: whatever the repositories are named (a name that ends in a digit, that is the prefix of another, that holds brackets, quotes, spaces or a colon, an empty name), every module has a short ID of its own, made of a prefix that does not end in a digit and a number, and the prefix is an atom; a name that had a usable prefix keeps it (`project` pr, `agent-hub` ah, `proto` next to `project` pro). */"""
         names = ["db", "data-bridge", "d-b", "db2", "db20", "s3", "s", "s30", "shop (copy)", "a b", '"q"', ":k", "", "42",
                  "4", "((", "x;y", "back\\slash", "project", "proto", "pr", "agent-hub", "a\nb"]
         nodes = [{"id": f"{index:02d}/m{number:03d}", "repo": name} for index, name in enumerate(names) for number in range(31)]
@@ -531,7 +531,7 @@ class ShortIdentifierTest(ProjectTestCase):
 
 class EdgeCountTest(ProjectTestCase):
     def test_the_header_counts_the_edge_lines_of_the_file(self) -> None:
-        """/* REQ-CS-9750: `:edges N` of the graph header is the number of fact lines of the edges section (imports, calls-api, data-flow, refs, calls, http-calls, registry-wires, generated, runs), which is the number of edges of those kinds the reader loads; `:violations` is the number of violation lines. */"""
+        """/* REQ-CS-229: `:edges N` of the graph header is the number of fact lines of the edges section (imports, calls-api, data-flow, refs, calls, http-calls, registry-wires, generated, runs), which is the number of edges of those kinds the reader loads; `:violations` is the number of violation lines. */"""
         root = self.project({
             **SHOP,
             "shop/ports.py": "from abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def save(self, item): ...\n",
@@ -580,7 +580,7 @@ class InfraTopologyTest(ProjectTestCase):
         return output.getvalue()
 
     def test_a_name_with_a_line_break_adds_no_fact_to_the_graph(self) -> None:
-        """/* REQ-SEC-9760: a chart name or a dependency name of a Chart.yaml, a workload name, an image, a label or a namespace that holds a line break, a bracket or another control character adds no line to the output of `wingbox infra`: with `--append` every appended line is an infra fact, a comment or empty, IDs and edge ends that are no plain atoms are quoted, and the graph still loads. */"""
+        """/* REQ-SEC-020: a chart name or a dependency name of a Chart.yaml, a workload name, an image, a label or a namespace that holds a line break, a bracket or another control character adds no line to the output of `wingbox infra`: with `--append` every appended line is an infra fact, a comment or empty, IDs and edge ends that are no plain atoms are quoted, and the graph still loads. */"""
         root = self.project(SHOP)
         _write(root, {
             "charts/app/Chart.yaml": 'name: "web)\\n(imports pr1 pr0)\\n(infra-node infra/x"\nversion: 1.0.0\ndependencies:\n'
@@ -609,7 +609,7 @@ class InfraTopologyTest(ProjectTestCase):
         self.assertEqual(before.count("\n(imports "), sum(1 for edge in graph.all_edges if edge.etype == "imports"))
 
     def test_a_manifest_of_an_unexpected_shape_is_skipped_with_a_warning(self) -> None:
-        """/* REQ-CS-9761: a Kubernetes or Helm manifest of a shape `wingbox infra` does not expect (metadata that is a list, a port that is no number, a name that is no text, a dependency that is no mapping) is skipped with a warning that names the file; the other manifests give their facts and the command ends without an error. */"""
+        """/* REQ-CS-230: a Kubernetes or Helm manifest of a shape `wingbox infra` does not expect (metadata that is a list, a port that is no number, a name that is no text, a dependency that is no mapping) is skipped with a warning that names the file; the other manifests give their facts and the command ends without an error. */"""
         root = self.folder()
         _write(root, {
             "k8s/kustomization.yaml": "resources:\n  - good\n  - listed\n  - named-port\n  - numbered\n  - bad-service\n",
@@ -643,7 +643,7 @@ class InfraTopologyTest(ProjectTestCase):
 class LinkedSourceTest(ProjectTestCase):
     @unittest.skipIf(os.name == "nt", "creating a symbolic link needs a privilege on Windows")
     def test_a_link_created_after_the_build_is_not_patched_into_the_graph(self) -> None:
-        """/* REQ-FRESH-9770: a symbolic link with a source extension, or a source file below a linked folder, that appears after the build is not patched into the graph: discovery follows no link, so the partial update leaves it out and the graph holds the modules a build from nothing holds; a source file replaced by a link leaves the graph. */"""
+        """/* REQ-FRESH-063: a symbolic link with a source extension, or a source file below a linked folder, that appears after the build is not patched into the graph: discovery follows no link, so the partial update leaves it out and the graph holds the modules a build from nothing holds; a source file replaced by a link leaves the graph. */"""
         root = self.project(SHOP)
         outside = self.folder()
         _write(outside, {"secret.py": "class OutsideService:\n    def rotate(self):\n        return 1\n", "pkg/inner.py": "INNER = 1\n"})

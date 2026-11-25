@@ -122,7 +122,7 @@ class _Repositories(unittest.TestCase):
 
 class GitProgramsNeverRunTest(_Repositories):
     def test_programs_of_the_repository_configuration_are_not_started(self) -> None:
-        """/* REQ-SEC-9100: `wingbox build`, `wingbox impact --diff` and `wingbox diff_functions` in a repository whose own Git configuration names programs start none of them: `core.fsmonitor`, a clean and a smudge filter that `.gitattributes` applies (with `required = true`), a filter process, `diff.external`, a textconv driver and a `post-index-change` hook under `.git/hooks`. The commands still answer: the build names the commit of a clean tree and both diff commands name the changed function. Plain `git status` and `git diff` in the same repository start every one of these programs (checked where the test runs on POSIX; on Windows the programs are written the same way and only their absence is asserted). */"""
+        """/* REQ-SEC-012: `wingbox build`, `wingbox impact --diff` and `wingbox diff_functions` in a repository whose own Git configuration names programs start none of them: `core.fsmonitor`, a clean and a smudge filter that `.gitattributes` applies (with `required = true`), a filter process, `diff.external`, a textconv driver and a `post-index-change` hook under `.git/hooks`. The commands still answer: the build names the commit of a clean tree and both diff commands name the changed function. Plain `git status` and `git diff` in the same repository start every one of these programs (checked where the test runs on POSIX; on Windows the programs are written the same way and only their absence is asserted). */"""
         root = self.repository("project", {
             **APP,
             ".gitattributes": "*.dat filter=evil\n*.raw filter=proc\n*.bin diff=conv\n",
@@ -169,7 +169,7 @@ class GitProgramsNeverRunTest(_Repositories):
                 self.assertIn(name, self.ran())
 
     def test_git_is_not_started_inside_a_submodule(self) -> None:
-        """/* REQ-SEC-9101: in a repository with a submodule whose own Git configuration sets `core.fsmonitor` to a program, `wingbox build`, `wingbox impact --diff` and `wingbox diff_functions` do not start that program (Git is not run inside the submodule), and the change of the repository itself is still named. Plain `git status` starts it (checked on POSIX). */"""
+        """/* REQ-SEC-013: in a repository with a submodule whose own Git configuration sets `core.fsmonitor` to a program, `wingbox build`, `wingbox impact --diff` and `wingbox diff_functions` do not start that program (Git is not run inside the submodule), and the change of the repository itself is still named. Plain `git status` starts it (checked on POSIX). */"""
         library = self.repository("library", {"lib/s.py": "def s():\n    return 1\n"})
         root = self.repository("project", APP)
         self.git(root, "-c", "protocol.file.allow=always", "submodule", "--quiet", "add", library.as_posix(), "deps/library")
@@ -188,7 +188,7 @@ class GitProgramsNeverRunTest(_Repositories):
             self.assertEqual(["submodule"], self.ran())
 
     def test_missing_objects_are_not_fetched(self) -> None:
-        """/* REQ-SEC-9102: in a repository whose configuration declares a promisor remote (a partial clone) with a program as its transport, objects that are missing are not fetched: `wingbox build` finishes and `wingbox impact --diff <ref>` answers `(error git-diff-failed ...)` with exit status 1, and the program is not started. Plain `git diff <ref>` starts it (checked on POSIX). */"""
+        """/* REQ-SEC-014: in a repository whose configuration declares a promisor remote (a partial clone) with a program as its transport, objects that are missing are not fetched: `wingbox build` finishes and `wingbox impact --diff <ref>` answers `(error git-diff-failed ...)` with exit status 1, and the program is not started. Plain `git diff <ref>` starts it (checked on POSIX). */"""
         root = self.repository("project", APP)
         elsewhere = self.repository("elsewhere", {"x.py": "X = 1\n"})
         self.write(root, {"app/f.py": LOAD_CHANGED})
@@ -215,7 +215,7 @@ class GitProgramsNeverRunTest(_Repositories):
             self.assertEqual(["fetch"], self.ran())
 
     def test_a_filter_that_cannot_be_switched_off_stops_the_call(self) -> None:
-        """/* REQ-SEC-9103: a filter driver of the repository's configuration whose name holds `=` cannot be overridden on Git's command line, so Git is not started on the work tree at all: `git_safe.run` raises `GitRefused` for `status` and `diff`, `wingbox build` finishes and names no commit, `wingbox impact --diff` answers `(error git-diff-failed ...)` that names the driver, with exit status 1, and the program is not started. Plain `git status` starts it (checked on POSIX). */"""
+        """/* REQ-SEC-015: a filter driver of the repository's configuration whose name holds `=` cannot be overridden on Git's command line, so Git is not started on the work tree at all: `git_safe.run` raises `GitRefused` for `status` and `diff`, `wingbox build` finishes and names no commit, `wingbox impact --diff` answers `(error git-diff-failed ...)` that names the driver, with exit status 1, and the program is not started. Plain `git status` starts it (checked on POSIX). */"""
         from scripts import git_safe
 
         root = self.repository("project", {**APP, ".gitattributes": "*.dat filter=a=b\n", "data/one.dat": "payload\n"})
@@ -243,7 +243,7 @@ class GitProgramsNeverRunTest(_Repositories):
             self.assertEqual(["clean"], self.ran())
 
     def test_the_descendants_script_refuses_an_option_and_starts_no_program(self) -> None:
-        """/* REQ-SEC-9104: `scripts/git_descendants.py <ref>` refuses a ref that starts with `-` with a message on standard error and exit status 1 before Git is started, and lists the descendants of a commit without starting the signature program of the repository's configuration (`log.showSignature` with `gpg.program`) for a signed descendant. Plain `git log` starts it (checked on POSIX). */"""
+        """/* REQ-SEC-016: `scripts/git_descendants.py <ref>` refuses a ref that starts with `-` with a message on standard error and exit status 1 before Git is started, and lists the descendants of a commit without starting the signature program of the repository's configuration (`log.showSignature` with `gpg.program`) for a signed descendant. Plain `git log` starts it (checked on POSIX). */"""
         root = self.repository("project", APP)
         first = self.git(root, "rev-parse", "HEAD").stdout.strip()
         tree = self.git(root, "rev-parse", "HEAD^{tree}").stdout.strip()
@@ -284,7 +284,7 @@ class RefIsNeverAnOptionTest(_Repositories):
         return {message["id"]: message for message in messages if "id" in message}
 
     def test_a_ref_that_starts_with_a_dash_is_refused_before_git_starts(self) -> None:
-        """/* REQ-CS-9105: a git ref that starts with `-` is refused with `(error invalid-argument ...)` and a non-zero exit status before Git is started, by `wingbox diff_functions <ref>`, by `wingbox query '(diff-functions "<ref>")'` and by `wingbox impact --diff <ref>` (also a one-dash word such as `-R`); the MCP tools `list_changes` and `query_graph` answer the same text as a tool error. `--output=<file>` as the ref leaves that file as it was: Git does not create or empty it. */"""
+        """/* REQ-CS-168: a git ref that starts with `-` is refused with `(error invalid-argument ...)` and a non-zero exit status before Git is started, by `wingbox diff_functions <ref>`, by `wingbox query '(diff-functions "<ref>")'` and by `wingbox impact --diff <ref>` (also a one-dash word such as `-R`); the MCP tools `list_changes` and `query_graph` answer the same text as a tool error. `--output=<file>` as the ref leaves that file as it was: Git does not create or empty it. */"""
         root = self.built("project", APP)
         self.write(root, {"app/f.py": LOAD_CHANGED})
         victim = self.base / "victim.txt"
@@ -317,7 +317,7 @@ class RefIsNeverAnOptionTest(_Repositories):
         self.assertEqual("keep\n", victim.read_text(encoding="utf-8"))
 
     def test_a_failed_git_diff_is_one_error_line_and_a_failed_command(self) -> None:
-        """/* REQ-CS-9106: when Git cannot give the diff (a ref that does not exist), `wingbox diff_functions <ref>` prints one line, `(error git-diff-failed "<the message of Git on one line>")`, and exits with status 1, as `impact --diff <ref>` does; with `--json` the error object carries the code and the message. A ref that names a file as well as a branch is read as the ref. */"""
+        """/* REQ-CS-169: when Git cannot give the diff (a ref that does not exist), `wingbox diff_functions <ref>` prints one line, `(error git-diff-failed "<the message of Git on one line>")`, and exits with status 1, as `impact --diff <ref>` does; with `--json` the error object carries the code and the message. A ref that names a file as well as a branch is read as the ref. */"""
         root = self.built("project", APP)
         for args in (("diff_functions", "no-such-ref"), ("impact", "--diff", "no-such-ref")):
             with self.subTest(args=args):
@@ -337,7 +337,7 @@ class RefIsNeverAnOptionTest(_Repositories):
 
 class DiffIsReadExactlyTest(_Repositories):
     def test_the_git_configuration_does_not_change_what_is_read(self) -> None:
-        """/* REQ-CS-9107: `impact --diff` and `diff_functions` name the changed function whatever the Git configuration says about the look of a diff, in the repository's own configuration and in the user's global one: `diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`, `color.diff = always`, `color.ui = always`, `diff.external`, `diff.renames = false`, `diff.relative`, `diff.interHunkContext`; the external diff program is not started. */"""
+        """/* REQ-CS-170: `impact --diff` and `diff_functions` name the changed function whatever the Git configuration says about the look of a diff, in the repository's own configuration and in the user's global one: `diff.noprefix`, `diff.mnemonicPrefix`, `diff.srcPrefix`, `color.diff = always`, `color.ui = always`, `diff.external`, `diff.renames = false`, `diff.relative`, `diff.interHunkContext`; the external diff program is not started. */"""
         root = self.built("project", {**APP, "app/three.py": THREE})
         self.write(root, {"app/f.py": LOAD_CHANGED})
         settings = [("diff.noprefix", "true"), ("diff.mnemonicPrefix", "true"), ("diff.srcPrefix", "old/"), ("color.diff", "always"),
@@ -368,7 +368,7 @@ class DiffIsReadExactlyTest(_Repositories):
         self.assertEqual(["first", "third"], sorted(line.split("::")[1].split()[0] for line in functions.splitlines() if line.startswith("(diff-fn ")))
 
     def test_a_path_with_a_space_and_a_header_that_holds_a_plus_sign(self) -> None:
-        """/* REQ-CS-9108: a changed file whose path holds a space is named as it is (Git ends its `+++` line with a tab, which is no part of the name) and gets its `impact --diff` answer; a change under a hunk header whose context text holds `+1,` (`@@ -6 +6 @@ export function move(dx = +1, dy = 0) {`) is read from the part between the two `@@` alone and names the function. */"""
+        """/* REQ-CS-171: a changed file whose path holds a space is named as it is (Git ends its `+++` line with a tab, which is no part of the name) and gets its `impact --diff` answer; a change under a hunk header whose context text holds `+1,` (`@@ -6 +6 @@ export function move(dx = +1, dy = 0) {`) is read from the part between the two `@@` alone and names the function. */"""
         root = self.built("project", {
             **APP,
             "my dir/my mod.py": "def spaced():\n    return 1\n",
@@ -395,7 +395,7 @@ class DiffIsReadExactlyTest(_Repositories):
         self.assertIn("(changed web/move.ts::move :line 1 :used-by ())", impact)
 
     def test_a_patch_is_read_by_its_structure(self) -> None:
-        """/* REQ-CS-9109: the text of a patch is read exactly: the lines of a hunk are counted by its header and never read as headers (a removed line `-- a/x` and an added line `++ b/x` look like file headers; a line may hold a form feed or a carriage return); a quoted name is unquoted (`\\t`, `\\"`, `\\\\`, an octal escape); the tab after a name with a space is dropped; a file without a text patch (a mode change, a binary file, a rename without a change, an empty new file) is named from its `diff --git` or `rename` lines; a removed file is `deleted`, a renamed one carries the path it had, and a file removed and created again in one diff (a type change) is one changed file. Removed lines count for the line above them; a change before line 1 gives no range. */"""
+        """/* REQ-CS-172: the text of a patch is read exactly: the lines of a hunk are counted by its header and never read as headers (a removed line `-- a/x` and an added line `++ b/x` look like file headers; a line may hold a form feed or a carriage return); a quoted name is unquoted (`\\t`, `\\"`, `\\\\`, an octal escape); the tab after a name with a space is dropped; a file without a text patch (a mode change, a binary file, a rename without a change, an empty new file) is named from its `diff --git` or `rename` lines; a removed file is `deleted`, a renamed one carries the path it had, and a file removed and created again in one diff (a type change) is one changed file. Removed lines count for the line above them; a change before line 1 gives no range. */"""
         patch = "\n".join([
             'diff --git "a/back\\\\slash.py" "b/back\\\\slash.py"', "index c77028a..e6bfff5 100644",
             '--- "a/back\\\\slash.py"', '+++ "b/back\\\\slash.py"', "@@ -1 +1 @@", "-old", "+new",
@@ -439,7 +439,7 @@ class DiffIsReadExactlyTest(_Repositories):
         self.assertIsInstance(unreadable, str)
 
     def test_the_files_read_from_a_patch_are_those_git_names(self) -> None:
-        """/* REQ-CS-9115: for a diff with awkward names and changes (a space, letters outside ASCII, a rename with and without a change, a removed file, a binary file, a new file, a removed line that looks like a file header and, where the file system takes them, a tab, a double quote and a backslash in a name), the files and the status read from the patch are exactly those `git diff --raw -z` lists, which Git writes without quoting. */"""
+        """/* REQ-CS-178: for a diff with awkward names and changes (a space, letters outside ASCII, a rename with and without a change, a removed file, a binary file, a new file, a removed line that looks like a file header and, where the file system takes them, a tab, a double quote and a backslash in a name), the files and the status read from the patch are exactly those `git diff --raw -z` lists, which Git writes without quoting. */"""
         from scripts import git_safe
 
         names = {"plain.py": "a = 1\nb = 2\n", "sp ace/my mod.py": "x = 1\n", "\u00fcn\u00ef.py": "u = 1\n", "q.sql": "-- a/q.sql\nselect 1;\n",
@@ -478,7 +478,7 @@ class DiffIsReadExactlyTest(_Repositories):
         self.assertEqual(len(names) + 1, len(read))
 
     def test_a_graph_below_the_top_of_the_repository_and_an_exact_path(self) -> None:
-        """/* REQ-CS-9110: with the graph built in a folder below the top level of the Git repository, `impact --diff` and `diff_functions` answer for the changed files of that folder, by their paths relative to the graph root; a change of a file outside that folder is no change of the graph (`impact-diff-empty`, `diff-functions-empty`) and is never mapped to a file of the graph whose path ends the same way (a changed `util.py` at the top level is not `a/util.py` of the graph). */"""
+        """/* REQ-CS-173: with the graph built in a folder below the top level of the Git repository, `impact --diff` and `diff_functions` answer for the changed files of that folder, by their paths relative to the graph root; a change of a file outside that folder is no change of the graph (`impact-diff-empty`, `diff-functions-empty`) and is never mapped to a file of the graph whose path ends the same way (a changed `util.py` at the top level is not `a/util.py` of the graph). */"""
         top = self.repository("project", {
             ".gitignore": ".wingbox/\n",
             "util.py": "def helper():\n    return 1\n",
@@ -503,7 +503,7 @@ class DiffIsReadExactlyTest(_Repositories):
         self.assertIn("(changed src/area.py::area :line 1 :used-by (src/room.py))", impact)
 
     def test_the_last_definition_of_a_file_runs_to_its_end(self) -> None:
-        """/* REQ-CS-9111: a changed line is mapped to the definition that starts above it, and the last definition of a file runs to the end of the file: a change at line 251 of a file with one class names that class, not `diff-functions-no-match`. */"""
+        """/* REQ-CS-174: a changed line is mapped to the definition that starts above it, and the last definition of a file runs to the end of the file: a change at line 251 of a file with one class names that class, not `diff-functions-no-match`. */"""
         body = "".join(f"    v{number} = {number}\n" for number in range(1, 300))
         root = self.built("project", {".gitignore": ".wingbox/\n", "big.py": "class Big:\n" + body})
         self.write(root, {"big.py": "class Big:\n" + body.replace("    v250 = 250\n", "    v250 = 0\n")})
@@ -515,7 +515,7 @@ class DiffIsReadExactlyTest(_Repositories):
 
 class RemovedAndRenamedTest(_Repositories):
     def test_removed_lines_are_a_change_of_their_file(self) -> None:
-        """/* REQ-CS-9112: a file from which lines were only removed is a changed file: `impact --diff` gives its impact answer and `diff_functions` names it, never the empty form. The removed lines count for the definition that holds the line above them (a statement removed inside `load` names `load`); lines removed above the first definition name the file alone (`diff-file`, `diff-functions-no-match`). */"""
+        """/* REQ-CS-175: a file from which lines were only removed is a changed file: `impact --diff` gives its impact answer and `diff_functions` names it, never the empty form. The removed lines count for the definition that holds the line above them (a statement removed inside `load` names `load`); lines removed above the first definition name the file alone (`diff-file`, `diff-functions-no-match`). */"""
         root = self.built("project", {**APP, "app/f.py": "def load():\n    value = 1\n    value += 0\n    return value\n\n\ndef keep():\n    return 2\n"})
         self.write(root, {"app/f.py": "def load():\n    value = 1\n    return value\n\n\ndef keep():\n    return 2\n"})
         self.assertIn("@@ -3 +2,0 @@", self.git(root, "diff", "--unified=0").stdout)
@@ -539,7 +539,7 @@ class RemovedAndRenamedTest(_Repositories):
         self.assertEqual("(diff-file app/f.py :hunks 1)\n(diff-functions-no-match :files 1 :ref HEAD)\n", functions.stdout)
 
     def test_a_removed_file_and_a_renamed_file_are_named(self) -> None:
-        """/* REQ-CS-9113: a diff that removes a file (`git rm`) or renames one (`git mv`) never answers the empty form. `impact --diff` names the path that is gone with `(changed-file <path> :status deleted :dependents unknown)` or `(changed-file <old path> :status renamed :to <new path> :dependents unknown)` after the impact answers (`changed_files` in JSON, a block in the text for people, the same fact under `--summary`), answers for the new path of a rename, and exits with status 0; a diff that only removes files prints these facts alone. `diff_functions` names the same paths with `(diff-file <path> :hunks N :status deleted)` and `(diff-file <old path> :hunks N :status renamed :to <new path>)`. */"""
+        """/* REQ-CS-176: a diff that removes a file (`git rm`) or renames one (`git mv`) never answers the empty form. `impact --diff` names the path that is gone with `(changed-file <path> :status deleted :dependents unknown)` or `(changed-file <old path> :status renamed :to <new path> :dependents unknown)` after the impact answers (`changed_files` in JSON, a block in the text for people, the same fact under `--summary`), answers for the new path of a rename, and exits with status 0; a diff that only removes files prints these facts alone. `diff_functions` names the same paths with `(diff-file <path> :hunks N :status deleted)` and `(diff-file <old path> :hunks N :status renamed :to <new path>)`. */"""
         root = self.built("project", {**APP, "util.py": "def helper():\n    return 1\n"})
         self.git(root, "rm", "-q", "util.py")
         only_removed = self.wingbox(root, "impact", "--diff")
@@ -586,7 +586,7 @@ class RemovedAndRenamedTest(_Repositories):
 
 class ChangedUnderOnlyTestsTest(_Repositories):
     def test_a_function_only_other_files_use_says_so(self) -> None:
-        """/* REQ-CS-9114: under `impact --diff --only tests` a changed function that no test file uses directly and that other files do use carries `:other-users N`, the number of those files, after `:used-by ()` (`other_users` in JSON, the same key on `changed-summary`, and the text for people says it), so that the empty list does not read as "nothing uses it". A function a test file uses, a function nothing uses and every answer without `--only tests` are printed as before. */"""
+        """/* REQ-CS-177: under `impact --diff --only tests` a changed function that no test file uses directly and that other files do use carries `:other-users N`, the number of those files, after `:used-by ()` (`other_users` in JSON, the same key on `changed-summary`, and the text for people says it), so that the empty list does not read as "nothing uses it". A function a test file uses, a function nothing uses and every answer without `--only tests` are printed as before. */"""
         root = self.built("project", {**APP, "app/lone.py": "def lone():\n    return 0\n"})
         self.write(root, {"app/f.py": LOAD_CHANGED, "app/lone.py": "def lone():\n    return 1\n",
                           "app/g.py": "from app.f import load\n\n\ndef use():\n    return load() + 0\n"})

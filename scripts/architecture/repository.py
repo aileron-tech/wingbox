@@ -45,7 +45,7 @@ STATE_FOLDER = ".wingbox"
 # The one file below .wingbox whose refusal ends the command (config.read_config makes it an error). For the
 # others (decisions, learned, baseline) a file that cannot be read is a warning and the command goes on to the
 # writer, which names the link itself: naming it here too would say one thing twice.
-_FATAL_WHEN_UNREAD = STATE_FOLDER + "/config.yaml"   # config.CONFIG_FILE; REQ-ZONE-9990 fails when they differ
+_FATAL_WHEN_UNREAD = STATE_FOLDER + "/config.yaml"   # config.CONFIG_FILE; REQ-ZONE-017 fails when they differ
 
 
 def _link_below_state_folder(root: str, relative: str) -> Optional[str]:

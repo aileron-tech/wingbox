@@ -251,7 +251,7 @@ class OverviewTest(unittest.TestCase):
         self.assertNotIn("(impact", report)
 
     def test_text_of_the_repository_is_never_markdown_of_the_report(self) -> None:
-        """/* REQ-OUT-9930: REPORT.md shows text that comes from the repository as text: the evidence of a capability break, a pattern break or an advice (a line of source) stands in a code span whose fence is longer than any run of backticks in it, with a pipe escaped and a line break as a space, so an image, a link, an HTML tag or comment in the line stays inside one table cell and is not rendered; in the cells for the advice, its style and its rule and in the title, `<` is written `&lt;` and a backslash, `[` and `!` are escaped. */"""
+        """/* REQ-OUT-021: REPORT.md shows text that comes from the repository as text: the evidence of a capability break, a pattern break or an advice (a line of source) stands in a code span whose fence is longer than any run of backticks in it, with a pipe escaped and a line break as a space, so an image, a link, an HTML tag or comment in the line stays inside one table cell and is not rendered; in the cells for the advice, its style and its rule and in the title, `<` is written `&lt;` and a backslash, `[` and `!` are escaped. */"""
         evil = '![x](https://tracker.example/p.png) <!-- <img src=x onerror=1> --> `a` ``b`` | [k](javascript:1)'
         hostile = dataclasses.replace(
             self._overview(),
@@ -276,7 +276,7 @@ class OverviewTest(unittest.TestCase):
                 self.assertEqual(7, len(re.findall(r"(?<!\\)\|", line)), line)   # six cells, however many pipes the evidence holds
 
     def test_the_command_of_the_next_steps_is_quoted_for_a_shell(self) -> None:
-        """/* REQ-OUT-9931: the command REPORT.md prints under "Next steps" is safe to paste into a shell: a file name with spaces or shell characters (`;`, `$`, a quote) is one quoted word of `wingbox impact`, an ordinary path is printed as it is, and a file whose name holds a line break is never put into the command. */"""
+        """/* REQ-OUT-022: the command REPORT.md prints under "Next steps" is safe to paste into a shell: a file name with spaces or shell characters (`;`, `$`, a quote) is one quoted word of `wingbox impact`, an ordinary path is printed as it is, and a file whose name holds a line break is never put into the command. */"""
         view = self._overview()
 
         def report_for(name: str) -> str:
@@ -300,7 +300,7 @@ class OverviewTest(unittest.TestCase):
         self.assertIn("wingbox impact shop/", command(broken))   # the next file of the list stands in
 
     def test_the_command_the_map_copies_is_quoted_for_a_shell(self) -> None:
-        """/* REQ-OUT-9932: the command the map page shows and copies for a selected file, `wingbox impact <file>`, takes the file name through the page's `shellWord`, which gives an ordinary path as it is and any other name as one single-quoted word (a quote inside it closed, escaped and reopened), as Python's `shlex.quote` does; the function is run with node, and that part is skipped, and reported as skipped, where node is not installed. */"""
+        """/* REQ-OUT-023: the command the map page shows and copies for a selected file, `wingbox impact <file>`, takes the file name through the page's `shellWord`, which gives an ordinary path as it is and any other name as one single-quoted word (a quote inside it closed, escaped and reopened), as Python's `shlex.quote` does; the function is run with node, and that part is skipped, and reported as skipped, where node is not installed. */"""
         import shlex
         import shutil
         import subprocess

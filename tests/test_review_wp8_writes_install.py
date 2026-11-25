@@ -158,7 +158,7 @@ class ProjectCase(unittest.TestCase):
 
 class LinkHelperTest(ProjectCase):
     def test_the_helper_refuses_a_link_at_wingbox_and_below_it_and_nothing_above(self) -> None:
-        """/* REQ-ZONE-9800: portable.refuse_links and portable.open_unlinked raise LinkRefused (an OSError whose text names the link and says to remove it) when the path's `.wingbox` folder, a folder below it or, for open_unlinked, the file itself is a symbolic link, whether its target exists or not; nothing is created or changed at the target. A project that is reached through a linked folder above `.wingbox`, and a path in no `.wingbox`, are not judged. The check does not need O_NOFOLLOW (Windows); where O_NOFOLLOW exists, a file that becomes a link after the check is not followed either. */"""
+        """/* REQ-ZONE-002: portable.refuse_links and portable.open_unlinked raise LinkRefused (an OSError whose text names the link and says to remove it) when the path's `.wingbox` folder, a folder below it or, for open_unlinked, the file itself is a symbolic link, whether its target exists or not; nothing is created or changed at the target. A project that is reached through a linked folder above `.wingbox`, and a path in no `.wingbox`, are not judged. The check does not need O_NOFOLLOW (Windows); where O_NOFOLLOW exists, a file that becomes a link after the check is not followed either. */"""
         folder = self.root / ".wingbox"
         folder.mkdir()
         victim = self.victim("victim.txt")
@@ -224,7 +224,7 @@ class LinkHelperTest(ProjectCase):
 
 class BuildLinksTest(ProjectCase):
     def test_build_writes_no_report_and_no_map_through_a_link(self) -> None:
-        """/* REQ-ZONE-9801: with `.wingbox/REPORT.md` or `.wingbox/map.html` a symbolic link to a file outside the project (as a clone of a repository that commits such a link has it), `wingbox build` leaves the file outside byte for byte as it was, creates nothing outside, names the link in one error and exits with a status that is not 0; the graph itself is built. With the link removed the build writes both files as regular files. */"""
+        """/* REQ-ZONE-003: with `.wingbox/REPORT.md` or `.wingbox/map.html` a symbolic link to a file outside the project (as a clone of a repository that commits such a link has it), `wingbox build` leaves the file outside byte for byte as it was, creates nothing outside, names the link in one error and exits with a status that is not 0; the graph itself is built. With the link removed the build writes both files as regular files. */"""
         for name in ("REPORT.md", "map.html"):
             with self.subTest(name=name):
                 victim = self.victim(name + ".txt")
@@ -241,7 +241,7 @@ class BuildLinksTest(ProjectCase):
             self.assertTrue(path.is_file() and not path.is_symlink(), name)
 
     def test_build_refuses_a_wingbox_folder_that_is_a_link(self) -> None:
-        """/* REQ-ZONE-9802: when `.wingbox` itself is a symbolic link (to a folder outside the project, to the folder above it, or to nothing), `wingbox build` writes no graph, no cache, no report, no map and no .gitignore through it: the linked folder holds what it held, the build names `.wingbox` as the link in one error and exits with a status that is not 0. The same for the MCP server started with --build-missing. */"""
+        """/* REQ-ZONE-004: when `.wingbox` itself is a symbolic link (to a folder outside the project, to the folder above it, or to nothing), `wingbox build` writes no graph, no cache, no report, no map and no .gitignore through it: the linked folder holds what it held, the build names `.wingbox` as the link in one error and exits with a status that is not 0. The same for the MCP server started with --build-missing. */"""
         (self.outside / "folder").mkdir()
         (self.outside / "folder" / "kept.txt").write_text("kept\n", encoding="utf-8")
         for target in (self.outside / "folder", self.base, self.outside / "nothing"):
@@ -260,7 +260,7 @@ class BuildLinksTest(ProjectCase):
                 link.unlink()
 
     def test_a_file_the_build_replaces_becomes_a_regular_file_and_its_target_stays(self) -> None:
-        """/* REQ-ZONE-9803: the files a build writes by renaming a temporary file over them (index.sexp, index.uses.sexp, cache.json, graph-fragments.json, graph-snapshot.json, graph-state.json) are not refused when one of them is a symbolic link: the link is replaced by a regular file with the new content and the file it pointed at stays byte for byte as it was. */"""
+        """/* REQ-ZONE-005: the files a build writes by renaming a temporary file over them (index.sexp, index.uses.sexp, cache.json, graph-fragments.json, graph-snapshot.json, graph-state.json) are not refused when one of them is a symbolic link: the link is replaced by a regular file with the new content and the file it pointed at stays byte for byte as it was. */"""
         names = ("index.sexp", "index.uses.sexp", "cache.json", "graph-fragments.json", "graph-snapshot.json", "graph-state.json")
         for name in names:
             self.link(name, self.victim(name + ".txt", "outside\n"))
@@ -276,7 +276,7 @@ class BuildLinksTest(ProjectCase):
         self.assertIn("order_total", graph)
 
     def test_a_graph_reached_through_a_linked_wingbox_is_read_and_nothing_is_written_there(self) -> None:
-        """/* REQ-ZONE-9820: when `.wingbox` is a symbolic link to a folder that holds a graph built for this project, the readers of the graph write nothing into that folder: marking a changed file (the edit hook) and writing the state raise LinkRefused, the background fill of use positions is not started and leaves no lock file, and a query command that would record a change names the link and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-014: when `.wingbox` is a symbolic link to a folder that holds a graph built for this project, the readers of the graph write nothing into that folder: marking a changed file (the edit hook) and writing the state raise LinkRefused, the background fill of use positions is not started and leaves no lock file, and a query command that would record a change names the link and exits with a status that is not 0. */"""
         self.build()
         shutil.move(str(self.root / ".wingbox"), str(self.outside / "state"))
         link = self.link("", self.outside / "state")
@@ -293,7 +293,7 @@ class BuildLinksTest(ProjectCase):
         self.assertEqual(before, _tree(self.outside))
 
     def test_the_build_lock_and_the_first_build_lock_are_not_opened_through_a_link(self) -> None:
-        """/* REQ-ZONE-9821: the lock files of a build are opened only when they are no symbolic link: with `.wingbox/build.lock` a link to a file that does not exist, `wingbox build` names the link in one error, exits with a status that is not 0, builds nothing and does not create the file, and the MCP server started with --build-missing does not create it either; with `.wingbox/first-build.lock` such a link, that server names the link, exits with a status that is not 0 and creates nothing. */"""
+        """/* REQ-ZONE-015: the lock files of a build are opened only when they are no symbolic link: with `.wingbox/build.lock` a link to a file that does not exist, `wingbox build` names the link in one error, exits with a status that is not 0, builds nothing and does not create the file, and the MCP server started with --build-missing does not create it either; with `.wingbox/first-build.lock` such a link, that server names the link, exits with a status that is not 0 and creates nothing. */"""
         missing = self.outside / "lock-target"
         link = self.link("build.lock", missing)
         self.assert_refused(self.wingbox("build", str(self.root)), link)
@@ -316,7 +316,7 @@ class RefreshLinksTest(ProjectCase):
                     "shop/refunds.py": "from shop.pricing import order_total\n"})
 
     def test_the_refresh_log_and_the_lock_files_are_not_opened_through_a_link(self) -> None:
-        """/* REQ-ZONE-9804: freshness.start_refresh opens `.wingbox/refresh.log` only when it is no symbolic link: with a link it raises LinkRefused, starts no process and leaves the link's target byte for byte as it was. The lock files are opened the same way: with `.wingbox/graph-state.lock` or `.wingbox/refresh.lock` a link, mark_changed and refresh_running raise LinkRefused and a target that did not exist is not created; the marker of WINGBOX_CHECK_INTERVAL (`.wingbox/graph-checked`) is not created or touched through a link. */"""
+        """/* REQ-ZONE-006: freshness.start_refresh opens `.wingbox/refresh.log` only when it is no symbolic link: with a link it raises LinkRefused, starts no process and leaves the link's target byte for byte as it was. The lock files are opened the same way: with `.wingbox/graph-state.lock` or `.wingbox/refresh.lock` a link, mark_changed and refresh_running raise LinkRefused and a target that did not exist is not created; the marker of WINGBOX_CHECK_INTERVAL (`.wingbox/graph-checked`) is not created or touched through a link. */"""
         root = str(self.root)
         victim = self.victim("log.txt")
         link = self.link("refresh.log", victim)
@@ -347,7 +347,7 @@ class RefreshLinksTest(ProjectCase):
         marker.unlink()
 
     def test_a_hook_that_refreshes_writes_nothing_through_a_link(self) -> None:
-        """/* REQ-ZONE-9805: with `.wingbox/refresh.log` a symbolic link to a file outside the project and a source changed since the build, the session-start hook, the git hook and the search hook exit 0 as always, start no refresh and leave the file outside byte for byte as it was; the hook says on stderr which link stopped it. With `.wingbox/build.lock` a link, the refresh that a hook starts ends without creating the link's target and records that it failed, so that it is not started again and again. */"""
+        """/* REQ-ZONE-007: with `.wingbox/refresh.log` a symbolic link to a file outside the project and a source changed since the build, the session-start hook, the git hook and the search hook exit 0 as always, start no refresh and leave the file outside byte for byte as it was; the hook says on stderr which link stopped it. With `.wingbox/build.lock` a link, the refresh that a hook starts ends without creating the link's target and records that it failed, so that it is not started again and again. */"""
         victim = self.victim("log.txt")
         link = self.link("refresh.log", victim)
         self.change_a_source()
@@ -384,7 +384,7 @@ class RefreshLinksTest(ProjectCase):
         self.assertIn(REFUSED, (self.root / ".wingbox" / "refresh.log").read_text(encoding="utf-8"))
 
     def test_a_query_that_would_refresh_through_a_link_ends_with_the_error(self) -> None:
-        """/* REQ-ZONE-9806: a query command whose refresh of the graph would write through a symbolic link below `.wingbox` (here `.wingbox/graph-state.lock`, with a source changed since the build) prints one error that names the link and exits with a status that is not 0, without a traceback; the link's target is not created. */"""
+        """/* REQ-ZONE-008: a query command whose refresh of the graph would write through a symbolic link below `.wingbox` (here `.wingbox/graph-state.lock`, with a source changed since the build) prints one error that names the link and exits with a status that is not 0, without a traceback; the link's target is not created. */"""
         missing = self.outside / "lock-target"
         (self.root / ".wingbox" / freshness.LOCK_NAME).unlink()
         link = self.link(freshness.LOCK_NAME, missing)
@@ -408,7 +408,7 @@ class ArchitectureLinksTest(ProjectCase):
         self.assert_refused(done, link)
 
     def test_init_writes_no_config_and_no_assistant_setup_through_a_link(self) -> None:
-        """/* REQ-ZONE-9807: `wingbox init` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml` (with --force, or pointing at nothing) or `.wingbox/assistant-setup.md` is a symbolic link to it, and when `.wingbox` itself is a link to a folder outside: it names the link in one error and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-009: `wingbox init` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml` (with --force, or pointing at nothing) or `.wingbox/assistant-setup.md` is a symbolic link to it, and when `.wingbox` itself is a link to a folder outside: it names the link in one error and exits with a status that is not 0. */"""
         for name, target, arguments in (
             ("config.yaml", self.victim("config.txt", "# outside\n"), ("--force",)),
             ("config.yaml", self.outside / "no-config", ()),
@@ -425,7 +425,7 @@ class ArchitectureLinksTest(ProjectCase):
         self.refused_without_a_write(link, "init", str(self.root), "--yes", "--sexp")
 
     def test_align_learn_writes_no_config_and_no_baseline_through_a_link(self) -> None:
-        """/* REQ-ZONE-9808: `wingbox align --learn` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml` or `.wingbox/baseline.sexp` is a symbolic link to it: it names the link in one error and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-010: `wingbox align --learn` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml` or `.wingbox/baseline.sexp` is a symbolic link to it: it names the link in one error and exits with a status that is not 0. */"""
         for name, target in (
             ("config.yaml", self.outside / "no-config"),
             ("baseline.sexp", self.victim("baseline.txt")),
@@ -439,7 +439,7 @@ class ArchitectureLinksTest(ProjectCase):
                     (self.root / ".wingbox" / written).unlink(missing_ok=True)
 
     def test_learn_apply_writes_no_config_no_learned_and_no_decisions_through_a_link(self) -> None:
-        """/* REQ-ZONE-9809: `wingbox learn --apply` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml`, `.wingbox/learned.sexp` or `.wingbox/decisions.sexp` is a symbolic link to it: it names the link in one error and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-011: `wingbox learn --apply` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml`, `.wingbox/learned.sexp` or `.wingbox/decisions.sexp` is a symbolic link to it: it names the link in one error and exits with a status that is not 0. */"""
         answer = '(layer "." connectors infra :because "pay.ts wraps a payment client and imports a repository")\n'
         for name, target in (
             ("config.yaml", self.outside / "no-config"),
@@ -455,7 +455,7 @@ class ArchitectureLinksTest(ProjectCase):
                     (self.root / ".wingbox" / written).unlink(missing_ok=True)
 
     def test_advice_accept_and_a_build_write_no_decision_through_a_link(self) -> None:
-        """/* REQ-ZONE-9810: with `.wingbox/decisions.sexp` a symbolic link to a file outside the project, `wingbox advice accept <id>` and the build of a project that keeps the decision log leave that file byte for byte as it was: each names the link in one error and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-012: with `.wingbox/decisions.sexp` a symbolic link to a file outside the project, `wingbox advice accept <id>` and the build of a project that keeps the decision log leave that file byte for byte as it was: each names the link in one error and exits with a status that is not 0. */"""
         self.assertEqual(0, self.wingbox("init", str(self.root), "--yes").returncode)
         self.build()   # a set-up project: the build logs its advice in decisions.sexp
         log = self.root / ".wingbox" / "decisions.sexp"
@@ -473,7 +473,7 @@ class FoldersLinksTest(ProjectCase):
     FILES = FOLDERS
 
     def test_init_from_folders_writes_no_config_through_a_link(self) -> None:
-        """/* REQ-ZONE-9811: `wingbox init --from-folders PART` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml` is a symbolic link to it: it names the link in one error and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-013: `wingbox init --from-folders PART` leaves a file outside the project byte for byte as it was, and creates none there, when `.wingbox/config.yaml` is a symbolic link to it: it names the link in one error and exits with a status that is not 0. */"""
         self.build()
         for target, arguments in ((self.outside / "no-config", ()), (self.victim("config.txt", "# outside\n"), ("--force",))):
             with self.subTest(target=target.name):
@@ -489,7 +489,7 @@ class NewProjectLinksTest(ProjectCase):
     FILES: dict[str, str] = {}
 
     def test_init_of_a_new_project_writes_no_config_through_a_link(self) -> None:
-        """/* REQ-ZONE-9822: `wingbox init --language L --style S --yes` in a folder without source files leaves a file outside the project byte for byte as it was, and creates none there, when the `.wingbox/config.yaml` it would write is a symbolic link: its own, pointing at nothing, or the one of the repository above it, to which it would add the new part. It names the link in one error and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-016: `wingbox init --language L --style S --yes` in a folder without source files leaves a file outside the project byte for byte as it was, and creates none there, when the `.wingbox/config.yaml` it would write is a symbolic link: its own, pointing at nothing, or the one of the repository above it, to which it would add the new part. It names the link in one error and exits with a status that is not 0. */"""
         arguments = ("--language", "python", "--style", "layered", "--yes", "--sexp")
         link = self.link("config.yaml", self.outside / "no-config")
         before = _tree(self.outside)
@@ -524,7 +524,7 @@ class ForeignGraphTest(ProjectCase):
         return copy
 
     def test_a_snapshot_root_that_is_not_absolute_does_not_confirm_the_graph(self) -> None:
-        """/* REQ-FRESH-9812: a snapshot whose `root` is not an absolute path (`.`, the empty text, a relative folder) says nothing about where the graph was built: built_here answers Unconfirmed whatever the current folder is, so the hooks and the query commands read such a graph as it is with `(wingbox-graph-unconfirmed ...)` and start no refresh in a folder nobody asked to map; an absolute root that is the folder still confirms it. */"""
+        """/* REQ-FRESH-064: a snapshot whose `root` is not an absolute path (`.`, the empty text, a relative folder) says nothing about where the graph was built: built_here answers Unconfirmed whatever the current folder is, so the hooks and the query commands read such a graph as it is with `(wingbox-graph-unconfirmed ...)` and start no refresh in a folder nobody asked to map; an absolute root that is the folder still confirms it. */"""
         def snapshot(root: str) -> freshness.Snapshot:
             return freshness.Snapshot({}, {}, frozenset(), frozenset(), (), frozenset(), root)
 
@@ -556,7 +556,7 @@ class ForeignGraphTest(ProjectCase):
                 shutil.rmtree(self.root / ".wingbox")
 
     def test_skipped_language_notes_are_written_again_from_what_wingbox_knows(self) -> None:
-        """/* REQ-FRESH-9813: freshness.skipped_languages_line does not pass on the text of `.wingbox/graph-skipped.sexp`: it reads the language and the number of files of each `(skipped-language ...)` line and writes the fact again with the command Wingbox itself gives for that language, exactly as the builder writes it; a line with an unknown language, a number that is none, another command or free text gives no note, and a language is named once. */"""
+        """/* REQ-FRESH-065: freshness.skipped_languages_line does not pass on the text of `.wingbox/graph-skipped.sexp`: it reads the language and the number of files of each `(skipped-language ...)` line and writes the fact again with the command Wingbox itself gives for that language, exactly as the builder writes it; a line with an unknown language, a number that is none, another command or free text gives no note, and a language is named once. */"""
         self.build()
         record = self.root / ".wingbox" / freshness.SKIPPED_NAME
         record.write_text(
@@ -581,7 +581,7 @@ class ForeignGraphTest(ProjectCase):
         self.assertEqual(builder.skipped_language_facts(skipped).rstrip("\n"), freshness.skipped_languages_line(str(self.root)))
 
     def test_a_graph_that_was_not_built_here_gives_no_skipped_language_note(self) -> None:
-        """/* REQ-FRESH-9814: a graph that was not built in its folder (a copied or committed `.wingbox/`, Unconfirmed) gives no skipped-language note at all, whatever its `graph-skipped.sexp` holds: not on the stderr of a query command, not in the context of the search hook, not at the head of an MCP answer; the note that the graph is unconfirmed stays. */"""
+        """/* REQ-FRESH-066: a graph that was not built in its folder (a copied or committed `.wingbox/`, Unconfirmed) gives no skipped-language note at all, whatever its `graph-skipped.sexp` holds: not on the stderr of a query command, not in the context of the search hook, not at the head of an MCP answer; the note that the graph is unconfirmed stays. */"""
         from wingbox import mcp_server
 
         copy = self.copied(str(self.root))
@@ -604,7 +604,7 @@ class ForeignGraphTest(ProjectCase):
 
 class RefreshLogTest(ProjectCase):
     def test_the_refresh_log_keeps_its_last_part_under_a_fixed_size(self) -> None:
-        """/* REQ-FRESH-9815: `.wingbox/refresh.log` does not grow without bound: when a refresh starts and the log is larger than 1 MB, only its last part is kept (whole lines, less than a quarter of the limit) and the new refresh writes after it; a smaller log is left as it is. */"""
+        """/* REQ-FRESH-067: `.wingbox/refresh.log` does not grow without bound: when a refresh starts and the log is larger than 1 MB, only its last part is kept (whole lines, less than a quarter of the limit) and the new refresh writes after it; a smaller log is left as it is. */"""
         log = Path(freshness.refresh_log_path(str(self.root)))
         log.parent.mkdir()
         line = b"[wingbox] refresh: partial in 0.1s for 1 changed files\n"
@@ -669,7 +669,7 @@ class InstallFailureTest(unittest.TestCase):
         (self.home / ".codex").mkdir()
 
     def test_install_reports_a_file_it_cannot_use_and_records_what_it_wrote(self) -> None:
-        """/* REQ-INSTALL-9816: when a settings file or an instructions file cannot be read or written (not UTF-8, a folder in its place, read-only), `wingbox install` raises nothing: it answers `(install-failed <file> :what hook|block ... :reason ...)` for that file, puts the other items in place, writes ~/.wingbox/installed.sexp so that `wingbox uninstall` knows what to remove, and its status is 1; the file it could not use is left as it was and no backup of it is left behind. `wingbox uninstall` then removes what was installed and keeps the file with the reason, also without raising. */"""
+        """/* REQ-INSTALL-050: when a settings file or an instructions file cannot be read or written (not UTF-8, a folder in its place, read-only), `wingbox install` raises nothing: it answers `(install-failed <file> :what hook|block ... :reason ...)` for that file, puts the other items in place, writes ~/.wingbox/installed.sexp so that `wingbox uninstall` knows what to remove, and its status is 1; the file it could not use is left as it was and no backup of it is left behind. `wingbox uninstall` then removes what was installed and keeps the file with the reason, also without raising. */"""
         for name, path, spoil in self.cases():
             with self.subTest(case=name):
                 self.fresh_home()
@@ -702,7 +702,7 @@ class InstallFailureTest(unittest.TestCase):
                 self.assertFalse((self.home / ".wingbox" / "installed.sexp").exists())
 
     def test_the_command_prints_the_failure_as_a_fact_and_no_traceback(self) -> None:
-        """/* REQ-INSTALL-9817: `wingbox install --yes --sexp` and `wingbox uninstall --sexp` with a settings file that is a folder, and with a record ~/.wingbox/installed.sexp that cannot be read, print the failure as a fact (`install-failed`, `uninstall-kept` or `uninstall-failed`, with the file and the reason) and no traceback; install exits 1 and nothing is written before a record that cannot be read. */"""
+        """/* REQ-INSTALL-051: `wingbox install --yes --sexp` and `wingbox uninstall --sexp` with a settings file that is a folder, and with a record ~/.wingbox/installed.sexp that cannot be read, print the failure as a fact (`install-failed`, `uninstall-kept` or `uninstall-failed`, with the file and the reason) and no traceback; install exits 1 and nothing is written before a record that cannot be read. */"""
         environment = _environment(self.home)
 
         def wingbox(*args: str) -> subprocess.CompletedProcess:
@@ -734,7 +734,7 @@ class InstallFailureTest(unittest.TestCase):
 
 class ProjectIgnoreTest(ProjectCase):
     def test_a_gitignore_that_names_wingbox_is_left_as_it_is(self) -> None:
-        """/* REQ-CLI-9818: the rule `/.wingbox/` (`.wingbox/` in Git's global excludes file) is appended only to a file that has no rule about `.wingbox` yet: a file with `.wingbox/*` followed by exceptions, with `!/.wingbox/`, `**/.wingbox/` or `.wingbox` is left byte for byte as it is, so `wingbox init` does not override what a team wrote to commit `.wingbox/config.yaml`; a comment that mentions the folder and a rule about another name that only contains it are no such rule. */"""
+        """/* REQ-CLI-049: the rule `/.wingbox/` (`.wingbox/` in Git's global excludes file) is appended only to a file that has no rule about `.wingbox` yet: a file with `.wingbox/*` followed by exceptions, with `!/.wingbox/`, `**/.wingbox/` or `.wingbox` is left byte for byte as it is, so `wingbox init` does not override what a team wrote to commit `.wingbox/config.yaml`; a comment that mentions the folder and a rule about another name that only contains it are no such rule. */"""
         path = self.root / ".gitignore"
         for text in (b".wingbox/*\n!.wingbox/config.yaml\n!.wingbox/baseline.sexp\n", b"*.log\n!/.wingbox/\n", b"**/.wingbox/\n",
                      b".wingbox\r\n", b"/.wingbox/index*\n", b"  !.wingbox/  \n"):
@@ -773,7 +773,7 @@ class HookHintTest(unittest.TestCase):
         return hook.load_graph(str(root), str(path))
 
     def test_the_hint_quotes_a_path_with_shell_characters(self) -> None:
-        """/* REQ-INSTALL-9819: the command the search hook suggests for a file, `wingbox impact <path>`, carries the path quoted for a shell when it holds a character a shell reads (a space, `;`, `$(...)`, a quote, a backquote, `&`, `|`): split as a shell splits it, the command is `wingbox`, `impact` and the path, nothing else; the hint stays one S-expression string. A plain path is written as before, without quotes. */"""
+        """/* REQ-INSTALL-052: the command the search hook suggests for a file, `wingbox impact <path>`, carries the path quoted for a shell when it holds a character a shell reads (a space, `;`, `$(...)`, a quote, a backquote, `&`, `|`): split as a shell splits it, the command is `wingbox`, `impact` and the path, nothing else; the hint stays one S-expression string. A plain path is written as before, without quotes. */"""
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(os.path.realpath(tmp.name))

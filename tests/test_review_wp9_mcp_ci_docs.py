@@ -60,7 +60,7 @@ class SkillTextTest(unittest.TestCase):
         assert (cls.root / ".wingbox" / "index.sexp").is_file(), built
 
     def test_the_examples_of_the_skill_run_the_command_not_scripts_it_does_not_hold(self) -> None:
-        """/* REQ-DOC-9970: an installed skill holds SKILL.md and references/ and no script, so every example of SKILL.md is written as `wingbox <command>`: no line of a shell block runs `python3` on a script or names SKILL_ROOT or TARGET_ROOT, the script paths stand only in the section "Scripts", which says that they are in a clone of the repository, and every `wingbox <name>` of a shell block is a command the program knows (the commands of its help and the query commands it lists for an unknown one). */"""
+        """/* REQ-DOC-010: an installed skill holds SKILL.md and references/ and no script, so every example of SKILL.md is written as `wingbox <command>`: no line of a shell block runs `python3` on a script or names SKILL_ROOT or TARGET_ROOT, the script paths stand only in the section "Scripts", which says that they are in a clone of the repository, and every `wingbox <name>` of a shell block is a command the program knows (the commands of its help and the query commands it lists for an unknown one). */"""
         text = SKILL.read_text(encoding="utf-8")
         lines = _shell_lines(text)
         self.assertTrue(lines)
@@ -85,7 +85,7 @@ class SkillTextTest(unittest.TestCase):
         self.assertEqual(set(), {name for name in used if not name.startswith("-")} - known)
 
     def test_the_graph_file_names_modules_by_short_id_and_the_documents_say_so(self) -> None:
-        """/* REQ-DOC-9971: .wingbox/index.sexp maps every module path to a short ID once, in its `(paths ...)` form, and its facts name modules by those IDs, so a text search of the file for a path finds no fact; SKILL.md therefore gives no `rg` line over the graph file for a module, and its lookups work: `module <id> --lines` prints the import with both paths and its line, `rdeps` names the importer, `search <fact> --lines` prints the stored fact with short IDs, and `module <short id>` names the module of one; references/sexp-notation.md states the mapping. */"""
+        """/* REQ-DOC-011: .wingbox/index.sexp maps every module path to a short ID once, in its `(paths ...)` form, and its facts name modules by those IDs, so a text search of the file for a path finds no fact; SKILL.md therefore gives no `rg` line over the graph file for a module, and its lookups work: `module <id> --lines` prints the import with both paths and its line, `rdeps` names the importer, `search <fact> --lines` prints the stored fact with short IDs, and `module <short id>` names the module of one; references/sexp-notation.md states the mapping. */"""
         graph = (self.root / ".wingbox" / "index.sexp").read_text(encoding="utf-8")
         facts = [line for line in graph.splitlines() if line.startswith("(imports ")]
         self.assertEqual(1, len(facts), facts)
@@ -116,7 +116,7 @@ class SkillTextTest(unittest.TestCase):
 
 class GuideTextTest(unittest.TestCase):
     def test_the_contributor_guide_names_the_systems_the_package_supports(self) -> None:
-        """/* REQ-DOC-9972: AGENTS.md, section 1, names as supported the operating systems that the classifiers of pyproject.toml declare and the matrix of tests.yml runs: macOS, Linux and Windows. */"""
+        """/* REQ-DOC-012: AGENTS.md, section 1, names as supported the operating systems that the classifiers of pyproject.toml declare and the matrix of tests.yml runs: macOS, Linux and Windows. */"""
         classifiers = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]["classifiers"]
         declared = {item.split(" :: ")[1] for item in classifiers if item.startswith("Operating System :: ")}
         self.assertEqual({"MacOS", "Microsoft", "POSIX"}, declared)
@@ -129,7 +129,7 @@ class GuideTextTest(unittest.TestCase):
         self.assertNotIn("macOS and Linux.", line)
 
     def test_the_limits_page_names_every_language_with_use_positions(self) -> None:
-        """/* REQ-DOC-9973: the row "Use positions outside ..." of docs/assurance/known-limits.md and the sentence of the README on use positions name the languages whose parser has a use-position walk (`<family>_use_positions` in scripts/lang: Python, TypeScript with JavaScript, Rust, and C and C++ through the cpp parser), and no other. */"""
+        """/* REQ-DOC-013: the row "Use positions outside ..." of docs/assurance/known-limits.md and the sentence of the README on use positions name the languages whose parser has a use-position walk (`<family>_use_positions` in scripts/lang: Python, TypeScript with JavaScript, Rust, and C and C++ through the cpp parser), and no other. */"""
         families = sorted(path.parent.name for path in (REPO / "scripts" / "lang").glob("*/parser.py")
                           if re.search(rf"^def {path.parent.name}_use_positions\(", path.read_text(encoding="utf-8"), re.M))
         self.assertEqual(["cpp", "python", "rust", "typescript"], families)
@@ -141,7 +141,7 @@ class GuideTextTest(unittest.TestCase):
         self.assertIn(f"{wanted} have use positions", readme)
 
     def test_the_readme_names_the_one_option_under_which_code_may_run(self) -> None:
-        """/* REQ-DOC-9974: where the README says that building and querying open no network connection and that the code of a repository is never run, it names the exception: `wingbox build --lsp`, off by default, starts a language server, which can run the build of the project and reach a package registry; the bullet names the command of every language server a language adapter defines, and SKILL.md says the same where it shows `--lsp`. */"""
+        """/* REQ-DOC-014: where the README says that building and querying open no network connection and that the code of a repository is never run, it names the exception: `wingbox build --lsp`, off by default, starts a language server, which can run the build of the project and reach a package registry; the bullet names the command of every language server a language adapter defines, and SKILL.md says the same where it shows `--lsp`. */"""
         readme = (REPO / "README.md").read_text(encoding="utf-8")
         section = readme[readme.index("## Runs fully locally"):].split("\n## ")[0]
         network = " ".join(section[section.index("- **No network.**"):].split("\n- **")[0].split())
@@ -159,7 +159,7 @@ class GuideTextTest(unittest.TestCase):
         self.assertIn("can run the build of the project", rebuilding)
 
     def test_the_roadmap_lists_released_versions_and_the_published_check(self) -> None:
-        """/* REQ-DOC-9975: every version ROADMAP.md names under "Recently shipped" is a release of CHANGELOG.md, newest first, and the roadmap says that the pull request check (the GitHub Action `aileron-tech/wingbox-action`) is published, in that list and in the bullet on GitHub and GitLab, which no longer announces it as something to come. */"""
+        """/* REQ-DOC-015: every version ROADMAP.md names under "Recently shipped" is a release of CHANGELOG.md, newest first, and the roadmap says that the pull request check (the GitHub Action `aileron-tech/wingbox-action`) is published, in that list and in the bullet on GitHub and GitLab, which no longer announces it as something to come. */"""
         roadmap = (REPO / "ROADMAP.md").read_text(encoding="utf-8")
         shipped = roadmap[roadmap.index("## Recently shipped"):].split("\n## ")[0]
         named = [tuple(map(int, version.split("."))) for version in re.findall(r"^- \*\*(\d+\.\d+):\*\*", shipped, re.M)]
@@ -177,7 +177,7 @@ class GuideTextTest(unittest.TestCase):
 
 class BenchmarkDefaultTest(unittest.TestCase):
     def test_the_container_of_the_readme_runs_the_version_whose_results_are_committed(self) -> None:
-        """/* REQ-BENCH-9980: the README says that `docker build -f Dockerfile.benchmark ...` and `docker run --rm wingbox-benchmark` compare every result with the committed one, so the Wingbox that benchmarks/impact/run.sh installs when WINGBOX_SPEC is not set is the release that benchmarks/impact/results/versions.json names, and Dockerfile.benchmark, whose entry point is that script, sets no other version. */"""
+        """/* REQ-BENCH-025: the README says that `docker build -f Dockerfile.benchmark ...` and `docker run --rm wingbox-benchmark` compare every result with the committed one, so the Wingbox that benchmarks/impact/run.sh installs when WINGBOX_SPEC is not set is the release that benchmarks/impact/results/versions.json names, and Dockerfile.benchmark, whose entry point is that script, sets no other version. */"""
         import json
 
         script = (REPO / "benchmarks" / "impact" / "run.sh").read_text(encoding="utf-8")

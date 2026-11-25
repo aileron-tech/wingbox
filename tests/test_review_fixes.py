@@ -142,7 +142,7 @@ class AdviceAndWordingTest(unittest.TestCase):
 
 class BuildSpeedTest(unittest.TestCase):
     def test_the_type_only_check_resolves_no_import_again(self) -> None:
-        """/* REQ-CS-9952: the type-only check of an import takes the imports the build resolved once per file and resolves none again (a cached rebuild of a large monorepo spent most of its time there). */"""
+        """/* REQ-CS-231: the type-only check of an import takes the imports the build resolved once per file and resolves none again (a cached rebuild of a large monorepo spent most of its time there). */"""
         from types import SimpleNamespace
 
         from scripts import build_code_graph

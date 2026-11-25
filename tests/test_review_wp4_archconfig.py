@@ -131,7 +131,7 @@ class ProjectCase(unittest.TestCase):
 
 class UnreadableConfigTest(ProjectCase):
     def test_a_config_that_is_there_and_cannot_be_read_is_an_error(self) -> None:
-        """/* REQ-ARCH-9400: a `.wingbox/config.yaml` that exists and cannot be read - bytes that are not UTF-8, more than the size limit, a folder in its place - is a config error that names the file and the reason; only a missing file means "no config". */"""
+        """/* REQ-ARCH-074: a `.wingbox/config.yaml` that exists and cannot be read - bytes that are not UTF-8, more than the size limit, a folder in its place - is a config error that names the file and the reason; only a missing file means "no config". */"""
         from scripts.architecture.repository import MAX_TEXT_BYTES, file_reader
 
         self.assertIsNone(read_config(file_reader(str(self.root)), LIBRARY))
@@ -153,7 +153,7 @@ class UnreadableConfigTest(ProjectCase):
         self.assertIn("not a regular file", result.error)
 
     def test_the_build_stops_on_a_config_it_cannot_read(self) -> None:
-        """/* REQ-ARCH-9401: with one byte that is not UTF-8 in `.wingbox/config.yaml`, `wingbox build` prints an error with the file and the reason and exits 2; it does not fall back to detection and writes no graph. */"""
+        """/* REQ-ARCH-075: with one byte that is not UTF-8 in `.wingbox/config.yaml`, `wingbox build` prints an error with the file and the reason and exits 2; it does not fall back to detection and writes no graph. */"""
         _layered(self.root, violation=True)
         (self.root / ".wingbox").mkdir()
         (self.root / ".wingbox" / "config.yaml").write_bytes(
@@ -166,7 +166,7 @@ class UnreadableConfigTest(ProjectCase):
 
     @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "needs a file mode that denies reading")
     def test_a_config_without_read_permission_is_an_error(self) -> None:
-        """/* REQ-ARCH-9402: a `.wingbox/config.yaml` that the user may not open is a config error with the reason, as for bytes that are not UTF-8. */"""
+        """/* REQ-ARCH-076: a `.wingbox/config.yaml` that the user may not open is a config error with the reason, as for bytes that are not UTF-8. */"""
         from scripts.architecture.repository import file_reader
 
         _write(self.root, {".wingbox/config.yaml": LAYERED})
@@ -180,7 +180,7 @@ class UnreadableConfigTest(ProjectCase):
 
 class PartKeyTest(ProjectCase):
     def test_a_key_that_names_a_folder_of_the_repository_is_normalised(self) -> None:
-        """/* REQ-ARCH-9403: a part key that names a folder inside the repository is read as that folder: `./src` and `src/` are `src`, `src/./x` is `src/x`, `./` is the root; the part keeps its files instead of being dropped. */"""
+        """/* REQ-ARCH-077: a part key that names a folder inside the repository is read as that folder: `./src` and `src/` are `src`, `src/./x` is `src/x`, `./` is the root; the part keeps its files instead of being dropped. */"""
         for key, folder in (("./src", "src"), ("src/", "src"), ("src/./x", "src/x"), ("./", "."), (".", ".")):
             result = self.assert_reads(f"parts:\n  {key}:\n    style: layered\n")
             self.assertEqual([folder], [part.path for part in result.parts], key)
@@ -192,14 +192,14 @@ class PartKeyTest(ProjectCase):
         self.assertEqual("src", plan.part_of("src/core/f0.ts").path)
 
     def test_a_key_that_names_no_folder_of_the_repository_is_refused(self) -> None:
-        """/* REQ-ARCH-9404: a part key that cannot be read as a folder inside the repository is an error with its line: `..` between `/` or `\\`, an absolute path, a drive, a number, an empty key. */"""
+        """/* REQ-ARCH-078: a part key that cannot be read as a folder inside the repository is an error with its line: `..` between `/` or `\\`, an absolute path, a drive, a number, an empty key. */"""
         for key in ("../x", "src/../../x", "/etc", "'a\\..\\b'", "'C:/x'", "1", "''"):
             error = _error(f"parts:\n  src:\n    style: none\n  {key}:\n    style: layered\n")
             self.assertIn(".wingbox/config.yaml line 4: ", error, key)
             self.assertIn("the part must be a folder relative to the repository root", error, key)
 
     def test_a_listed_part_without_a_source_file_stays_in_the_plan(self) -> None:
-        """/* REQ-ARCH-9405: a part that `.wingbox/config.yaml` lists and that holds no source file is not dropped: the plan keeps it with no file, names it in `empty`, and the graph gets its `arch-part` fact, so that a gate can say it was not checked. */"""
+        """/* REQ-ARCH-079: a part that `.wingbox/config.yaml` lists and that holds no source file is not dropped: the plan keeps it with no file, names it in `empty`, and the graph gets its `arch-part` fact, so that a gate can say it was not checked. */"""
         config = self.assert_reads("parts:\n  src:\n    style: layered\n  docs/api:\n    style: hexagonal\n")
         paths = tuple(f"src/services/s{index}.ts" for index in range(6)) + ("docs/api/readme.md",)
         plan = plan_from_config(config, paths, lambda path: None, LIBRARY)
@@ -213,7 +213,7 @@ class PartKeyTest(ProjectCase):
         self.assertEqual(["docs/api", "src"], [part.path for part in self.assert_reads(rendered).parts])
 
     def test_the_build_names_a_part_without_a_source_file(self) -> None:
-        """/* REQ-ARCH-9406: `wingbox build` with a part key `./src` and a listed part that holds no source file: the graph has an `arch-part` for `src` and for the empty part, and the build warns once, naming the empty part. */"""
+        """/* REQ-ARCH-080: `wingbox build` with a part key `./src` and a listed part that holds no source file: the graph has an `arch-part` for `src` and for the empty part, and the build warns once, naming the empty part. */"""
         _folders(self.root, ("core", "ui"))
         _write(self.root, {".wingbox/config.yaml": "parts:\n  ./src:\n    style: declared\n    order:\n      - core: [core]\n"
                                                   "      - ui: [ui]\n  docs/api:\n    style: layered\n"})
@@ -228,7 +228,7 @@ class PartKeyTest(ProjectCase):
 
 class ConfigCheckTest(ProjectCase):
     def test_an_unknown_key_is_an_error_with_its_line(self) -> None:
-        """/* REQ-ARCH-9407: a key the file does not have is an error with its line, never ignored: a top-level key other than `parts` and `generators` (`partz`), and a key of a part other than level, style, layers, routing-root, capabilities, overlays, declared, order and target (`layerz`, `exclude`). */"""
+        """/* REQ-ARCH-081: a key the file does not have is an error with its line, never ignored: a top-level key other than `parts` and `generators` (`partz`), and a key of a part other than level, style, layers, routing-root, capabilities, overlays, declared, order and target (`layerz`, `exclude`). */"""
         error = _error("partz:\n  .:\n    style: layered\n")
         self.assertIn(".wingbox/config.yaml line 1: unknown key 'partz'", error)
         error = _error("parts:\n  .:\n    style: layered\ndefaults:\n  python: layered\n")
@@ -242,7 +242,7 @@ class ConfigCheckTest(ProjectCase):
                           "generators:\n  - run: tools/make.py\n    outputs: [src/made.ts]\n")
 
     def test_a_folder_or_a_key_written_twice_is_an_error(self) -> None:
-        """/* REQ-ARCH-9408: a part folder listed twice (`src` and `src/`) is an error; so is a key that one mapping of the file holds twice, at any depth, with the lines of both - YAML alone would keep the last one in silence. */"""
+        """/* REQ-ARCH-082: a part folder listed twice (`src` and `src/`) is an error; so is a key that one mapping of the file holds twice, at any depth, with the lines of both - YAML alone would keep the last one in silence. */"""
         error = _error("parts:\n  src:\n    style: layered\n  src/:\n    style: none\n")
         self.assertIn(".wingbox/config.yaml line 4: ", error)
         self.assertIn("the folder src is listed twice, as src and as src/", error)
@@ -253,7 +253,7 @@ class ConfigCheckTest(ProjectCase):
         self.assert_reads("parts:\n  a: &same\n    style: layered\n  b: *same\n")
 
     def test_a_folder_has_one_layer(self) -> None:
-        """/* REQ-ARCH-9409: a folder listed under two layers of `layers` is an error, and so are, in `order`, a folder and a folder that holds it (`x` and `x/y`): a folder is the whole tree below it and has one layer. A path under another layer of `layers` (`lib/hooks` next to `lib`) stays allowed, as the header of the file says. */"""
+        """/* REQ-ARCH-083: a folder listed under two layers of `layers` is an error, and so are, in `order`, a folder and a folder that holds it (`x` and `x/y`): a folder is the whole tree below it and has one layer. A path under another layer of `layers` (`lib/hooks` next to `lib`) stays allowed, as the header of the file says. */"""
         error = _error("parts:\n  .:\n    style: layered\n    layers: {api: [x], domain: [x]}\n")
         self.assertIn("line 2: part .: `layers` lists the folder x under api and under domain", error)
         self.assert_reads("parts:\n  .:\n    style: layered\n    layers: {api: [lib], domain: [lib/hooks]}\n")
@@ -264,13 +264,13 @@ class ConfigCheckTest(ProjectCase):
         self.assert_reads("parts:\n  .:\n    style: declared\n    order:\n      - a: [x, .]\n      - b: [xy, y/x]\n")
 
     def test_a_value_of_the_wrong_kind_is_an_error_not_a_crash(self) -> None:
-        """/* REQ-ARCH-9410: a `style` that is a list or a mapping is the "unknown style" error, and YAML nested deeper than the reader follows is a "not valid YAML" error: neither raises. */"""
+        """/* REQ-ARCH-084: a `style` that is a list or a mapping is the "unknown style" error, and YAML nested deeper than the reader follows is a "not valid YAML" error: neither raises. */"""
         for value in ("[declared]", "{a: 1}", "3"):
             self.assertIn("line 2: part .: unknown style", _error(f"parts:\n  .:\n    style: {value}\n"), value)
         self.assertIn("is not valid YAML", _error("parts: " + "[" * 5000))
 
     def test_a_layer_name_and_a_level_are_one_word(self) -> None:
-        """/* REQ-ARCH-9411: a layer name of `order` holds letters, digits, `_`, `.` and `-` only, and `level` is one such word: both are written into the graph file as bare words, so a name with a line break or a bracket is a config error and never becomes a line of the graph. */"""
+        """/* REQ-ARCH-085: a layer name of `order` holds letters, digits, `_`, `.` and `-` only, and `level` is one such word: both are written into the graph file as bare words, so a name with a line break or a bracket is a config error and never becomes a line of the graph. */"""
         injected = 'game 0)\n(arch-part "injected" :style layered :state determined)\n(arch-rank "src" game'
         text = "parts:\n  src:\n    style: declared\n    order:\n      - core: [core]\n      - " + \
                '"' + injected.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '": [game]\n'
@@ -286,7 +286,7 @@ class ConfigCheckTest(ProjectCase):
         self.assertEqual("", self.assert_reads("parts:\n  .:\n    style: layered\n    level:\n").parts[0].level)
 
     def test_a_quoted_text_of_a_fact_stays_on_one_line(self) -> None:
-        """/* REQ-ARCH-9444: a text quoted into a fact never ends the line: every character that a reader of text takes for a line break (a line feed, a carriage return, a form feed, the Unicode line separators) is written as a space. A part folder named with such a character adds no line to the facts of the graph. */"""
+        """/* REQ-ARCH-106: a text quoted into a fact never ends the line: every character that a reader of text takes for a line break (a line feed, a carriage return, a form feed, the Unicode line separators) is written as a space. A part folder named with such a character adds no line to the facts of the graph. */"""
         from scripts.architecture.sexp import q
 
         for separator in "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029":
@@ -299,7 +299,7 @@ class ConfigCheckTest(ProjectCase):
         self.assertEqual([], [line for line in lines if len(line.splitlines()) != 1 or not line.startswith(("(arch-part \"docs ", "(arch-deny \"docs ", "(arch-capability \"docs ", "(arch-pattern \"docs ", "(arch-rank \"docs "))])
 
     def test_a_layer_name_of_a_declared_table_is_one_word(self) -> None:
-        """/* REQ-ARCH-9412: a layer table of the project (layers.mjs) whose layer name holds a line break, a space or a bracket is "not read" with the reason: the name would be written into the graph file as a bare word. */"""
+        """/* REQ-ARCH-086: a layer table of the project (layers.mjs) whose layer name holds a line break, a space or a bracket is "not read" with the reason: the name would be written into the graph file as a bare word. */"""
         text = ('// lowest first\nexport const layers = [\n  { name: "core 0)\\n(arch-part injected :style layered :state determined)'
                 '\\n(arch-rank . core", path: "^src/core/" },\n  { name: "ui", path: "^src/ui/" },\n];\n')
         result = read_layer_table("layers.mjs", text)
@@ -317,7 +317,7 @@ class ConfigWriteTest(ProjectCase):
              "trailing ", ".github", "v1.0", "_internal", "normal-name")
 
     def test_every_name_wingbox_writes_reads_back_as_itself(self) -> None:
-        """/* REQ-ARCH-9413: a folder name that YAML reads as something else when it is bare (2024, on, 1_0, Null, ~, 0x1f, @scope) or that holds a character YAML refuses (a control character, a line separator) is written quoted and escaped: the config that Wingbox renders passes its own check and gives back every name unchanged, for a part key, a `layers` folder and an `order` entry. */"""
+        """/* REQ-ARCH-087: a folder name that YAML reads as something else when it is bare (2024, on, 1_0, Null, ~, 0x1f, @scope) or that holds a character YAML refuses (a control character, a line separator) is written quoted and escaped: the config that Wingbox renders passes its own check and gives back every name unchanged, for a part key, a `layers` folder and an `order` entry. */"""
         order = tuple((f"layer{index}", (name,)) for index, name in enumerate(self.NAMES))
         rules = DeclaredRules(files=(), layers=layers_from_order(".wingbox/config.yaml", "src", order), not_read=(),
                               baseline=frozenset(), baseline_file="")
@@ -330,7 +330,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertEqual((("service", self.NAMES),), result.parts[1].layers)
 
     def test_a_comment_wingbox_writes_never_breaks_the_file(self) -> None:
-        """/* REQ-ARCH-9414: the reason of a learned folder is written as a YAML comment with every character YAML refuses there, and every line break, replaced by a space: a reason with a control character or a line separator gives a config that passes the check and holds the parts it held. */"""
+        """/* REQ-ARCH-088: the reason of a learned folder is written as a YAML comment with every character YAML refuses there, and every line break, replaced by a space: a reason with a control character or a line separator gives a config that passes the check and holds the parts it held. */"""
         reason = "agent: read order.ts\x07 and z.ts\u2028parts: {}\x85  other:\x00 1"
         part = _part(".", "layered", layers=(LayerFolder("zone", "service", "learned", reason, 0),))
         text = render_config(RepositoryPlan((part,), ("",)), LIBRARY, "2026-01-01")
@@ -339,7 +339,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertIn("zone: learned by agent: read order.ts  and z.ts parts: {}", text)
 
     def test_an_answer_with_a_control_character_is_rejected(self) -> None:
-        """/* REQ-LEARN-9415: a line of an answer to `wingbox learn` that holds a control character is an error of that line, so the answer is rejected as a whole: its text would go into the config, learned.sexp and the terminal. A tab is not one. */"""
+        """/* REQ-LEARN-015: a line of an answer to `wingbox learn` that holds a control character is an error of that line, so the answer is rejected as a whole: its text would go into the config, learned.sexp and the terminal. A tab is not one. */"""
         parts = {".": ("layered", frozenset({"zone"}))}
         answer = agent_learn.parse_answer('(layer . zone service :because "read order.ts\x07 and z.ts")\n', parts, LIBRARY)
         self.assertIsInstance(answer, agent_learn.AnswerErr)
@@ -348,7 +348,7 @@ class ConfigWriteTest(ProjectCase):
                               agent_learn.AnswerOk)
 
     def test_an_answer_file_that_cannot_be_read_is_an_error(self) -> None:
-        """/* REQ-LEARN-9445: `wingbox learn --apply FILE` with a file that does not exist, or that is not UTF-8, names the file and the reason on stderr and exits 2; nothing is saved. */"""
+        """/* REQ-LEARN-021: `wingbox learn --apply FILE` with a file that does not exist, or that is not UTF-8, names the file and the reason on stderr and exits 2; nothing is saved. */"""
         _layered(self.root)
         self.assertEqual(0, self.run_cli("build", str(self.root))[0])
         status, out, err = self.run_cli("learn", "--apply", "nosuch.sexp", "--sexp")
@@ -361,7 +361,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertFalse((self.root / ".wingbox" / "learned.sexp").exists())
 
     def test_a_style_change_through_learn_gives_a_config_the_build_reads(self) -> None:
-        """/* REQ-LEARN-9416: `wingbox learn --apply` with `(style . hexagonal)` on a part whose config lists the layers of another style writes the folders the new style places, not the old `layers:` block: the config passes the check, the build after it succeeds and the exit status is 0. */"""
+        """/* REQ-LEARN-016: `wingbox learn --apply` with `(style . hexagonal)` on a part whose config lists the layers of another style writes the folders the new style places, not the old `layers:` block: the config passes the check, the build after it succeeds and the exit status is 0. */"""
         _layered(self.root)
         self.assertEqual(0, self.run_cli("build", str(self.root))[0])
         _write(self.root, {".wingbox/config.yaml": LAYERED})
@@ -377,7 +377,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertEqual(0, self.run_cli("build", str(self.root))[0])
 
     def test_learn_apply_fails_when_the_build_after_it_fails(self) -> None:
-        """/* REQ-LEARN-9417: when the build that follows `wingbox learn --apply` fails, the command says so on stderr, prints `(learn-result :build failed ...)` and exits with a status other than 0. */"""
+        """/* REQ-LEARN-017: when the build that follows `wingbox learn --apply` fails, the command says so on stderr, prints `(learn-result :build failed ...)` and exits with a status other than 0. */"""
         _layered(self.root)
         _write(self.root, {"src/zone/z.ts": "export const z = 1;\n", "src/zone/order.ts": "export const o = 1;\n"})
         self.assertEqual(0, self.run_cli("build", str(self.root))[0])
@@ -388,7 +388,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertIn("ERROR: the build after learn failed (status 2)", err)
 
     def test_learn_writes_nothing_when_the_config_would_not_pass_the_check(self) -> None:
-        """/* REQ-LEARN-9418: before `wingbox learn --apply` replaces `.wingbox/config.yaml`, the text is checked the way the build checks the file; a text the check refuses (here: a capability rule that names a layer the new style does not have) is not written: the command names the reason, exits 1 and leaves config.yaml and learned.sexp as they were. */"""
+        """/* REQ-LEARN-018: before `wingbox learn --apply` replaces `.wingbox/config.yaml`, the text is checked the way the build checks the file; a text the check refuses (here: a capability rule that names a layer the new style does not have) is not written: the command names the reason, exits 1 and leaves config.yaml and learned.sexp as they were. */"""
         _layered(self.root)
         self.assertEqual(0, self.run_cli("build", str(self.root))[0])
         before = LAYERED + "    capabilities:\n      sql: {allowed_in: [infra]}\n"
@@ -401,7 +401,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertFalse((self.root / ".wingbox" / "learned.sexp").exists())
 
     def test_layers_from_folders_with_names_yaml_reads_as_values(self) -> None:
-        """/* REQ-ARCH-9419: `wingbox init --from-folders` on folders named 2024, on, 1_0 and Null writes a config that passes the check with those four layers, and the build after it succeeds; a folder name that cannot be a layer name gives a layer name of its letters (`(shop)` is `shop`), unique within the part. */"""
+        """/* REQ-ARCH-089: `wingbox init --from-folders` on folders named 2024, on, 1_0 and Null writes a config that passes the check with those four layers, and the build after it succeeds; a folder name that cannot be a layer name gives a layer name of its letters (`(shop)` is `shop`), unique within the part. */"""
         _folders(self.root, ("2024", "on", "1_0", "Null"))
         self.assertEqual(0, self.run_cli("build", str(self.root))[0])
         status, out, err = self.run_cli("init", "--from-folders", "src", "--sexp")
@@ -418,7 +418,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertEqual({"root": "root", ".": "root-files"}, layer_names((".", "root")))
 
     def test_a_new_package_is_added_to_a_config_without_parts(self) -> None:
-        """/* REQ-NEW-9420: `wingbox init` in an empty package of a repository whose root config is `parts: {}` (as init writes it for a repository too small to judge) adds the package as the first part: the file passes the check and lists the package. A second run keeps the file and says that the part is listed. */"""
+        """/* REQ-NEW-007: `wingbox init` in an empty package of a repository whose root config is `parts: {}` (as init writes it for a repository too small to judge) adds the package as the first part: the file passes the check and lists the package. A second run keeps the file and says that the part is listed. */"""
         _write(self.root, {"a.py": "x = 1\n"})
         (self.root / ".git").mkdir()
         self.assertEqual(0, self.run_cli("init", str(self.root), "--sexp")[0])
@@ -441,7 +441,7 @@ class ConfigWriteTest(ProjectCase):
 
 
     def test_a_command_that_writes_the_parts_keeps_the_generators(self) -> None:
-        """/* REQ-LEARN-9441: a command that renders the parts of `.wingbox/config.yaml` anew (`wingbox learn --apply`) replaces the parts and keeps the other key of the file, `generators:`, with its comments; `init` in a new package of the repository adds its part at the end of `parts:`, before `generators:`. */"""
+        """/* REQ-LEARN-020: a command that renders the parts of `.wingbox/config.yaml` anew (`wingbox learn --apply`) replaces the parts and keeps the other key of the file, `generators:`, with its comments; `init` in a new package of the repository adds its part at the end of `parts:`, before `generators:`. */"""
         _layered(self.root)
         _write(self.root, {"src/zone/z.ts": "export const z = 1;\n", "src/zone/order.ts": "export const o = 1;\n",
                            "tools/make.py": "x = 1\n"})
@@ -462,7 +462,7 @@ class ConfigWriteTest(ProjectCase):
         self.assertTrue(self.config().endswith(generators), self.config())
 
     def test_the_other_keys_of_a_config_are_kept_as_text(self) -> None:
-        """/* REQ-ARCH-9442: the keys of a config file other than `parts` are taken as the file writes them - the comment lines right above the key included, the instruction header and the closing comment of the parts left out - wherever the key stands; a key inside braces is written again in block style; a file that is not a YAML mapping gives nothing. */"""
+        """/* REQ-ARCH-104: the keys of a config file other than `parts` are taken as the file writes them - the comment lines right above the key included, the instruction header and the closing comment of the parts left out - wherever the key stands; a key inside braces is written again in block style; a file that is not a YAML mapping gives nothing. */"""
         from scripts.architecture.config import kept_keys
 
         after = ("# Wingbox architecture config. Read this\n# more\nparts:\n  a:\n    style: layered\n"
@@ -478,7 +478,7 @@ class ConfigWriteTest(ProjectCase):
 
 class ProjectRootTest(ProjectCase):
     def test_init_never_adopts_the_config_of_the_home_folder(self) -> None:
-        """/* REQ-NEW-9421: `wingbox init` in an empty folder below the home folder never takes `$HOME/.wingbox/config.yaml` (the favourite styles of a person) for the config of the project: it writes the config, the setup notes and the .gitignore into the new folder and leaves the home folder as it was. */"""
+        """/* REQ-NEW-008: `wingbox init` in an empty folder below the home folder never takes `$HOME/.wingbox/config.yaml` (the favourite styles of a person) for the config of the project: it writes the config, the setup notes and the .gitignore into the new folder and leaves the home folder as it was. */"""
         _write(self.home, {".wingbox/config.yaml": "defaults:\n  python: hexagonal\n"})
         project = self.home / "work" / "newproj"
         project.mkdir(parents=True)
@@ -491,7 +491,7 @@ class ProjectRootTest(ProjectCase):
                          {path for path in self.home.rglob("*") if project not in path.parents and path != project})
 
     def test_the_search_for_the_project_config_ends_at_the_repository_root(self) -> None:
-        """/* REQ-NEW-9422: looking upward for the config a new package belongs to, `wingbox init` stops at the root of the repository (the folder that holds .git) and passes over a `.wingbox/config.yaml` without `parts:`: a config above the repository, or one that states no parts, is not the config of this project. */"""
+        """/* REQ-NEW-009: looking upward for the config a new package belongs to, `wingbox init` stops at the root of the repository (the folder that holds .git) and passes over a `.wingbox/config.yaml` without `parts:`: a config above the repository, or one that states no parts, is not the config of this project. */"""
         outer = self.base / "outer"
         _write(outer, {".wingbox/config.yaml": "parts:\n  other:\n    style: layered\n"})
         package = outer / "repo" / "pkg"
@@ -511,7 +511,7 @@ class ProjectRootTest(ProjectCase):
         self.assertTrue((loose / "pkg" / ".wingbox" / "config.yaml").is_file())
 
     def test_place_answers_for_the_project_below_a_folder_with_another_config(self) -> None:
-        """/* REQ-ARCH-9423: `wingbox place` in a project whose parent folder holds a `.wingbox/config.yaml` without `parts:` answers for the project, by its own graph and style, instead of taking the parent folder for the repository; a parent config that lists the project as a part still decides, as before. */"""
+        """/* REQ-ARCH-090: `wingbox place` in a project whose parent folder holds a `.wingbox/config.yaml` without `parts:` answers for the project, by its own graph and style, instead of taking the parent folder for the repository; a parent config that lists the project as a part still decides, as before. */"""
         _write(self.base / "area", {".wingbox/config.yaml": "defaults:\n  python: hexagonal\n"})
         project = _layered(self.base / "area" / "shop")
         self.assertEqual(0, self.run_cli("build", str(project), cwd=project)[0])
@@ -525,7 +525,7 @@ class ProjectRootTest(ProjectCase):
         self.assertIn('(place "shop" :layer api :folder "shop/src/routes" :present :style layered ', out)
 
     def test_a_home_config_that_is_not_yaml_is_a_warning(self) -> None:
-        """/* REQ-NEW-9424: a `$HOME/.wingbox/config.yaml` that is not valid YAML is passed over with a warning that names the file; `wingbox init` still offers the styles of the library. */"""
+        """/* REQ-NEW-010: a `$HOME/.wingbox/config.yaml` that is not valid YAML is passed over with a warning that names the file; `wingbox init` still offers the styles of the library. */"""
         _write(self.home, {".wingbox/config.yaml": "defaults: [unclosed\n"})
         status, out, err = self.run_cli("init", str(self.root), "--language", "typescript")
         self.assertEqual(2, status, out + err)
@@ -536,7 +536,7 @@ class ProjectRootTest(ProjectCase):
 
 class DamagedDataTest(ProjectCase):
     def test_a_line_of_the_decisions_store_that_cannot_be_read_is_skipped(self) -> None:
-        """/* REQ-ARCH-9425: a line of `.wingbox/decisions.sexp` whose `:runs` is not a number is left out and named with its line number in `skipped`; reading the store never raises and the other lines count. */"""
+        """/* REQ-ARCH-091: a line of `.wingbox/decisions.sexp` whose `:runs` is not a number is left out and named with its line number in `skipped`; reading the store never raises and the other lines count. */"""
         store = decisions.read_store("\n".join([
             '(advice-given abc :part "." :kind move :target "a.ts" :rule "move api -> domain")',
             "(advice-outcome X :ignored :runs abc)",
@@ -548,7 +548,7 @@ class DamagedDataTest(ProjectCase):
         self.assertEqual({"abc": 4}, store.ignored_runs)
 
     def test_a_damaged_decisions_store_never_stops_a_build(self) -> None:
-        """/* REQ-ARCH-9426: with a line in `.wingbox/decisions.sexp` that cannot be read, `wingbox build` warns with the file and the line, writes the graph and exits 0, and `wingbox advice` answers. */"""
+        """/* REQ-ARCH-092: with a line in `.wingbox/decisions.sexp` that cannot be read, `wingbox build` warns with the file and the line, writes the graph and exits 0, and `wingbox advice` answers. */"""
         _layered(self.root, violation=True)
         _write(self.root, {".wingbox/decisions.sexp": "(advice-outcome X :ignored :runs abc)\n"})
         status, out, err = self.run_cli("build", str(self.root))
@@ -561,7 +561,7 @@ class DamagedDataTest(ProjectCase):
         self.assertIn("WARNING: .wingbox/decisions.sexp line 1: ", err)
 
     def test_a_decisions_store_that_is_not_utf8_never_stops_a_build(self) -> None:
-        """/* REQ-ARCH-9443: a byte that is not UTF-8 in `.wingbox/decisions.sexp` (a reason typed in another encoding) stops neither `wingbox build`, which writes the graph, the report and the map and exits 0, nor `wingbox advice`. */"""
+        """/* REQ-ARCH-105: a byte that is not UTF-8 in `.wingbox/decisions.sexp` (a reason typed in another encoding) stops neither `wingbox build`, which writes the graph, the report and the map and exits 0, nor `wingbox advice`. */"""
         _layered(self.root, violation=True)
         (self.root / ".wingbox").mkdir()
         (self.root / ".wingbox" / "decisions.sexp").write_bytes(b'(advice-outcome X :rejected :by user :reason "caf\xe9" :at 2026-01-01)\n')
@@ -573,7 +573,7 @@ class DamagedDataTest(ProjectCase):
         self.assertIn(":kind fix-violation ", out)
 
     def test_a_line_of_learned_sexp_that_cannot_be_read_is_skipped(self) -> None:
-        """/* REQ-LEARN-9427: an entry of `.wingbox/learned.sexp` whose `:files` is not a number is left out (its folder is asked again) and named with its line; `wingbox learn --agent` warns and prints the task. */"""
+        """/* REQ-LEARN-019: an entry of `.wingbox/learned.sexp` whose `:files` is not a number is left out (its folder is asked again) and named with its line; `wingbox learn --agent` warns and prints the task. */"""
         text = ('(learned-entry "." "zone" service :because "x" :files abc)\n'
                 '(learned-entry "." "kept" infra :because "y" :files 3)\n')
         self.assertEqual({(".", "kept"): ("infra", "y", 3)}, agent_learn.read_learned(text))
@@ -588,7 +588,7 @@ class DamagedDataTest(ProjectCase):
         self.assertIn('(learn-folder "." "zone" ', out)
 
     def test_a_brace_in_a_path_is_text_in_the_fix_of_a_rule(self) -> None:
-        """/* REQ-ARCH-9428: the fix of a rule has four names that are filled in - {source}, {target}, {source_folder}, {target_folder}; any other brace is text. The fix of a declared rule holds the path of its file, so a folder named `pkg{x}` gives advice instead of raising. */"""
+        """/* REQ-ARCH-093: the fix of a rule has four names that are filled in - {source}, {target}, {source_folder}, {target_folder}; any other brace is text. The fix of a declared rule holds the path of its file, so a folder named `pkg{x}` gives advice instead of raising. */"""
         fix = "move the imported code down ({file}) or see pkg{x}/layers.mjs: {source} -> {target_folder}/"
         part = PartRules("pkg{x}", "declared", "declared", {"core": 0, "ui": 1}, {("core", "ui"): ("core imports ui", "violation", fix)})
         violation = Violation("a", "b", "core", "ui", "pkg{x}", "declared", "core imports ui", False)
@@ -597,7 +597,7 @@ class DamagedDataTest(ProjectCase):
                          advice[0].reason)
 
     def test_a_layer_table_nested_too_deep_is_not_read(self) -> None:
-        """/* REQ-ARCH-9429: a layer table with brackets nested thousands deep is "not read" with the reason; reading it never raises. */"""
+        """/* REQ-ARCH-094: a layer table with brackets nested thousands deep is "not read" with the reason; reading it never raises. */"""
         result = read_layer_table("layers.mjs", "// lowest first\nexport const layers = " + "[" * 5000 + ";\n")
         self.assertIsInstance(result, NotRead)
         self.assertIn("nested deeper than", result.reason)
@@ -607,7 +607,7 @@ class DamagedDataTest(ProjectCase):
 
 class OutsideReadTest(ProjectCase):
     def test_a_declared_rule_file_is_a_path_inside_the_repository(self) -> None:
-        """/* REQ-ARCH-9430: an entry of `declared` that is absolute or holds `..` is a config error: a rule file is a file of the repository. */"""
+        """/* REQ-ARCH-095: an entry of `declared` that is absolute or holds `..` is a config error: a rule file is a file of the repository. */"""
         for path in ("../outside/secret.mjs", "a/../../x.mjs", "/etc/layers.mjs", "..\\\\x.mjs", "C:/x.mjs"):
             error = _error(f"parts:\n  .:\n    style: declared\n    declared: ['{path}']\n")
             self.assertIn("line 2: part .: declared ", error, path)
@@ -616,7 +616,7 @@ class OutsideReadTest(ProjectCase):
 
     @unittest.skipIf(os.name == "nt", "needs symbolic links")
     def test_only_a_regular_file_inside_the_repository_is_read(self) -> None:
-        """/* REQ-ARCH-9431: the reader of rule files opens a regular file whose real path is inside the repository; a symbolic link to a file outside, a path with `..` and a folder give no text and a warning with the reason. A link to a file inside the repository is read. */"""
+        """/* REQ-ARCH-096: the reader of rule files opens a regular file whose real path is inside the repository; a symbolic link to a file outside, a path with `..` and a folder give no text and a warning with the reason. A link to a file inside the repository is read. */"""
         _write(self.base, {"outside/secret.mjs": "// lowest first\nexport const layers = [{ name: \"secret\", path: \"^x/\" }];\n"})
         _write(self.root, {"rules/real.mjs": "inside\n"})
         os.symlink(self.base / "outside" / "secret.mjs", self.root / "layers.mjs")
@@ -640,7 +640,7 @@ class OutsideReadTest(ProjectCase):
 
     @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
     def test_a_pipe_in_the_place_of_a_rule_file_does_not_block(self) -> None:
-        """/* REQ-ARCH-9432: a named pipe (or a link to one) in the place of a rule file is not opened: the reader answers at once with a warning instead of waiting for a writer. */"""
+        """/* REQ-ARCH-097: a named pipe (or a link to one) in the place of a rule file is not opened: the reader answers at once with a warning instead of waiting for a writer. */"""
         os.mkfifo(self.base / "pipe")
         os.symlink(self.base / "pipe", self.root / "layers.mjs")
         os.mkfifo(self.root / "inside.mjs")
@@ -666,14 +666,14 @@ class OutsideReadTest(ProjectCase):
         self.assertEqual([None, None], answers)
 
     def test_a_rule_file_that_was_not_read_is_named_as_such(self) -> None:
-        """/* REQ-ARCH-9433: a rule file of a declared part that is missing or cannot be read is listed as not read for that reason, not as a file that "states no layer order". */"""
+        """/* REQ-ARCH-098: a rule file of a declared part that is missing or cannot be read is listed as not read for that reason, not as a file that "states no layer order". */"""
         rules = declared_rules((DeclaredFile("layers.mjs", "rules"),), lambda path: None)
         self.assertIsNone(rules.layers)
         self.assertEqual((NotRead("layers.mjs", "the file is missing or cannot be read"),), rules.not_read)
 
     @unittest.skipIf(os.name == "nt", "needs symbolic links")
     def test_the_build_reads_no_rule_file_outside_the_repository(self) -> None:
-        """/* REQ-ARCH-9434: `wingbox build` puts nothing of a file outside the repository into the graph: a `layers.mjs` that is a symbolic link to such a file leaves its part with rules that were not read, and `declared: ["../x"]` stops the build with a config error. */"""
+        """/* REQ-ARCH-099: `wingbox build` puts nothing of a file outside the repository into the graph: a `layers.mjs` that is a symbolic link to such a file leaves its part with rules that were not read, and `declared: ["../x"]` stops the build with a config error. */"""
         secret = "// lowest first\nexport const layers = [\n  { name: \"secretcore\", path: \"^src/core/\" },\n  { name: \"secretui\", path: \"^src/ui/\" },\n];\n"
         _write(self.base, {"outside/secret.mjs": secret})
         _folders(self.root, ("core", "ui"))
@@ -697,7 +697,7 @@ class PatternTest(unittest.TestCase):
         return read_layer_table("layers.mjs", text % pattern.replace("\\", "\\\\"))
 
     def test_a_pattern_that_can_take_unbounded_time_is_not_read(self) -> None:
-        """/* REQ-ARCH-9435: a layer table whose path holds a group that repeats and holds another repeat, an optional item or overlapping alternatives - `(a+)+`, `(a*)*`, `(.+/)*`, `(a|aa)+`, `(a?a?)+` - is "not read", with the layer and the group named: matching it against a long file name can take time that doubles with every character. */"""
+        """/* REQ-ARCH-100: a layer table whose path holds a group that repeats and holds another repeat, an optional item or overlapping alternatives - `(a+)+`, `(a*)*`, `(.+/)*`, `(a|aa)+`, `(a?a?)+` - is "not read", with the layer and the group named: matching it against a long file name can take time that doubles with every character. */"""
         for pattern, group in ((r"^src/core/(a+)+$", "(a+)+"), (r"^src/(a*)*x", "(a*)*"), (r"^(.+/)*core/", "(.+/)*"),
                                (r"^src/(a|aa)+$", "(a|aa)+"), (r"^src/(?:x+x+){2,}y", "(?:x+x+){2,}"), (r"^((a+)b)+", "((a+)b)+"),
                                (r"^src/(a?a?)+$", "(a?a?)+"), (r"^src/(a{0,1}b?)*$", "(a{0,1}b?)*")):
@@ -706,7 +706,7 @@ class PatternTest(unittest.TestCase):
             self.assertIn(f"layer core: the group {group} of its path repeats", result.reason, pattern)
 
     def test_the_usual_path_patterns_are_read(self) -> None:
-        """/* REQ-ARCH-9436: path patterns without such a group are read as before: alternatives, optional groups, classes, a lookahead, a repeat that is not inside a repeating group, and the two repeating forms that match in one way only - a run of one kind of character with a character that is not of that kind (`([^/]+/)*`) and alternatives of plain text of which none starts another (`(core|platform)+`). */"""
+        """/* REQ-ARCH-101: path patterns without such a group are read as before: alternatives, optional groups, classes, a lookahead, a repeat that is not inside a repeating group, and the two repeating forms that match in one way only - a run of one kind of character with a character that is not of that kind (`([^/]+/)*`) and alternatives of plain text of which none starts another (`(core|platform)+`). */"""
         for pattern in (r"^src/(core|platform)/", r"^src/[^/]+/domain/", r"\.(spec|test)\.(js|ts)$", r"^(?!src/test)src/",
                         r"^(.*/)?node_modules/", r"^src/(?:app|pages)(/.*)?$", r"^src/([^/]+/)*domain/", r"^packages/(?:[\w-]+/)*src/",
                         r"^lib(/[^/]+)*$", r"^src/(core|platform)+/", r"^src/core/(a+){1}$", r"^src/[(a+)+]/", r"^a{2,3}/",
@@ -720,7 +720,7 @@ class PatternTest(unittest.TestCase):
 
 class LearnedLayerTest(ProjectCase):
     def test_a_learned_layer_that_the_style_does_not_have_is_not_applied(self) -> None:
-        """/* REQ-ARCH-9437: a `learned-layer` line of the decisions store whose layer is no layer of the style of its part is not applied to the plan and is returned as unknown; a line with a layer of the style applies as before. */"""
+        """/* REQ-ARCH-102: a `learned-layer` line of the decisions store whose layer is no layer of the style of its part is not applied to the plan and is returned as unknown; a line with a layer of the style applies as before. */"""
         from scripts.architecture.plan import unknown_learned
 
         part = _part(".", "layered", layers=(LayerFolder("routes", "api", "config", "", 0),))
@@ -732,7 +732,7 @@ class LearnedLayerTest(ProjectCase):
         self.assertEqual([("core", "service"), ("routes", "api")], [(folder.folder, folder.layer) for folder in applied])
 
     def test_the_build_warns_about_a_learned_layer_it_ignores(self) -> None:
-        """/* REQ-ARCH-9438: `wingbox build` with a `learned-layer` line that names a layer the style of the part does not have warns with the folder and the layer, ignores the line, and writes no such layer into the graph. */"""
+        """/* REQ-ARCH-103: `wingbox build` with a `learned-layer` line that names a layer the style of the part does not have warns with the folder and the layer, ignores the line, and writes no such layer into the graph. */"""
         _layered(self.root)
         _write(self.root, {".wingbox/decisions.sexp": '(learned-layer "." "services" nolayer :from x :at 2026-01-01)\n'})
         status, out, err = self.run_cli("build", str(self.root))
@@ -743,7 +743,7 @@ class LearnedLayerTest(ProjectCase):
 
 class CompareTest(ProjectCase):
     def test_compare_says_when_there_is_nothing_to_compare(self) -> None:
-        """/* REQ-CMP-9439: `wingbox compare` never answers with nothing: when no part has a style and a language (a repository of one part without a manifest), it prints one `compare-none` fact with the number of parts of the repository and the reason. --human says the same in words, --json holds the fact and --sexp prints it too. */"""
+        """/* REQ-CMP-002: `wingbox compare` never answers with nothing: when no part has a style and a language (a repository of one part without a manifest), it prints one `compare-none` fact with the number of parts of the repository and the reason. --human says the same in words, --json holds the fact and --sexp prints it too. */"""
         _layered(self.root)
         (self.root / "package.json").unlink()
         for form in ((), ("--sexp",)):
@@ -755,7 +755,7 @@ class CompareTest(ProjectCase):
         self.assertIn('"fact":"compare-none"', self.run_cli("compare", "--json")[1])
 
     def test_compare_of_a_part_it_shows_prints_no_compare_none(self) -> None:
-        """/* REQ-CMP-9440: when a part is shown, `wingbox compare` prints no `compare-none`: the answer for a repository of one part with a style and a manifest is its `compare-part` line and nothing else, as before. */"""
+        """/* REQ-CMP-003: when a part is shown, `wingbox compare` prints no `compare-none`: the answer for a repository of one part with a style and a manifest is its `compare-part` line and nothing else, as before. */"""
         _layered(self.root)
         status, out, err = self.run_cli("compare", "--sexp")
         self.assertEqual(0, status, out + err)

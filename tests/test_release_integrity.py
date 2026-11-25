@@ -167,7 +167,7 @@ class WorkflowPinTest(unittest.TestCase):
         self.assertEqual([], offenders)
 
     def test_no_way_of_writing_an_action_escapes_the_pin_check(self) -> None:
-        """/* REQ-REL-9900: the check of REQ-REL-001 reads a workflow as YAML, so it also names an action at a tag that is written with a comment of several words, in flow style (`{uses: ...}`) or under a quoted key, and an action at a commit whose comment is not the release tag alone; an action at a commit with its tag and a local `./` action pass. */"""
+        """/* REQ-REL-007: the check of REQ-REL-001 reads a workflow as YAML, so it also names an action at a tag that is written with a comment of several words, in flow style (`{uses: ...}`) or under a quoted key, and an action at a commit whose comment is not the release tag alone; an action at a commit with its tag and a local `./` action pass. */"""
         commit = "0123456789abcdef0123456789abcdef01234567"
         good = f"jobs:\n  a:\n    steps:\n      - uses: owner/name@{commit}  # v1.2.3\n      - uses: ./local/action\n"
         self.assertEqual((1, []), unpinned_uses(good))
@@ -192,7 +192,7 @@ class WorkflowSafetyTest(unittest.TestCase):
         return next(step for step in workflow["jobs"][job]["steps"] if step.get("name", "").startswith(name))
 
     def test_a_pipeline_fails_when_its_first_command_fails(self) -> None:
-        """/* REQ-REL-9901: every `run` step of a workflow that pipes one command into another (`docker run ... | tee`, `wingbox build ... | tail`) fails when the first command fails: it runs under `shell: bash`, which sets pipefail, or its first command is `set -o pipefail` (`set -euo pipefail`); without it GitHub's default `bash -e` takes the status of the last command. */"""
+        """/* REQ-REL-008: every `run` step of a workflow that pipes one command into another (`docker run ... | tee`, `wingbox build ... | tail`) fails when the first command fails: it runs under `shell: bash`, which sets pipefail, or its first command is `set -o pipefail` (`set -euo pipefail`); without it GitHub's default `bash -e` takes the status of the last command. */"""
         offenders = []
         for workflow in workflow_files():
             offenders += [f"{workflow.name}: {step}" for step in unguarded_pipes(yaml.safe_load(workflow.read_text(encoding="utf-8")))]
@@ -207,7 +207,7 @@ class WorkflowSafetyTest(unittest.TestCase):
         self.assertEqual([], unguarded_pipes(plain))
 
     def test_the_map_request_gives_the_token_only_to_the_steps_that_call_gh(self) -> None:
-        """/* REQ-REL-9902: in map-request.yml, which builds a repository named in an issue anyone can open, no secret is in the environment of the workflow or of the job: a step holds the token exactly when its script calls `gh`, so the steps that clone, install, build and collect run without it. */"""
+        """/* REQ-REL-009: in map-request.yml, which builds a repository named in an issue anyone can open, no secret is in the environment of the workflow or of the job: a step holds the token exactly when its script calls `gh`, so the steps that clone, install, build and collect run without it. */"""
         workflow = self.workflow("map-request.yml")
         job = workflow["jobs"]["map"]
         self.assertFalse(_secret(workflow.get("env")))
@@ -220,7 +220,7 @@ class WorkflowSafetyTest(unittest.TestCase):
         self.assertEqual(["Read and check the requested repository", "Tell the issue"], with_token)
 
     def test_the_map_request_removes_a_committed_wingbox_folder_before_the_build(self) -> None:
-        """/* REQ-REL-9903: map-request.yml removes `target/.wingbox` right after the clone and before Wingbox is installed or run, so a report, a map or a configuration that the requested repository commits is never taken for what the build wrote. */"""
+        """/* REQ-REL-010: map-request.yml removes `target/.wingbox` right after the clone and before Wingbox is installed or run, so a report, a map or a configuration that the requested repository commits is never taken for what the build wrote. */"""
         steps = self.workflow("map-request.yml")["jobs"]["map"]["steps"]
         scripts = [step.get("run", "") for step in steps]
         clone = next(index for index, script in enumerate(scripts) if "git clone" in script)
@@ -233,7 +233,7 @@ class WorkflowSafetyTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt" or shutil.which("bash") is None, "the steps are bash scripts of a Linux runner")
     def test_a_failed_build_of_the_map_request_fails_the_step(self) -> None:
-        """/* REQ-REL-9904: the build step of map-request.yml, run as GitHub runs it, exits non-zero when `wingbox build` fails or is stopped by its time limit, although its output goes through `tail`; it exits 0 when the build succeeds. */"""
+        """/* REQ-REL-011: the build step of map-request.yml, run as GitHub runs it, exits non-zero when `wingbox build` fails or is stopped by its time limit, although its output goes through `tail`; it exits 0 when the build succeeds. */"""
         workflow = self.workflow("map-request.yml")
         step = self.step(workflow, "map", "Build the graph")
         for status, passes in ((0, True), (3, False), (124, False)):
@@ -245,7 +245,7 @@ class WorkflowSafetyTest(unittest.TestCase):
 
     @unittest.skipIf(os.name == "nt" or shutil.which("bash") is None, "the steps are bash scripts of a Linux runner")
     def test_the_map_request_uploads_only_regular_files_the_build_wrote(self) -> None:
-        """/* REQ-REL-9905: the collect step of map-request.yml copies REPORT.md and map.html into the uploaded folder only when each is a regular file in a real `target/.wingbox` folder: when one of them, or the folder, is a symbolic link (to a file of the runner) or is missing, the step fails and the uploaded folder holds no content of the linked file. */"""
+        """/* REQ-REL-012: the collect step of map-request.yml copies REPORT.md and map.html into the uploaded folder only when each is a regular file in a real `target/.wingbox` folder: when one of them, or the folder, is a symbolic link (to a file of the runner) or is missing, the step fails and the uploaded folder holds no content of the linked file. */"""
         step = self.step(self.workflow("map-request.yml"), "map", "Collect")
 
         def collect(prepare) -> tuple[subprocess.CompletedProcess, Path]:
@@ -287,7 +287,7 @@ class WorkflowSafetyTest(unittest.TestCase):
             self.assertFalse(any(path.is_symlink() or "runner" in path.read_text(encoding="utf-8") for path in copied), copied)
 
     def test_the_registry_job_outlives_its_own_wait(self) -> None:
-        """/* REQ-REL-9906: the job of publish-mcp.yml that waits for the version on PyPI has a time limit longer than the longest its wait loop can take (every attempt: the time limit of its request plus its pause), so a version that never appears ends with the error of the loop and not with a cancelled job; the request of every attempt has a time limit. */"""
+        """/* REQ-REL-013: the job of publish-mcp.yml that waits for the version on PyPI has a time limit longer than the longest its wait loop can take (every attempt: the time limit of its request plus its pause), so a version that never appears ends with the error of the loop and not with a cancelled job; the request of every attempt has a time limit. */"""
         workflow = self.workflow("publish-mcp.yml")
         job = workflow["jobs"]["publish"]
         script = self.step(workflow, "publish", "Wait until")["run"]
@@ -299,7 +299,7 @@ class WorkflowSafetyTest(unittest.TestCase):
         self.assertGreater(job["timeout-minutes"] * 60, longest + 120)
 
     def test_the_push_triggers_name_no_branch_but_main(self) -> None:
-        """/* REQ-REL-9907: tests.yml and docs.yml run on a push to `main` only (a pull request runs them for every other branch): their lists of branches name no feature branch, which would stay there after the branch is gone. */"""
+        """/* REQ-REL-014: tests.yml and docs.yml run on a push to `main` only (a pull request runs them for every other branch): their lists of branches name no feature branch, which would stay there after the branch is gone. */"""
         for name in ("tests.yml", "docs.yml"):
             workflow = self.workflow(name)
             triggers = workflow.get("on", workflow.get(True))   # YAML 1.1 reads the key `on` as true
@@ -307,7 +307,7 @@ class WorkflowSafetyTest(unittest.TestCase):
             self.assertIn("pull_request", triggers, name)
 
     def test_a_change_of_documents_runs_every_test_that_reads_a_document(self) -> None:
-        """/* REQ-REL-9908: docs.yml, the only workflow a change of Markdown files starts, runs the test modules that compare a document with the code or with result files: tests.test_english_only, test_readme_numbers, test_plugins, test_mcpb, test_assurance_docs, test_output_formats_cli (SKILL.md, REQ-INSTALL-045), test_json_errors (references/code-mode.md, REQ-INSTALL-046), test_mcp_registry (README, REQ-MCP-014), test_benchmark_report and test_benchmark_cpp_collisions (the benchmark READMEs, REQ-BENCH-001, -008, -009, -011, -024) and test_review_wp9_mcp_ci_docs (SKILL.md, the README, AGENTS.md, ROADMAP.md, the limits page); every module it names exists. */"""
+        """/* REQ-REL-015: docs.yml, the only workflow a change of Markdown files starts, runs the test modules that compare a document with the code or with result files: tests.test_english_only, test_readme_numbers, test_plugins, test_mcpb, test_assurance_docs, test_output_formats_cli (SKILL.md, REQ-INSTALL-045), test_json_errors (references/code-mode.md, REQ-INSTALL-046), test_mcp_registry (README, REQ-MCP-014), test_benchmark_report and test_benchmark_cpp_collisions (the benchmark READMEs, REQ-BENCH-001, -008, -009, -011, -024) and test_review_wp9_mcp_ci_docs (SKILL.md, the README, AGENTS.md, ROADMAP.md, the limits page); every module it names exists. */"""
         script = self.step(self.workflow("docs.yml"), "docs", "Documentation tests")["run"]
         named = re.findall(r"\btests\.(test_\w+)", script)
         for module in named:

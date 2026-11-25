@@ -171,14 +171,14 @@ class DecisionTest(unittest.TestCase):
         self.assertEqual(413, transport.decide(_policy(), _post(body=b" " * (transport.MAX_BODY_BYTES + 1))).status)
 
     def test_a_body_nested_too_deeply_is_a_parse_error(self) -> None:
-        """/* REQ-HTTP-9920: a body of 200,000 opening brackets, which the JSON reader gives up on with a recursion error, is answered 400 with a JSON-RPC parse error like any other body that is not JSON. */"""
+        """/* REQ-HTTP-023: a body of 200,000 opening brackets, which the JSON reader gives up on with a recursion error, is answered 400 with a JSON-RPC parse error like any other body that is not JSON. */"""
         for body in (b"[" * 200_000, b'{"a":' * 200_000):
             decision = transport.decide(_policy(), _post(body=body))
             self.assertIsInstance(decision, transport.Refuse)
             self.assertEqual((400, mcp_server.PARSE_ERROR), (decision.status, _error_code(decision)))
 
     def test_only_an_origin_given_with_allow_origin_gets_the_headers_a_browser_page_needs(self) -> None:
-        """/* REQ-HTTP-9921: for an origin given with --allow-origin the transport answers the preflight of a browser (OPTIONS with Access-Control-Request-Method, which carries no token) with 204 and Access-Control-Allow-Methods POST and the request headers it reads, and every answer to that origin carries Access-Control-Allow-Origin with that origin and `Vary: Origin`; a loopback origin, which passes without the option, gets neither (its OPTIONS is answered 405, or 401 when a token is set), and a request without Origin gets none. */"""
+        """/* REQ-HTTP-024: for an origin given with --allow-origin the transport answers the preflight of a browser (OPTIONS with Access-Control-Request-Method, which carries no token) with 204 and Access-Control-Allow-Methods POST and the request headers it reads, and every answer to that origin carries Access-Control-Allow-Origin with that origin and `Vary: Origin`; a loopback origin, which passes without the option, gets neither (its OPTIONS is answered 405, or 401 when a token is set), and a request without Origin gets none. */"""
         ide = "https://ide.example"
         for access in (transport.Open(), transport.Token(TOKEN)):
             policy = _policy(access=access, origins=(ide,))
@@ -236,7 +236,7 @@ class SettingsTest(unittest.TestCase):
         self.assertIsInstance(self._read(["--token-file", str(Path(self.root) / "absent")]), http_settings.Problem)
 
     def test_the_value_of_an_unknown_option_is_never_repeated(self) -> None:
-        """/* REQ-HTTP-9922: an argument the command does not take is refused without repeating what was typed after it: `--token <secret>`, `--token=<secret>` and a bare value give a message that names the option (`--token`) or says that an argument is not expected, and never the value, so the entry point, which prints the message, cannot log a token; the message for --token says where the token is read from. */"""
+        """/* REQ-HTTP-025: an argument the command does not take is refused without repeating what was typed after it: `--token <secret>`, `--token=<secret>` and a bare value give a message that names the option (`--token`) or says that an argument is not expected, and never the value, so the entry point, which prints the message, cannot log a token; the message for --token says where the token is read from. */"""
         secret = "S3cret-" + "s" * 40
         for arguments in (["--token", secret], [f"--token={secret}"], [secret], ["--port", "0", "--token", secret, "--bogus", "-" + secret]):
             problem = self._read(arguments)
@@ -473,7 +473,7 @@ class ListenerTest(unittest.TestCase):
                 connection.close()
 
     def test_a_request_the_listener_cannot_read_is_answered_and_the_listener_goes_on(self) -> None:
-        """/* REQ-HTTP-9923: a Content-Length that is not a number in ASCII digits (the superscript two passes `isdigit()` and has no integer value; more digits than a number of the size limit) is answered 400, or 413 for a number over the limit, and a body nested too deeply for the JSON reader 400 with a parse error: each gets an HTTP answer instead of a dropped connection, and the listener answers the next request. */"""
+        """/* REQ-HTTP-026: a Content-Length that is not a number in ASCII digits (the superscript two passes `isdigit()` and has no integer value; more digits than a number of the size limit) is answered 400, or 413 for a number over the limit, and a body nested too deeply for the JSON reader 400 with a parse error: each gets an HTTP answer instead of a dropped connection, and the listener answers the next request. */"""
         reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
         head = b"POST /mcp HTTP/1.1\r\nHost: test\r\nContent-Type: application/json\r\nConnection: close\r\n"
         with Running(lambda line: reply) as running:
@@ -488,7 +488,7 @@ class ListenerTest(unittest.TestCase):
             self.assertEqual((200, reply), (status, json.loads(body)))
 
     def test_the_number_of_open_connections_is_capped(self) -> None:
-        """/* REQ-HTTP-9924: the listener keeps at most `Limits.connections` connections open, each with one thread (64 by default): a connection beyond that gets no thread and is answered 503 at once, with or without a token; when a connection ends, the next one is served. */"""
+        """/* REQ-HTTP-027: the listener keeps at most `Limits.connections` connections open, each with one thread (64 by default): a connection beyond that gets no thread and is answered 503 at once, with or without a token; when a connection ends, the next one is served. */"""
         reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
         self.assertEqual(64, listener.Limits().connections)
         with Running(lambda line: reply, limits={"connections": 3}) as running:
@@ -511,7 +511,7 @@ class ListenerTest(unittest.TestCase):
             self.assertEqual((200, reply), (status, json.loads(body)))
 
     def test_a_request_must_arrive_within_a_total_time(self) -> None:
-        """/* REQ-HTTP-9925: the header and the body of one request must arrive within `Limits.request_seconds` in all (30 by default): a client that sends one byte at a time, each well within that time, is cut off when the total is over, in the header and in the body alike, so no client holds a thread for as long as it likes; a request that arrives in time is answered. */"""
+        """/* REQ-HTTP-028: the header and the body of one request must arrive within `Limits.request_seconds` in all (30 by default): a client that sends one byte at a time, each well within that time, is cut off when the total is over, in the header and in the body alike, so no client holds a thread for as long as it likes; a request that arrives in time is answered. */"""
         reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
         self.assertEqual(30.0, listener.Limits().request_seconds)
         body = json.dumps(_message("ping")).encode("utf-8")
@@ -543,7 +543,7 @@ class ListenerTest(unittest.TestCase):
             self.assertEqual((200, reply), (status, json.loads(answer)))
 
     def test_the_number_of_waiting_calls_is_capped(self) -> None:
-        """/* REQ-HTTP-9926: at most `Limits.calls` calls run or wait for the one worker (16 by default): a call beyond that is answered 503 with a JSON-RPC error and Retry-After and never reaches the server; the calls that were taken are answered, and once they ended the next call is taken again. */"""
+        """/* REQ-HTTP-029: at most `Limits.calls` calls run or wait for the one worker (16 by default): a call beyond that is answered 503 with a JSON-RPC error and Retry-After and never reaches the server; the calls that were taken are answered, and once they ended the next call is taken again. */"""
         release = threading.Event()
         seen = []
 
@@ -576,7 +576,7 @@ class ListenerTest(unittest.TestCase):
             self.assertEqual((200, 4), (status, json.loads(body)["id"]))
 
     def test_a_waiting_call_whose_client_has_gone_is_not_run(self) -> None:
-        """/* REQ-HTTP-9927: a call that still waits for its turn when its client closes the connection is taken out of the queue and never reaches the server, so abandoned calls do not make the next caller wait; the call that is running cannot be interrupted and ends; the log names the client that left. */"""
+        """/* REQ-HTTP-030: a call that still waits for its turn when its client closes the connection is taken out of the queue and never reaches the server, so abandoned calls do not make the next caller wait; the call that is running cannot be interrupted and ends; the log names the client that left. */"""
         release = threading.Event()
         seen = []
 
@@ -607,7 +607,7 @@ class ListenerTest(unittest.TestCase):
             self.assertEqual(3, running.log.getvalue().count("left before the answer"), running.log.getvalue())
 
     def test_a_page_of_an_allowed_origin_can_read_the_answers(self) -> None:
-        """/* REQ-HTTP-9928: over a real connection, a page of an origin given with --allow-origin gets its preflight answered 204 with the Access-Control headers, without a token, and its POST answered with Access-Control-Allow-Origin naming that origin, also when the answer is a refusal (401) or an event stream; a page of a loopback origin gets its POST served but no Access-Control header on any answer, and its preflight refused, so its browser hands it nothing. */"""
+        """/* REQ-HTTP-031: over a real connection, a page of an origin given with --allow-origin gets its preflight answered 204 with the Access-Control headers, without a token, and its POST answered with Access-Control-Allow-Origin naming that origin, also when the answer is a refusal (401) or an event stream; a page of a loopback origin gets its POST served but no Access-Control header on any answer, and its preflight refused, so its browser hands it nothing. */"""
         ide = "https://ide.example"
 
         def handle(line):
@@ -703,7 +703,7 @@ class CommandTest(unittest.TestCase):
 
 
     def test_the_entry_point_listens_with_the_settings_it_was_given(self) -> None:
-        """/* REQ-HTTP-9929: `wingbox-http` opens its listener with exactly what the arguments, the environment and the token file say: the host and the port, the token as the access rule (and no token only on a loopback address), the certificate and key of --tls-cert and --tls-key, the origins of --allow-origin, and the protocol revisions of the MCP server; its first log line names the address and the project whose graph is served, and never the token. */"""
+        """/* REQ-HTTP-032: `wingbox-http` opens its listener with exactly what the arguments, the environment and the token file say: the host and the port, the token as the access rule (and no token only on a loopback address), the certificate and key of --tls-cert and --tls-key, the origins of --allow-origin, and the protocol revisions of the MCP server; its first log line names the address and the project whose graph is served, and never the token. */"""
         from wingbox_http import main as http_main
 
         with tempfile.TemporaryDirectory() as folder:

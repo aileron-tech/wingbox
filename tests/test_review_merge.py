@@ -44,7 +44,7 @@ class LinkedConfigTest(unittest.TestCase):
         return link
 
     def test_a_build_names_a_config_that_is_a_link_out_of_the_project(self) -> None:
-        """/* REQ-ZONE-9990: `wingbox build` stops with one error that names the link, in the words every writer below `.wingbox` uses ("<link> is a symbolic link"), when `.wingbox/config.yaml` is a symbolic link to a file outside the project or to nothing; the file outside stays byte for byte as it was and none is created. */"""
+        """/* REQ-ZONE-017: `wingbox build` stops with one error that names the link, in the words every writer below `.wingbox` uses ("<link> is a symbolic link"), when `.wingbox/config.yaml` is a symbolic link to a file outside the project or to nothing; the file outside stays byte for byte as it was and none is created. */"""
         victim = self.outside / "config.txt"
         victim.write_text(CONFIG, encoding="utf-8")
         for target in (victim, self.outside / "no-config"):
@@ -61,7 +61,7 @@ class LinkedConfigTest(unittest.TestCase):
                 self.assertEqual(["config.txt"], sorted(path.name for path in self.outside.iterdir()))
 
     def test_a_link_at_another_file_below_wingbox_is_named_at_most_once(self) -> None:
-        """/* REQ-ZONE-9992: when `.wingbox/decisions.sexp` is a symbolic link to a file outside the project, `wingbox build` says "is a symbolic link" at most once in all it prints (the reader of the file and its writer do not both name the link), prints no traceback and leaves the file outside byte for byte as it was. */"""
+        """/* REQ-ZONE-019: when `.wingbox/decisions.sexp` is a symbolic link to a file outside the project, `wingbox build` says "is a symbolic link" at most once in all it prints (the reader of the file and its writer do not both name the link), prints no traceback and leaves the file outside byte for byte as it was. */"""
         (self.root / ".wingbox" / "config.yaml").write_text(CONFIG, encoding="utf-8")
         victim = self.outside / "decisions.txt"
         victim.write_text("; not Wingbox's to write\n", encoding="utf-8")
@@ -76,7 +76,7 @@ class LinkedConfigTest(unittest.TestCase):
         self.assertEqual("; not Wingbox's to write\n", victim.read_text(encoding="utf-8"))
 
     def test_a_config_linked_to_a_file_of_the_project_is_still_read(self) -> None:
-        """/* REQ-ZONE-9991: a `.wingbox/config.yaml` that is a symbolic link to a regular file inside the project is read by `wingbox build` as before: the build ends with status 0 and the graph holds the part the file declares. */"""
+        """/* REQ-ZONE-018: a `.wingbox/config.yaml` that is a symbolic link to a regular file inside the project is read by `wingbox build` as before: the build ends with status 0 and the graph holds the part the file declares. */"""
         kept = self.root / "config" / "wingbox.yaml"
         kept.parent.mkdir()
         kept.write_text(CONFIG, encoding="utf-8")
@@ -89,7 +89,7 @@ class LinkedConfigTest(unittest.TestCase):
 
 class DottedPartKeyTest(unittest.TestCase):
     def test_a_part_written_with_a_leading_dot_is_judged_by_its_declared_order(self) -> None:
-        """/* REQ-ARCH-9993: a config that names its part `./src` and declares `models` below `routes` is applied as the part `src`: after `wingbox build`, `wingbox boundaries --strict` names the import of a route by a model as a violation of that part, counts the 16 files as checked, ends `:status fail` and exits 1. Before, the part was dropped and the built-in layered style judged instead. */"""
+        """/* REQ-ARCH-107: a config that names its part `./src` and declares `models` below `routes` is applied as the part `src`: after `wingbox build`, `wingbox boundaries --strict` names the import of a route by a model as a violation of that part, counts the 16 files as checked, ends `:status fail` and exits 1. Before, the part was dropped and the built-in layered style judged instead. */"""
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         base = Path(os.path.realpath(folder.name))

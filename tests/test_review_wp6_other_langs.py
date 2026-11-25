@@ -57,7 +57,7 @@ class _Built:
 
 class GoPackageFilesTest(unittest.TestCase):
     def test_a_file_depends_on_the_file_of_its_package_whose_function_it_calls(self) -> None:
-        """/* REQ-GO-9600: A Go file that calls a function another file of its package defines depends on that file. */"""
+        """/* REQ-GO-006: A Go file that calls a function another file of its package defines depends on that file. */"""
         built = _Built({
             "go.mod": "module example.com/app\n\ngo 1.22\n",
             "main.go": "package main\n\nfunc main() { helper() }\n",
@@ -68,7 +68,7 @@ class GoPackageFilesTest(unittest.TestCase):
         self.assertEqual(set(), built.dependents("other.go"))
 
     def test_a_test_file_of_the_package_depends_on_the_file_it_tests(self) -> None:
-        """/* REQ-GO-9601: A _test.go file of the same directory and package depends on the file whose names it uses. */"""
+        """/* REQ-GO-007: A _test.go file of the same directory and package depends on the file whose names it uses. */"""
         built = _Built({
             "go.mod": "module example.com/app\n\ngo 1.22\n",
             "internal/store/store.go": "package store\n\nfunc Open() int { return newDB() }\n",
@@ -87,7 +87,7 @@ class GoPackageFilesTest(unittest.TestCase):
         self.assertEqual({"internal/store/more_test.go"}, built.dependents("internal/store/fixtures_test.go"))
 
     def test_types_variables_constants_and_receivers_link_the_files_of_a_package(self) -> None:
-        """/* REQ-GO-9602: Types, variables, constants and the receiver of a method link the files of a Go package. */"""
+        """/* REQ-GO-008: Types, variables, constants and the receiver of a method link the files of a Go package. */"""
         built = _Built({
             "go.mod": "module example.com/app\n\ngo 1.22\n",
             "store/types.go": "package store\n\ntype Store struct{ rows []Row }\n\ntype Row struct{}\n",
@@ -104,7 +104,7 @@ class GoPackageFilesTest(unittest.TestCase):
         self.assertEqual({"store/limits.go"}, built.dependencies("store/keys.go"))
 
     def test_a_local_name_or_an_ambiguous_name_gives_no_edge(self) -> None:
-        """/* REQ-GO-9603: A name a Go file binds locally (a parameter, a variable, a type parameter, also the one a method receiver names), a struct field key, a name of another package or directory and a name two files define give no edge. */"""
+        """/* REQ-GO-009: A name a Go file binds locally (a parameter, a variable, a type parameter, also the one a method receiver names), a struct field key, a name of another package or directory and a name two files define give no edge. */"""
         built = _Built({
             "go.mod": "module example.com/app\n\ngo 1.22\n",
             "app/names.go": "package app\n\nvar count = 1\n\nvar Name = \"n\"\n\ntype Config struct{ Name string }\n",
@@ -132,7 +132,7 @@ class GoPackageFilesTest(unittest.TestCase):
         self.assertEqual(set(), built.dependencies("tool/main.go"))
 
     def test_a_name_is_local_only_from_its_declaration_on(self) -> None:
-        """/* REQ-GO-9604: A Go name used before a local declaration of the same name, or in another block, is the name of the package. */"""
+        """/* REQ-GO-010: A Go name used before a local declaration of the same name, or in another block, is the name of the package. */"""
         built = _Built({
             "go.mod": "module example.com/app\n\ngo 1.22\n",
             "app/names.go": "package app\n\nvar limit = 1\n\nfunc scale(n int) int { return n }\n",
@@ -154,7 +154,7 @@ _GO_MAIN = 'package main\n\nimport "example.com/two/pkg/a"\n\nfunc main() { a.A(
 
 class GoModuleFileTest(unittest.TestCase):
     def test_a_comment_after_the_module_path_is_not_part_of_it(self) -> None:
-        """/* REQ-GO-9605: The module line of go.mod is read with a trailing comment, with quotes and in the block form. */"""
+        """/* REQ-GO-011: The module line of go.mod is read with a trailing comment, with quotes and in the block form. */"""
         for module_line in (
             "module example.com/two // the second module\n",
             'module "example.com/two"\n',
@@ -169,7 +169,7 @@ class GoModuleFileTest(unittest.TestCase):
                 self.assertEqual({"main.go"}, built.dependents("pkg/a/a.go"))
 
     def test_a_module_file_that_is_not_utf8_is_reported_and_the_build_goes_on(self) -> None:
-        """/* REQ-GO-9606: A go.mod with a byte that is not UTF-8 gives a warning; the other modules are read and the graph is built. */"""
+        """/* REQ-GO-012: A go.mod with a byte that is not UTF-8 gives a warning; the other modules are read and the graph is built. */"""
         built = _Built({
             "go.mod": "module example.com/two\n\ngo 1.22\n",
             "main.go": _GO_MAIN,
@@ -182,7 +182,7 @@ class GoModuleFileTest(unittest.TestCase):
         self.assertIn(os.path.join("legacy", "go.mod"), built.log.getvalue())
 
     def test_a_long_module_file_is_read_in_linear_time(self) -> None:
-        """/* REQ-GO-9607: A go.mod of 100 KB of blank lines, or of one long line, is read within a second. */"""
+        """/* REQ-GO-013: A go.mod of 100 KB of blank lines, or of one long line, is read within a second. */"""
         from scripts.lang.go.imports import _module_path
 
         for content, expected in (
@@ -197,7 +197,7 @@ class GoModuleFileTest(unittest.TestCase):
 
 class CSharpTypeBindingTest(unittest.TestCase):
     def test_a_partial_class_links_every_file_that_declares_it(self) -> None:
-        """/* REQ-CSHARP-9610: A type declared partial in several files of one namespace and project links its user to each of them; other duplicates stay unlinked. */"""
+        """/* REQ-CSHARP-007: A type declared partial in several files of one namespace and project links its user to each of them; other duplicates stay unlinked. */"""
         built = _Built({
             "Domain/Customer.Part1.cs": "namespace Acme.Domain;\n\npublic partial class Customer\n{\n    public string Name = \"\";\n}\n",
             "Domain/Customer.Part2.cs": "namespace Acme.Domain;\n\npublic partial class Customer\n{\n    public int Age;\n}\n",
@@ -218,7 +218,7 @@ class CSharpTypeBindingTest(unittest.TestCase):
         self.assertEqual(parts, built.dependencies("Services/Static.cs"))
 
     def test_partial_declarations_of_two_projects_are_two_types(self) -> None:
-        """/* REQ-CSHARP-9611: Partial declarations of one name in two projects are not one type: a file binds the one of its own project, a file of a third project none. */"""
+        """/* REQ-CSHARP-008: Partial declarations of one name in two projects are not one type: a file binds the one of its own project, a file of a third project none. */"""
         built = _Built({
             "Api/Api.csproj": "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />\n",
             "Api/Program.cs": "public partial class Program {}\n",
@@ -232,7 +232,7 @@ class CSharpTypeBindingTest(unittest.TestCase):
         self.assertEqual(set(), built.dependencies("Tests/ApiTests.cs"))
 
     def test_a_type_of_an_enclosing_namespace_is_found(self) -> None:
-        """/* REQ-CSHARP-9612: A C# name binds to a type of an enclosing namespace and of the global namespace. */"""
+        """/* REQ-CSHARP-009: A C# name binds to a type of an enclosing namespace and of the global namespace. */"""
         built = _Built({
             "Services/OrderService.cs": "namespace Acme.Services;\n\npublic class OrderService {}\n",
             "Root.cs": "public class Root {}\n",
@@ -245,7 +245,7 @@ class CSharpTypeBindingTest(unittest.TestCase):
         self.assertEqual({"Root.cs"}, built.dependencies("Program.cs"))
 
     def test_a_using_inside_a_namespace_is_read(self) -> None:
-        """/* REQ-CSHARP-9613: A using directive written inside a namespace block, or after a file-scoped namespace, brings in the types of its namespace. */"""
+        """/* REQ-CSHARP-010: A using directive written inside a namespace block, or after a file-scoped namespace, brings in the types of its namespace. */"""
         built = _Built({
             "Domain/Order.cs": "namespace Acme.Domain;\n\npublic class Order {}\n",
             "Services/UsingInside.cs": (
@@ -260,7 +260,7 @@ class CSharpTypeBindingTest(unittest.TestCase):
         self.assertIn("Acme.Domain", built.results["Services/UsingInside.cs"].imports)
 
     def test_a_global_using_holds_for_the_files_of_its_project(self) -> None:
-        """/* REQ-CSHARP-9614: A global using of one file brings in its namespace for every file of the same project, and for no file of another project. */"""
+        """/* REQ-CSHARP-011: A global using of one file brings in its namespace for every file of the same project, and for no file of another project. */"""
         built = _Built({
             "App/App.csproj": "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
             "App/GlobalUsings.cs": "global using Acme.Domain;\n",
@@ -273,7 +273,7 @@ class CSharpTypeBindingTest(unittest.TestCase):
         self.assertEqual({"App/Services/GlobalUser.cs", "App/Program.cs"}, built.dependents("App/Domain/Money.cs"))
 
     def test_a_type_of_the_own_namespace_hides_the_one_a_using_brings(self) -> None:
-        """/* REQ-CSHARP-9615: A name binds to the type of the nearest namespace: a type a using directive brings in gives no edge when the own namespace declares the name, and a name two usings bring in gives none. */"""
+        """/* REQ-CSHARP-012: A name binds to the type of the nearest namespace: a type a using directive brings in gives no edge when the own namespace declares the name, and a name two usings bring in gives none. */"""
         built = _Built({
             "Dup/A/Thing.cs": "namespace Acme.A;\n\npublic class Thing {}\n\npublic class OnlyA {}\n",
             "Dup/B/Thing.cs": "namespace Acme.B;\n\npublic class Thing {}\n",
@@ -307,7 +307,7 @@ _JAVA_FOLDER = "core/src/main/java/com/acme/core/"
 
 class JavaStaticUseTest(unittest.TestCase):
     def test_a_class_used_through_static_members_is_a_dependency(self) -> None:
-        """/* REQ-JAVA-9620: A Java class of the own package used only through a static method, a constant, an enum constant or a method reference is a dependency. */"""
+        """/* REQ-JAVA-007: A Java class of the own package used only through a static method, a constant, an enum constant or a method reference is a dependency. */"""
         built = _Built({
             **_JAVA_CORE,
             _JAVA_FOLDER + "OrderService.java": (
@@ -323,7 +323,7 @@ class JavaStaticUseTest(unittest.TestCase):
         )
 
     def test_a_wildcard_import_brings_in_a_class_used_through_static_members(self) -> None:
-        """/* REQ-JAVA-9621: A class a wildcard import brings in is a dependency when only its static members are used. */"""
+        """/* REQ-JAVA-008: A class a wildcard import brings in is a dependency when only its static members are used. */"""
         built = _Built({
             **_JAVA_CORE,
             "app/src/main/java/com/acme/app/Wild.java": (
@@ -337,7 +337,7 @@ class JavaStaticUseTest(unittest.TestCase):
         )
 
     def test_an_annotation_of_the_own_package_is_a_dependency(self) -> None:
-        """/* REQ-JAVA-9622: An annotation of the own package written on a declaration is a dependency. */"""
+        """/* REQ-JAVA-009: An annotation of the own package written on a declaration is a dependency. */"""
         built = _Built({
             **_JAVA_CORE,
             _JAVA_FOLDER + "Order.java": (
@@ -347,7 +347,7 @@ class JavaStaticUseTest(unittest.TestCase):
         self.assertEqual({_JAVA_FOLDER + "Annot.java"}, built.dependencies(_JAVA_FOLDER + "Order.java"))
 
     def test_a_variable_named_like_a_class_gives_no_edge(self) -> None:
-        """/* REQ-JAVA-9623: A field, parameter or variable of the file whose name is that of a class of the package is not a use of the class. */"""
+        """/* REQ-JAVA-010: A field, parameter or variable of the file whose name is that of a class of the package is not a use of the class. */"""
         built = _Built({
             **_JAVA_CORE,
             _JAVA_FOLDER + "Holder.java": (
@@ -359,7 +359,7 @@ class JavaStaticUseTest(unittest.TestCase):
         self.assertEqual(set(), built.dependencies(_JAVA_FOLDER + "Holder.java"))
 
     def test_files_of_the_default_package_are_linked(self) -> None:
-        """/* REQ-JAVA-9624: A file without a package declaration depends on the class of the default package it names: the one of its folder when two folders declare the name. */"""
+        """/* REQ-JAVA-011: A file without a package declaration depends on the class of the default package it names: the one of its folder when two folders declare the name. */"""
         built = _Built({
             "one/A.java": "public class A {\n    B b;\n    int n = Tool.COUNT;\n}\n",
             "one/B.java": "public class B {}\n",
@@ -388,20 +388,20 @@ _DEEP_JSON = "[" * 100_000
 
 class ManifestReadingTest(unittest.TestCase):
     def test_a_composer_file_that_is_not_utf8_is_reported_and_the_build_goes_on(self) -> None:
-        """/* REQ-PHP-9630: A composer.json with a byte that is not UTF-8 gives a warning; the other manifests are read and the graph is built. */"""
+        """/* REQ-PHP-025: A composer.json with a byte that is not UTF-8 gives a warning; the other manifests are read and the graph is built. */"""
         built = _Built({**_PHP_APP, "packages/legacy/composer.json": b'{"name": "acme/caf\xe9"}\n'})
         self.assertEqual({"app/Http/PostController.php"}, built.dependents("app/Models/Post.php"))
         self.assertIn("Cannot read composer autoload", built.log.getvalue())
         self.assertIn(os.path.join("packages", "legacy", "composer.json"), built.log.getvalue())
 
     def test_a_composer_file_nested_too_deep_is_reported_and_the_build_goes_on(self) -> None:
-        """/* REQ-PHP-9631: A composer.json nested deeper than the JSON reader goes gives a warning, not an aborted build. */"""
+        """/* REQ-PHP-026: A composer.json nested deeper than the JSON reader goes gives a warning, not an aborted build. */"""
         built = _Built({**_PHP_APP, "packages/deep/composer.json": _DEEP_JSON})
         self.assertEqual({"app/Http/PostController.php"}, built.dependents("app/Models/Post.php"))
         self.assertIn(os.path.join("packages", "deep", "composer.json"), built.log.getvalue())
 
     def test_a_pubspec_that_is_not_utf8_is_reported_and_the_build_goes_on(self) -> None:
-        """/* REQ-DART-9632: A pubspec.yaml with a byte that is not UTF-8 gives a warning; the other packages are read and the graph is built. */"""
+        """/* REQ-DART-017: A pubspec.yaml with a byte that is not UTF-8 gives a warning; the other packages are read and the graph is built. */"""
         built = _Built({
             "pubspec.yaml": "name: app\n",
             "lib/main.dart": "import 'package:app/model.dart';\n\nvoid main() { Model(); }\n",
@@ -414,7 +414,7 @@ class ManifestReadingTest(unittest.TestCase):
         self.assertIn(os.path.join("legacy", "pubspec.yaml"), built.log.getvalue())
 
     def test_a_compilation_database_nested_too_deep_is_reported_and_the_build_goes_on(self) -> None:
-        """/* REQ-CPP-9633: A compile_commands.json nested deeper than the JSON reader goes, or not UTF-8, gives a warning, not an aborted build. */"""
+        """/* REQ-CPP-026: A compile_commands.json nested deeper than the JSON reader goes, or not UTF-8, gives a warning, not an aborted build. */"""
         for database in (_DEEP_JSON, b'[{"file": "caf\xe9.cpp"}]'):
             with self.subTest(database=database[:12]):
                 built = _Built({
@@ -435,7 +435,7 @@ def _entities(built: _Built, path: str) -> dict[str, dict]:
 
 class DeepTreeTest(unittest.TestCase):
     def test_a_php_expression_of_three_thousand_operands_is_read(self) -> None:
-        """/* REQ-PHP-9640: A PHP file with a concatenation of 3,000 operands is parsed: its class, its methods and its dependencies are those of the file. */"""
+        """/* REQ-PHP-027: A PHP file with a concatenation of 3,000 operands is parsed: its class, its methods and its dependencies are those of the file. */"""
         chain = " .\n        ".join("'a'" for _ in range(_DEPTH))
         built = _Built({
             **_PHP_APP,
@@ -449,7 +449,7 @@ class DeepTreeTest(unittest.TestCase):
         self.assertEqual(["post"], _entities(built, "app/Reports/Report.php")["App\\Reports\\Report"].get("methods"))
 
     def test_a_ruby_expression_of_three_thousand_operands_is_read(self) -> None:
-        """/* REQ-RUBY-9641: A Ruby file with a sum of 3,000 operands is parsed: its class, its constant and its dependencies are those of the file. */"""
+        """/* REQ-RUBY-012: A Ruby file with a sum of 3,000 operands is parsed: its class, its constant and its dependencies are those of the file. */"""
         chain = " +\n    ".join("'a'" for _ in range(_DEPTH))
         built = _Built({
             "lib/limits.rb": "module Limits\n  MAX = 3\nend\n",
@@ -465,7 +465,7 @@ class DeepTreeTest(unittest.TestCase):
         self.assertIn("Report::TEXT", entities)
 
     def test_a_cpp_conditional_of_three_thousand_branches_is_read(self) -> None:
-        """/* REQ-CPP-9642: A C++ header with 3,000 #elif branches, at file level and in a class, is parsed: the functions of every branch and the include are those of the file. */"""
+        """/* REQ-CPP-027: A C++ header with 3,000 #elif branches, at file level and in a class, is parsed: the functions of every branch and the include are those of the file. */"""
         branches = "#if MODE == 0\nint mode0();\n" + "".join(
             f"#elif MODE == {index}\nint mode{index}();\n" for index in range(1, _DEPTH)
         ) + "#endif\n"
@@ -505,7 +505,7 @@ _CMAKE_SOURCES = {f"lib/{name}": "int f();\n" for name in ("core.cpp", "detail.c
 
 class CMakeTargetsTest(unittest.TestCase):
     def test_sources_given_through_a_variable_set_once_are_read(self) -> None:
-        """/* REQ-CS-9650: A target whose sources are a variable that the same CMake file sets once, at its top level, with literal values has those sources; a variable with one value is also read inside a path. */"""
+        """/* REQ-CS-213: A target whose sources are a variable that the same CMake file sets once, at its top level, with literal values has those sources; a variable with one value is also read inside a path. */"""
         targets, _tests = _cmake({
             **_CMAKE_SOURCES,
             "lib/CMakeLists.txt": (
@@ -524,7 +524,7 @@ class CMakeTargetsTest(unittest.TestCase):
         self.assertEqual([False, False, False, False], [targets[name].unread for name in ("core", "deep", "plain", "iface")])
 
     def test_a_variable_that_is_not_set_once_literally_stays_unread_and_marks_the_target(self) -> None:
-        """/* REQ-CS-9651: A variable set twice, appended to, set in a block, set after its use, filled by file(GLOB) or set in no place of the file is not substituted, and neither is a generator expression: the target is marked as one whose sources were not all read. */"""
+        """/* REQ-CS-214: A variable set twice, appended to, set in a block, set after its use, filled by file(GLOB) or set in no place of the file is not substituted, and neither is a generator expression: the target is marked as one whose sources were not all read. */"""
         targets, _tests = _cmake({
             **_CMAKE_SOURCES,
             "lib/CMakeLists.txt": (
@@ -546,7 +546,7 @@ class CMakeTargetsTest(unittest.TestCase):
         self.assertEqual((("lib/extra.cpp",), False), (targets["made"].sources, targets["made"].unread))
 
     def test_a_bracket_comment_holds_no_target(self) -> None:
-        """/* REQ-CS-9652: A call written in a bracket comment `#[[ ... ]]` or `#[==[ ... ]==]` of a CMake file creates no target and no test. */"""
+        """/* REQ-CS-215: A call written in a bracket comment `#[[ ... ]]` or `#[==[ ... ]==]` of a CMake file creates no target and no test. */"""
         targets, tests = _cmake({
             **_CMAKE_SOURCES,
             "lib/CMakeLists.txt": (
@@ -560,7 +560,7 @@ class CMakeTargetsTest(unittest.TestCase):
         self.assertEqual(["real"], sorted(tests))
 
     def test_a_hash_in_a_quoted_argument_is_no_comment(self) -> None:
-        """/* REQ-CS-9653: A `#` inside a quoted argument of a CMake call does not start a comment: the call and the calls after it are read. */"""
+        """/* REQ-CS-216: A `#` inside a quoted argument of a CMake call does not start a comment: the call and the calls after it are read. */"""
         targets, tests = _cmake({
             **_CMAKE_SOURCES,
             "lib/CMakeLists.txt": (
@@ -575,7 +575,7 @@ class CMakeTargetsTest(unittest.TestCase):
                          {name: test.target for name, test in tests.items()})
 
     def test_a_quoted_test_name_is_kept_whole(self) -> None:
-        """/* REQ-CS-9654: The name of `add_test(NAME "quoted name" ...)` is the text between the quotes. */"""
+        """/* REQ-CS-217: The name of `add_test(NAME "quoted name" ...)` is the text between the quotes. */"""
         _targets, tests = _cmake({
             **_CMAKE_SOURCES,
             "lib/CMakeLists.txt": (
@@ -624,7 +624,7 @@ class CMakeAnswerTest(unittest.TestCase):
                               cwd=str(cls.root), timeout=180, text=True)
 
     def test_the_graph_marks_a_target_whose_sources_were_not_read(self) -> None:
-        """/* REQ-CS-9655: The `target` fact of a target whose source list was not all read carries `:sources unread`; a target read through a variable set once lists its sources, and a test named with a space is written quoted. */"""
+        """/* REQ-CS-218: The `target` fact of a target whose source list was not all read carries `:sources unread`; a target read through a variable set once lists its sources, and a test named with a space is written quoted. */"""
         facts = [line for line in self.graph.splitlines() if line.startswith(("(target ", "(ctest "))]
         self.assertEqual(4, len(facts), self.built.stderr)
         self.assertRegex(self.graph, r'\(target core :kind library :in "lib/CMakeLists.txt" \w+\)')
@@ -632,7 +632,7 @@ class CMakeAnswerTest(unittest.TestCase):
         self.assertIn('(ctest "quoted name" :target unit_tests :in "lib/CMakeLists.txt")', self.graph)
 
     def test_impact_names_the_target_of_the_variable_and_the_unread_targets(self) -> None:
-        """/* REQ-CS-9656: `wingbox impact <file> --only tests` names a target that holds the file through a variable, and after it the targets whose sources were not all read: `(unread-targets <file> <target> ...)`, `unread_targets` in JSON, a line in the text. */"""
+        """/* REQ-CS-219: `wingbox impact <file> --only tests` names a target that holds the file through a variable, and after it the targets whose sources were not all read: `(unread-targets <file> <target> ...)`, `unread_targets` in JSON, a line in the text. */"""
         compact = self._run("impact", "lib/core.cpp", "--only", "tests").stdout
         self.assertIn("(affected-targets lib/core.cpp core unit_tests)", compact)
         self.assertIn('(affected-tests lib/core.cpp "quoted name")', compact)
@@ -660,7 +660,7 @@ _PHP_HELPERS = {
 
 class PhpFunctionsTest(unittest.TestCase):
     def test_functions_and_constants_of_a_file_are_entities(self) -> None:
-        """/* REQ-PHP-9660: A PHP function and a constant declared outside a class are entities of their file, a function inside `if (! function_exists())` too; a method and a class constant are not listed twice. */"""
+        """/* REQ-PHP-028: A PHP function and a constant declared outside a class are entities of their file, a function inside `if (! function_exists())` too; a method and a class constant are not listed twice. */"""
         built = _Built({
             **_PHP_HELPERS,
             "app/Models/Post.php": "<?php\n\nnamespace App\\Models;\n\nclass Post\n{\n    const KIND = 'p';\n\n    public function title() { return ''; }\n}\n",
@@ -672,7 +672,7 @@ class PhpFunctionsTest(unittest.TestCase):
         self.assertEqual(["App\\Models\\Post", "App\\Models\\Post::title"], list(_entities(built, "app/Models/Post.php")))
 
     def test_use_function_and_use_const_are_dependencies(self) -> None:
-        """/* REQ-PHP-9661: `use function` and `use const`, also in a group, make the file depend on the file that declares the function or the constant, with the line of the statement. */"""
+        """/* REQ-PHP-029: `use function` and `use const`, also in a group, make the file depend on the file that declares the function or the constant, with the line of the statement. */"""
         built = _Built({
             **_PHP_HELPERS,
             "app/Support/more.php": "<?php\n\nnamespace App\\More;\n\nfunction first() {}\n\nfunction second() {}\n",
@@ -692,7 +692,7 @@ class PhpFunctionsTest(unittest.TestCase):
         )
 
     def test_a_call_links_the_one_file_that_declares_the_function(self) -> None:
-        """/* REQ-PHP-9662: A call of a function links the file that declares it: the function of the own namespace, else the global one; a qualified name by its namespace. A function two files declare, a method and a function of PHP itself give no edge. */"""
+        """/* REQ-PHP-030: A call of a function links the file that declares it: the function of the own namespace, else the global one; a qualified name by its namespace. A function two files declare, a method and a function of PHP itself give no edge. */"""
         built = _Built({
             **_PHP_HELPERS,
             "app/Support/twice_a.php": "<?php\n\nfunction twice() {}\n",
@@ -714,7 +714,7 @@ class PhpFunctionsTest(unittest.TestCase):
         self.assertEqual({"app/Support/functions.php"}, built.dependencies("app/Http/Qualified.php"))
 
     def test_a_file_required_by_its_folder_is_a_dependency(self) -> None:
-        """/* REQ-PHP-9663: `require_once __DIR__ . '/path'`, `dirname(__FILE__)` and `dirname(__DIR__)` name a file by the folder of the requiring file: it is a dependency, with the line; a path of another form gives no edge. */"""
+        """/* REQ-PHP-031: `require_once __DIR__ . '/path'`, `dirname(__FILE__)` and `dirname(__DIR__)` name a file by the folder of the requiring file: it is a dependency, with the line; a path of another form gives no edge. */"""
         built = _Built({
             **_PHP_HELPERS,
             "app/Http/Controllers/LegacyController.php": (
@@ -755,7 +755,7 @@ _BLADE_APP = {
 
 class PhpBladeClassesTest(unittest.TestCase):
     def test_a_template_depends_on_the_classes_it_names(self) -> None:
-        """/* REQ-PHP-9664: A Blade template depends on the class of `@inject('name', 'Class')`, of `@use('Class')` and of a qualified `\\Name\\Space\\Class::` written in it; a name in a comment, in `@verbatim` or without `::` gives no edge. */"""
+        """/* REQ-PHP-032: A Blade template depends on the class of `@inject('name', 'Class')`, of `@use('Class')` and of a qualified `\\Name\\Space\\Class::` written in it; a name in a comment, in `@verbatim` or without `::` gives no edge. */"""
         built = _Built({
             **_BLADE_APP,
             "resources/views/users/index.blade.php": (
@@ -774,7 +774,7 @@ class PhpBladeClassesTest(unittest.TestCase):
         self.assertEqual(set(), built.dependencies("resources/views/users/quiet.blade.php"))
 
     def test_a_component_tag_links_the_component_class(self) -> None:
-        """/* REQ-PHP-9665: `<x-alert>` depends on the class `View\\Components\\Alert` of the application as well as on the anonymous view; a tag with only a view depends on the view, and `<x-forms.date-input>` on `Forms\\DateInput`. */"""
+        """/* REQ-PHP-033: `<x-alert>` depends on the class `View\\Components\\Alert` of the application as well as on the anonymous view; a tag with only a view depends on the view, and `<x-forms.date-input>` on `Forms\\DateInput`. */"""
         built = _Built({
             **_BLADE_APP,
             "resources/views/page.blade.php": "<x-alert type=\"info\" />\n<x-panel />\n<x-forms.date-input />\n<x-missing />\n",
@@ -786,7 +786,7 @@ class PhpBladeClassesTest(unittest.TestCase):
         )
 
     def test_a_mailable_view_and_a_route_action_string_are_dependencies(self) -> None:
-        """/* REQ-PHP-9666: `$this->view('emails.welcome')` depends on the view, and a route action written `'Controller@method'` on the controller: by its full name, or as `Http\\Controllers\\<name>` of the application when one class has it. */"""
+        """/* REQ-PHP-034: `$this->view('emails.welcome')` depends on the view, and a route action written `'Controller@method'` on the controller: by its full name, or as `Http\\Controllers\\<name>` of the application when one class has it. */"""
         built = _Built({
             **_BLADE_APP,
             "app/Mail/Welcome.php": (
@@ -816,7 +816,7 @@ _RAILS_MODELS = {
 
 class RubyRailsNamesTest(unittest.TestCase):
     def test_has_many_names_are_singularized_as_rails_does(self) -> None:
-        """/* REQ-RUBY-9670: `has_many` of a plural in -ches, -shes, -xes, -sses, -uses, -ies and of an irregular plural (people, children, analyses) is an association with the model of the singular name. */"""
+        """/* REQ-RUBY-013: `has_many` of a plural in -ches, -shes, -xes, -sses, -uses, -ies and of an irregular plural (people, children, analyses) is an association with the model of the singular name. */"""
         plurals = ("batches", "statuses", "people", "boxes", "addresses", "dishes", "companies", "children",
                    "analyses", "houses", "posts")
         built = _Built({
@@ -833,7 +833,7 @@ class RubyRailsNamesTest(unittest.TestCase):
         self.assertEqual(set(_RAILS_MODELS), associated)
 
     def test_the_singular_rules(self) -> None:
-        """/* REQ-RUBY-9671: The singular of a Rails association name follows the rules of Rails; a word that is not a plural is left as it is. */"""
+        """/* REQ-RUBY-014: The singular of a Rails association name follows the rules of Rails; a word that is not a plural is left as it is. */"""
         from scripts.lang.ruby.imports import _singularize
 
         for plural, singular in (
@@ -848,7 +848,7 @@ class RubyRailsNamesTest(unittest.TestCase):
             self.assertEqual(singular, _singularize(plural), plural)
 
     def test_a_scoped_constant_names_at_least_its_scope(self) -> None:
-        """/* REQ-RUBY-9672: `User::LIMIT`, with LIMIT defined in a concern that User includes, is a dependency on the file of `User`: a scoped name that resolves nowhere is resolved by its longest leading part; a name two files define stays unlinked. */"""
+        """/* REQ-RUBY-015: `User::LIMIT`, with LIMIT defined in a concern that User includes, is a dependency on the file of `User`: a scoped name that resolves nowhere is resolved by its longest leading part; a name two files define stays unlinked. */"""
         built = _Built({
             "app/models/concerns/trackable.rb": "module Trackable\n  LIMIT = 5\nend\n",
             "app/models/user.rb": "class User\n  include Trackable\nend\n",
@@ -862,7 +862,7 @@ class RubyRailsNamesTest(unittest.TestCase):
         self.assertEqual({"app/models/user.rb"}, built.dependencies("app/services/limits.rb"))
 
     def test_the_autoload_path_scan_is_linear(self) -> None:
-        """/* REQ-RUBY-9673: The autoload paths of config/application.rb are read in linear time: 100 KB of one line of `autoload_paths` without a path, or of unclosed `Rails.root.join(`, within a second; the paths of a real line are still found. */"""
+        """/* REQ-RUBY-016: The autoload paths of config/application.rb are read in linear time: 100 KB of one line of `autoload_paths` without a path, or of unclosed `Rails.root.join(`, within a second; the paths of a real line are still found. */"""
         from scripts.lang.ruby.imports import _autoload_join_arguments
 
         self.assertEqual(
@@ -881,7 +881,7 @@ class RubyRailsNamesTest(unittest.TestCase):
 
 class CppIncludeFoldersTest(unittest.TestCase):
     def test_a_file_the_database_does_not_cover_takes_the_cmake_folders(self) -> None:
-        """/* REQ-CPP-9680: With a compilation database for part of the tree, a source file without an entry and without a translation unit at or above its folder finds its includes in the folders the CMake files name, then in every folder of the database: both edges are marked `inferred`; a file with an entry keeps its stated edges. */"""
+        """/* REQ-CPP-028: With a compilation database for part of the tree, a source file without an entry and without a translation unit at or above its folder finds its includes in the folders the CMake files name, then in every folder of the database: both edges are marked `inferred`; a file with an entry keeps its stated edges. */"""
         built = _Built({
             "build/compile_commands.json": json.dumps([
                 {"directory": ".", "file": "../src/a.cpp", "arguments": ["c++", "-I", "../inc1", "-c", "../src/a.cpp"]},
@@ -899,7 +899,7 @@ class CppIncludeFoldersTest(unittest.TestCase):
         self.assertEqual([], built.relations[("src/near.h", "inc1/h1.h")])
 
     def test_an_include_written_in_another_case_is_found_when_one_file_matches(self) -> None:
-        """/* REQ-CPP-9681: An include whose name differs from the file only in the case of its letters is an edge marked `inferred` when exactly one file matches; with two such files there is no edge. */"""
+        """/* REQ-CPP-029: An include whose name differs from the file only in the case of its letters is an edge marked `inferred` when exactly one file matches; with two such files there is no edge. */"""
         built = _Built({
             "case/core.h": "int core();\n",
             "case/sub/deep.h": "int deep();\n",
@@ -915,7 +915,7 @@ class CppIncludeFoldersTest(unittest.TestCase):
 
 class CppOperatorNameTest(unittest.TestCase):
     def test_the_call_operator_reads_back_whole(self) -> None:
-        """/* REQ-CPP-9682: A method named `operator()` is written to the graph quoted, as a function and in the methods of its class, so that it reads back whole: `find_function` names `operator()`, not `operator(`. */"""
+        """/* REQ-CPP-030: A method named `operator()` is written to the graph quoted, as a function and in the methods of its class, so that it reads back whole: `find_function` names `operator()`, not `operator(`. */"""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(os.path.realpath(directory))
             _write(root, {
@@ -943,7 +943,7 @@ class CppOperatorNameTest(unittest.TestCase):
 
 class DartPartOfNameTest(unittest.TestCase):
     def test_part_of_a_library_name_links_the_part_to_its_library(self) -> None:
-        """/* REQ-DART-9690: `part of app.main;`, the form that names the library, makes the part depend on the file that declares `library app.main;`, with the line of the directive; a name two libraries declare is settled by the package of the part, and stays unlinked without one. */"""
+        """/* REQ-DART-018: `part of app.main;`, the form that names the library, makes the part depend on the file that declares `library app.main;`, with the line of the directive; a name two libraries declare is settled by the package of the part, and stays unlinked without one. */"""
         built = _Built({
             "pubspec.yaml": "name: app\n",
             "lib/main.dart": "library app.main;\n\npart 'src/part_old.dart';\n\nvoid main() {}\n",
@@ -979,7 +979,7 @@ class LinearScansTest(unittest.TestCase):
         return value
 
     def test_the_pubspec_name_is_read_in_linear_time(self) -> None:
-        """/* REQ-DART-9691: The name of a pubspec.yaml is read in linear time (one line of 100 KB within the bound), and as before: the first `name:` at column 0, without its comment and quotes. */"""
+        """/* REQ-DART-019: The name of a pubspec.yaml is read in linear time (one line of 100 KB within the bound), and as before: the first `name:` at column 0, without its comment and quotes. */"""
         from scripts.lang.dart.imports import _pubspec_name
 
         self.assertEqual("x" + " " * _KB100 + "y", self._timed(lambda: _pubspec_name("name: x" + " " * _KB100 + "y")))
@@ -991,7 +991,7 @@ class LinearScansTest(unittest.TestCase):
             self.assertEqual(name, _pubspec_name(content), content)
 
     def test_a_pascal_include_directive_is_read_in_linear_time(self) -> None:
-        """/* REQ-PAS-9692: A Pascal include directive is read in linear time (100 KB of spaces in one directive within the bound), and as before. */"""
+        """/* REQ-PAS-020: A Pascal include directive is read in linear time (100 KB of spaces in one directive within the bound), and as before. */"""
         from scripts.lang.pascal.parser import extract_pascal_imports
 
         found = self._timed(lambda: extract_pascal_imports("unit u;\n{$I a" + " " * _KB100 + "b}\n"))
@@ -1000,7 +1000,7 @@ class LinearScansTest(unittest.TestCase):
         self.assertEqual(["defs.inc", "more defs.inc"], paths)
 
     def test_php_registrations_are_scanned_in_linear_time(self) -> None:
-        """/* REQ-PHP-9693: The registrations of a PHP file are scanned in linear time: 100 KB of one name as the class of `Livewire::component`, and 100 KB of `loadViewsFrom(` that never closes, within the bound; a real registration is still read. */"""
+        """/* REQ-PHP-035: The registrations of a PHP file are scanned in linear time: 100 KB of one name as the class of `Livewire::component`, and 100 KB of `loadViewsFrom(` that never closes, within the bound; a real registration is still read. */"""
         from scripts.lang.php.imports import _scan_registrations
 
         def scan(content: str) -> tuple[list, list, list]:
@@ -1020,7 +1020,7 @@ class LinearScansTest(unittest.TestCase):
         self.assertEqual([("counter", "\\App\\Livewire\\Counter", "/a.php")], livewire)
 
     def test_cpp_text_scans_are_linear(self) -> None:
-        """/* REQ-CPP-9694: A C++ file of 100 KB is parsed within the bound when it holds one long declaration with `= 0`, a long MOCK_METHOD name or tail, or block comments that never close; and the scans of a text of 100 KB stay within it: the template arguments of a name nested thousands deep, the braces of a text of comments that never close, class headings that never reach a brace. */"""
+        """/* REQ-CPP-031: A C++ file of 100 KB is parsed within the bound when it holds one long declaration with `= 0`, a long MOCK_METHOD name or tail, or block comments that never close; and the scans of a text of 100 KB stay within it: the template arguments of a name nested thousands deep, the braces of a text of comments that never close, class headings that never reach a brace. */"""
         from scripts.lang.cpp import CPP_LANGUAGE
         from scripts.lang.cpp import parser as cpp_parser
         from scripts.lang.cpp import symbols as cpp_symbols
@@ -1048,7 +1048,7 @@ class LinearScansTest(unittest.TestCase):
                 self.assertEqual([], self._timed(lambda: cpp_symbols.text_classes(source, pairs)))
 
     def test_a_block_comment_that_never_closes_ends_the_text_that_is_parsed(self) -> None:
-        """/* REQ-CPP-9696: A C++ file is read up to a block comment that nothing closes: the include and the declarations before it are those of the file. A `/*` in a string, a raw string, a character literal or a line comment opens no comment, and the declarations after it are read. */"""
+        """/* REQ-CPP-033: A C++ file is read up to a block comment that nothing closes: the include and the declarations before it are those of the file. A `/*` in a string, a raw string, a character literal or a line comment opens no comment, and the declarations after it are read. */"""
         built = _Built({
             "src/dep.h": "int dep();\n",
             "src/open.h": '#include "dep.h"\nint before();\n/* never closed\nint inside();\n',
@@ -1063,7 +1063,7 @@ class LinearScansTest(unittest.TestCase):
         self.assertIn("after", _entities(built, "src/globs.cpp"))
 
     def test_the_rewritten_cpp_scans_answer_as_before(self) -> None:
-        """/* REQ-CPP-9695: The C++ text scans keep their answers: a name without its template arguments, a pure virtual method, the method of a googlemock macro, braces outside comments and strings, the classes of a text. */"""
+        """/* REQ-CPP-032: The C++ text scans keep their answers: a name without its template arguments, a pure virtual method, the method of a googlemock macro, braces outside comments and strings, the classes of a text. */"""
         from scripts.lang.cpp import parser as cpp_parser
         from scripts.lang.cpp import symbols as cpp_symbols
 

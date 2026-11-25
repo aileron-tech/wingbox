@@ -272,7 +272,7 @@ class OldLayoutWarningTest(unittest.TestCase):
         return {str(path): path.read_bytes() for path in folder.rglob("*") if path.is_file()}
 
     def test_old_files_are_named_in_yellow_or_plain_and_kept(self) -> None:
-        """/* REQ-UPDATE-9959: `wingbox update` must look in the current folder and its parents up to the project root and in every --project install of ~/.wingbox/installed.sexp for .code_graph.sexp, .code_graph.uses.sexp, .code_graph.uses-cache.json, .code_graph_cache.json and wingbox-out/, print for each project one `! WARNING: <project>: old Wingbox files left: <names> - Wingbox now uses .wingbox/ only; remove them yourself` line (yellow on a terminal without NO_COLOR, plain otherwise), the fact `(update-warning <project> :old-files (...))` with --sexp, and delete nothing. */"""
+        """/* REQ-UPDATE-020: `wingbox update` must look in the current folder and its parents up to the project root and in every --project install of ~/.wingbox/installed.sexp for .code_graph.sexp, .code_graph.uses.sexp, .code_graph.uses-cache.json, .code_graph_cache.json and wingbox-out/, print for each project one `! WARNING: <project>: old Wingbox files left: <names> - Wingbox now uses .wingbox/ only; remove them yourself` line (yellow on a terminal without NO_COLOR, plain otherwise), the fact `(update-warning <project> :old-files (...))` with --sexp, and delete nothing. */"""
         kept = self.leave_old_files(self.project)
         kept.update(self.leave_old_files(self.recorded))
         installed = [install.Installed("project", str(self.recorded), ("claude-code",))]
