@@ -173,6 +173,12 @@ class AnswerErr:
     errors: tuple[str, ...]
 
 
+def _is_control(char: str) -> bool:
+    """A control character other than a tab (C0, DEL, C1)."""
+    code = ord(char)
+    return (code < 0x20 and char != "\t") or 0x7F <= code <= 0x9F
+
+
 def parse_answer(
     text: str, parts: Mapping[str, tuple[str, frozenset[str]]], library: Library,
 ) -> AnswerOk | AnswerErr:
@@ -182,6 +188,11 @@ def parse_answer(
     for number, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith(";"):
+            continue
+        control = next((char for char in line if _is_control(char)), None)
+        if control is not None:
+            # The text goes into .wingbox/config.yaml (a comment), learned.sexp and the terminal.
+            errors.append(f"line {number}: the control character {control!r} is not allowed: write plain text")
             continue
         if not (line.startswith("(") and line.endswith(")")) or line.count('"') % 2:
             errors.append(f"line {number}: not one complete S-expression: {line[:80]}")
@@ -246,14 +257,29 @@ def learned_lines(entries: tuple[Entry, ...], today: str, mode: Mode, styles: Ma
     return lines
 
 
-def read_learned(text: str) -> dict[tuple[str, str], tuple[str, str, int]]:
-    """(part, folder) -> (layer, because, files at the time), the last entry winning."""
-    found: dict[tuple[str, str], tuple[str, str, int]] = {}
-    for line in text.splitlines():
+def _learned_entries(text: str) -> list[tuple[int, list[str], str]]:
+    """(line number, tokens, the text after :files) of each learned-entry line."""
+    found = []
+    for number, line in enumerate(text.splitlines(), start=1):
         tokens = parse(line)
         if len(tokens) >= 4 and tokens[0] == "learned-entry":
-            found[(tokens[1], tokens[2])] = (tokens[3], keyword(tokens, "because", "") or "", int(keyword(tokens, "files", "0") or 0))
+            found.append((number, tokens, keyword(tokens, "files", "0") or "0"))
     return found
+
+
+def read_learned(text: str) -> dict[tuple[str, str], tuple[str, str, int]]:
+    """(part, folder) -> (layer, because, files at the time), the last entry winning. An entry whose
+    :files is not a number is left out (`unread_learned` names it): its folder is asked again."""
+    return {
+        (tokens[1], tokens[2]): (tokens[3], keyword(tokens, "because", "") or "", int(files))
+        for _number, tokens, files in _learned_entries(text) if files.isascii() and files.isdigit()
+    }
+
+
+def unread_learned(text: str) -> list[str]:
+    """One "line <n>: <why>" for each learned-entry line that `read_learned` leaves out."""
+    return [f"line {number}: :files {files!r} is not a number"
+            for number, _tokens, files in _learned_entries(text) if not (files.isascii() and files.isdigit())]
 
 
 def changed_a_lot(before: int, now: int) -> bool:

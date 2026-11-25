@@ -72,6 +72,114 @@ def _search(pattern: str, text: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Patterns whose matching time is not bounded by the length of a path.
+# ---------------------------------------------------------------------------
+
+_BRACES = re.compile(r"\{(\d*)(,(\d*))?\}")
+# The two forms of a repeating group that have one way to match a text: a run of one kind of character
+# with a character that is not of that kind (`[^/]+/`, `/[\w-]*`), and alternatives of plain text of
+# which none starts another.
+_ONE_CHAR = r"(?:\[(?:\\.|[^\]\\])+\]|\\[wdsWDS]|\.)"
+_DELIMITER = r"(?:\\?[/_:,@-]|\\\.)"
+_DELIMITED = re.compile(
+    rf"(?P<run>{_ONE_CHAR})[*+](?P<last>{_DELIMITER})|(?P<first>{_DELIMITER})(?P<tail>{_ONE_CHAR})[*+]"
+)
+_PLAIN_TEXT = re.compile(r"(?:[A-Za-z0-9_/@-]|\\[./-])+")
+
+
+def _class_end(pattern: str, start: int) -> int:
+    """Index after the character class that opens at `start`."""
+    index = start + 1
+    if pattern[index:index + 1] == "^":
+        index += 1
+    if pattern[index:index + 1] == "]":
+        index += 1
+    while index < len(pattern) and pattern[index] != "]":
+        index += 2 if pattern[index] == "\\" else 1
+    return index + 1
+
+
+def _quantifier(pattern: str, index: int) -> tuple[str, int]:
+    """(the quantifier at `index`, the index after it): "many" lets what stands before it match more than
+    once (`*`, `+`, `{2,}`), "optional" at most once (`?`, `{0,1}`), "" is no quantifier."""
+    char = pattern[index:index + 1]
+    braces = _BRACES.match(pattern, index) if char == "{" else None
+    if char in ("*", "+"):
+        kind, index = "many", index + 1
+    elif char == "?":
+        kind, index = "optional", index + 1
+    elif braces is not None and (braces.group(1) or braces.group(3)):
+        most = braces.group(3) if braces.group(2) else braces.group(1)
+        kind, index = ("many" if not most or int(most) > 1 else "optional" if braces.group(2) else ""), braces.end()
+    else:
+        return "", index
+    return kind, index + 1 if pattern[index:index + 1] in ("?", "+") else index
+
+
+def _one_way(body: str) -> bool:
+    """True for the body of a group that can match a text in one way only, however often it repeats."""
+    body = body[2:] if body.startswith("?:") else body
+    delimited = _DELIMITED.fullmatch(body)
+    if delimited is not None:
+        delimiter = (delimited.group("last") or delimited.group("first"))[-1]
+        try:
+            return re.fullmatch(delimited.group("run") or delimited.group("tail"), delimiter) is None
+        except re.error:
+            return False
+    choices = [choice.replace("\\", "") for choice in body.split("|")]
+    return all(_PLAIN_TEXT.fullmatch(choice) for choice in body.split("|")) and not any(
+        a.startswith(b) for index, a in enumerate(choices) for other, b in enumerate(choices) if index != other
+    )
+
+
+def unbounded_pattern(pattern: str) -> Optional[str]:
+    """The group of a path pattern whose matching time is not bounded by the length of a path, or None.
+
+    Such a group repeats (`*`, `+`, `{2,}`) and holds another repeat, an optional item or alternatives,
+    as in `(a+)+`, `(a?a?)*` and `(a|aa)*`: on a name that does not match, the regular expression engine
+    tries every way to split the name, which doubles with each character. Two forms have one way to match and are let through: a
+    run of one kind of character with a character that is not of that kind (`([^/]+/)*`, `(/[a-z-]+)*`)
+    and alternatives of plain text of which none starts another (`(core|ui)+`).
+    """
+    frames: list[list] = [[0, False]]   # per open group: [index after its "(", it holds a quantifier or alternatives]
+    index = 0
+    while index < len(pattern):
+        char = pattern[index]
+        closed: Optional[tuple[int, int, bool]] = None
+        if char == "\\":
+            index += 2
+        elif char == "[":
+            index = _class_end(pattern, index)
+        elif char == "(":
+            index += 1
+            frames.append([index, False])
+            if pattern[index:index + 1] == "?":   # (?: (?= (?! (?<= (?<! (?P<name> (?> (?flags)
+                while index < len(pattern) and pattern[index] not in ":=!>)":
+                    index += 1
+                index += 1 if pattern[index:index + 1] in (":", "=", "!", ">") else 0
+            continue
+        elif char == ")":
+            if len(frames) == 1:
+                return None   # not a pattern: nothing matches it
+            start, risky = frames.pop()
+            frames[-1][1] = frames[-1][1] or risky
+            closed = (start, index, risky)
+            index += 1
+        elif char == "|":
+            frames[-1][1] = True
+            index += 1
+            continue
+        else:
+            index += 1
+        kind, index = _quantifier(pattern, index)
+        if kind == "many" and closed is not None and closed[2] and not _one_way(pattern[closed[0]:closed[1]]):
+            return pattern[closed[0] - 1:index]
+        if kind:
+            frames[-1][1] = True
+    return None
+
+
+# ---------------------------------------------------------------------------
 # A small reader of JavaScript literals: strings, arrays, objects, comments.
 # ---------------------------------------------------------------------------
 
@@ -99,13 +207,18 @@ class _Unreadable(Exception):
     pass
 
 
-def _parse_value(tokens: list[str], i: int) -> tuple[object, int]:
+MAX_DEPTH = 64   # brackets inside brackets; a layer table needs three
+
+
+def _parse_value(tokens: list[str], i: int, depth: int = 0) -> tuple[object, int]:
+    if depth > MAX_DEPTH:
+        raise _Unreadable(f"brackets nested deeper than {MAX_DEPTH}")
     token = tokens[i]
     if token == "[":
         items: list[object] = []
         i += 1
         while tokens[i] != "]":
-            value, i = _parse_value(tokens, i)
+            value, i = _parse_value(tokens, i, depth + 1)
             items.append(value)
             if tokens[i] == ",":
                 i += 1
@@ -120,7 +233,7 @@ def _parse_value(tokens: list[str], i: int) -> tuple[object, int]:
             name = _string(key) if key[0] in "\"'" else key
             if name is None or tokens[i + 1] != ":":
                 raise _Unreadable(f"an entry that is not plain data near {key!r}")
-            value, i = _parse_value(tokens, i + 2)
+            value, i = _parse_value(tokens, i + 2, depth + 1)
             entries[name] = value
             if tokens[i] == ",":
                 i += 1
@@ -169,6 +282,10 @@ def read_layer_table(path: str, text: str) -> DeclaredLayers | NotRead:
     return NotRead(path, "no array of layers found")
 
 
+# A layer name is written into the graph file as a bare word: no space, bracket, quote or control character.
+_LAYER_NAME = re.compile(r"[^\s()\"';\\\x00-\x1f\x7f:][^\s()\"';\\\x00-\x1f\x7f]*")
+
+
 def _layers(value: object) -> tuple[DeclaredLayer, ...] | str:
     if not isinstance(value, list) or not value:
         return "the layer list is empty"
@@ -176,6 +293,8 @@ def _layers(value: object) -> tuple[DeclaredLayer, ...] | str:
     for entry in value:
         if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
             return "a layer without a string name"
+        if not _LAYER_NAME.fullmatch(entry["name"]):
+            return f"the layer name {entry['name']!r} is not one word (no space, bracket, quote or line break)"
         path = entry.get("path")
         files = entry.get("files", [])
         if path is not None and not isinstance(path, str):
@@ -184,6 +303,10 @@ def _layers(value: object) -> tuple[DeclaredLayer, ...] | str:
             return f"layer {entry['name']}: files is not a list of strings"
         if path is None and not files:
             return f"layer {entry['name']}: neither path nor files"
+        slow = unbounded_pattern(path) if path else None
+        if slow is not None:
+            return (f"layer {entry['name']}: the group {slow} of its path repeats and holds a repeat, an optional "
+                    "item or alternatives, so matching a long file name can take unbounded time; write the path without it")
         layers.append(DeclaredLayer(name=entry["name"], path=path, files=tuple(files)))
     return tuple(layers)
 

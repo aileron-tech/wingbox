@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import os
+import stat
 import sys
 from typing import Callable, Optional
+
+from .declared import NotRead
 
 MAX_TEXT_BYTES = 2_000_000
 
@@ -38,21 +41,52 @@ def list_files(root: str, skip_directories: frozenset[str], ignored_paths: froze
     return tuple(sorted(found))
 
 
+def read_text_file(root: str, relative: str) -> "str | None | NotRead":
+    """The text of a repository-relative file; None when there is no such file; NotRead with the reason
+    when it is there and cannot be read.
+
+    Only a regular file inside the repository is opened: the real path decides, so a link that leaves the
+    repository is refused, and a pipe or a device is never opened (reading one would block the command).
+    """
+    path = os.path.join(root, *relative.split("/"))
+    try:
+        status = os.stat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        if os.path.islink(path):
+            return NotRead(relative, "it is a link to a file that does not exist")
+        return None
+    except (OSError, ValueError) as error:   # ValueError: a name with a null character
+        return NotRead(relative, str(error))
+    if not stat.S_ISREG(status.st_mode):
+        return NotRead(relative, "it is not a regular file")
+    real_root, real = os.path.normcase(os.path.realpath(root)), os.path.normcase(os.path.realpath(path))
+    if real != real_root and not real.startswith(real_root.rstrip(os.sep) + os.sep):
+        return NotRead(relative, "it is outside the repository")
+    if status.st_size > MAX_TEXT_BYTES:
+        return NotRead(relative, f"it is larger than {MAX_TEXT_BYTES} bytes")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read()
+    except FileNotFoundError:
+        return None
+    except (OSError, UnicodeDecodeError) as error:
+        return NotRead(relative, str(error))
+
+
+def file_reader(root: str) -> Callable[[str], "str | None | NotRead"]:
+    """Reader of repository-relative text files that says why a file that is there was not read."""
+    return lambda relative: read_text_file(root, relative)
+
+
 def text_reader(root: str) -> Callable[[str], Optional[str]]:
-    """Reader of repository-relative text files; None for a missing, large or binary file."""
+    """Reader of repository-relative text files; None for a missing file, and for one that cannot be
+    read (not a regular file inside the repository, large, not UTF-8), with a warning."""
 
     def read(relative: str) -> Optional[str]:
-        path = os.path.join(root, *relative.split("/"))
-        try:
-            if os.path.getsize(path) > MAX_TEXT_BYTES:
-                print(f"[wingbox] WARNING: {relative} is larger than {MAX_TEXT_BYTES} bytes, not read", file=sys.stderr)
-                return None
-            with open(path, "r", encoding="utf-8") as handle:
-                return handle.read()
-        except FileNotFoundError:
+        text = read_text_file(root, relative)
+        if isinstance(text, NotRead):
+            print(f"[wingbox] WARNING: cannot read {relative}: {text.reason}", file=sys.stderr)
             return None
-        except (OSError, UnicodeDecodeError) as error:
-            print(f"[wingbox] WARNING: cannot read {relative}: {error}", file=sys.stderr)
-            return None
+        return text
 
     return read
