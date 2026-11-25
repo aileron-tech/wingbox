@@ -80,6 +80,9 @@ class Affected:
 
     targets: tuple[str, ...]
     tests: tuple[str, ...]
+    # Targets not among `targets` whose source list was not all read (a variable, a generator expression):
+    # the file may be one of their sources.
+    unread: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -172,6 +175,8 @@ def found_sexp(answer: ImpactFound) -> str:
     if answer.affected is not None:
         for fact, names in (("affected-targets", answer.affected.targets), ("affected-tests", answer.affected.tests)):
             lines.append("(" + " ".join([fact, atom(answer.file), *(atom(name) for name in names)]) + ")")
+        if answer.affected.unread:
+            lines.append("(" + " ".join(["unread-targets", atom(answer.file), *(atom(name) for name in answer.affected.unread)]) + ")")
     lines += [item.fact for item in answer.advice]
     return "\n".join(lines) + "\n"
 
@@ -230,6 +235,8 @@ def answer_json(answer: ImpactAnswer) -> dict[str, Any]:
     if answer.affected is not None:
         document["targets"] = list(answer.affected.targets)
         document["tests"] = list(answer.affected.tests)
+        if answer.affected.unread:
+            document["unread_targets"] = list(answer.affected.unread)
     return document
 
 
@@ -305,6 +312,8 @@ def found_text(answer: ImpactFound, show_all: bool) -> str:
             shown_names = names if show_all else names[:ANSWER_FILE_LIMIT]
             rest = f" ... {len(names) - len(shown_names)} more: rerun with --all" if len(names) > len(shown_names) else ""
             built.append(f"{title}: {', '.join(shown_names) if names else 'none'}{rest}")
+        if answer.affected.unread:
+            built.append(f"Build targets whose sources were not all read: {', '.join(answer.affected.unread)}")
     if not answer.levels:
         # A note already says what the empty list means (a source file nothing includes).
         if not answer.note_text:

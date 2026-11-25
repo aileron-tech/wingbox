@@ -2243,7 +2243,8 @@ def _generation_edges(context: GraphContext, results: Sequence[FileResult]) -> l
     # graph (a file of a language without a parser) is left out of the list of a target.
     for target in build_targets:
         edges.append({"source": anchor, "target": anchor, "type": "BUILD_TARGET", "name": target.name, "kind": target.kind,
-                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of]})
+                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of],
+                      "unread": target.unread})
     for test in build_tests:
         edges.append({"source": anchor, "target": anchor, "type": "BUILD_TEST", "name": test.name, "runs_target": test.target,
                       "stated": test.stated, "modules": [module_of[path] for path in test.runs if path in module_of]})
@@ -3849,12 +3850,16 @@ def render_sexp(
         for fact in sorted(build_facts, key=lambda e: (e["type"], e["name"])):
             modules = "".join(f" {_pid(module)}" for module in sorted(fact["modules"]))
             stated = f' :in "{_sexp_escape(fact["stated"])}"'
+            # A test may be named with a space (`add_test(NAME "quoted name" ...)`): such a name is quoted.
+            name = fact["name"] if not any(ch in fact["name"] for ch in ' "();\\') else f'"{_sexp_escape(fact["name"])}"'
             if fact["type"] == "BUILD_TARGET":
-                lines.append(f"(target {fact['name']} :kind {fact['kind']}{stated}{modules})")
+                # `:sources unread`: an argument of the source list was not read (generation.BuildTarget.unread).
+                unread = " :sources unread" if fact.get("unread") else ""
+                lines.append(f"(target {name} :kind {fact['kind']}{unread}{stated}{modules})")
             elif fact["runs_target"]:
-                lines.append(f"(ctest {fact['name']} :target {fact['runs_target']}{stated}{modules})")
+                lines.append(f"(ctest {name} :target {fact['runs_target']}{stated}{modules})")
             else:
-                lines.append(f"(ctest {fact['name']} :runs{stated}{modules})")
+                lines.append(f"(ctest {name} :runs{stated}{modules})")
 
     if generation_facts:
         lines.append("")
