@@ -343,14 +343,15 @@ class McpProtocolTest(unittest.TestCase):
         _make_shop(self.root)
         built = McpSession(self.root, [_initialize(), _call(2, "build_graph", {})])
         self.assertFalse(built.reply(2)["result"]["isError"], built.reply(2))
-        self.assertIn(f"on stdio for {self.root}\n", built.stderr)
+        self.assertTrue(any(line.endswith(f" on stdio for {self.root}") for line in built.stderr.splitlines()), built.stderr)
         self.assertIn(f"the code graph of {self.root}. ", built.reply(1)["result"]["instructions"])
         below = self.root / "shop"
         session = McpSession(below, [_initialize(), _call(2, "list_files", {})])
         self.assertIn("(file shop/pricing.py ", _texts(session.reply(2))[0])
         self.assertIn(f"the code graph of {self.root}. ", session.reply(1)["result"]["instructions"])
         self.assertNotIn(str(below), session.reply(1)["result"]["instructions"])
-        self.assertIn(f"on stdio for {self.root} (the project that holds --root {below})\n", session.stderr)
+        named = f" on stdio for {self.root} (the project that holds --root {below})"
+        self.assertTrue(any(line.endswith(named) for line in session.stderr.splitlines()), session.stderr)
         modern = McpSession(below, [_request(1, "server/discover", {"_meta": _modern_meta()})])
         self.assertIn(f"the code graph of {self.root}. ", modern.reply(1)["result"]["instructions"])
 
