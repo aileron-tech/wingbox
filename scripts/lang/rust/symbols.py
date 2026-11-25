@@ -5,6 +5,9 @@ A use site is a bare name (`TierResult`, `w32(..)`) or a path (`screenshot::take
 arguments. Names bound by a pattern (let, parameters, closures, match arms, for,
 if let), generic parameters and items defined inside functions or inline modules
 shadow a module-level name of the same spelling: they are not use sites.
+
+The walks keep what is still to visit in a list, never on the call stack: a
+builder chain of thousands of calls is a tree that deep.
 """
 from __future__ import annotations
 
@@ -48,9 +51,11 @@ def _segment(node: Node) -> Segment:
 
 
 def _named(node: Node) -> Iterator[Node]:
-    yield node
-    for child in node.named_children:
-        yield from _named(child)
+    todo = [node]
+    while todo:
+        current = todo.pop()
+        yield current
+        todo.extend(reversed(current.named_children))
 
 
 def _is_binding_name(name: str) -> bool:
@@ -60,31 +65,31 @@ def _is_binding_name(name: str) -> bool:
 
 def pattern_bindings(node: Node | None) -> Iterator[str]:
     """Names a pattern binds."""
-    if node is None:
-        return
-    if node.type == "identifier":
-        if _is_binding_name(_text(node)):
+    todo = [node] if node is not None else []
+    while todo:
+        node = todo.pop()
+        if node.type == "identifier":
+            if _is_binding_name(_text(node)):
+                yield _text(node)
+            continue
+        if node.type == "shorthand_field_identifier":
             yield _text(node)
-        return
-    if node.type == "shorthand_field_identifier":
-        yield _text(node)
-        return
-    if node.type in _PATH_NODES or node.type in ("type_identifier", "field_identifier"):
-        return
-    skipped = {node.child_by_field_name("type"), node.child_by_field_name("name")} \
-        if node.type in ("tuple_struct_pattern", "struct_pattern", "field_pattern") else set()
-    for child in node.named_children:
-        if child not in skipped:
-            yield from pattern_bindings(child)
+            continue
+        if node.type in _PATH_NODES or node.type in ("type_identifier", "field_identifier"):
+            continue
+        skipped = {node.child_by_field_name("type"), node.child_by_field_name("name")} \
+            if node.type in ("tuple_struct_pattern", "struct_pattern", "field_pattern") else set()
+        todo.extend(child for child in reversed(node.named_children) if child not in skipped)
 
 
 def _scope_names(node: Node) -> set[str]:
     """Names bound anywhere inside a function or closure, nested items excluded."""
     names: set[str] = set()
-
-    def visit(current: Node, top: bool) -> None:
-        if not top and current.type in _ITEM_NODES:
-            return
+    todo = [node]
+    while todo:
+        current = todo.pop()
+        if current is not node and current.type in _ITEM_NODES:
+            continue
         holder = _PATTERN_HOLDERS.get(current.type)
         if holder is not None:
             names.update(pattern_bindings(current.child_by_field_name(holder)))
@@ -95,10 +100,7 @@ def _scope_names(node: Node) -> set[str]:
                     names.update(pattern_bindings(child.child_by_field_name("pattern") or child))
         elif current.type == "self_parameter":
             names.add("self")
-        for child in current.named_children:
-            visit(child, False)
-
-    visit(node, True)
+        todo.extend(current.named_children)
     return names
 
 
@@ -137,55 +139,66 @@ def item_names(root: Node) -> tuple[frozenset[str], frozenset[str]]:
 
 def _path_segments(node: Node) -> list[Segment] | None:
     """Segments of a path written as a scoped identifier; None when a part is not a plain name."""
-    if node.type in _SEGMENT_NODES:
-        return [_segment(node)]
-    if node.type == "generic_type":
-        inner = node.child_by_field_name("type")
-        return _path_segments(inner) if inner is not None else None
-    if node.type == "bracketed_type" and node.named_child_count == 1:
-        return _path_segments(node.named_children[0])  # <Type>::member; <Type as Trait>::member has no plain head
-    if node.type in _PATH_NODES:
-        name = node.child_by_field_name("name")
-        prefix = node.child_by_field_name("path")
-        head = _path_segments(prefix) if prefix is not None else []
-        if head is None or name is None or name.type not in _SEGMENT_NODES:
+    segments: list[Segment] = []  # the last segment first: a path holds the path before its last name
+    current: Node | None = node
+    while current is not None:
+        if current.type in _SEGMENT_NODES:
+            segments.append(_segment(current))
+            break
+        if current.type == "generic_type":
+            current = current.child_by_field_name("type")
+            if current is None:
+                return None
+        elif current.type == "bracketed_type" and current.named_child_count == 1:
+            current = current.named_children[0]  # <Type>::member; <Type as Trait>::member has no plain head
+        elif current.type in _PATH_NODES:
+            name = current.child_by_field_name("name")
+            if name is None or name.type not in _SEGMENT_NODES:
+                return None
+            segments.append(_segment(name))
+            current = current.child_by_field_name("path")
+        else:
             return None
-        return [*head, _segment(name)]
-    return None
+    segments.reverse()
+    return segments
 
 
 def _use_paths(node: Node, prefix: list[Segment]) -> Iterator[tuple[list[Segment], str | None, bool]]:
     """Leaves of a use tree: (segments, alias, glob)."""
-    if node.type in _SEGMENT_NODES:
-        yield [*prefix, _segment(node)], None, False
-    elif node.type == "scoped_identifier":
-        segments = _path_segments(node)
-        if segments is not None:
-            yield [*prefix, *segments], None, False
-    elif node.type == "use_as_clause":
-        path = node.child_by_field_name("path")
-        alias = node.child_by_field_name("alias")
-        if path is not None:
-            for segments, _alias, glob in _use_paths(path, prefix):
-                yield segments, _text(alias) or None, glob
-    elif node.type == "scoped_use_list":
-        path = node.child_by_field_name("path")
-        head = _path_segments(path) if path is not None else []
-        listed = node.child_by_field_name("list")
-        if head is not None and listed is not None:
-            yield from _use_paths(listed, [*prefix, *head])
-    elif node.type == "use_list":
-        for child in node.named_children:
-            if child.type == "self":
-                if prefix:
-                    yield prefix, None, False
-            else:
-                yield from _use_paths(child, prefix)
-    elif node.type == "use_wildcard":
-        inner = next((child for child in node.named_children), None)
-        head = _path_segments(inner) if inner is not None else []
-        if head is not None and (prefix or head):
-            yield [*prefix, *head], None, True
+    # What is still to read, the next on top: a node of the tree with the path before it and the alias of
+    # the `as` clause around it (False: none around); None stands for the `self` of a list, the path itself.
+    todo: list[tuple[Node | None, list[Segment], str | None | bool]] = [(node, prefix, False)]
+    while todo:
+        current, prefix, renamed = todo.pop()
+        alias = None if renamed is False else renamed
+        if current is None:
+            if prefix:
+                yield prefix, alias, False  # type: ignore[misc]
+        elif current.type in _SEGMENT_NODES:
+            yield [*prefix, _segment(current)], alias, False  # type: ignore[misc]
+        elif current.type == "scoped_identifier":
+            segments = _path_segments(current)
+            if segments is not None:
+                yield [*prefix, *segments], alias, False  # type: ignore[misc]
+        elif current.type == "use_as_clause":
+            path = current.child_by_field_name("path")
+            if path is not None and renamed is False:
+                todo.append((path, prefix, _text(current.child_by_field_name("alias")) or None))
+            elif path is not None:
+                todo.append((path, prefix, renamed))
+        elif current.type == "scoped_use_list":
+            path = current.child_by_field_name("path")
+            head = _path_segments(path) if path is not None else []
+            listed = current.child_by_field_name("list")
+            if head is not None and listed is not None:
+                todo.append((listed, [*prefix, *head], renamed))
+        elif current.type == "use_list":
+            todo.extend((None if child.type == "self" else child, prefix, renamed) for child in reversed(current.named_children))
+        elif current.type == "use_wildcard":
+            inner = next((child for child in current.named_children), None)
+            head = _path_segments(inner) if inner is not None else []
+            if head is not None and (prefix or head):
+                yield [*prefix, *head], alias, True  # type: ignore[misc]
 
 
 TypePath = tuple[str, ...]
@@ -193,10 +206,10 @@ TypePath = tuple[str, ...]
 
 def _type_path(node: Node | None, impl_type: TypePath | None) -> TypePath | None:
     """A type written as a path (Store, model::Store, &Store, &mut Self); None for anything else."""
+    while node is not None and node.type == "reference_type":
+        node = node.child_by_field_name("type")
     if node is None:
         return None
-    if node.type == "reference_type":
-        return _type_path(node.child_by_field_name("type"), impl_type)
     if node.type == "type_identifier" and _text(node) == "Self":
         return impl_type
     if node.type in ("type_identifier", "scoped_type_identifier", "identifier", "scoped_identifier"):
@@ -237,9 +250,12 @@ def _local_types(function: Node, impl_type: TypePath | None) -> dict[str, TypePa
                 found.setdefault(_text(pattern), set()).add(
                     _type_path(parameter.child_by_field_name("type"), impl_type))
 
-    def visit(current: Node) -> None:
+    body = function.child_by_field_name("body")
+    todo = [body] if body is not None else []
+    while todo:
+        current = todo.pop()
         if current.type in _ITEM_NODES:
-            return
+            continue
         if current.type == "let_declaration":
             pattern = current.child_by_field_name("pattern")
             if pattern is not None and pattern.type == "identifier":
@@ -247,12 +263,7 @@ def _local_types(function: Node, impl_type: TypePath | None) -> dict[str, TypePa
                 if written is None:
                     written = _constructed_type(current.child_by_field_name("value"), impl_type)
                 found.setdefault(_text(pattern), set()).add(written)
-        for child in current.named_children:
-            visit(child)
-
-    body = function.child_by_field_name("body")
-    if body is not None:
-        visit(body)
+        todo.extend(current.named_children)
     return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
 
 
@@ -341,15 +352,66 @@ def use_bindings_and_sites(
                 bindings.append({"local": alias or names[-1], "module": "::".join(names[:-1]),
                                  "name": names[-1], "export": exported, "scope": True})
 
-    def visit_tokens(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
-        children = node.children
-        index = 0
+    def consider(path: list[Segment], scopes: tuple[frozenset[str], ...], kind: str = "") -> None:
+        head = path[0][0]
+        if any(head in scope for scope in scopes) or head in nested_items:
+            return
+        add_use(path, kind)
+
+    impl_stack: list[TypePath | None] = []
+    types_stack: list[dict[str, TypePath | None]] = []
+
+    def method_call(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
+        """recv.m(..): a use of Type.m when the receiver's type is in sight (self in an impl,
+        an annotated parameter or let, a struct literal, a static or a constant); any other
+        receiver stays unresolved."""
+        function = node.child_by_field_name("function")
+        if function is None or function.type != "field_expression":
+            return
+        receiver = function.child_by_field_name("value")
+        member = function.child_by_field_name("field")
+        if receiver is None or member is None or member.type != "field_identifier":
+            return
+        if receiver.type in ("string_literal", "raw_string_literal", "integer_literal", "float_literal",
+                             "array_expression", "tuple_expression"):
+            return
+        written: TypePath | None = None
+        if receiver.type in ("self", "identifier"):
+            name = _text(receiver)
+            if receiver.type == "self" or any(name in scope for scope in scopes):
+                written = next((types[name] for types in reversed(types_stack) if name in types), None)
+            elif name not in nested_items:
+                written = (name,)  # no local: a static or a constant in scope, whose item states its type
+        elif receiver.type in _PATH_NODES:
+            # crate::model::GLOBAL.save(): the path of a static or a constant, as the file's module sees it.
+            segments = _path_segments(receiver)
+            if segments and segments[0][0] in ("self", "super"):
+                segments = _seen_from_file(segments, inline_depth, rewrite)
+            if segments and not any(segments[0][0] in scope for scope in scopes) and segments[0][0] not in nested_items:
+                written = tuple(name for name, _line, _col in segments)
+        start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
+        path = list(written) if written is not None else []
+        uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
+                     "member": _text(member), "kind": "call"})
+
+    # What is still to visit, the next on top. An entry is (what to do, node, scopes around it, a number:
+    # the depth in inline modules, or for the tokens of a macro the child to go on from, its children).
+    # A node asks for the nodes below it in source order; each is taken with everything below it before
+    # the next, so the uses come in the order of the source.
+    Entry = tuple[int, Node, tuple[frozenset[str], ...], int, list]
+    visit_node, visit_pattern, visit_tokens, leave_impl, leave_function = range(5)
+    todo: list[Entry] = [(visit_node, child, (), 0, []) for child in reversed(root.named_children)]
+
+    def tokens(node: Node, scopes: tuple[frozenset[str], ...], index: int, children: list, asked: list[Entry]) -> None:
+        """The paths among the tokens of a macro, up to the next group in brackets: the group is read
+        next, then the tokens after it."""
+        children = children or node.children
         while index < len(children):
             child = children[index]
             if child.type == "token_tree":
-                visit_tokens(child, scopes)
-                index += 1
-                continue
+                asked.append((visit_tokens, child, scopes, 0, []))
+                asked.append((visit_tokens, node, scopes, index + 1, children))
+                return
             if child.type not in _SEGMENT_NODES:
                 index += 1
                 continue
@@ -366,42 +428,24 @@ def use_bindings_and_sites(
             if len(path) > 1 or bare_names:
                 consider(path, scopes)
 
-    def consider(path: list[Segment], scopes: tuple[frozenset[str], ...], kind: str = "") -> None:
-        head = path[0][0]
-        if any(head in scope for scope in scopes) or head in nested_items:
+    def pattern(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int, asked: list[Entry]) -> None:
+        """Paths and upper-case names in a pattern are uses (Foo::Bar(x), CONST); bound names are not."""
+        if node.type in _PATH_NODES:
+            visit(node, scopes, inline_depth, asked)
             return
-        add_use(path, kind)
+        if node.type in ("identifier", "type_identifier"):
+            if bare_names and not _is_binding_name(_text(node)):
+                consider([_segment(node)], scopes)
+            return
+        for child in node.named_children:
+            if node.type in ("field_pattern",) and child == node.child_by_field_name("name"):
+                continue
+            asked.append((visit_pattern, child, scopes, inline_depth, []))
 
-    impl_stack: list[TypePath | None] = []
-    types_stack: list[dict[str, TypePath | None]] = []
-
-    def method_call(node: Node, scopes: tuple[frozenset[str], ...]) -> None:
-        """recv.m(..): a use of Type.m when the receiver's type is in sight (self in an impl,
-        an annotated parameter or let, a struct literal); any other receiver stays unresolved."""
-        function = node.child_by_field_name("function")
-        if function is None or function.type != "field_expression":
-            return
-        receiver = function.child_by_field_name("value")
-        member = function.child_by_field_name("field")
-        if receiver is None or member is None or member.type != "field_identifier":
-            return
-        if receiver.type in ("string_literal", "raw_string_literal", "integer_literal", "float_literal",
-                             "array_expression", "tuple_expression"):
-            return
-        written: TypePath | None = None
-        if receiver.type in ("self", "identifier"):
-            name = _text(receiver)
-            if receiver.type == "self" or any(name in scope for scope in scopes):
-                written = next((types[name] for types in reversed(types_stack) if name in types), None)
-        start = [receiver.start_point[0] + 1, receiver.start_point[1] + 1]
-        path = list(written) if written is not None else []
-        uses.append({"path": path, "at": [start for _ in path] + [[member.start_point[0] + 1, member.start_point[1] + 1]],
-                     "member": _text(member), "kind": "call"})
-
-    def visit(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
+    def visit(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int, asked: list[Entry]) -> None:
         kind = node.type
         if kind == "call_expression" and full:
-            method_call(node, scopes)
+            method_call(node, scopes, inline_depth)
         if kind == "impl_item":
             implemented = _type_path(node.child_by_field_name("type"), None)
             if implemented is None:
@@ -409,17 +453,17 @@ def use_bindings_and_sites(
                 if type_node is not None and type_node.type == "generic_type":
                     implemented = _type_path(type_node.child_by_field_name("type"), None)
             impl_stack.append(implemented)
-            visit_children(node, scopes, inline_depth)
-            impl_stack.pop()
+            children(node, scopes, inline_depth, asked)
+            asked.append((leave_impl, node, scopes, inline_depth, []))
             return
         if kind == "function_item" and full:
             types_stack.append(_local_types(node, impl_stack[-1] if impl_stack else None))
-            visit_children(node, scopes, inline_depth)
-            types_stack.pop()
+            children(node, scopes, inline_depth, asked)
+            asked.append((leave_function, node, scopes, inline_depth, []))
             return
-        visit_children(node, scopes, inline_depth)
+        children(node, scopes, inline_depth, asked)
 
-    def visit_children(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
+    def children(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int, asked: list[Entry]) -> None:
         kind = node.type
         if kind == "use_declaration":
             visit_use(node, inline_depth)
@@ -428,7 +472,7 @@ def use_bindings_and_sites(
                     "block_comment", "string_literal", "raw_string_literal"):
             return
         if kind == "token_tree":
-            visit_tokens(node, scopes)
+            asked.append((visit_tokens, node, scopes, 0, []))
             return
         if kind in _PATH_NODES:
             segments = _path_segments(node)
@@ -467,33 +511,30 @@ def use_bindings_and_sites(
         for child in node.named_children:
             if kind in ("let_declaration", "parameter", "for_expression", "let_condition") and \
                     child == node.child_by_field_name("pattern"):
-                visit_pattern(child, inner_scopes, inline_depth)
+                asked.append((visit_pattern, child, inner_scopes, inline_depth, []))
                 continue
             if kind in ("match_pattern", "closure_parameters"):
                 if kind == "match_pattern" and child == node.child_by_field_name("condition"):
-                    visit(child, inner_scopes, inline_depth)
+                    asked.append((visit_node, child, inner_scopes, inline_depth, []))
                 else:
-                    visit_pattern(child, inner_scopes, inline_depth)
+                    asked.append((visit_pattern, child, inner_scopes, inline_depth, []))
                 continue
-            visit(child, inner_scopes, inline_depth + 1 if is_inline_module else inline_depth)
+            asked.append((visit_node, child, inner_scopes, inline_depth + 1 if is_inline_module else inline_depth, []))
 
-    def visit_pattern(node: Node, scopes: tuple[frozenset[str], ...], inline_depth: int) -> None:
-        """Paths and upper-case names in a pattern are uses (Foo::Bar(x), CONST); bound names are not."""
-        if node.type in _PATH_NODES:
-            visit(node, scopes, inline_depth)
-            return
-        if node.type in ("identifier", "type_identifier"):
-            if bare_names and not _is_binding_name(_text(node)):
-                consider([_segment(node)], scopes)
-            return
-        for child in node.named_children:
-            if node.type in ("field_pattern",) and child == node.child_by_field_name("name"):
-                continue
-            visit_pattern(child, scopes, inline_depth)
-
-    for child in root.named_children:
-        visit(child, (), 0)
+    while todo:
+        action, node, scopes, number, rest = todo.pop()
+        asked: list[Entry] = []
+        if action == visit_node:
+            visit(node, scopes, number, asked)
+        elif action == visit_pattern:
+            pattern(node, scopes, number, asked)
+        elif action == visit_tokens:
+            tokens(node, scopes, number, rest, asked)
+        elif action == leave_impl:
+            impl_stack.pop()
+        else:
+            types_stack.pop()
+        todo.extend(reversed(asked))
     return bindings, uses
-
 
 __all__ = ["item_names", "pattern_bindings", "use_bindings_and_sites"]

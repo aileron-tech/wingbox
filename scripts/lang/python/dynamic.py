@@ -163,27 +163,27 @@ def _module_name_form(node: ast.expr) -> Optional[str]:
 
 def _string_parts(node: ast.expr) -> Optional[list[Optional[str]]]:
     """Literal pieces of a string expression; None marks a variable piece."""
-    if isinstance(node, ast.Constant):
-        return [node.value] if isinstance(node.value, str) else None
-    if isinstance(node, ast.JoinedStr):
-        parts: list[Optional[str]] = []
-        for value in node.values:
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                parts.append(value.value)
-            elif isinstance(value, ast.FormattedValue) and value.format_spec is None and value.conversion == -1:
-                parts.append(None)
-            else:
-                return None
-        return parts
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = _string_parts(node.left)
-        right = _string_parts(node.right)
-        if left is None or right is None:
+    parts: list[Optional[str]] = []
+    todo: list[ast.expr] = [node]
+    while todo:
+        current = todo.pop()
+        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.Add):
+            todo += [current.right, current.left]  # the left operand is read first
+        elif isinstance(current, ast.Constant) and isinstance(current.value, str):
+            parts.append(current.value)
+        elif isinstance(current, ast.JoinedStr):
+            for value in current.values:
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    parts.append(value.value)
+                elif isinstance(value, ast.FormattedValue) and value.format_spec is None and value.conversion == -1:
+                    parts.append(None)
+                else:
+                    return None
+        elif isinstance(current, (ast.Name, ast.Attribute, ast.Subscript)):
+            parts.append(None)
+        else:
             return None
-        return left + right
-    if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
-        return [None]
-    return None
+    return parts
 
 
 def _absolute(name: str, package: str) -> str:
@@ -263,16 +263,17 @@ def _loop_calls(
     looked_up: dict[str, list[str]] = {}
 
     def source_of(expr: ast.expr) -> Optional[list[str]]:
-        if isinstance(expr, ast.Name):
-            return looked_up.get(expr.id)
-        if isinstance(expr, ast.Call):
-            called = source_of(expr.func)
-            if called is not None:
-                return called
-            root = _root_name(expr.func)
-            if root in bound and _passes(expr, variable):
-                return bound[root]
-        return None
+        # A call of a call (`registry(name)()`) is read from the innermost call outwards.
+        calls: list[ast.Call] = []
+        while isinstance(expr, ast.Call):
+            calls.append(expr)
+            expr = expr.func
+        found = looked_up.get(expr.id) if isinstance(expr, ast.Name) else None
+        for call in reversed(calls):
+            if found is None:
+                root = _root_name(call.func)
+                found = bound[root] if root in bound and _passes(call, variable) else None
+        return found
 
     # The statements of the loop body, each walked as ast.walk does, one after the other: the body
     # statements are the children of the loop after its target and its iterable.

@@ -33,7 +33,7 @@ _STORES = (ast.Store, ast.Del)
 class TreeIndex:
     """The nodes of one tree in preorder, with what the readers ask of them."""
 
-    __slots__ = ("nodes", "depths", "ends", "by_class", "_locals", "_where")
+    __slots__ = ("nodes", "depths", "ends", "by_class", "_locals", "_imports", "_where")
 
     def __init__(self, nodes: list[ast.AST], depths: list[int], ends: list[int], by_class: dict[type, list[int]]) -> None:
         self.nodes = nodes
@@ -41,6 +41,7 @@ class TreeIndex:
         self.ends = ends          # ends[i]: the position after the last node below nodes[i]
         self.by_class = by_class  # class -> positions of its nodes, ascending
         self._locals: Optional[dict[int, frozenset[str]]] = None
+        self._imports: dict[int, dict[str, tuple[str, str]]] = {}
         self._where: Optional[dict[int, int]] = None
 
     def positions(self, classes: Iterable[type], start: int = 0, end: Optional[int] = None) -> list[int]:
@@ -82,8 +83,16 @@ class TreeIndex:
         """The names the body of a function or class binds directly (its nested scopes excluded), without the
         names it declares global: symbols._body_locals(scope.body), for every scope of the tree in one pass."""
         if self._locals is None:
-            self._locals = _scope_locals(self)
+            self._locals, self._imports = _scope_locals(self)
         return self._locals[id(scope)]
+
+    def body_imports(self, scope: ast.AST) -> dict[str, tuple[str, str]]:
+        """The names that the imports of the body of a function or class bind (its nested scopes excluded),
+        each with the module as written and the imported name ("" when the module itself is bound); the
+        first import of a name counts: symbols._scope_imports(scope.body), from the same pass as body_locals."""
+        if self._locals is None:
+            self._locals, self._imports = _scope_locals(self)
+        return self._imports.get(id(scope), {})
 
 
 def index_tree(tree: ast.AST) -> TreeIndex:
@@ -129,6 +138,24 @@ def index_tree(tree: ast.AST) -> TreeIndex:
     return TreeIndex(nodes, depths, ends, by_class)
 
 
+def child_nodes(node: ast.AST) -> list[ast.AST]:
+    """The nodes directly below node in field order, as index_tree takes them (no context or operator node)."""
+    cls = node.__class__
+    fields = _NODE_FIELDS.get(cls)
+    if fields is None:
+        fields = _NODE_FIELDS[cls] = tuple(field for field in cls._fields if field not in _LEAF_FIELDS)
+    children: list[ast.AST] = []
+    for field in fields:
+        value = getattr(node, field, None)
+        if value.__class__ is list:
+            for item in value:
+                if isinstance(item, _AST):
+                    children.append(item)
+        elif isinstance(value, _AST):
+            children.append(value)
+    return children
+
+
 def _body_range(index: TreeIndex, position: int) -> tuple[int, int]:
     """Where the body statements of the function or class at position lie: [first, after the last)."""
     body = index.nodes[position].body  # type: ignore[attr-defined]
@@ -144,8 +171,9 @@ def _body_range(index: TreeIndex, position: int) -> tuple[int, int]:
     return first, ends[last]
 
 
-def _scope_locals(index: TreeIndex) -> dict[int, frozenset[str]]:
-    """id(scope node) -> the names its body binds, for every function and class of the tree.
+def _scope_locals(index: TreeIndex) -> tuple[dict[int, frozenset[str]], dict[int, dict[str, tuple[str, str]]]]:
+    """id(scope node) -> the names its body binds, for every function and class of the tree; and, for the
+    scopes whose body holds an import, id(scope node) -> what each name bound by an import stands for.
 
     One sweep over the nodes that bind a name or open a scope, in preorder. A name belongs to the nearest
     function or class around it when it lies in the body of that scope (not in its decorators, arguments or
@@ -160,6 +188,7 @@ def _scope_locals(index: TreeIndex) -> dict[int, frozenset[str]]:
     events.extend(name_stores)
     events.sort()
     found: dict[int, frozenset[str]] = {}
+    imports: dict[int, dict[str, tuple[str, str]]] = {}
     # Open scopes, innermost last: (end, first body position, after the body, stored names, global names, node);
     # a lambda or a comprehension has no sets.
     open_scopes: list[tuple[int, int, int, Optional[set[str]], Optional[set[str]], ast.AST]] = []
@@ -176,8 +205,9 @@ def _scope_locals(index: TreeIndex) -> dict[int, frozenset[str]]:
         cls = node.__class__
         stored: Optional[set[str]] = None
         declared: Optional[set[str]] = None
+        scope: Optional[ast.AST] = None
         if open_scopes:
-            _end, first, after, stored, declared, _scope = open_scopes[-1]
+            _end, first, after, stored, declared, scope = open_scopes[-1]
             if not first <= position < after:
                 stored = declared = None
         if stored is not None and declared is not None:
@@ -186,11 +216,17 @@ def _scope_locals(index: TreeIndex) -> dict[int, frozenset[str]]:
             elif cls in _BODY_SCOPES:
                 stored.add(node.name)  # type: ignore[attr-defined]
             elif cls is ast.Import or cls is ast.ImportFrom:
-                stored.update(
-                    alias.asname or alias.name.split(".")[0]
-                    for alias in node.names  # type: ignore[attr-defined]
-                    if alias.name != "*"
-                )
+                bound = imports.setdefault(id(scope), {})
+                module = "" if cls is ast.Import else "." * node.level + (node.module or "")  # type: ignore[attr-defined]
+                for alias in node.names:  # type: ignore[attr-defined]
+                    if alias.name == "*":
+                        continue
+                    local = alias.asname or alias.name.split(".")[0]
+                    stored.add(local)
+                    if cls is ast.ImportFrom:
+                        bound.setdefault(local, (module, alias.name))
+                    else:
+                        bound.setdefault(local, (alias.name if alias.asname else local, ""))
             elif cls is ast.Global:
                 declared.update(node.names)  # type: ignore[attr-defined]
             elif cls in _NAMED:
@@ -205,7 +241,7 @@ def _scope_locals(index: TreeIndex) -> dict[int, frozenset[str]]:
         elif cls in _SCOPES:
             open_scopes.append((ends[position], 0, 0, None, None, node))
     close(len(nodes))
-    return found
+    return found, imports
 
 
-__all__ = ["TreeIndex", "index_tree"]
+__all__ = ["TreeIndex", "child_nodes", "index_tree"]

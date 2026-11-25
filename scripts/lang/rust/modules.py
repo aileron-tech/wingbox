@@ -15,8 +15,35 @@ from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 _PATH_ATTRIBUTE = re.compile(r'(?<![A-Za-z0-9_])path\s*=\s*"((?:[^"\\]|\\.)*)"')
-_MAY_DECLARE_PATH = re.compile(r'#\s*\[[^\]]*?(?<![A-Za-z0-9_])path\s*=\s*"')
+# The three marks that decide whether a text may hold a `#[... path = "..."]` attribute: the start of an
+# attribute, a closing bracket, `path = "`. Each is found in one pass over the text.
+_PATH_MARKS = re.compile(r'(#)\s*\[|(\])|(?<![A-Za-z0-9_])path\s*=\s*"')
 _OWNING_FILE_NAMES = ("lib.rs", "main.rs", "mod.rs")
+# `include!("file.rs")` as an import of the including file: the macro as written, the path between the quotes.
+_INCLUDE = 'include!("'
+
+
+def include_import(path: str) -> str:
+    """The import a file states with `include!("path")`."""
+    return f'{_INCLUDE}{path}")'
+
+
+def included_path(import_name: str) -> str | None:
+    """The path of an import made by include_import; None for any other import."""
+    return import_name[len(_INCLUDE):-2] if import_name.startswith(_INCLUDE) and import_name.endswith('")') else None
+
+
+def _may_declare_path(text: str) -> bool:
+    """Whether `path = "` stands after the start of an attribute with no `]` between them."""
+    inside = False
+    for mark in _PATH_MARKS.finditer(text):
+        if mark.group(1):
+            inside = True
+        elif mark.group(2):
+            inside = False
+        elif inside:
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -32,16 +59,22 @@ class PathModule:
 
 def path_modules(file_path: str, text: str) -> tuple[PathModule, ...]:
     """The `#[path]` module declarations of one file (none without parsing when the text has no such attribute)."""
-    if _MAY_DECLARE_PATH.search(text) is None:
+    if not _may_declare_path(text):
         return ()
     import tree_sitter_rust
-    from tree_sitter import Language, Node, Parser
+    from tree_sitter import Language, Parser
 
     found: list[PathModule] = []
-
-    def visit(container: Node, inline: tuple[str, ...]) -> None:
-        attributes: list[str] = []
-        for child in container.named_children:
+    root = Parser(Language(tree_sitter_rust.language())).parse(text.encode("utf-8")).root_node
+    # The items of the file and of its inline modules in source order: where the items of an inline
+    # module end, the items of the module around it go on (children, the next one, the modules around,
+    # the attributes read since the last item).
+    todo: list[tuple[list, int, tuple[str, ...], list[str]]] = [(root.named_children, 0, (), [])]
+    while todo:
+        children, index, inline, attributes = todo.pop()
+        while index < len(children):
+            child = children[index]
+            index += 1
             if child.type == "attribute_item":
                 attributes.append((child.text or b"").decode("utf-8"))
                 continue
@@ -57,10 +90,10 @@ def path_modules(file_path: str, text: str) -> tuple[PathModule, ...]:
                 if name and paths:
                     found.append(PathModule(file_path, inline, name, paths, body is not None))
                 if name and body is not None:
-                    visit(body, (*inline, name))
+                    todo.append((children, index, inline, []))
+                    todo.append((body.named_children, 0, (*inline, name), []))
+                    break
             attributes = []
-
-    visit(Parser(Language(tree_sitter_rust.language())).parse(text.encode("utf-8")).root_node, ())
     return tuple(found)
 
 
@@ -127,4 +160,4 @@ class ModuleLayout:
         return self.files.get((directory, name)) or (f"{module_path}.rs", os.path.join(module_path, "mod.rs"))
 
 
-__all__ = ["ModuleLayout", "PathModule", "path_modules"]
+__all__ = ["ModuleLayout", "PathModule", "include_import", "included_path", "path_modules"]

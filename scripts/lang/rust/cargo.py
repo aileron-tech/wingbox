@@ -30,7 +30,11 @@ class RustPackage:
     library_root: str = ""  # the root file of the library, "" when the package has none
     crate_roots: tuple[str, ...] = ()  # the root file of every target, the library first
     edition_2015: bool = False
-    renamed_dependencies: tuple[tuple[str, str], ...] = ()  # (name in code, package name) of `package = ".."`
+    # (name in code, folder of the package) of every dependency the manifest takes from a folder of the
+    # tree: `name = { path = ".." }`, or `name.workspace = true` with a path in `[workspace.dependencies]`.
+    local_dependencies: tuple[tuple[str, str], ...] = ()
+    # The names in code of the other dependencies (a registry, git): never a package of this tree.
+    foreign_dependencies: frozenset[str] = frozenset()
 
 
 _TARGET_FOLDERS = (("bin", os.path.join("src", "bin"), "autobins"), ("test", "tests", "autotests"),
@@ -102,17 +106,48 @@ def _workspace_edition(directory: str, root: str, manifests: Mapping[str, Mappin
         current = parent
 
 
-def _renamed_dependencies(manifest: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
-    tables = [manifest.get(key) for key in ("dependencies", "dev-dependencies", "build-dependencies")]
-    tables.extend(_table(target).get(key) for target in _table(manifest.get("target")).values()
-                  for key in ("dependencies", "dev-dependencies", "build-dependencies"))
-    renamed: dict[str, str] = {}
-    for table in tables:
-        for name, value in _table(table).items():
-            package = _table(value).get("package")
-            if isinstance(package, str) and package:
-                renamed.setdefault(name.replace("-", "_"), package)
-    return tuple(sorted(renamed.items()))
+_DEPENDENCY_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
+
+
+def _dependency_tables(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
+    tables = [_table(manifest.get(key)) for key in _DEPENDENCY_TABLES]
+    tables.extend(_table(_table(target).get(key)) for target in _table(manifest.get("target")).values()
+                  for key in _DEPENDENCY_TABLES)
+    return tables
+
+
+def _workspace_dependencies(directory: str, root: str, manifests: Mapping[str, Mapping[str, Any]]) -> tuple[str, dict[str, Any]]:
+    """(folder, `[workspace.dependencies]`) of the nearest manifest at or above directory with a `[workspace]`."""
+    current = directory
+    while True:
+        workspace = _table(manifests.get(current, {}).get("workspace"))
+        if workspace:
+            return current, _table(workspace.get("dependencies"))
+        parent = os.path.dirname(current)
+        if current == root or parent == current:
+            return directory, {}
+        current = parent
+
+
+def _dependencies(
+    directory: str, root: str, manifests: Mapping[str, Mapping[str, Any]],
+) -> tuple[tuple[tuple[str, str], ...], frozenset[str]]:
+    """The dependencies of the package in directory by their name in code: (those taken from a folder
+    of the tree, with that folder; the names of the others)."""
+    local: dict[str, str] = {}
+    foreign: set[str] = set()
+    workspace_directory, shared = _workspace_dependencies(directory, root, manifests)
+    for table in _dependency_tables(manifests[directory]):
+        for name, value in table.items():
+            base, entry = directory, _table(value)
+            if entry.get("workspace") is True:
+                base, entry = workspace_directory, _table(shared.get(name))
+            path = entry.get("path")
+            if isinstance(path, str) and path:
+                local.setdefault(name.replace("-", "_"), os.path.normpath(os.path.join(base, path)))
+            else:
+                foreign.add(name.replace("-", "_"))
+    return tuple(sorted(local.items())), frozenset(foreign - set(local))
 
 
 def load_rust_packages(root: str, discovery_exclusions: DiscoveryExclusions) -> tuple[RustPackage, ...]:
@@ -129,7 +164,8 @@ def load_rust_packages(root: str, discovery_exclusions: DiscoveryExclusions) -> 
             # utf-8-sig: a manifest saved with a byte order mark is the same manifest (tomllib refuses the mark).
             with open(manifest_path, "r", encoding="utf-8-sig") as manifest_file:
                 manifests[os.path.normpath(dirpath)] = tomllib.loads(manifest_file.read())
-        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        except (OSError, ValueError, RecursionError) as error:
+            # ValueError: not UTF-8, or not TOML; RecursionError: tables or arrays nested too deep to read.
             print(f"[code-graph] Cannot read Rust package identity from {manifest_path}: {error}", file=sys.stderr)
 
     packages: list[RustPackage] = []
@@ -145,6 +181,7 @@ def load_rust_packages(root: str, discovery_exclusions: DiscoveryExclusions) -> 
         if isinstance(edition, dict) and edition.get("workspace") is True:
             edition = _workspace_edition(directory, os.path.normpath(root), manifests)
         library, roots = _crate_roots(directory, manifest)
+        local_dependencies, foreign_dependencies = _dependencies(directory, os.path.normpath(root), manifests)
         packages.append(RustPackage(
             crate_name=(library_name if isinstance(library_name, str) and library_name else package_name).replace("-", "_"),
             directory=directory,
@@ -152,7 +189,8 @@ def load_rust_packages(root: str, discovery_exclusions: DiscoveryExclusions) -> 
             library_root=library,
             crate_roots=roots,
             edition_2015=edition is None or str(edition) == "2015",
-            renamed_dependencies=_renamed_dependencies(manifest),
+            local_dependencies=local_dependencies,
+            foreign_dependencies=foreign_dependencies,
         ))
     return tuple(sorted(packages, key=lambda package: len(Path(package.directory).parts), reverse=True))
 

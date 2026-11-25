@@ -18,6 +18,8 @@ class TsPathOptions:
     paths: tuple[tuple[str, tuple[str, ...]], ...]
     output_directory: Optional[str] = None
     source_directory: Optional[str] = None
+    # The project files this tsconfig names in `references` (never inherited through `extends`).
+    references: tuple[str, ...] = ()
 
 
 _NO_TS_PATH_OPTIONS = TsPathOptions(None, None, ())
@@ -62,7 +64,8 @@ def read_json_object(path: str, purpose: str) -> Optional[dict[str, object]]:
         # utf-8-sig also reads plain UTF-8 and drops the byte order mark editors add.
         with open(path, "r", encoding="utf-8-sig") as file:
             data = json.loads(strip_jsonc(file.read()))
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, RecursionError) as error:
+        # ValueError: not UTF-8, or not JSON; RecursionError: nested deeper than the JSON reader goes.
         print(
             f"[code-graph] Cannot read {purpose} from {path}: {error}",
             file=sys.stderr,
@@ -78,11 +81,23 @@ def _declared_directory(directory: str, value: object) -> Optional[str]:
     return os.path.normpath(os.path.join(directory, value))
 
 
+def _referenced_tsconfig_paths(directory: str, references: object) -> tuple[str, ...]:
+    """The project files `references` names: `{"path": "./tsconfig.app.json"}`, or a folder with a tsconfig.json."""
+    found: list[str] = []
+    for reference in references if isinstance(references, list) else []:
+        path = reference.get("path") if isinstance(reference, dict) else None
+        if isinstance(path, str) and path:
+            target = os.path.normpath(os.path.join(directory, path))
+            found.append(target if target.endswith(".json") else os.path.join(target, "tsconfig.json"))
+    return tuple(found)
+
+
 def _own_ts_path_options(directory: str, data: Mapping[str, object]) -> TsPathOptions:
     """Read the path options that one tsconfig declares itself."""
+    references = _referenced_tsconfig_paths(directory, data.get("references"))
     compiler_options = data.get("compilerOptions")
     if not isinstance(compiler_options, dict):
-        return _NO_TS_PATH_OPTIONS
+        return TsPathOptions(None, None, (), references=references) if references else _NO_TS_PATH_OPTIONS
     paths = compiler_options.get("paths")
     declared = paths.items() if isinstance(paths, dict) else None
     return TsPathOptions(
@@ -97,6 +112,7 @@ def _own_ts_path_options(directory: str, data: Mapping[str, object]) -> TsPathOp
         source_directory=_declared_directory(
             directory, compiler_options.get("rootDir")
         ),
+        references=references,
     )
 
 
@@ -114,6 +130,7 @@ def _override_ts_path_options(
         paths=nearer.paths if declares_paths else inherited.paths,
         output_directory=nearer.output_directory or inherited.output_directory,
         source_directory=nearer.source_directory or inherited.source_directory,
+        references=nearer.references,
     )
 
 
@@ -133,12 +150,23 @@ def _extended_tsconfig_paths(directory: str, extends: object) -> tuple[str, ...]
     return tuple(extended)
 
 
+def _is_inside(path: str, root: str) -> bool:
+    """Whether the file a path leads to, links followed, lies in the folder root."""
+    real_path, real_root = os.path.realpath(path), os.path.realpath(root)
+    try:
+        return os.path.commonpath((real_path, real_root)) == real_root
+    except ValueError:  # another drive
+        return False
+
+
 def load_ts_path_options(
     tsconfig_path: str,
     loaded: dict[str, TsPathOptions],
     chain: tuple[str, ...] = (),
+    root: Optional[str] = None,
 ) -> TsPathOptions:
-    """Load the path options of a tsconfig, the files it extends first."""
+    """Load the path options of a tsconfig, the files it extends first. With root, a file that lies
+    outside that folder (an absolute `extends`, one that climbs out, a link that leads out) is not read."""
     if tsconfig_path in chain:
         print(
             f"[code-graph] Circular TS extends ends at {tsconfig_path}",
@@ -149,13 +177,20 @@ def load_ts_path_options(
         return loaded[tsconfig_path]
 
     options = _NO_TS_PATH_OPTIONS
-    data = read_json_object(tsconfig_path, "TS aliases")
+    if root is not None and not _is_inside(tsconfig_path, root):
+        print(
+            f"[code-graph] TS aliases are not read from {tsconfig_path}: it lies outside the repository",
+            file=sys.stderr,
+        )
+        data = None
+    else:
+        data = read_json_object(tsconfig_path, "TS aliases")
     if data is not None:
         directory = os.path.dirname(tsconfig_path)
         for extended_path in _extended_tsconfig_paths(directory, data.get("extends")):
             options = _override_ts_path_options(
                 options,
-                load_ts_path_options(extended_path, loaded, chain + (tsconfig_path,)),
+                load_ts_path_options(extended_path, loaded, chain + (tsconfig_path,), root),
             )
         options = _override_ts_path_options(
             options,

@@ -150,7 +150,7 @@ try:
         from .lang.interface import EntityPayload
         from .lang.symbols import SymbolIndex, supports_symbols
         from .lang.source import file_hash
-        from .lang.typescript.javascript import is_minified_javascript
+        from .lang.typescript.javascript import is_minified_javascript, minified_notice
         from .git_ignore import (
             GitIgnoreUnavailable,
             load_git_ignored_paths,
@@ -186,7 +186,7 @@ try:
         from lang.interface import EntityPayload
         from lang.symbols import SymbolIndex, supports_symbols
         from lang.source import file_hash
-        from lang.typescript.javascript import is_minified_javascript
+        from lang.typescript.javascript import is_minified_javascript, minified_notice
         from git_ignore import (
             GitIgnoreUnavailable,
             load_git_ignored_paths,
@@ -1938,9 +1938,10 @@ def _module_uses(
     members: set[str] = set()
     sites: dict[str, list[tuple[int, int]]] = {}
     for use in result.uses:
-        resolved = index.resolve(node_id, use)
-        if resolved is not None:
-            found.add((resolved.line, resolved.column, resolved.module, resolved.name, resolved.kind))
+        # One written path may name two definitions: the class and its member (Store.create()).
+        resolved = index.resolve_all(node_id, use)
+        if resolved:
+            found.update((site.line, site.column, site.module, site.name, site.kind) for site in resolved)
         elif use.get("member"):
             count += 1
             members.add(use["member"])
@@ -4880,6 +4881,9 @@ def _run_build(options: BuilderOptions) -> int:
     print(f"[code-graph] Supported source: {extensions}")
     if not_parsed:
         print(f"[code-graph] Not in the graph: {not_parsed_text(not_parsed)} (no parser for these languages)")
+    left_out = minified_notice(root)
+    if left_out:
+        print(f"[code-graph] {left_out}")
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
     dependency_issues = _dependency_issues(active_language_names)

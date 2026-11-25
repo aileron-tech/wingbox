@@ -10,6 +10,7 @@ from tree_sitter import Node, Parser as _RustParser
 from ..interface import Entity, FileResult, ImportedName, TypeMembersPayload, UsePayload
 from ..purpose import infer_purpose
 from ..source import add_import_line, detect_naming, file_hash
+from .modules import include_import
 from .symbols import use_bindings_and_sites
 
 
@@ -40,56 +41,55 @@ def _attribute_names(attributes: tuple[Node, ...]) -> list[str]:
 
 
 def _use_leaves(node: Node, prefix: tuple[str, ...] = ()) -> list[RustUse]:
-    if node.type in ("identifier", "type_identifier", "crate", "self", "super"):
-        leaf = _node_text(node)
-        return [RustUse("::".join((*prefix, leaf)))] if leaf else []
+    """The paths a use tree names, in source order."""
+    leaves: list[RustUse] = []
 
-    if node.type == "scoped_identifier":
-        path = _node_text(node)
-        if prefix:
-            path = "::".join((*prefix, path))
-        return [RustUse(path)] if path else []
+    def keep(path: str, renamed: str | None | bool, glob: bool = False) -> None:
+        # Below an `as` clause every leaf takes the alias of the clause.
+        if path:
+            leaves.append(RustUse(path, glob=glob) if renamed is False else RustUse(path, renamed))  # type: ignore[arg-type]
 
-    if node.type == "use_as_clause":
-        path_node = node.child_by_field_name("path")
-        if path_node is None:
-            return []
-        alias_node = next(
-            (child for child in reversed(node.named_children) if child != path_node),
-            None,
-        )
-        alias = _node_text(alias_node) or None
-        return [RustUse(leaf.path, alias) for leaf in _use_leaves(path_node, prefix)]
-
-    if node.type == "scoped_use_list":
-        path_node = node.child_by_field_name("path")
-        path = _node_text(path_node)
-        nested_prefix = (*prefix, *tuple(part for part in path.split("::") if part))
-        use_list = next(
-            (child for child in node.named_children if child.type == "use_list"),
-            None,
-        )
-        return _use_leaves(use_list, nested_prefix) if use_list is not None else []
-
-    if node.type == "use_list":
-        leaves: list[RustUse] = []
-        for child in node.named_children:
-            if child.type == "self":
-                path = "::".join(prefix)
-                if path:
-                    leaves.append(RustUse(path))
+    # What is still to read, the next on top: a node with the path before it and the alias of the `as`
+    # clause around it (False: none around); None stands for the `self` of a list, the path itself.
+    todo: list[tuple[Node | None, tuple[str, ...], str | None | bool]] = [(node, prefix, False)]
+    while todo:
+        current, prefix, renamed = todo.pop()
+        if current is None:
+            keep("::".join(prefix), renamed)
+        elif current.type in ("identifier", "type_identifier", "crate", "self", "super"):
+            leaf = _node_text(current)
+            keep("::".join((*prefix, leaf)) if leaf else "", renamed)
+        elif current.type == "scoped_identifier":
+            path = _node_text(current)
+            keep("::".join((*prefix, path)) if prefix and path else path, renamed)
+        elif current.type == "use_as_clause":
+            path_node = current.child_by_field_name("path")
+            if path_node is None:
                 continue
-            leaves.extend(_use_leaves(child, prefix))
-        return leaves
-
-    if node.type == "use_wildcard":
-        path = _node_text(node).removesuffix("::*")
-        if prefix:
-            path = "::".join((*prefix, path))
-        return [RustUse(path, glob=True)] if path else []
-
-    argument = node.child_by_field_name("argument")
-    return _use_leaves(argument, prefix) if argument is not None else []
+            alias_node = next(
+                (child for child in reversed(current.named_children) if child != path_node),
+                None,
+            )
+            todo.append((path_node, prefix, (_node_text(alias_node) or None) if renamed is False else renamed))
+        elif current.type == "scoped_use_list":
+            path = _node_text(current.child_by_field_name("path"))
+            nested_prefix = (*prefix, *tuple(part for part in path.split("::") if part))
+            use_list = next(
+                (child for child in current.named_children if child.type == "use_list"),
+                None,
+            )
+            if use_list is not None:
+                todo.append((use_list, nested_prefix, renamed))
+        elif current.type == "use_list":
+            todo.extend((None if child.type == "self" else child, prefix, renamed) for child in reversed(current.named_children))
+        elif current.type == "use_wildcard":
+            path = _node_text(current).removesuffix("::*")
+            keep("::".join((*prefix, path)) if prefix and path else path, renamed, glob=True)
+        else:
+            argument = current.child_by_field_name("argument")
+            if argument is not None:
+                todo.append((argument, prefix, renamed))
+    return leaves
 
 
 def _path_seen_from_file(path: str, inline_depth: int) -> str | None:
@@ -118,19 +118,21 @@ def _path_seen_from_file(path: str, inline_depth: int) -> str | None:
 
 def _collect_uses(root: Node) -> list[RustUse]:
     uses: list[RustUse] = []
-
-    def _visit(node: Node, inline_depth: int) -> None:
+    # Every named node in source order, with its depth in inline modules: a list of what is still to
+    # visit, not the call stack, so that a chain of thousands of calls is read like any expression.
+    todo: list[tuple[Node, int]] = [(root, 0)]
+    while todo:
+        node, inline_depth = todo.pop()
         if node.type == "use_declaration":
             for leaf in _use_leaves(node):
                 path = _path_seen_from_file(leaf.path, inline_depth)
                 if path is not None:
                     uses.append(RustUse(path, leaf.alias, leaf.glob, node.start_point[0] + 1))
-            return
-        is_inline_module = node.type == "mod_item" and node.child_by_field_name("body") is not None
-        for child in node.named_children:
-            _visit(child, inline_depth + 1 if is_inline_module else inline_depth)
+            continue
+        if node.type == "mod_item" and node.child_by_field_name("body") is not None:
+            inline_depth += 1
+        todo.extend((child, inline_depth) for child in reversed(node.named_children))
 
-    _visit(root, 0)
     unique: list[RustUse] = []
     seen: set[tuple[str, str | None, bool]] = set()
     for rust_use in uses:
@@ -149,8 +151,21 @@ _LOCAL_ROOTS = ("crate", "super", "self")
 _PATH_IN_TOKENS = re.compile(r"(?<![A-Za-z0-9_:])(?:crate|super|self)(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)+")
 
 
-def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
-    """Qualified paths written in code without a `use`: crate::a::b::f(), super::x::Y.
+def _included_file(node: Node) -> str:
+    """The path of `include!("file.rs")`; "" for any other macro call and for a path that is not one literal."""
+    if _node_text(node.child_by_field_name("macro")) != "include":
+        return ""
+    tokens = next((child for child in node.named_children if child.type == "token_tree"), None)
+    literals = tokens.named_children if tokens is not None else []
+    if len(literals) != 1 or literals[0].type != "string_literal":
+        return ""
+    path = _node_text(literals[0])[1:-1]
+    return "" if "\\" in path or "\n" in path else path
+
+
+def _collect_inline_paths(root: Node, uses: list[RustUse], lines: dict[str, list[int]] | None = None) -> list[str]:
+    """Qualified paths written in code without a `use`: crate::a::b::f(), super::x::Y; and the files
+    taken in with `include!("file.rs")`, each with its line when `lines` is given.
 
     Kept: paths rooted at crate, super or self; paths that start with a module this
     file imported from its own crate (x86::linker::link() after use crate::backend::x86);
@@ -183,15 +198,24 @@ def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
             seen.add(path)
             paths.append(path)
 
-    def _visit(node: Node, inline_depth: int) -> None:
+    todo: list[tuple[Node, int]] = [(root, 0)]
+    while todo:
+        node, inline_depth = todo.pop()
         if node.type == "use_declaration":
-            return
+            continue
         if node.type == "token_tree":
             for match in _PATH_IN_TOKENS.finditer(_node_text(node)):
                 segments = [segment.strip() for segment in match.group(0).split("::")]
                 if len(segments) >= 2:
                     _keep(_path_seen_from_file("::".join(segments), inline_depth))
-            return
+            continue
+        if node.type == "macro_invocation":
+            included = _included_file(node)
+            if included:
+                _keep(include_import(included))
+                if lines is not None:
+                    add_import_line(lines, include_import(included), node.start_point[0] + 1)
+                continue
         if node.type in ("scoped_identifier", "scoped_type_identifier"):
             segments: list[str] = []
             written = _node_text(node).strip()
@@ -218,12 +242,11 @@ def _collect_inline_paths(root: Node, uses: list[RustUse]) -> list[str]:
             ):
                 path = "::".join(segments)
             _keep(path)
-            return
-        is_inline_module = node.type == "mod_item" and node.child_by_field_name("body") is not None
-        for child in node.named_children:
-            _visit(child, inline_depth + 1 if is_inline_module else inline_depth)
+            continue
+        if node.type == "mod_item" and node.child_by_field_name("body") is not None:
+            inline_depth += 1
+        todo.extend((child, inline_depth) for child in reversed(node.named_children))
 
-    _visit(root, 0)
     return paths
 
 
@@ -245,7 +268,9 @@ _MEMBER_NODES = ("function_item", "function_signature_item", "const_item", "type
 def _type_members(container: Node) -> list[TypeMembersPayload]:
     """The impl blocks and type aliases of a file, those of its inline modules included."""
     found: list[TypeMembersPayload] = []
-    for node in container.named_children:
+    todo = container.named_children[::-1]  # the items in source order, those of an inline module in its place
+    while todo:
+        node = todo.pop()
         if node.type == "impl_item":
             written = _written_path(node.child_by_field_name("type"))
             body = node.child_by_field_name("body")
@@ -263,7 +288,7 @@ def _type_members(container: Node) -> list[TypeMembersPayload]:
             if written and name:
                 found.append({"type": written, "alias": name})
         elif node.type == "mod_item" and node.child_by_field_name("body") is not None:
-            found.extend(_type_members(node.child_by_field_name("body")))
+            todo.extend(reversed(node.child_by_field_name("body").named_children))  # type: ignore[union-attr]
     return found
 
 
@@ -274,7 +299,9 @@ def _declared_modules(
     declaration inside the inline module outer (its file lies in the folder outer/). With `lines`, the
     1-based line of each declaration is recorded under its path."""
     declared: list[str] = []
-    for node in container.named_children:
+    todo = [(node, prefix) for node in reversed(container.named_children)]
+    while todo:
+        node, prefix = todo.pop()
         if node.type != "mod_item":
             continue
         name = _node_text(node.child_by_field_name("name"))
@@ -286,7 +313,7 @@ def _declared_modules(
             if lines is not None:
                 add_import_line(lines, declared[-1], node.start_point[0] + 1)
         else:
-            declared.extend(_declared_modules(body, (*prefix, name), lines))
+            todo.extend((inner, (*prefix, name)) for inner in reversed(body.named_children))
     return declared
 
 
@@ -320,9 +347,12 @@ def _method_names(body: Node | None) -> list[str]:
 
 
 def _walk_named(node: Node) -> list[Node]:
-    descendants = [node]
-    for child in node.named_children:
-        descendants.extend(_walk_named(child))
+    descendants: list[Node] = []
+    todo = [node]
+    while todo:
+        current = todo.pop()
+        descendants.append(current)
+        todo.extend(reversed(current.named_children))
     return descendants
 
 
@@ -387,6 +417,8 @@ def _entity_from_item(node: Node, decorators: list[str]) -> Entity | None:
         bases=[],
         private=visibility in ("", "pub(self)"),
         visible_in="super" if visibility == "pub(super)" else visibility[len("pub(in"):-1] if visibility.startswith("pub(in") else "",
+        # `static GLOBAL: Model`: a method called on the item from any file is a use of that type's method.
+        value_type="::".join(_written_path(node.child_by_field_name("type"))) if node.type in ("const_item", "static_item") else "",
     )
 
 
@@ -415,7 +447,7 @@ def parse_rust_treesitter(
     import_lines: dict[str, list[int]] = {}
     for rust_use in rust_uses:
         add_import_line(import_lines, rust_use.path, rust_use.line)
-    imports.extend(path for path in _collect_inline_paths(root, rust_uses) if path not in imports)
+    imports.extend(path for path in _collect_inline_paths(root, rust_uses, import_lines) if path not in imports)
     imported_names = [
         imported_name
         for rust_use in rust_uses

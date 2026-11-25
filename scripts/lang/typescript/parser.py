@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+import sys
+
 import tree_sitter_typescript as _tst
 from tree_sitter import Language as _TsLanguage
 from tree_sitter import Node, Parser as _TsParser
@@ -8,7 +11,7 @@ from ..interface import BindingPayload, Entity, FileResult, ImportedName, UsePay
 from ..purpose import infer_purpose
 from ..source import add_import_line, detect_naming, file_hash
 from .javascript import is_javascript_file
-from .symbols import module_bindings, module_names, use_sites
+from .symbols import declared_type, module_bindings, module_names, use_sites
 from .validation import validation_evidence
 
 
@@ -56,6 +59,21 @@ def _ts_get_heritage(node) -> tuple[list[str], list[str]]:  # type: ignore[no-un
     return extends, implements
 
 
+_PLAIN_MEMBER_NAMES = frozenset({
+    "property_identifier", "identifier", "private_property_identifier", "shorthand_property_identifier", "number",
+})
+
+
+def _member_name(node: Node | None) -> str:
+    """The name of a member as the graph keeps it: an identifier, a number, or a string key written on
+    one line without an escape. A computed key (`[expr]`, a template literal) is an expression, not a
+    name, and gives "": its text, with its line breaks, never becomes a fact of the graph."""
+    if node is None or node.type not in _PLAIN_MEMBER_NAMES and node.type != "string":
+        return ""
+    name = _node_text(node)
+    return name if name.isprintable() and "\\" not in name else ""
+
+
 def _ts_get_methods(node) -> list[str]:  # type: ignore[no-untyped-def]
     """Extract method/property names from a class or interface body."""
     methods = []
@@ -67,11 +85,9 @@ def _ts_get_methods(node) -> list[str]:  # type: ignore[no-untyped-def]
         if member.type in ("method_definition", "method_signature",
                            "public_field_definition", "property_signature",
                            "abstract_method_signature"):
-            name_node = member.child_by_field_name("name")
-            if name_node:
-                name = name_node.text.decode("utf-8")
-                if name not in skip:
-                    methods.append(name)
+            name = _member_name(member.child_by_field_name("name"))
+            if name and name not in skip:
+                methods.append(name)
     return methods
 
 
@@ -140,12 +156,9 @@ def _ts_get_obj_keys(node) -> list[str]:  # type: ignore[no-untyped-def]
     keys = []
     for child in node.children:
         if child.type in ("pair", "method_definition", "shorthand_property_identifier"):
-            if child.type == "shorthand_property_identifier":
-                keys.append(child.text.decode("utf-8"))
-            else:
-                key = child.child_by_field_name("key")
-                if key:
-                    keys.append(key.text.decode("utf-8"))
+            key = _member_name(child if child.type == "shorthand_property_identifier" else child.child_by_field_name("key"))
+            if key:
+                keys.append(key)
     return keys
 
 
@@ -186,6 +199,9 @@ _MODULE_CALLS = frozenset({
 })
 
 
+_LONGEST_MODULE_CALL = max(len(name.encode("utf-8")) for name in _MODULE_CALLS)
+
+
 def _ts_dependency_occurrences(root) -> list[tuple[str, str, int]]:  # type: ignore[no-untyped-def]
     """Every static and literal runtime dependency in source order, with the form of its statement and the
     1-based line where the statement (or the call that loads the module) starts."""
@@ -208,7 +224,11 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str, int]]:  # type: ign
         if specifier:
             occurrences.append((specifier, form, line))
 
-    def _visit(node) -> None:  # type: ignore[no-untyped-def]
+    # Every named node, each before the nodes below it: a list of what is still to visit, not the call
+    # stack, so that a chain of thousands of calls is read like any other expression.
+    todo = [root]
+    while todo:
+        node = todo.pop()
         if node.type in ("import_statement", "export_statement"):
             source = node.child_by_field_name("source")
             form = _ts_import_statement_form(node) if node.type == "import_statement" else "value"
@@ -227,9 +247,11 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str, int]]:  # type: ign
             _append_literal(source, form, node.start_point[0] + 1)
         elif node.type == "call_expression":
             function = node.child_by_field_name("function")
+            # A name longer than every name of _MODULE_CALLS is none of them; its text is not read (the
+            # function of the last call of a long chain is the whole chain before it).
             function_name = (
                 function.text.decode("utf-8")
-                if function is not None and function.text
+                if function is not None and function.end_byte - function.start_byte <= _LONGEST_MODULE_CALL and function.text
                 else ""
             )
             if function_name in _MODULE_CALLS:
@@ -241,11 +263,51 @@ def _ts_dependency_occurrences(root) -> list[tuple[str, str, int]]:  # type: ign
                     )
                     _append_literal(first_argument, "value", node.start_point[0] + 1)
 
-        for child in node.named_children:
-            _visit(child)
+        todo.extend(reversed(node.named_children))
 
-    _visit(root)
     return occurrences
+
+
+# A line that starts an import or a re-export; the quoted module of `... from "x"`; `import "x"`. Each
+# is matched against one line, and no part can give back what it took to the part after it.
+_STATIC_STATEMENT = re.compile(r"[ \t]*(?:import(?![\w$])|export[ \t]*(?:type[ \t]*)?[{*])")
+_FROM_MODULE = re.compile(r"""(?<![\w$])from[ \t]*(['"])([^'"\\]+)\1""")
+_BARE_IMPORT = re.compile(r"""[ \t]*import[ \t]*(['"])([^'"\\]+)\1""")
+_NOT_CODE = frozenset({"comment", "string", "string_fragment", "template_string", "regex", "regex_pattern"})
+
+
+def _text_static_imports(root: Node, content: str) -> list[tuple[str, int]]:
+    """(module, line) of the import and re-export statements of a file, read from its lines.
+
+    For a file with a syntax error: the tree of such a file ends in an error node, and what stands after
+    the error is not in it. A statement starts on a line with `import` or `export {` / `export *` and
+    names its module on the first line from there that holds a quote; a line inside a comment or a string
+    of the tree starts none. Every line is read once.
+    """
+    found: list[tuple[str, int]] = []
+    lines = content.split("\n")
+    number = 0
+    while number < len(lines):
+        first, line = number, lines[number]
+        number += 1
+        start = _STATIC_STATEMENT.match(line) if "port" in line else None
+        if start is None:
+            continue
+        column = len(line) - len(line.lstrip(" \t"))
+        node: Node | None = root.descendant_for_point_range((first, column), (first, column))
+        if any(ancestor is not None and ancestor.type in _NOT_CODE for ancestor in (node, node.parent if node is not None else None)):
+            continue
+        bare = _BARE_IMPORT.match(line)
+        if bare is not None:
+            found.append((bare.group(2), first + 1))
+            continue
+        while "'" not in line and '"' not in line and ";" not in line and number < len(lines):
+            line = lines[number]
+            number += 1
+        module = _FROM_MODULE.search(line)
+        if module is not None:
+            found.append((module.group(2), first + 1))
+    return found
 
 
 _Occurrences = list[tuple[str, str, int]]   # what _ts_dependency_occurrences returns: one walk serves the three below
@@ -315,6 +377,17 @@ def parse_typescript_treesitter(
     root = tree.root_node
 
     occurrences = _ts_dependency_occurrences(root)
+    if root.has_error:
+        # What stands after a syntax error is not in the tree: the import and re-export statements of
+        # the file are read from its text as well, so that one unclosed bracket costs no dependency.
+        known = {specifier for specifier, _form, _line in occurrences}
+        occurrences.extend((specifier, "value", line) for specifier, line in _text_static_imports(root, content)
+                           if specifier not in known)
+        print(
+            f"[code-graph] WARNING: syntax error in {path}: its imports are read from the text as well; "
+            "a declaration after the error may be missing",
+            file=sys.stderr,
+        )
     imports = _ts_dependency_specifiers(occurrences)
     exports_abstract: list[str] = []
     implements_list: list[str] = []
@@ -464,7 +537,7 @@ def parse_typescript_treesitter(
             line = target.start_point[0] + 1
             body = target.child_by_field_name("body")
             members = [
-                _node_text(member.child_by_field_name("name") if member.type == "enum_assignment" else member)
+                _member_name(member.child_by_field_name("name") if member.type == "enum_assignment" else member)
                 for member in (body.named_children if body is not None else [])
                 if member.type in ("property_identifier", "enum_assignment")
             ]
@@ -499,11 +572,14 @@ def parse_typescript_treesitter(
                 name = _node_text(name_node)
                 line = declarator.start_point[0] + 1
                 value = declarator.child_by_field_name("value")
+                # The class the variable holds (`const db: Database`, `const db = new Database()`): a method
+                # called on it from any file is a use of that class's method.
+                held = ".".join(declared_type(declarator) or ())
                 if not value:
                     # let x; declare const x: T;
                     entities.append(Entity(
                         name=name, kind="function", line=line,
-                        methods=[], decorators=[], bases=[],
+                        methods=[], decorators=[], bases=[], value_type=held,
                     ))
                     exported_names.append(name)
                     continue
@@ -512,25 +588,25 @@ def parse_typescript_treesitter(
                     obj_keys = _ts_get_obj_keys(value)
                     entities.append(Entity(
                         name=name, kind="function", line=line,
-                        methods=obj_keys, decorators=[], bases=[],
+                        methods=obj_keys, decorators=[], bases=[], value_type=held,
                     ))
                 # new Constructor(...)
                 elif value.type == "new_expression":
                     entities.append(Entity(
                         name=name, kind="function", line=line,
-                        methods=[], decorators=[], bases=[],
+                        methods=[], decorators=[], bases=[], value_type=held,
                     ))
                 # Arrow function or call expression
                 elif value.type in ("arrow_function", "call_expression"):
                     entities.append(Entity(
                         name=name, kind="function", line=line,
-                        methods=[], decorators=[], bases=[],
+                        methods=[], decorators=[], bases=[], value_type=held,
                     ))
                 # Other const (e.g., z.object, string literal, etc.)
                 else:
                     entities.append(Entity(
                         name=name, kind="function", line=line,
-                        methods=[], decorators=[], bases=[],
+                        methods=[], decorators=[], bases=[], value_type=held,
                     ))
                 exported_names.append(name)
 

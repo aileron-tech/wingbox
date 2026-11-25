@@ -439,8 +439,9 @@ backslash escapes. Other regex operators are rejected.
 
 The TypeScript AST contract covers TS/TSX imports and re-exports, literal
 `import()`/`require()`, `import = require()`, literal template imports, emitted
-`.js`/`.jsx` specifiers, project-scoped path aliases including `paths`
-inherited through a relative `extends` chain, and imports that name a package
+`.js`/`.jsx` specifiers, project-scoped path aliases (of `tsconfig.json`,
+`jsconfig.json` and the project files their `references` name) including `paths`
+inherited through a relative `extends` chain inside the repository, and imports that name a package
 of the repository: the package entry (`exports`, `source`, `types`, `module`,
 `main`) and its subpaths resolve to the TypeScript source, also when the entry
 points at build output. Packages outside the repository stay external. It does
@@ -452,7 +453,7 @@ contract. An import written as `./x.js` names `x.ts` when it exists and the
 real `x.js` otherwise; `.mjs` and `.cjs` are matched by their own extension.
 Minified files (`*.min.js`, or any line longer than 5,000 characters) and
 bundles (`bundle` in the file name) are left out, like everything in excluded
-or ignored directories.
+or ignored directories. A build names the files it left out for a long line.
 
 An import that goes through the `outDir` of a `tsconfig*.json`, written as a
 relative path, through an alias or as a package entry, resolves to the file
@@ -468,7 +469,12 @@ loader. A method called in a loop on an object such a registry returns for the
 loop variable is a `calls ... :registry` edge to each wired module that defines
 it, and `data-flow ... :pipeline` when the call replaces its own argument
 (`data = stage.process(data)`), in the order of the configuration list. Names
-computed any other way stay unlinked.
+computed any other way stay unlinked. An absolute import is looked up at the
+repository root, beside a script (never beside a module of a package), in the
+`src/` folders above the importing file and then in the source roots of the
+repository: a folder with a `pyproject.toml`, `setup.py` or `setup.cfg`, its
+`src/` and the folders those files name. A name that several source roots hold
+stays unlinked.
 
 C# indexing follows namespaces and referenced local types: a name binds as the
 compiler searches (the own namespace, the usings written in it, each enclosing
