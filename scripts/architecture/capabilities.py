@@ -17,7 +17,11 @@ line as evidence:
 A SQL statement in a string literal that is not passed to a query call on the
 same line (built in a variable and run elsewhere) is only suspected: it is a
 candidate, never a violation. Comment lines are skipped. SQL assembled at run
-time or hidden behind a helper of another package is outside what this sees.
+time or hidden behind a helper of another package is outside what this sees,
+and so is what stands after the first MAX_LINE_LENGTH characters of a line
+(a data line of a generated file: the patterns cost the square of its length).
+The languages read are those of `supported`; a part with capability rules and
+files of another language says so (facts.py, `arch-capability-unread`).
 
 Each style states where a capability is allowed (`allowed_in`) or not
 (`forbidden_in`), by layer; a part of .wingbox/config.yaml can restate it.
@@ -31,6 +35,7 @@ from dataclasses import dataclass
 
 CAPABILITIES = ("sql", "db-client", "http-client", "framework", "http-response", "env", "filesystem", "process")
 EVIDENCE_LENGTH = 100
+MAX_LINE_LENGTH = 2000   # characters of a line the patterns read
 
 
 @dataclass(frozen=True)
@@ -260,7 +265,7 @@ def detect(path: str, text: str) -> tuple[Finding, ...]:
                 number = bisect.bisect_right(starts, position)
                 candidates.add(number)
                 position = joined.find(trigger, starts[number] if number < len(starts) else len(joined))
-        return {number for number in candidates if pattern.search(lines[number - 1])}
+        return {number for number in candidates if pattern.search(lines[number - 1][:MAX_LINE_LENGTH])}
 
     delimiters = _MULTILINE_STRINGS.get(extension, ())
     inside: list[str] = []      # per line: the multi-line string it starts in, or ""
@@ -275,7 +280,7 @@ def detect(path: str, text: str) -> tuple[Finding, ...]:
                      for capability, table in _IMPORTS.items()}
     found: list[Finding] = []
     for number in sorted(api_lines | sql_lines | set().union(*by_capability.values())):
-        raw = lines[number - 1]
+        raw = lines[number - 1][:MAX_LINE_LENGTH]
         stripped = raw.lstrip()
         if inside[number - 1]:
             # Text of a string (a docstring, a template of another program): only the SQL of a query

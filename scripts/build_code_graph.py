@@ -4850,6 +4850,7 @@ def project_architecture(
         _node_capabilities(root, nodes, {os.path.relpath(r.path, root).replace(os.sep, "/"): r.content_hash for r in results}),
         read_capability_baseline(baseline_text),
         read_baseline_terms(baseline_text),
+        read_text=text_reader(root),   # the graph records what the build read of the rule files
     )
     return Ok((architecture, plan.value))
 
