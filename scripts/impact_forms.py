@@ -250,22 +250,69 @@ class Changed:
     line: int
     used_by: tuple[str, ...]
     affected: Optional[Affected] = None   # with only "tests": the targets and tests of its file and its users
+    other_users: int = 0                  # with only "tests": the files that use it and are no test files
+
+
+def other_users(item: Changed) -> int:
+    """The users the list of a changed function leaves out, said where that list is empty and would read as
+    "nothing uses it": under `--only tests`, a function no test file uses and other files do."""
+    return 0 if item.used_by else item.other_users
+
+
+def other_users_text(item: Changed) -> str:
+    """The same for the text for people: "" or "; 2 other files use it"."""
+    count = other_users(item)
+    return f"; {count} other {'file uses' if count == 1 else 'files use'} it" if count else ""
 
 
 def changed_fact(item: Changed) -> str:
-    built = ""
+    built = f" :other-users {other_users(item)}" if other_users(item) else ""
     if item.affected is not None:
-        built = (f" :targets ({' '.join(atom(name) for name in item.affected.targets)})"
-                 f" :tests ({' '.join(atom(name) for name in item.affected.tests)})")
+        built += (f" :targets ({' '.join(atom(name) for name in item.affected.targets)})"
+                  f" :tests ({' '.join(atom(name) for name in item.affected.tests)})")
     return f"(changed {atom(item.symbol)} :line {item.line} :used-by ({' '.join(atom(path) for path in item.used_by)}){built})"
 
 
 def changed_json(item: Changed) -> dict[str, Any]:
     document: dict[str, Any] = {"symbol": item.symbol, "line": item.line, "used_by": list(item.used_by)}
+    if other_users(item):
+        document["other_users"] = other_users(item)
     if item.affected is not None:
         document["targets"] = list(item.affected.targets)
         document["tests"] = list(item.affected.tests)
     return document
+
+
+@dataclass(frozen=True)
+class ChangedFile:
+    """A path a diff removes: a deleted file, or the path a renamed file had. It is no file of the graph any
+    more, so the files that depended on it cannot be listed."""
+
+    file: str        # the path, relative to the graph root
+    status: str      # "deleted" or "renamed"
+    to: str = ""     # the path a renamed file has now
+
+
+def changed_file_fact(item: ChangedFile) -> str:
+    to = f" :to {atom(item.to)}" if item.to else ""
+    return f"(changed-file {atom(item.file)} :status {item.status}{to} :dependents unknown)"
+
+
+def changed_file_json(item: ChangedFile) -> dict[str, Any]:
+    document: dict[str, Any] = {"file": item.file, "status": item.status}
+    if item.to:
+        document["to"] = item.to
+    document["dependents"] = "unknown"
+    return document
+
+
+def changed_files_text(items: Sequence[ChangedFile]) -> str:
+    """The block of the text for people; "" without such a path."""
+    if not items:
+        return ""
+    title = "Paths the diff removed (no longer in the graph: what depended on them is not listed)"
+    rows = [(item.file, f"renamed to {item.to}" if item.to else item.status) for item in items]
+    return "\n".join(_block(title, rows)) + "\n"
 
 
 def impact_json(
@@ -432,7 +479,8 @@ def _summary_json(answer: ImpactAnswer) -> dict[str, Any]:
 
 
 def changed_summary_fact(item: Changed) -> str:
-    built = f" :targets {len(item.affected.targets)} :tests {len(item.affected.tests)}" if item.affected is not None else ""
+    built = f" :other-users {other_users(item)}" if other_users(item) else ""
+    built += f" :targets {len(item.affected.targets)} :tests {len(item.affected.tests)}" if item.affected is not None else ""
     return f"(changed-summary {atom(item.symbol)} :line {item.line} :used-by {len(item.used_by)}{built})"
 
 
@@ -443,6 +491,7 @@ def summary_json(
     if changed is not None:
         document["changed"] = [
             {"symbol": item.symbol, "line": item.line, "used_by": len(item.used_by),
+             **({"other_users": other_users(item)} if other_users(item) else {}),
              **({"targets": len(item.affected.targets), "tests": len(item.affected.tests)} if item.affected is not None else {})}
             for item in changed
         ]

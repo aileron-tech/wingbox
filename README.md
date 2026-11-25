@@ -109,8 +109,12 @@ Wingbox is safe to run on code that must not leave the company:
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
-  parsers and calls `git` for the ignore rules; it does not execute the code,
-  the tests or the build of the repository. The `--lsp` option, off by
+  parsers and calls `git` for the ignore rules, the state of the work tree
+  and a diff; it does not execute the code, the tests or the build of the
+  repository. Every `git` call on a repository switches off the programs
+  that its own Git configuration can name (`core.fsmonitor`, hooks,
+  filter, diff and signature programs, Git inside a submodule, a fetch of
+  missing objects). The `--lsp` option, off by
   default, starts a language server that is installed on the machine.
 - **The results stay in one folder of the repository, `.wingbox/`:** the
   graph `index.sexp`, `REPORT.md` and `map.html`. The map is one HTML file
@@ -520,9 +524,19 @@ Four options narrow or widen what `impact` answers:
   defaults to `HEAD`: the changes of the working tree) and adds one
   `(changed <file>::<name> :line N :used-by (<file> ...))` fact per changed
   function with the other files that use it. For a C or C++ function the files
-  that use it through the declaration in its header are included. Both options
+  that use it through the declaration in its header are included. Lines that
+  were only removed count for the definition that holds the line above them.
+  A file the diff deletes and the path a renamed file had are no longer in
+  the graph, so the files that depended on them cannot be listed: each is
+  named by `(changed-file <path> :status deleted :dependents unknown)` or
+  `(changed-file <old path> :status renamed :to <new path> :dependents
+  unknown)` (`changed_files` in JSON), and the new path of a rename gets its
+  answer. `(impact-diff-empty <ref>)` is printed only when Git reports no
+  change below the graph root. Both options
   go together: `wingbox impact --diff --only tests`, where each changed
-  function also names the CMake targets and tests of the files that use it.
+  function also names the CMake targets and tests of the files that use it;
+  a function that no test file uses directly and N other files do use says
+  `:other-users N` after its empty `:used-by ()`.
 - `wingbox impact <file> ... --summary` answers in a few lines where the
   complete list has hundreds: the number of dependents at each depth and of
   each kind (made from the file or started by it, test files, entry points,

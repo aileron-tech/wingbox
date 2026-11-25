@@ -2188,7 +2188,7 @@ def cmd_impact_summary(
         sys.stdout.write(impact_forms.summary_text(answers))
         for item in changed or ():
             print(f"  changed {item.symbol} (line {item.line}): used by {len(item.used_by)} "
-                  f"{'test files' if only else 'files'}"
+                  f"{'test files' if only else 'files'}{impact_forms.other_users_text(item)}"
                   + (f"; tests to run: {len(item.affected.tests)}" if item.affected is not None else ""))
     else:
         sys.stdout.write(impact_forms.summary_sexp(answers, header if len(answers) > 1 or header.not_parsed else None))
@@ -2229,14 +2229,30 @@ def impact_options(args: Sequence[str]) -> Union[str, tuple[list[str], str, Opti
     return rest, only, diff, summary
 
 
-def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[list[str], list[impact_forms.Changed]]]:
-    """(the files a diff against ref changes that still exist, the functions it changes) for `impact --diff`;
-    an error fact when Git cannot give the diff. The files that use a changed function are read from the
-    use lines of the graph, also those that use it through the declaration in its header."""
-    ranges = _diff_ranges(g, ref)
-    if isinstance(ranges, str):
-        return ranges
-    files = sorted(path for path in ranges if os.path.isfile(os.path.join(g._root or "", os.path.normpath(path))))
+def diff_changes(
+    g: CodeGraph, ref: str, only: str = "",
+) -> Union[str, tuple[list[str], list[impact_forms.Changed], list[impact_forms.ChangedFile]]]:
+    """(the files a diff against ref changes that are files now, the functions it changes, the paths it
+    removes: a deleted file, the path a renamed file had) for `impact --diff`; an error fact when ref is no
+    ref or Git cannot give the diff. The files that use a changed function are read from the use lines of
+    the graph, also those that use it through the declaration in its header."""
+    diff = _diff_files(g, ref)
+    if isinstance(diff, str):
+        return diff
+
+    def on_disk(path: str) -> bool:
+        return os.path.isfile(os.path.join(g._root or "", os.path.normpath(path)))
+
+    # A path Git reports as deleted that is still a file (taken out of the index only) is answered as a file.
+    current = [item for item in diff if item.status != "deleted" or on_disk(item.path)]
+    files = sorted(item.path for item in current)
+    gone = sorted(
+        [impact_forms.ChangedFile(item.path, "deleted") for item in diff if item.status == "deleted" and not on_disk(item.path)]
+        + [impact_forms.ChangedFile(item.old_path, "renamed", item.path)
+           for item in diff if item.status == "renamed" and not on_disk(item.old_path)],
+        key=lambda item: item.file,
+    )
+    ranges = {item.path: item.ranges for item in current}
     changed: list[impact_forms.Changed] = []
     for qualified, entity, _diff_file in sorted(_diff_functions(g, ranges), key=lambda item: (item[2], item[1].line)):
         module, _, name = qualified.partition("::")
@@ -2247,12 +2263,16 @@ def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[lis
         # The targets and tests of the file and of the files that use the function: narrower than those of
         # every dependent of the file.
         affected = _affected_build(g, users | {module}) if only == "tests" else None
+        other_users = 0
         if only == "tests":
-            users = {user for user in users if module_layer(g, user) == "test"}
+            tests = {user for user in users if module_layer(g, user) == "test"}
+            other_users = len(users) - len(tests)
+            users = tests
         changed.append(impact_forms.Changed(
             f"{_impact_file(g, module)}::{name}", entity.line, tuple(sorted(_impact_file(g, user) for user in users)), affected,
+            other_users,
         ))
-    return files, changed
+    return files, changed, gone
 
 
 def _impact_status(answers: Sequence[impact_forms.ImpactAnswer]) -> int:
@@ -2290,6 +2310,8 @@ def cmd_impact(
             print("\nChanged functions and the files that use them")
             for item in changed:
                 used = ", ".join(item.used_by) if item.used_by else "no other file"
+                if impact_forms.other_users_text(item):
+                    used = "no test file" + impact_forms.other_users_text(item)
                 if item.affected is not None:
                     used += f"; tests to run: {', '.join(item.affected.tests) if item.affected.tests else 'none'}"
                 print(f"  {item.symbol:<{width}}   line {item.line}: {used}")
@@ -4394,148 +4416,273 @@ def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, fir
     print(f"(matches-summary :matches {matches}{part} :files {files_matched}{tail} :pattern {_q(pattern)}{scope})")
 
 
-def _diff_ranges(g: CodeGraph, ref: str) -> Union[str, dict[str, list[tuple[int, int]]]]:
-    """file -> the line ranges `git diff <ref>` changes in it (the new side), or the error fact when Git
-    cannot give the diff. Paths are those Git prints, relative to the repository root, with /."""
+@dataclass(frozen=True)
+class DiffFile:
+    """One file a diff changes, as Git names it."""
+
+    path: str            # relative to the graph root, with /: where the file is now; of a deleted file, where it was
+    status: str          # "modified", "added", "deleted" or "renamed"
+    old_path: str = ""   # of a renamed file: the path it had
+    hunks: int = 0
+    # The line ranges that changed, as lines of the file now. Removed lines count for the line above them.
+    ranges: tuple[tuple[int, int], ...] = ()
+
+
+@dataclass
+class _DiffSection:
+    """What the header lines and the hunks of one `diff --git` section of a patch say."""
+
+    header: str                  # its `diff --git` line
+    old: Optional[str] = None    # the path before, from `--- ` or `rename from`
+    new: Optional[str] = None    # the path now, from `+++ `, `rename to` or `copy to`
+    deleted: bool = False
+    added: bool = False
+    renamed: bool = False
+    hunks: int = 0
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+
+
+# The look of the patch is fixed here, whatever the Git configuration of the repository or of the user says
+# (diff.noprefix, diff.mnemonicPrefix, color.diff, diff.renames, diff.relative, diff.interHunkContext): no
+# colour, the prefixes a/ and b/, hunks without context, renames found, and paths relative to the folder Git
+# runs in, which is the graph root. Only what changed below that folder is listed.
+_DIFF_FORMAT = ("--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--unified=0", "--inter-hunk-context=0",
+                "--find-renames", "--relative")
+_DIFF_TIMEOUT_SECONDS = 30
+_HUNK_HEADER = re.compile(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+_C_ESCAPES = {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
+
+
+def _git_safe():
+    """scripts/git_safe.py: every Git call goes through it."""
+    try:
+        from . import git_safe
+    except ImportError:  # loaded as a top-level script module
+        import git_safe
+    return git_safe
+
+
+def _diff_files(g: CodeGraph, ref: str) -> Union[str, list[DiffFile]]:
+    """The files `git diff <ref>` changes below the graph root (the files on disk against ref), in path
+    order; the error fact when ref is no ref or Git cannot give the diff."""
     import subprocess
 
-    # Use the code graph root as git working directory (not cwd)
-    git_cwd = g._root or None
+    git_safe = _git_safe()
+    problem = git_safe.ref_problem(ref)
+    if problem is not None:
+        return f"(error invalid-argument {fact_json.atom(problem)})"
+
+    def diff(*revisions: str) -> "subprocess.CompletedProcess[str]":
+        # After --end-of-options a word is a revision and never an option; before the last -- it is never a path.
+        return git_safe.run(
+            g._root or None, "diff", (*_DIFF_FORMAT, "--end-of-options", *revisions, "--"), config=("core.quotepath=off",),
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_DIFF_TIMEOUT_SECONDS,
+        )
 
     try:
-        result = subprocess.run(
-            ["git", "-c", "core.quotepath=off", "diff", "--unified=0", ref],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=git_cwd,
-            **portable.hidden_process_options(),
-        )
+        result = diff(ref)
         if result.returncode != 0:
-            # Try as a commit ref
-            result = subprocess.run(
-                ["git", "-c", "core.quotepath=off", "diff", "--unified=0", ref, "HEAD"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=git_cwd,
-                **portable.hidden_process_options(),
-            )
+            first, result = result, diff(ref, "HEAD")   # no work tree to compare: ref against the commit checked out
             if result.returncode != 0:
-                return f"(error git-diff-failed {_q(result.stderr.strip())})"
+                # What Git said to the first call, without the usage text it can add; atom makes it one line.
+                message = first.stderr.split("\nusage:", 1)[0].strip()
+                return f"(error git-diff-failed {fact_json.atom(message)})"
     except FileNotFoundError:
         return "(error git-not-found)"
     except subprocess.TimeoutExpired:
         return "(error git-diff-timeout)"
+    except OSError as error:   # git_safe refuses the call, or Git cannot be started
+        return f"(error git-diff-failed {fact_json.atom(str(error))})"
+    files = _parse_diff(result.stdout)
+    if isinstance(files, str):
+        return f"(error git-diff-failed {fact_json.atom('cannot read the diff header: ' + files)})"
+    return files
 
-    # Parse diff output to extract file -> changed line ranges
-    changed_ranges: dict[str, list[tuple[int, int]]] = {}  # file -> [(start, end)]
-    current_file = ""
 
-    for line in result.stdout.splitlines():
-        if line.startswith("+++ b/"):
-            current_file = line[6:]
+def _diff_error_status(fact: str) -> int:
+    """The exit status of an error fact of _diff_files: 2 for a ref that is refused, as every invalid
+    argument, 1 when Git cannot give the diff."""
+    return 2 if fact.startswith("(error invalid-argument ") else 1
+
+
+def _parse_diff(text: str) -> Union[str, list[DiffFile]]:
+    """The files of a patch that `git diff` wrote with _DIFF_FORMAT, in path order; the `diff --git` line of
+    a section that names no file, when there is one. The lines of a hunk are counted by its header, so a line
+    of a file is never read as a header of the patch."""
+    sections: list[_DiffSection] = []
+    old_left = new_left = 0
+    for line in text.split("\n"):   # not splitlines(): a line of a file may hold a form feed or a carriage return
+        if old_left > 0 or new_left > 0:
+            if line.startswith("-"):
+                old_left -= 1
+            elif line.startswith("+"):
+                new_left -= 1
+            elif not line.startswith("\\"):   # a context line; "\ No newline at end of file" is no line
+                old_left -= 1
+                new_left -= 1
+            continue
+        if line.startswith("diff --git "):
+            sections.append(_DiffSection(line))
+            continue
+        if not sections:
+            continue
+        section = sections[-1]
+        hunk = _HUNK_HEADER.match(line)
+        if hunk is not None:
+            old_left = 1 if hunk.group(1) is None else int(hunk.group(1))
+            new_start = int(hunk.group(2))
+            new_left = 1 if hunk.group(3) is None else int(hunk.group(3))
+            section.hunks += 1
+            if new_left:
+                section.ranges.append((new_start, new_start + new_left - 1))
+            elif new_start:   # lines were only removed, below line new_start
+                section.ranges.append((new_start, new_start))
+        elif line.startswith("--- "):
+            section.old = _diff_side(line[4:], "a/")
         elif line.startswith("+++ "):
-            current_file = ""   # a deleted file: +++ /dev/null
-        elif line.startswith("@@ ") and current_file:
-            # Parse hunk header: @@ -old,count +new,count @@
-            parts = line.split(" ")
-            for part in parts:
-                if part.startswith("+") and "," in part:
-                    nums = part[1:].split(",")
-                    start = int(nums[0])
-                    count = int(nums[1]) if len(nums) > 1 else 1
-                    if count > 0:
-                        changed_ranges.setdefault(current_file, []).append(
-                            (start, start + count - 1)
-                        )
-                elif part.startswith("+") and part[1:].isdigit():
-                    start = int(part[1:])
-                    changed_ranges.setdefault(current_file, []).append(
-                        (start, start)
-                    )
-    return changed_ranges
+            section.new = _diff_side(line[4:], "b/")
+        elif line.startswith("rename from "):
+            section.old, section.renamed = _c_unquoted(line[len("rename from "):]), True
+        elif line.startswith("rename to "):
+            section.new = _c_unquoted(line[len("rename to "):])
+        elif line.startswith("copy to "):
+            section.new = _c_unquoted(line[len("copy to "):])
+        elif line.startswith("deleted file mode "):
+            section.deleted = True
+        elif line.startswith("new file mode "):
+            section.added = True
+    files: dict[str, DiffFile] = {}
+    for section in sections:
+        item = _diff_file(section)
+        if item is None:
+            return section.header
+        known = files.get(item.path)
+        if known is not None:   # removed and created again in one diff (its type changed): one changed file
+            item = DiffFile(item.path, "modified", "", known.hunks + item.hunks, known.ranges + item.ranges)
+        files[item.path] = item
+    return [files[path] for path in sorted(files)]
+
+
+def _diff_file(section: _DiffSection) -> Optional[DiffFile]:
+    ranges = tuple(section.ranges)
+    if section.renamed and section.old and section.new:
+        return DiffFile(section.new, "renamed", section.old, section.hunks, ranges)
+    # A section without a text patch (a mode change, a binary file, an empty file) has no --- and +++ lines.
+    path = (section.old if section.deleted else section.new) or _diff_header_path(section.header)
+    if path is None:
+        return None
+    return DiffFile(path, "deleted" if section.deleted else "added" if section.added else "modified", "", section.hunks, ranges)
+
+
+def _diff_side(text: str, prefix: str) -> Optional[str]:
+    """The path of a `--- ` or `+++ ` line, None for /dev/null. Git ends the line with a tab when the name
+    holds a space: that tab is no part of the name."""
+    name = _c_unquoted(text[:-1] if text.endswith("\t") else text)
+    if name == "/dev/null":
+        return None
+    return name[len(prefix):] if name.startswith(prefix) else name
+
+
+def _diff_header_path(header: str) -> Optional[str]:
+    """The path of a `diff --git a/<path> b/<path>` line that names one path twice; None when the two differ."""
+    rest = header[len("diff --git "):]
+    if rest.startswith('"'):
+        end = 1
+        while end < len(rest) and rest[end] != '"':
+            end += 2 if rest[end] == "\\" else 1
+        first, second = _c_unquoted(rest[:end + 1]), _c_unquoted(rest[end + 2:])
+    else:
+        half = (len(rest) - 1) // 2
+        first, second = rest[:half], rest[half + 1:]
+    if first.startswith("a/") and second.startswith("b/") and first[2:] == second[2:]:
+        return first[2:]
+    return None
+
+
+def _c_unquoted(text: str) -> str:
+    """A path as Git writes it in a patch: as it is, or between double quotes with the escapes of C when it
+    holds a quote, a backslash or a control character."""
+    if len(text) < 2 or not (text.startswith('"') and text.endswith('"')):
+        return text
+    out: list[str] = []
+    index, end = 1, len(text) - 1
+    while index < end:
+        if text[index] != "\\" or index + 1 >= end:
+            out.append(text[index])
+            index += 1
+            continue
+        octal = text[index + 1:index + 4]
+        if len(octal) == 3 and all(digit in "01234567" for digit in octal):
+            out.append(chr(int(octal, 8)))
+            index += 4
+        else:
+            out.append(_C_ESCAPES.get(text[index + 1], text[index + 1]))
+            index += 2
+    return "".join(out)
 
 
 def _diff_functions(
-    g: CodeGraph, changed_ranges: dict[str, list[tuple[int, int]]],
+    g: CodeGraph, changed_ranges: dict[str, Sequence[tuple[int, int]]],
 ) -> list[tuple[str, EntityFact, str]]:
-    """(module::name, the entity, the file as the diff names it) of every definition a changed range touches."""
-    # Build file -> sorted entities index
+    """(module::name, the entity, the file) of every definition a changed range touches. A file of the diff
+    is the file of the graph with that very path, relative to the graph root. A definition runs to the line
+    before the next one of its file, the last one to the end of the file."""
     file_entities: dict[str, list[tuple[str, EntityFact]]] = {}
     for mod, ent_list in g.entities.items():
-        fpath = g.module_to_file(mod)
-        for ent in ent_list:
-            file_entities.setdefault(fpath, []).append((mod, ent))
+        if ent_list:
+            file_entities.setdefault(_impact_file(g, mod), []).extend((mod, ent) for ent in ent_list)
 
-    # Normalize paths for matching (diff paths are relative to repo root)
-    repo_root = g._root
     results: list[tuple[str, EntityFact, str]] = []  # (qualified_id, entity, file)
-
+    named: set[str] = set()
     for diff_file, ranges in changed_ranges.items():
-        # Try matching against code graph files
-        # git prints paths with '/', the graph holds them with the system's separator
-        local_file = os.path.normpath(diff_file)
-        abs_path = os.path.join(repo_root, local_file)
-        # Also try relative path
-        candidates = [abs_path, local_file]
-
-        matched_ents: list[tuple[str, EntityFact]] = []
-        for candidate in candidates:
-            if candidate in file_entities:
-                matched_ents = file_entities[candidate]
-                break
-
-        if not matched_ents:
-            # Try suffix matching
-            for fpath, ent_list in file_entities.items():
-                if fpath.endswith(local_file) or local_file.endswith(fpath.lstrip("./")):
-                    matched_ents = ent_list
-                    break
-
-        if not matched_ents:
-            continue
-
-        # Sort entities by line to determine body ranges
-        sorted_ents = sorted(matched_ents, key=lambda x: x[1].line)
-
+        sorted_ents = sorted(file_entities.get(diff_file, ()), key=lambda x: x[1].line)
         for start, end in ranges:
             for idx, (mod, ent) in enumerate(sorted_ents):
-                ent_start = ent.line
-                if idx + 1 < len(sorted_ents):
-                    ent_end = sorted_ents[idx + 1][1].line - 1
-                else:
-                    ent_end = ent_start + 200  # approximate
-
-                # Check overlap
-                if start <= ent_end and end >= ent_start:
+                last = idx + 1 == len(sorted_ents)
+                if end >= ent.line and (last or start < sorted_ents[idx + 1][1].line):
                     qid = f"{mod}::{ent.name}"
-                    if not any(r[0] == qid for r in results):
+                    if qid not in named:
+                        named.add(qid)
                         results.append((qid, ent, diff_file))
     return results
 
 
-def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
-    """Identify which functions were changed in a git diff.
+def _diff_file_fact(item: DiffFile) -> str:
+    if item.status == "renamed":
+        return f"(diff-file {_q(item.old_path)} :hunks {item.hunks} :status renamed :to {_q(item.path)})"
+    return f"(diff-file {_q(item.path)} :hunks {item.hunks}{' :status deleted' if item.status == 'deleted' else ''})"
 
-    Parses 'git diff <ref>' output to find changed line ranges,
-    then maps those ranges to function definitions in the code graph.
-    """
-    changed_ranges = _diff_ranges(g, ref)
-    if isinstance(changed_ranges, str):
-        print(changed_ranges)
-        return
-    if not changed_ranges:
+
+def cmd_diff_functions(g: CodeGraph, ref: str) -> int:
+    """Print the definitions a git diff changes: the changed line ranges of `git diff <ref>`, mapped to the
+    definitions of the graph. A file the diff removes or renames is named with `:status`. Returns the exit
+    status: 0, 2 for a ref that is refused, 1 when Git cannot give the diff."""
+    files = _diff_files(g, ref)
+    if isinstance(files, str):
+        print(files)
+        return _diff_error_status(files)
+    if not files:
         print(f"(diff-functions-empty {_q(ref)})")
-        return
+        return 0
 
-    results = _diff_functions(g, changed_ranges)
+    results = _diff_functions(g, {item.path: item.ranges for item in files if item.status != "deleted"})
+    listed = sorted(files, key=lambda item: item.old_path or item.path)
     if not results:
         # Report changed files even if no function mapping
-        for diff_file in sorted(changed_ranges.keys()):
-            print(f"(diff-file {_q(diff_file)} :hunks {len(changed_ranges[diff_file])})")
-        print(f"(diff-functions-no-match :files {len(changed_ranges)} :ref {_q(ref)})")
-        return
+        for item in listed:
+            print(_diff_file_fact(item))
+        print(f"(diff-functions-no-match :files {len(files)} :ref {_q(ref)})")
+        return 0
 
-    for qid, ent, diff_file in sorted(results, key=lambda x: (x[2], x[1].line)):
+    for qid, ent, _diff_path in sorted(results, key=lambda x: (x[2], x[1].line)):
         lang = g.module_lang(ent.module)
         fpath = g.module_to_file(ent.module)
-        print(f"(diff-fn {qid} :kind {ent.kind} :line {ent.line} :lang {lang} :file {_q(fpath)})")
-    print(f"(diff-functions-summary :changed {len(results)} :files {len(changed_ranges)} :ref {_q(ref)})")
+        print(f"(diff-fn {_q(qid)} :kind {ent.kind} :line {ent.line} :lang {lang} :file {_q(fpath)})")
+    for item in listed:
+        if item.status in ("deleted", "renamed"):   # no file of the graph now: no definition can name it
+            print(_diff_file_fact(item))
+    print(f"(diff-functions-summary :changed {len(results)} :files {len(files)} :ref {_q(ref)})")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -4952,6 +5099,9 @@ class _SchemeEval:
 
         if fn == "diff-functions" or fn == "diff_functions":
             ref = str(args[0]) if args else "HEAD"
+            problem = _git_safe().ref_problem(ref)
+            if problem is not None:
+                return QueryError("invalid-argument", problem)
             cmd_diff_functions(g, ref)
             return set()
 
@@ -5011,21 +5161,23 @@ def _format_result(val: object) -> None:
         print(f"(result {_q(str(val))})")
 
 
-def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> None:
-    """Evaluate a single Scheme query expression; `(help)` lists the functions of the language."""
+def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> int:
+    """Evaluate a single Scheme query expression; `(help)` lists the functions of the language. Returns the
+    exit status: 2 when the expression gives Git a ref that is refused, else 0."""
     if expr.strip() in ("(help)", "help"):
         print(_QUERY_HELP)
-        return
+        return 0
     problem = _query_problem(expr)
     if problem is not None:
         print(f'(error invalid-query "{_escaped(expr)}" "{problem}")')
-        return
+        return 0
     evaluator = _SchemeEval(g, sexp_path)
     result = evaluator.eval_str(expr)
     if evaluator.problems:
         print(f'(error invalid-query "{_escaped(expr)}" "{evaluator.problems[0]}; (help) lists the functions")')
-        return
+        return 0
     _format_result(result)
+    return 2 if isinstance(result, QueryError) and result.kind == "invalid-argument" else 0
 
 
 def cmd_repl(g: CodeGraph, sexp_path: str) -> None:
@@ -5355,18 +5507,30 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
         changes = diff_changes(g, diff_ref, only)
         if isinstance(changes, str):
             print(changes)
-            return 1, None
-        targets, changed = changes
-        if not targets:
-            if form == "json":
-                return 0, impact_forms.impact_json([], graph_header(g, graph_stale), [])
+            return _diff_error_status(changes), None
+        targets, changed, gone = changes
+        # The empty form is for a diff in which Git reports no change below the graph root, and for no other.
+        if not targets and not gone and form != "json":
             print(f"(impact-diff-empty {_q(diff_ref)})")
             return 0, None
-        if summary:
-            return cmd_impact_summary(g, targets, max_depth, form, graph_stale, only, changed)
-        if form == "json":
-            return impact_document(g, targets, max_depth, graph_stale, only, changed)
-        return cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only, changed), None
+        status, document = 0, None
+        if not targets:
+            document = impact_forms.impact_json([], graph_header(g, graph_stale), changed) if form == "json" else None
+        elif summary:
+            status, document = cmd_impact_summary(g, targets, max_depth, form, graph_stale, only, changed)
+        elif form == "json":
+            status, document = impact_document(g, targets, max_depth, graph_stale, only, changed)
+        else:
+            status = cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only, changed)
+        # The paths the diff removes follow the answers of the files that are there.
+        if document is not None:
+            document["changed_files"] = [impact_forms.changed_file_json(item) for item in gone]
+        elif form == "human":
+            sys.stdout.write(("\n" if targets and gone else "") + impact_forms.changed_files_text(gone))
+        else:
+            for item in gone:
+                print(impact_forms.changed_file_fact(item))
+        return status, document
     if cmd == "impact" and len(args) >= 2:
         targets, depth = impact_arguments(args[1:])
         max_depth = DEFAULT_IMPACT_DEPTH if depth is None else int(depth)
@@ -5444,7 +5608,7 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         cmd_grep_functions(g, args[1])
     elif cmd == "diff_functions":
         ref = args[1] if len(args) >= 2 else "HEAD"
-        cmd_diff_functions(g, ref)
+        return cmd_diff_functions(g, ref)
     elif cmd == "files":
         cmd_files(g, args[1] if len(args) >= 2 else None)
     elif cmd == "source" and len(args) >= 2:
@@ -5454,7 +5618,7 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         if not isinstance(asked, str):   # _validate_cli_command refused anything else
             cmd_grep(g, *asked)
     elif cmd == "query" and len(args) >= 2:
-        cmd_query(g, " ".join(args[1:]), sexp_path)
+        return cmd_query(g, " ".join(args[1:]), sexp_path)
     elif cmd == "repl":
         cmd_repl(g, sexp_path)
     else:
