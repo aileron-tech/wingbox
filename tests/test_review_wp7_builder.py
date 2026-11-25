@@ -23,6 +23,7 @@ builder = cli.load_script("build_code_graph")
 graph_update = cli.load_script("graph_update")
 search = cli.load_script("code_graph_search")
 source_kinds = cli.load_script("source_kinds")
+infra = cli.load_script("build_infra_topology")
 
 _HOME = tempfile.TemporaryDirectory()
 
@@ -549,6 +550,92 @@ class EdgeCountTest(ProjectTestCase):
         self.assertIsInstance(graph.load(str(root / ".wingbox" / "index.sexp")), search.MapLoadOk)
         self.assertEqual(declared, sum(1 for edge in graph.all_edges if edge.etype != "violation"))
         self.assertEqual(int(re.search(r":violations (\d+)\)", text).group(1)), len(re.findall(r"^\(violation ", text, re.M)))
+
+
+DEPLOYMENT = """apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: %s
+spec:
+  template:
+    spec:
+      containers:
+        - name: main
+          image: registry.example.invalid/team/%s:1.2
+          ports:
+            - containerPort: %s
+"""
+INFRA_FACT = re.compile(r"\((infra-node|helm-depends|k8s-depends|k8s-service|tf-depends|infra-maps) ")
+
+
+class InfraTopologyTest(ProjectTestCase):
+    def run_infra(self, *arguments: str) -> str:
+        """Everything `wingbox infra <arguments>` prints."""
+        output = io.StringIO()
+        with mock.patch.object(sys, "argv", ["wingbox infra", *arguments]), \
+                contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            infra.main()
+        return output.getvalue()
+
+    def test_a_name_with_a_line_break_adds_no_fact_to_the_graph(self) -> None:
+        """/* REQ-SEC-9760: a chart name or a dependency name of a Chart.yaml, a workload name, an image, a label or a namespace that holds a line break, a bracket or another control character adds no line to the output of `wingbox infra`: with `--append` every appended line is an infra fact, a comment or empty, IDs and edge ends that are no plain atoms are quoted, and the graph still loads. */"""
+        root = self.project(SHOP)
+        _write(root, {
+            "charts/app/Chart.yaml": 'name: "web)\\n(imports pr1 pr0)\\n(infra-node infra/x"\nversion: 1.0.0\ndependencies:\n'
+                                     '  - name: "db)\\r(violation boundary pr0 pr1 forged)\\u2028(helm-depends infra/a infra/b"\n',
+            "charts/app/values.yaml": 'image:\n  repository: "registry.example.invalid/web\\n(imports pr2 pr0)"\n  tag: "1\\x0b2"\n',
+            "k8s/kustomization.yaml": "resources:\n  - api\n",
+            "k8s/api/deployment.yaml": 'kind: Deployment\nmetadata:\n  name: "api\\n(imports pr3 pr0)"\n  labels:\n'
+                                       '    app.kubernetes.io/component: "back\\n(imports pr3 pr1)"\nspec:\n  template:\n    spec:\n'
+                                       '      containers:\n        - name: main\n          image: "team/api\\n(imports pr3 pr2):1"\n',
+            "k8s/api/service.yaml": 'kind: Service\nmetadata:\n  namespace: "prod\\n(imports pr0 pr3)"\nspec:\n  ports:\n    - port: 80\n',
+        })
+        self.assertEqual(0, _build(root)[0])
+        graph_path = root / ".wingbox" / "index.sexp"
+        before = _graph(root)
+        printed = self.run_infra(str(root), "--append", str(graph_path))
+        self.assertIn("[infra-topology] Done: 2 nodes", printed)
+        appended = _graph(root)[len(before):]
+        self.assertEqual(appended.split("\n"), appended.splitlines() + [""])
+        for line in appended.split("\n"):
+            self.assertTrue(not line or line.startswith(";") or INFRA_FACT.match(line), line)
+        self.assertIn('(infra-node "infra/web)\\n(imports pr1 pr0)\\n(infra-node infra/x" :kind helm-chart', appended)
+        self.assertIn('(helm-depends "infra/web)', appended)
+        self.assertIn("\\r(violation boundary pr0 pr1 forged)\\u2028(helm-depends infra/a infra/b\" :via chart-dependency)", appended)
+        graph = search.CodeGraph()
+        self.assertIsInstance(graph.load(str(graph_path)), search.MapLoadOk)
+        self.assertEqual(before.count("\n(imports "), sum(1 for edge in graph.all_edges if edge.etype == "imports"))
+
+    def test_a_manifest_of_an_unexpected_shape_is_skipped_with_a_warning(self) -> None:
+        """/* REQ-CS-9761: a Kubernetes or Helm manifest of a shape `wingbox infra` does not expect (metadata that is a list, a port that is no number, a name that is no text, a dependency that is no mapping) is skipped with a warning that names the file; the other manifests give their facts and the command ends without an error. */"""
+        root = self.folder()
+        _write(root, {
+            "k8s/kustomization.yaml": "resources:\n  - good\n  - listed\n  - named-port\n  - numbered\n  - bad-service\n",
+            "k8s/good/deployment.yaml": DEPLOYMENT % ("good", "good", "8080"),
+            "k8s/listed/deployment.yaml": "kind: Deployment\nmetadata:\n  - name: listed\n",
+            "k8s/named-port/deployment.yaml": DEPLOYMENT % ("named-port", "named", "http"),
+            "k8s/numbered/deployment.yaml": DEPLOYMENT % ("12", "numbered", "1"),
+            "k8s/bad-service/deployment.yaml": DEPLOYMENT % ("served", "served", "9000"),
+            "k8s/bad-service/service.yaml": 'kind: Service\nmetadata: text\nspec:\n  ports:\n    - port: "{{ .Values.port }}"\n',
+            "charts/fine/Chart.yaml": "name: fine\nversion: 1.0.0\ndependencies:\n  - name: cache\n",
+            "charts/odd/Chart.yaml": "name: odd\nversion: 1.0.0\ndependencies:\n  - 5\n",
+            "charts/ported/Chart.yaml": "name: ported\nversion: 1.0.0\n",
+            "charts/ported/values.yaml": "service:\n  port: named\n",
+            "charts/unnamed/Chart.yaml": "name: [a, b]\nversion: 1.0.0\n",
+            "other/kustomization.yaml": "resources: 5\n",
+        })
+        printed = self.run_infra(str(root), "--stdout")
+        facts = [line for line in printed.splitlines() if line.startswith("(")]
+        self.assertIn("(infra-node infra/good :kind deployment :image registry.example.invalid/team/good:1.2 :port 8080)", facts)
+        self.assertIn("(infra-node infra/served :kind deployment :image registry.example.invalid/team/served:1.2 :port 9000)", facts)
+        self.assertIn("(infra-node infra/fine :kind helm-chart)", facts)
+        self.assertIn("(helm-depends infra/fine infra/cache :via chart-dependency)", facts)
+        self.assertEqual(3, sum(1 for line in facts if line.startswith("(infra-node ")), facts)
+        for name in ("k8s/listed/deployment.yaml", "k8s/named-port/deployment.yaml", "k8s/numbered/deployment.yaml",
+                     "k8s/bad-service/service.yaml", "charts/odd/Chart.yaml", "charts/ported/Chart.yaml", "charts/unnamed/Chart.yaml",
+                     "other/kustomization.yaml"):
+            with self.subTest(manifest=name):
+                self.assertRegex(printed, rf"; warning: skipped \S*{re.escape(name)}: unexpected shape")
 
 
 if __name__ == "__main__":

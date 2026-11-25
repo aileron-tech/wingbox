@@ -124,9 +124,30 @@ def _safe_load_yaml(path: Path, warnings: list[str]) -> Optional[dict]:
     except FileNotFoundError:
         warnings.append(f"; warning: skipped {path}: file not found")
         return None
-    except yaml.YAMLError as exc:
+    except OSError as exc:
+        warnings.append(f"; warning: skipped {path}: {exc}")
+        return None
+    except (yaml.YAMLError, ValueError, RecursionError) as exc:
         warnings.append(f"; error: parse failed {path}: {exc}")
         return None
+
+
+# What reading a field of a manifest raises when the manifest has another shape than expected: a list where
+# a mapping is read, text where a number is read, a number where a name is read.
+_SHAPE_ERRORS = (AttributeError, TypeError, ValueError, KeyError, IndexError)
+
+
+def _shape_warning(path: Path, error: Exception) -> str:
+    return f"; warning: skipped {path}: unexpected shape ({type(error).__name__}: {error})"
+
+
+def _text(value: object, field_name: str) -> str:
+    """The text of a manifest field, "" when it is not set; a value of another type is a shape error."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} is {type(value).__name__}, not text")
+    return value
 
 
 def _walk_dirs(root: Path) -> list[Path]:
@@ -165,7 +186,7 @@ def _extract_env_deps(
     seen: set[str] = set()
 
     for env in env_list:
-        name = env.get("name", "")
+        name = _text(env.get("name"), "the name of an env entry")
         if not name:
             continue
         result = _infer_dep_from_env(name)
@@ -213,6 +234,9 @@ def _parse_kustomization_resources(
     if data is None:
         return []
     resources = data.get("resources", []) or []
+    if not isinstance(resources, list):
+        warnings.append(_shape_warning(kustom_path, TypeError(f"resources is {type(resources).__name__}, not a list")))
+        return []
     return [str(r) for r in resources if r]
 
 
@@ -245,7 +269,7 @@ def _parse_service_port(service_path: Path, warnings: list[str]) -> tuple[int, s
     data = _safe_load_yaml(service_path, warnings)
     if data is None:
         return (0, "")
-    namespace: str = (data.get("metadata") or {}).get("namespace", "")
+    namespace: str = _text((data.get("metadata") or {}).get("namespace"), "metadata.namespace")
     ports: list[dict] = ((data.get("spec") or {}).get("ports") or [])
     port: int = 0
     if ports:
@@ -289,58 +313,77 @@ def parse_kustomize(root: Path) -> TopologyResult:
                 workload_data.append((kustom_path, manifest, data))
 
     # Collect known names for env heuristic resolution
-    known_names: set[str] = set()
-    for _, _, data in workload_data:
-        name = (data.get("metadata") or {}).get("name", "")
+    named: list[tuple[Path, dict, str]] = []
+    for _, manifest, data in workload_data:
+        try:
+            name = _text((data.get("metadata") or {}).get("name"), "metadata.name")
+        except _SHAPE_ERRORS as error:
+            result.warnings.append(_shape_warning(manifest, error))
+            continue
         if name:
-            known_names.add(name)
-    known_names_frozen = frozenset(known_names)
+            named.append((manifest, data, name))
+    known_names_frozen = frozenset(name for _, _, name in named)
 
-    # Second pass: emit nodes and edges
-    for kustom_path, manifest, data in workload_data:
-        kustom_dir = kustom_path.parent
-        k8s_kind = data.get("kind", "Deployment").lower()
-        metadata = data.get("metadata", {}) or {}
-        name: str = metadata.get("name", "")
-        if not name:
+    # Second pass: emit nodes and edges; a manifest of another shape gives a warning and no fact
+    for manifest, data, name in named:
+        try:
+            facts = _workload_facts(root, manifest, data, name, known_names_frozen, result.warnings)
+        except _SHAPE_ERRORS as error:
+            result.warnings.append(_shape_warning(manifest, error))
             continue
+        if facts is not None:
+            result.nodes.append(facts[0])
+            result.edges.extend(facts[1])
 
-        labels = metadata.get("labels", {}) or {}
-        component: str = labels.get("app.kubernetes.io/component", "")
+    return result
 
-        spec = data.get("spec", {}) or {}
-        template = spec.get("template", {}) or {}
-        pod_spec = template.get("spec", {}) or {}
-        containers: list[dict] = pod_spec.get("containers", []) or []
-        if not containers:
-            continue
 
-        first_container = containers[0]
-        image: str = first_container.get("image", "")
-        ports: list[dict] = first_container.get("ports", []) or []
-        port: int = int(ports[0].get("containerPort", 0)) if ports else 0
+def _workload_facts(
+    root: Path,
+    manifest: Path,
+    data: dict,
+    name: str,
+    known_names: frozenset[str],
+    warnings: list[str],
+) -> Optional[tuple[InfraNode, list[InfraEdge]]]:
+    """The node and the edges of one Deployment or StatefulSet; None when it has no container."""
+    k8s_kind = "statefulset" if data.get("kind") == "StatefulSet" else "deployment"
+    metadata = data.get("metadata", {}) or {}
+    labels = metadata.get("labels", {}) or {}
+    component = _text(labels.get("app.kubernetes.io/component"), "the component label")
 
-        node_id = _infra_id(name)
-        result.nodes.append(
-            InfraNode(
-                id=node_id,
-                kind=k8s_kind,
-                image=image,
-                port=port,
-                component=component,
-                source_file=str(manifest.relative_to(root) if manifest.is_relative_to(root) else manifest),
-            )
-        )
+    spec = data.get("spec", {}) or {}
+    template = spec.get("template", {}) or {}
+    pod_spec = template.get("spec", {}) or {}
+    containers: list[dict] = pod_spec.get("containers", []) or []
+    if not containers:
+        return None
 
-        # Service manifest for k8s-service fact
-        # Determine the resource dir from the manifest's parent
-        resource_dir = manifest.parent
-        svc_manifest = _find_service_manifest(resource_dir)
-        if svc_manifest:
-            svc_port, namespace = _parse_service_port(svc_manifest, result.warnings)
-            if svc_port == 0:
-                svc_port = port
-            result.edges.append(
+    first_container = containers[0]
+    image = _text(first_container.get("image"), "the image of the first container")
+    ports: list[dict] = first_container.get("ports", []) or []
+    port: int = int(ports[0].get("containerPort", 0)) if ports else 0
+
+    node_id = _infra_id(name)
+    node = InfraNode(
+        id=node_id,
+        kind=k8s_kind,
+        image=image,
+        port=port,
+        component=component,
+        source_file=str(manifest.relative_to(root) if manifest.is_relative_to(root) else manifest),
+    )
+    edges: list[InfraEdge] = []
+
+    # Service manifest for k8s-service fact, in the resource dir of the workload
+    svc_manifest = _find_service_manifest(manifest.parent)
+    if svc_manifest:
+        try:
+            _svc_port, namespace = _parse_service_port(svc_manifest, warnings)
+        except _SHAPE_ERRORS as error:
+            warnings.append(_shape_warning(svc_manifest, error))
+        else:
+            edges.append(
                 InfraEdge(
                     source=node_id,
                     target=name,
@@ -351,26 +394,24 @@ def parse_kustomize(root: Path) -> TopologyResult:
                 )
             )
 
-        # Env-var dependency edges
-        env_list = _extract_container_env(first_container)
-        dep_edges = _extract_env_deps(env_list, node_id, known_names_frozen)
-        result.edges.extend(dep_edges)
+    # Env-var dependency edges
+    edges.extend(_extract_env_deps(_extract_container_env(first_container), node_id, known_names))
 
-        # infra-maps cross-layer edge (image name -> source code node)
-        if image:
-            image_base = image.split(":")[0].split("/")[-1]
-            if image_base:
-                result.edges.append(
-                    InfraEdge(
-                        source=node_id,
-                        target=image_base,
-                        edge_type="infra-maps",
-                        via="image-name",
-                        transport="",
-                    )
+    # infra-maps cross-layer edge (image name -> source code node)
+    if image:
+        image_base = image.split(":")[0].split("/")[-1]
+        if image_base:
+            edges.append(
+                InfraEdge(
+                    source=node_id,
+                    target=image_base,
+                    edge_type="infra-maps",
+                    via="image-name",
+                    transport="",
                 )
+            )
 
-    return result
+    return node, edges
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +436,7 @@ def _extract_helm_image(values: dict) -> str:
     """Extract image string from values.yaml using common conventions."""
     image_section = values.get("image", {}) or {}
     if isinstance(image_section, dict):
-        repo = image_section.get("repository", "")
+        repo = _text(image_section.get("repository"), "image.repository")
         tag = image_section.get("tag", "")
         if repo:
             return f"{repo}:{tag}" if tag else repo
@@ -437,77 +478,92 @@ def parse_helm(root: Path) -> TopologyResult:
         return result
 
     # Collect chart names for cross-reference resolution
-    chart_names: dict[str, Path] = {}
-    chart_data_map: dict[Path, dict] = {}
+    chart_data_map: dict[Path, tuple[str, dict]] = {}
     for chart_path in chart_files:
         data = _parse_chart_yaml(chart_path, result.warnings)
         if data is None:
             continue
-        chart_name: str = data.get("name", "")
-        if chart_name:
-            chart_names[chart_name] = chart_path
-            chart_data_map[chart_path] = data
-
-    known_chart_names = frozenset(chart_names.keys())
-
-    for chart_path, data in chart_data_map.items():
-        chart_dir = chart_path.parent
-        chart_name = data.get("name", "")
-        if not chart_name:
+        try:
+            chart_name = _text(data.get("name"), "name")
+        except _SHAPE_ERRORS as error:
+            result.warnings.append(_shape_warning(chart_path, error))
             continue
+        if chart_name:
+            chart_data_map[chart_path] = (chart_name, data)
 
-        values = _parse_values_yaml(chart_dir / "values.yaml", result.warnings)
-        image = _extract_helm_image(values)
-        port = _extract_helm_port(values)
+    known_chart_names = frozenset(chart_name for chart_name, _ in chart_data_map.values())
 
-        node_id = _infra_id(chart_name)
-        result.nodes.append(
-            InfraNode(
-                id=node_id,
-                kind="helm-chart",
-                image=image,
-                port=port,
-                component="",
-                source_file=str(chart_path.relative_to(root) if chart_path.is_relative_to(root) else chart_path),
+    # A chart of another shape gives a warning and no fact
+    for chart_path, (chart_name, data) in chart_data_map.items():
+        try:
+            node, edges = _chart_facts(root, chart_path, data, chart_name, known_chart_names, result.warnings)
+        except _SHAPE_ERRORS as error:
+            result.warnings.append(_shape_warning(chart_path, error))
+            continue
+        result.nodes.append(node)
+        result.edges.extend(edges)
+
+    return result
+
+
+def _chart_facts(
+    root: Path,
+    chart_path: Path,
+    data: dict,
+    chart_name: str,
+    known_chart_names: frozenset[str],
+    warnings: list[str],
+) -> tuple[InfraNode, list[InfraEdge]]:
+    """The node and the edges of one Helm chart, read from its Chart.yaml and values.yaml."""
+    values = _parse_values_yaml(chart_path.parent / "values.yaml", warnings)
+    image = _extract_helm_image(values)
+    port = _extract_helm_port(values)
+
+    node_id = _infra_id(chart_name)
+    node = InfraNode(
+        id=node_id,
+        kind="helm-chart",
+        image=image,
+        port=port,
+        component="",
+        source_file=str(chart_path.relative_to(root) if chart_path.is_relative_to(root) else chart_path),
+    )
+    edges: list[InfraEdge] = []
+
+    # Chart dependency edges
+    dependencies: list[dict] = data.get("dependencies", []) or []
+    for dep in dependencies:
+        dep_name = _text(dep.get("name"), "the name of a dependency")
+        if not dep_name:
+            continue
+        edges.append(
+            InfraEdge(
+                source=node_id,
+                target=_infra_id(dep_name),
+                edge_type="helm-depends",
+                via="chart-dependency",
+                transport="",
             )
         )
 
-        # Chart dependency edges
-        dependencies: list[dict] = data.get("dependencies", []) or []
-        for dep in dependencies:
-            dep_name: str = dep.get("name", "")
-            if not dep_name:
-                continue
-            target_id = _infra_id(dep_name)
-            result.edges.append(
+    # Env-var dependency edges from values
+    edges.extend(_extract_helm_env_deps(values, node_id, known_chart_names))
+
+    # infra-maps cross-layer edge
+    if image:
+        image_base = image.split(":")[0].split("/")[-1]
+        if image_base:
+            edges.append(
                 InfraEdge(
                     source=node_id,
-                    target=target_id,
-                    edge_type="helm-depends",
-                    via="chart-dependency",
+                    target=image_base,
+                    edge_type="infra-maps",
+                    via="image-name",
                     transport="",
                 )
             )
 
-        # Env-var dependency edges from values
-        env_edges = _extract_helm_env_deps(values, node_id, known_chart_names)
-        result.edges.extend(env_edges)
-
-        # infra-maps cross-layer edge
-        if image:
-            image_base = image.split(":")[0].split("/")[-1]
-            if image_base:
-                result.edges.append(
-                    InfraEdge(
-                        source=node_id,
-                        target=image_base,
-                        edge_type="infra-maps",
-                        via="image-name",
-                        transport="",
-                    )
-                )
-
-    return result
+    return node, edges
 
 
 # ---------------------------------------------------------------------------
@@ -646,15 +702,31 @@ def parse_terraform(root: Path) -> TopologyResult:
 # ---------------------------------------------------------------------------
 
 
+# What ends a line for a reader of a graph file or cannot be shown: the C0 and C1 control characters, DEL
+# and the Unicode line and paragraph separators (the set scripts/build_code_graph.py escapes).
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+_CONTROL_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def _escape_control(text: str) -> str:
+    """text with each control character written as an escape (\\n, \\r, \\t, \\xNN, \\uNNNN): a fact stays
+    on its line whatever a manifest holds."""
+    return _CONTROL.sub(
+        lambda match: _CONTROL_ESCAPES.get(match.group())
+        or (f"\\x{ord(match.group()):02x}" if ord(match.group()) < 256 else f"\\u{ord(match.group()):04x}"),
+        text,
+    )
+
+
 def _quote(s: str) -> str:
-    """Wrap s in double quotes, escaping inner quotes and backslashes."""
-    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+    """Wrap s in double quotes, escaping inner quotes, backslashes and control characters."""
+    escaped = _escape_control(s.replace("\\", "\\\\").replace('"', '\\"'))
     return f'"{escaped}"'
 
 
 def _needs_quoting(s: str) -> bool:
-    """Return True if s contains whitespace or sexp-special characters."""
-    return bool(re.search(r'[\s"()\\]', s))
+    """Return True if s contains whitespace, a control character or sexp-special characters, or reads as a keyword."""
+    return bool(re.search(r'[\s"();\\]', s)) or _CONTROL.search(s) is not None or s.startswith(":")
 
 
 def _atom(s: str) -> str:
@@ -677,8 +749,8 @@ def render_sexp(nodes: list[InfraNode], edges: list[InfraEdge]) -> list[str]:
             unique_nodes.append(node)
 
     for node in sorted(unique_nodes, key=lambda n: n.id):
-        parts: list[str] = [f"(infra-node {node.id}"]
-        parts.append(f":kind {node.kind}")
+        parts: list[str] = [f"(infra-node {_atom(node.id)}"]
+        parts.append(f":kind {_atom(node.kind)}")
         if node.image:
             parts.append(f":image {_atom(node.image)}")
         if node.port:
@@ -703,29 +775,29 @@ def render_sexp(nodes: list[InfraNode], edges: list[InfraEdge]) -> list[str]:
         if edge.edge_type == "k8s-depends":
             transport_str = f" :transport {edge.transport}" if edge.transport else ""
             lines.append(
-                f"({edge.edge_type} {edge.source} {edge.target}"
+                f"({edge.edge_type} {_atom(edge.source)} {_atom(edge.target)}"
                 f" :via {edge.via}{transport_str})"
             )
         elif edge.edge_type == "k8s-service":
             ns_str = f" :namespace {_atom(edge.extra)}" if edge.extra else ""
             # target holds the dns service name for k8s-service facts
             lines.append(
-                f"(k8s-service {edge.source} {_atom(edge.target)}{ns_str})"
+                f"(k8s-service {_atom(edge.source)} {_atom(edge.target)}{ns_str})"
             )
         elif edge.edge_type == "helm-depends":
             lines.append(
-                f"(helm-depends {edge.source} {edge.target} :via {edge.via})"
+                f"(helm-depends {_atom(edge.source)} {_atom(edge.target)} :via {edge.via})"
             )
         elif edge.edge_type == "tf-depends":
             lines.append(
-                f"(tf-depends {edge.source} {edge.target} :via {edge.via})"
+                f"(tf-depends {_atom(edge.source)} {_atom(edge.target)} :via {edge.via})"
             )
         elif edge.edge_type == "infra-maps":
             lines.append(
-                f"(infra-maps {edge.source} {_atom(edge.target)} :via {edge.via})"
+                f"(infra-maps {_atom(edge.source)} {_atom(edge.target)} :via {edge.via})"
             )
 
-    return lines
+    return [_escape_control(line) for line in lines]
 
 
 # ---------------------------------------------------------------------------
