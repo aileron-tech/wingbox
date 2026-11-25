@@ -470,39 +470,65 @@ class SymbolIndex:
                 return ref
         return None
 
-    def _member_owner(self, module: str, name: str, member: str, depth: int = 0) -> Optional[Symbol]:
+    def _member_owner(self, module: str, name: str, member: str) -> Optional[Symbol]:
         """The class that defines member: name itself or, through its bases, an ancestor."""
-        if depth == 0:
-            key = (module, name, member)
-            if key in self._owners:
-                self._hit(("o",) + key)
-            else:
-                self._open()
-                self._owners[key] = self._find_member_owner(module, name, member, 0)
-                self._close(("o",) + key, True)
-            return self._owners[key]
-        return self._find_member_owner(module, name, member, depth)
+        key = (module, name, member)
+        if key in self._owners:
+            self._hit(("o",) + key)
+        else:
+            self._open()
+            self._owners[key] = self._find_member_owner(module, name, member)
+            self._close(("o",) + key, True)
+        return self._owners[key]
 
-    def _find_member_owner(self, module: str, name: str, member: str, depth: int) -> Optional[Symbol]:
-        self._touch(("m", module))
-        entity = self._entities.get(module, {}).get(name)
-        if entity is None or depth > _MAX_DEPTH or entity["kind"] not in _MEMBER_KINDS:
-            return None
-        if member in entity.get("methods", []):
-            return Symbol(module, name)
-        separator = "::" if self._results[module].language == "rust" else "."
-        for base in entity.get("bases", []):
-            segments = [segment for segment in base.split(separator) if segment]
-            target = self._walk(module, segments) if segments else None
-            if isinstance(target, Symbol):
-                owner = self._member_owner(target.module, target.name, member, depth + 1)
-                if owner is not None:
-                    return owner
+    def _find_member_owner(self, module: str, name: str, member: str) -> Optional[Symbol]:
+        """Depth first through the bases in the order written, each class once: classes that name each
+        other as bases (a name resolved to the wrong class, a cycle through re-exports) end the search."""
+        seen: set[tuple[str, str]] = set()
+        todo = [(module, name)]
+        while todo:
+            current = todo.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            self._touch(("m", current[0]))
+            entity = self._entities.get(current[0], {}).get(current[1])
+            if entity is None or entity["kind"] not in _MEMBER_KINDS:
+                continue
+            if member in entity.get("methods", []):
+                return Symbol(*current)
+            bases: list[tuple[str, str]] = []
+            for base in entity.get("bases", []):
+                target = self._walk_written(current[0], base)
+                if isinstance(target, Symbol):
+                    bases.append((target.module, target.name))
+            todo.extend(reversed(bases))  # the first base is searched first, with all above it
         return None
 
-    def _walk(self, module: str, path: list[str]) -> Optional[Target]:
-        current = self._head(module, path[0])
-        for segment in path[1:]:
+    def _walk_written(self, module: str, written: str) -> Optional[Target]:
+        """What a dotted name written in module (a base class, the type of a variable) names."""
+        separator = "::" if self._results[module].language == "rust" else "."
+        segments = [segment for segment in written.split(separator) if segment]
+        return self._walk(module, segments) if segments else None
+
+    def _member_of(self, symbol: Symbol, member: str, follow_type: bool) -> Optional[Symbol]:
+        """The class that defines member for a chain that stands at symbol: a class, an enum or a trait,
+        or (follow_type) a module-level variable whose entity states the class it holds."""
+        self._touch(("m", symbol.module))
+        entity = self._entities.get(symbol.module, {}).get(symbol.name)
+        if entity is None:
+            return None
+        if entity["kind"] not in _MEMBER_KINDS:
+            held = self._walk_written(symbol.module, entity["type"]) if follow_type and entity.get("type") else None
+            if not isinstance(held, Symbol):
+                return None
+            symbol = held
+        return self._member_owner(symbol.module, symbol.name, member)
+
+    def _walk(self, module: str, path: list[str], start: Optional[ModuleRef] = None) -> Optional[Target]:
+        """What path names in the scope of module, or inside the module start when one is given."""
+        current: Optional[Target] = start if start is not None else self._head(module, path[0])
+        for segment in path if start is not None else path[1:]:
             if not isinstance(current, ModuleRef):
                 return current if isinstance(current, Symbol) else None
             current = self._top_member(current, segment)
@@ -513,10 +539,14 @@ class SymbolIndex:
         path, at, member = use["path"], use["at"], use.get("member", "")
         if not path or not member or len(at) != len(path) + 1:
             return None
-        target = self._walk(module, path)
+        result = self._results[module]
+        written = use.get("module")
+        target = self._walk(module, path, ModuleRef(written, result.path, result.language) if written else None)
         if not isinstance(target, Symbol):
             return None
-        owner = self._member_owner(target.module, target.name, member)
+        # Rust: the path may name a static or a constant the method is called on (GLOBAL.save()); in the
+        # other languages it is always a type, and a call on a name that holds an instance builds nothing.
+        owner = self._member_of(target, member, follow_type=result.language == "rust")
         if owner is None:
             return None
         line, column = at[-1]
@@ -524,13 +554,21 @@ class SymbolIndex:
 
     def resolve(self, module: str, use: UsePayload) -> Optional[ResolvedUse]:
         """The definition a use site names, with the position of the segment that names it."""
+        found = self.resolve_all(module, use)
+        return found[0] if found else None
+
+    def resolve_all(self, module: str, use: UsePayload) -> tuple[ResolvedUse, ...]:
+        """Every definition a use site names: the one resolve() answers and, when the path goes on for
+        one more segment from a class, an enum, a trait or a module-level variable whose class is in
+        sight, the member that segment names (Store.create(), Model::create(), db.query())."""
         if use.get("member"):
-            return self.resolve_member(module, use)
+            resolved = self.resolve_member(module, use)
+            return (resolved,) if resolved is not None else ()
         self._touch(("m", module))
         result = self._results[module]
         path, at = use["path"], use["at"]
         if not path or len(at) != len(path):
-            return None
+            return ()
         written = use.get("module")
         if written:
             current: Optional[Target] = ModuleRef(written, result.path, result.language)
@@ -542,12 +580,18 @@ class SymbolIndex:
         while isinstance(current, ModuleRef) and index + 1 < len(path):
             index += 1
             current = self._top_member(current, path[index])
-        if isinstance(current, Symbol) and index >= 0:
-            line, column = at[index]
-            # The kind belongs to the last segment: Foo in Foo::new() is a plain reference.
-            kind = use.get("kind", "") if index == len(path) - 1 else ""
-            return ResolvedUse(current.module, current.name, line, column, kind)
-        return None
+        if not isinstance(current, Symbol) or index < 0:
+            return ()
+        line, column = at[index]
+        # The kind belongs to the last segment: Foo in Foo::new() is a plain reference.
+        kind = use.get("kind", "") if index == len(path) - 1 else ""
+        found = [ResolvedUse(current.module, current.name, line, column, kind)]
+        if index == len(path) - 2:
+            owner = self._member_of(current, path[-1], follow_type=True)
+            if owner is not None:
+                line, column = at[-1]
+                found.append(ResolvedUse(owner.module, f"{owner.name}.{path[-1]}", line, column, use.get("kind", "")))
+        return tuple(found)
 
 
 def supports_symbols(language: str) -> bool:

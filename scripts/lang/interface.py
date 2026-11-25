@@ -16,6 +16,9 @@ class EntityPayload(EntityPayloadRequired, total=False):
     bases: list[str]
     private: bool  # Rust: an item without `pub`, which no re-export of another module carries
     visible_in: str  # Rust: "super" for `pub(super)`, the path of `pub(in path)`: where a re-export carries the item
+    # A module-level variable: the class it is built from or annotated with, as written (Store, models.Store,
+    # model::Store). A method called on the variable from any file is then a use of that class's method.
+    type: str
 
 
 class ImportedNamePayloadRequired(TypedDict):
@@ -57,8 +60,9 @@ class UsePayload(UsePayloadRequired, total=False):
     segment, both 1-based. module: when set, path starts inside that module as
     written in an import statement (from m import S) instead of in the file's scope.
     member: a method call; path is then the receiver's type as written in sight
-    (an annotation, a constructor, the class of self or this), empty when no type
-    is in sight, and the last entry of at is the method name's position.
+    (an annotation, a constructor, the class of self or this; in Rust also a
+    static or constant the method is called on), empty when no type is in sight,
+    and the last entry of at is the method name's position.
     kind: how the last segment is used: import, re-export, call, type, extends
     (extends or implements); absent for any other reference.
     """
@@ -117,6 +121,7 @@ class Entity:
     bases: list[str]
     private: bool = False
     visible_in: str = ""
+    value_type: str = ""
 
     def to_dict(self) -> EntityPayload:
         result: EntityPayload = {
@@ -134,6 +139,8 @@ class Entity:
             result["private"] = True
         if self.visible_in:
             result["visible_in"] = self.visible_in
+        if self.value_type:
+            result["type"] = self.value_type
         return result
 
 
