@@ -81,7 +81,7 @@ def _load_dart_packages(
         try:
             with open(pubspec_path, "r", encoding="utf-8-sig") as pubspec:
                 content = pubspec.read()
-        except OSError as error:
+        except (OSError, ValueError) as error:   # ValueError: a byte that is not UTF-8
             print(
                 f"[code-graph] Cannot read Dart package identity from {pubspec_path}: {error}",
                 file=sys.stderr,

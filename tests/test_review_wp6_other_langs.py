@@ -369,5 +369,56 @@ class JavaStaticUseTest(unittest.TestCase):
         self.assertEqual(set(), built.dependencies("four/src/E.java"))
 
 
+_PHP_APP = {
+    "composer.json": '{"autoload": {"psr-4": {"App\\\\": "app/"}}}\n',
+    "app/Models/Post.php": "<?php\n\nnamespace App\\Models;\n\nclass Post {}\n",
+    "app/Http/PostController.php": (
+        "<?php\n\nnamespace App\\Http;\n\nuse App\\Models\\Post;\n\n"
+        "class PostController\n{\n    public function show(): Post { return new Post(); }\n}\n"
+    ),
+}
+_DEEP_JSON = "[" * 100_000
+
+
+class ManifestReadingTest(unittest.TestCase):
+    def test_a_composer_file_that_is_not_utf8_is_reported_and_the_build_goes_on(self) -> None:
+        """/* REQ-PHP-9630: A composer.json with a byte that is not UTF-8 gives a warning; the other manifests are read and the graph is built. */"""
+        built = _Built({**_PHP_APP, "packages/legacy/composer.json": b'{"name": "acme/caf\xe9"}\n'})
+        self.assertEqual({"app/Http/PostController.php"}, built.dependents("app/Models/Post.php"))
+        self.assertIn("Cannot read composer autoload", built.log.getvalue())
+        self.assertIn(os.path.join("packages", "legacy", "composer.json"), built.log.getvalue())
+
+    def test_a_composer_file_nested_too_deep_is_reported_and_the_build_goes_on(self) -> None:
+        """/* REQ-PHP-9631: A composer.json nested deeper than the JSON reader goes gives a warning, not an aborted build. */"""
+        built = _Built({**_PHP_APP, "packages/deep/composer.json": _DEEP_JSON})
+        self.assertEqual({"app/Http/PostController.php"}, built.dependents("app/Models/Post.php"))
+        self.assertIn(os.path.join("packages", "deep", "composer.json"), built.log.getvalue())
+
+    def test_a_pubspec_that_is_not_utf8_is_reported_and_the_build_goes_on(self) -> None:
+        """/* REQ-DART-9632: A pubspec.yaml with a byte that is not UTF-8 gives a warning; the other packages are read and the graph is built. */"""
+        built = _Built({
+            "pubspec.yaml": "name: app\n",
+            "lib/main.dart": "import 'package:app/model.dart';\n\nvoid main() { Model(); }\n",
+            "lib/model.dart": "class Model {}\n",
+            "legacy/pubspec.yaml": b"name: caf\xe9\n",
+            "legacy/lib/old.dart": "class Old {}\n",
+        })
+        self.assertEqual({"lib/main.dart"}, built.dependents("lib/model.dart"))
+        self.assertIn("Cannot read Dart package identity", built.log.getvalue())
+        self.assertIn(os.path.join("legacy", "pubspec.yaml"), built.log.getvalue())
+
+    def test_a_compilation_database_nested_too_deep_is_reported_and_the_build_goes_on(self) -> None:
+        """/* REQ-CPP-9633: A compile_commands.json nested deeper than the JSON reader goes, or not UTF-8, gives a warning, not an aborted build. */"""
+        for database in (_DEEP_JSON, b'[{"file": "caf\xe9.cpp"}]'):
+            with self.subTest(database=database[:12]):
+                built = _Built({
+                    "compile_commands.json": database,
+                    "src/core.h": "int core();\n",
+                    "src/core.cpp": '#include "core.h"\nint core() { return 1; }\n',
+                })
+                self.assertEqual({"src/core.cpp"}, built.dependents("src/core.h"))
+                self.assertIn("Cannot read the compilation database", built.log.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

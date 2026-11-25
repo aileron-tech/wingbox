@@ -146,8 +146,12 @@ def _load_databases(root: str) -> dict[str, _Folders]:
         try:
             with open(database, "r", encoding="utf-8-sig") as handle:
                 entries = json.load(handle)
-        except (OSError, ValueError) as error:
-            print(f"[code-graph] Cannot read the compilation database {database}: {error}", file=sys.stderr)
+        except (OSError, ValueError, RecursionError) as error:
+            # ValueError: text that is not JSON or not UTF-8; RecursionError: nested deeper than the reader goes.
+            print(
+                f"[code-graph] Cannot read the compilation database {database}: {type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
             continue
         if not isinstance(entries, list):
             continue
