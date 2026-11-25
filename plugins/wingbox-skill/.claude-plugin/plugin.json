@@ -1,6 +1,6 @@
 {
   "name": "wingbox",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "description": "A map of your codebase for coding agents: what a change touches, where a symbol is used.",
   "author": {
     "name": "Aileron Technologies",
