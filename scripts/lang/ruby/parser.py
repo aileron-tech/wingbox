@@ -84,14 +84,15 @@ def _extract_entities(root: Node) -> tuple[list[Entity], list[str]]:
     entities: list[Entity] = []
     exported_names: list[str] = []
 
-    def visit(node: Node, namespace: str) -> None:
+    def visit(node: Node, namespace: str) -> list[tuple[Node, str]]:
+        """Read one node; the answer is the nodes to read next, each with its namespace."""
         if node.type in _DECLARATION_NODES:
             declaration_name = _qualified_name(
                 node_text(node.child_by_field_name("name")),
                 namespace,
             )
             if not declaration_name:
-                return
+                return []
             body = node.child_by_field_name("body")
             method_entities = _direct_methods(body, declaration_name)
             base = ""
@@ -118,15 +119,13 @@ def _extract_entities(root: Node) -> tuple[list[Entity], list[str]]:
             ))
             entities.extend(method_entities)
             exported_names.append(declaration_name)
-            if body is not None:
-                for child in body.named_children:
-                    if child.type not in (
-                        "method",
-                        "singleton_method",
-                        "singleton_class",
-                    ):
-                        visit(child, declaration_name)
-            return
+            if body is None:
+                return []
+            return [
+                (child, declaration_name)
+                for child in body.named_children
+                if child.type not in ("method", "singleton_method", "singleton_class")
+            ]
 
         assigned_name = _constant_assignment_name(node, namespace)
         if assigned_name:
@@ -140,9 +139,7 @@ def _extract_entities(root: Node) -> tuple[list[Entity], list[str]]:
             ))
             exported_names.append(assigned_name)
             right = node.child_by_field_name("right")
-            if right is not None:
-                visit(right, namespace)
-            return
+            return [(right, namespace)] if right is not None else []
 
         if node.type in ("method", "singleton_method") and not namespace:
             method_name = node_text(node.child_by_field_name("name"))
@@ -155,12 +152,15 @@ def _extract_entities(root: Node) -> tuple[list[Entity], list[str]]:
                     decorators=[],
                     bases=[],
                 ))
-            return
+            return []
 
-        for child in node.named_children:
-            visit(child, namespace)
+        return [(child, namespace) for child in node.named_children]
 
-    visit(root, "")
+    # In document order, with a stack in place of recursion: an expression of a thousand operands is a
+    # thousand levels deep.
+    pending: list[tuple[Node, str]] = [(root, "")]
+    while pending:
+        pending.extend(reversed(visit(*pending.pop())))
     return entities, unique_strings(iter(exported_names))
 
 
@@ -287,38 +287,36 @@ def _walk_dependencies(
         if entity is not None and value not in entity.decorators:
             entity.decorators.append(value)
 
-    def visit(node: Node, owner: str, declaration_scope: bool) -> None:
+    def visit(node: Node, owner: str, declaration_scope: bool) -> list[tuple[Node, str, bool]]:
+        """Read one node; the answer is the nodes to read next, each with its owner and scope."""
         if node.type in _DECLARATION_NODES:
             declaration_name = _qualified_name(
                 node_text(node.child_by_field_name("name")),
                 owner,
             )
+            following: list[tuple[Node, str, bool]] = []
             superclass = node.child_by_field_name("superclass")
             if superclass is not None:
-                visit(superclass, declaration_name, False)
+                following.append((superclass, declaration_name, False))
             body = node.child_by_field_name("body")
             if body is not None:
-                visit(body, declaration_name, True)
-            return
+                following.append((body, declaration_name, True))
+            return following
 
         if node.type == "assignment":
             right = node.child_by_field_name("right")
-            if right is not None:
-                visit(right, owner, False)
-            return
+            return [(right, owner, False)] if right is not None else []
 
         if node.type in ("method", "singleton_method", "singleton_class"):
-            for child in node.named_children:
-                visit(child, owner, False)
-            return
+            return [(child, owner, False) for child in node.named_children]
 
         if node.type == "scope_resolution":
             add_constant(node_text(node), "spec" if is_spec else "")
-            return
+            return []
 
         if node.type == "constant":
             add_constant(node_text(node), "spec" if is_spec else "")
-            return
+            return []
 
         if node.type == "call":
             method = _call_method(node)
@@ -400,14 +398,14 @@ def _walk_dependencies(
                     receiver_constant,
                 )
 
-            for child in node.named_children:
-                visit(child, owner, False)
-            return
+            return [(child, owner, False) for child in node.named_children]
 
-        for child in node.named_children:
-            visit(child, owner, declaration_scope)
+        return [(child, owner, declaration_scope) for child in node.named_children]
 
-    visit(root, "", False)
+    # In document order, with a stack in place of recursion (see _extract_entities).
+    pending: list[tuple[Node, str, bool]] = [(root, "", False)]
+    while pending:
+        pending.extend(reversed(visit(*pending.pop())))
     return (
         unique_strings(iter(imports)),
         imported_names,

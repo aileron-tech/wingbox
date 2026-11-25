@@ -695,6 +695,7 @@ class CodeGraph:
         # modules its command names), as the CMake files state them.
         self.build_targets: dict[str, tuple[str, ...]] = {}
         self.build_tests: dict[str, tuple[str, tuple[str, ...]]] = {}
+        self.unread_targets: set[str] = set()   # targets marked `:sources unread`: their source list was not all read
         self._name_positions: dict[str, list[str]] = {}   # name -> its use lines read before the use file has positions
         self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
         self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
@@ -753,6 +754,7 @@ class CodeGraph:
         self.generation_unresolved = []
         self.build_targets = {}
         self.build_tests = {}
+        self.unread_targets = set()
         self.arch_denies = {}
         self.candidate_rules = set()
         self.entry_roots = {}
@@ -957,10 +959,12 @@ class CodeGraph:
                 self.generated_from_files.setdefault(tokens[2], []).append((_resolve(tokens[1]), flags))
             elif kind in ("target", "ctest") and len(tokens) >= 2:
                 values = _keywords(tokens[2:])
-                taken = {":runs"} | {token for key in ("kind", "in", "target") if key in values for token in (f":{key}", values[key])}
+                taken = {":runs"} | {token for key in ("kind", "in", "target", "sources") if key in values for token in (f":{key}", values[key])}
                 modules = tuple(_resolve(token) for token in tokens[2:] if token not in taken and token.strip('"') not in taken)
                 if kind == "target":
                     self.build_targets[tokens[1]] = modules
+                    if values.get("sources") == "unread":
+                        self.unread_targets.add(tokens[1])
                 else:
                     self.build_tests[tokens[1]] = (values.get("target", ""), modules)
             elif kind == "generation-unresolved" and len(tokens) >= 2:
@@ -2002,7 +2006,8 @@ def _affected_build(g: CodeGraph, modules: set[str]) -> Optional[impact_forms.Af
     targets = sorted(name for name, sources in g.build_targets.items() if modules.intersection(sources))
     reached = set(targets)
     tests = sorted(name for name, (target, runs) in g.build_tests.items() if target in reached or modules.intersection(runs))
-    return impact_forms.Affected(tuple(targets), tuple(tests))
+    # The targets whose source list was not all read may hold the file too: they are named, never left out silently.
+    return impact_forms.Affected(tuple(targets), tuple(tests), tuple(sorted(g.unread_targets - reached)))
 
 
 _GENERATION_RELATIONS = frozenset({"generated", "runs", "reads"})

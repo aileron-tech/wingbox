@@ -28,9 +28,10 @@ def _read_composer(path: str) -> dict[str, object] | None:
         # utf-8-sig also reads plain UTF-8 and drops a byte order mark.
         with open(path, "r", encoding="utf-8-sig") as composer_file:
             data = json.loads(composer_file.read())
-    except (OSError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, RecursionError) as error:
+        # ValueError: text that is not JSON or not UTF-8; RecursionError: nested deeper than the reader goes.
         print(
-            f"[code-graph] Cannot read composer autoload from {path}: {error}",
+            f"[code-graph] Cannot read composer autoload from {path}: {type(error).__name__}: {error}",
             file=sys.stderr,
         )
         return None

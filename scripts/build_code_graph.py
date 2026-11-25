@@ -2248,7 +2248,8 @@ def _generation_edges(context: GraphContext, results: Sequence[FileResult]) -> l
     # graph (a file of a language without a parser) is left out of the list of a target.
     for target in build_targets:
         edges.append({"source": anchor, "target": anchor, "type": "BUILD_TARGET", "name": target.name, "kind": target.kind,
-                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of]})
+                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of],
+                      "unread": target.unread})
     for test in build_tests:
         edges.append({"source": anchor, "target": anchor, "type": "BUILD_TEST", "name": test.name, "runs_target": test.target,
                       "stated": test.stated, "modules": [module_of[path] for path in test.runs if path in module_of]})
@@ -3510,6 +3511,12 @@ def _sexp_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _fact_atom(name: str) -> str:
+    """A name as one atom of a fact: quoted when it holds a bracket, a space or a quote, which would end
+    or split a bare atom for the reader; any other name as it is."""
+    return f'"{_sexp_escape(name)}"' if any(ch in name for ch in ' "()') else name
+
+
 def _entity_id(module_path: str, entity_name: str) -> str:
     """Generate a short unique ID for an entity based on path + name SHA."""
     raw = f"{module_path}::{entity_name}"
@@ -3778,16 +3785,18 @@ def render_sexp(
             deco = ent.get("decorators", [])
             methods = ent.get("methods", [])
 
+            # A name with a bracket in it (the C++ call operator `operator()`) is written quoted.
+            written = _fact_atom(name)
             if not bases and not deco and not methods:
-                lines.append(f"({kind_tag} {sid} {name} {line_num} :eid {eid})")
+                lines.append(f"({kind_tag} {sid} {written} {line_num} :eid {eid})")
             else:
-                parts = [f"({kind_tag} {sid} {name} {line_num} :eid {eid}"]
+                parts = [f"({kind_tag} {sid} {written} {line_num} :eid {eid}"]
                 if bases:
                     parts.append(f"(:bases {' '.join(bases)})")
                 if deco:
                     parts.append(f"(:deco {' '.join(deco)})")
                 if methods:
-                    parts.append(f"(:methods {' '.join(methods)})")
+                    parts.append(f"(:methods {' '.join(_fact_atom(method) for method in methods)})")
                 lines.append(" ".join(parts) + ")")
     lines.append("")
 
@@ -3854,12 +3863,16 @@ def render_sexp(
         for fact in sorted(build_facts, key=lambda e: (e["type"], e["name"])):
             modules = "".join(f" {_pid(module)}" for module in sorted(fact["modules"]))
             stated = f' :in "{_sexp_escape(fact["stated"])}"'
+            # A test may be named with a space (`add_test(NAME "quoted name" ...)`): such a name is quoted.
+            name = _fact_atom(fact["name"])
             if fact["type"] == "BUILD_TARGET":
-                lines.append(f"(target {fact['name']} :kind {fact['kind']}{stated}{modules})")
+                # `:sources unread`: an argument of the source list was not read (generation.BuildTarget.unread).
+                unread = " :sources unread" if fact.get("unread") else ""
+                lines.append(f"(target {name} :kind {fact['kind']}{unread}{stated}{modules})")
             elif fact["runs_target"]:
-                lines.append(f"(ctest {fact['name']} :target {fact['runs_target']}{stated}{modules})")
+                lines.append(f"(ctest {name} :target {fact['runs_target']}{stated}{modules})")
             else:
-                lines.append(f"(ctest {fact['name']} :runs{stated}{modules})")
+                lines.append(f"(ctest {name} :runs{stated}{modules})")
 
     if generation_facts:
         lines.append("")

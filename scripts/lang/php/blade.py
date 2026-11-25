@@ -43,7 +43,15 @@ _TOKEN = re.compile(
     r"|(?P<livewire_call>@livewire\b)"
     r"|(?P<livewire_tag><livewire:)"
     r"|(?P<component_tag><x-)"
+    r"|(?P<class_directive>@(?:inject|use)\b)"
+    # A qualified class name before `::` (`\App\Models\Post::count()`). It starts where no name is running
+    # (the look-behind), so a long run of name characters is read once, not once from each of its characters.
+    r"|(?P<class_use>(?<![\w\\$>])\\?(?:[A-Za-z_]\w*\\)+[A-Za-z_]\w*(?=::))"
 )
+# The class a directive names in a string: 'App\Models\Post', or with doubled backslashes in double quotes.
+_CLASS_LITERAL = re.compile(r"""(['"])\\{0,2}((?:[A-Za-z_]\w*\\{1,2})*[A-Za-z_]\w*)\1""")
+# @inject('name', 'Class') names the class second, @use('Class') first.
+_CLASS_DIRECTIVES = {"inject": 1, "use": 0}
 
 # Directive -> (relation, argument positions in preference order).  The view is
 # the first argument of @include/@extends/@component/@each/@includeFirst, but
@@ -223,6 +231,11 @@ def _scan_template(content: str) -> tuple[list[str], list[SourceRelationPayload]
             seen_relations.add(key)
             relations.append({"target": target, "relation": relation})
 
+    def record_import(target: str) -> None:
+        if target not in seen_imports:
+            seen_imports.add(target)
+            imports.append(target)
+
     position = 0
     length = len(content)
     while position < length:
@@ -266,6 +279,20 @@ def _scan_template(content: str) -> tuple[list[str], list[SourceRelationPayload]
             position = max(match.end(), call_end)
             continue
 
+        if match.group("class_directive") is not None:
+            arguments, call_end = _call_arguments(content, match.end())
+            index = _CLASS_DIRECTIVES[match.group("class_directive")[1:]]
+            literal = _CLASS_LITERAL.fullmatch(arguments[index].strip()) if index < len(arguments) else None
+            if literal is not None:
+                record_import("php-class:" + literal.group(2).replace("\\\\", "\\"))
+            position = max(match.end(), call_end)
+            continue
+
+        if match.group("class_use") is not None:
+            record_import("php-class:" + match.group("class_use").lstrip("\\"))
+            position = match.end()
+            continue
+
         if match.group("livewire_call") is not None:
             arguments, call_end = _call_arguments(content, match.end())
             if arguments:
@@ -297,6 +324,9 @@ def _scan_template(content: str) -> tuple[list[str], list[SourceRelationPayload]
             target = _component_target(name)
             if target:
                 record(target, "component")
+            if target and "::" not in name:
+                # The class of the component, when the application has one (the resolver looks).
+                record_import(f"php-component:{name}")
         position = match.end()
 
     return imports, relations

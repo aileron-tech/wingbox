@@ -38,8 +38,6 @@ _BLOCKS = frozenset({
     "preproc_if", "preproc_ifdef", "preproc_else", "preproc_elif", "preproc_elifdef", "ERROR",
 })
 _RECORDS = frozenset({"class_specifier", "struct_specifier", "union_specifier"})
-_TEMPLATE_ARGUMENTS = re.compile(r"<[^<>]*>")
-_PURE_VIRTUAL = re.compile(r"=\s*0\s*;?\s*$")
 # A function heading at the margin: `static void name(int a,\n    int b) {`.
 _HEADING = re.compile(
     r"^(?:[A-Za-z_][\w \t\*&:<>,]*?[ \t\*&])?(?P<name>[A-Za-z_~][\w:~]*)[ \t]*"
@@ -61,6 +59,27 @@ _FUNCTION_NAMES = frozenset({
 })
 
 
+# Comments, raw strings, strings and character literals: what may hold `/*` that opens no comment. A
+# comment or a raw string that nothing closes runs to the end of the text.
+_COMMENT_OR_LITERAL = re.compile(
+    r"//[^\n]*|/\*.*?(?P<closed>\*/|\Z)|R\"(?P<mark>[^()\\\s]{0,16})\(.*?(?:\)(?P=mark)\"|\Z)"
+    r"|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'",
+    re.S,
+)
+
+
+def _parsed_text(content: str) -> str:
+    """The text the grammar is given: the file up to a block comment that nothing closes. For a compiler
+    the rest of such a file is that comment; the grammar would read it again from every `/*` inside it,
+    which takes minutes for a file of 100 KB. Any other file is given whole."""
+    if content.rfind("/*") <= content.rfind("*/"):
+        return content   # the last comment that opens also closes
+    for token in _COMMENT_OR_LITERAL.finditer(content):
+        if token.group("closed") == "":
+            return content[:token.start()]
+    return content
+
+
 def _includes(root: Node) -> list[tuple[str, int]]:
     """(name as written, 1-based line) of every include, in the order of the file. A quoted name is
     given plain, an angle name in its brackets; an include whose name is a macro is left out."""
@@ -80,13 +99,29 @@ def _includes(root: Node) -> list[tuple[str, int]]:
 
 
 def _plain(text: str) -> str:
-    """A name as written, without spaces and template arguments."""
+    """A name as written, without spaces and template arguments: every `<...>` whose brackets pair up is
+    left out, a bracket without its pair stays. One pass, however deep the arguments nest."""
     text = "".join(text.split())
-    while True:
-        shorter = _TEMPLATE_ARGUMENTS.sub("", text)
-        if shorter == text:
-            return text
-        text = shorter
+    if "<" not in text:
+        return text
+    kept: list[str] = []
+    opened: list[int] = []   # for every `<` still open, the length of `kept` before it
+    for character in text:
+        if character == ">" and opened:
+            del kept[opened.pop():]
+            continue
+        if character == "<":
+            opened.append(len(kept))
+        kept.append(character)
+    return "".join(kept)
+
+
+def _is_pure_virtual(text: str) -> bool:
+    """True for a declaration that ends in `= 0`, with or without its semicolon."""
+    text = text.rstrip()
+    if text.endswith(";"):
+        text = text[:-1].rstrip()
+    return text.endswith("0") and text[:-1].rstrip().endswith("=")
 
 
 def _last_segment(text: str) -> str:
@@ -126,7 +161,9 @@ def _function_name(declarator: Node | None) -> str:
     return f"{segments[-2]}.{segments[-1]}" if len(segments) > 1 else segments[-1]
 
 
-_MOCK_METHOD = re.compile(r"^MOCK_(?:CONST_)?METHOD(\d*)\w*\s*\((.*)\)\s*;?\s*$", re.S)
+# No two unbounded runs stand side by side: the digits end where a letter starts, and the space before
+# the semicolon is not the space after it.
+_MOCK_METHOD = re.compile(r"^MOCK_(?:CONST_)?METHOD(\d*)(?:[A-Za-z_]\w*)?\s*\((.*)\)\s*(?:;\s*)?$", re.S)
 
 
 def _mock_method(text: str) -> str:
@@ -248,9 +285,12 @@ def _entity(name: str, kind: str, node: Node, methods: list[str] | None = None, 
 def _members(body: Node) -> list[Node]:
     """The member declarations of a class body, those inside template and conditional blocks included."""
     members: list[Node] = []
-    for child in body.named_children:
+    # A stack in place of recursion: a chain of a thousand `#elif` is a thousand blocks deep.
+    pending = list(reversed(body.named_children))
+    while pending:
+        child = pending.pop()
         if child.type in _BLOCKS:
-            members.extend(_members(child))
+            pending.extend(reversed(child.named_children))
         else:
             members.append(child)
     return members
@@ -312,7 +352,7 @@ class _Collector:
                 mocked = _mock_method(node_text(member))
                 declared = [mocked] if mocked else _declared_functions(member)
                 methods.extend(declared)
-                if declared and _PURE_VIRTUAL.search(node_text(member)):
+                if declared and _is_pure_virtual(node_text(member)):
                     abstract = True
                 type_node = member.child_by_field_name("type")
                 if type_node is not None:
@@ -456,17 +496,21 @@ class _Collector:
             self.entities.append(Entity(name=entity_name, kind="function", line=line, methods=[], decorators=[], bases=[]))
 
     def scope(self, node: Node) -> None:
-        """The declarations of a file, a namespace or a block."""
-        for child in node.named_children:
+        """The declarations of a file, a namespace or a block. The blocks inside (a namespace, a branch of
+        a conditional) are read in place from a stack of (parent, declaration), not by recursion: a chain
+        of a thousand `#elif` is a thousand blocks deep."""
+        pending = [(node, child) for child in reversed(node.named_children)]
+        while pending:
+            node, child = pending.pop()
             kind = child.type
             if kind == "namespace_definition":
                 body = child.child_by_field_name("body")
                 if body is not None:
-                    self.scope(body)
+                    pending.extend((body, inner) for inner in reversed(body.named_children))
             elif kind in _BLOCKS or kind == "labeled_statement":
                 # labeled_statement: `public:` with the declaration after it, in a class the grammar took
                 # for a function (macro_record).
-                self.scope(child)
+                pending.extend((child, inner) for inner in reversed(child.named_children))
             elif kind in _RECORDS or kind == "enum_specifier":
                 self.type_specifier(child)
             elif kind == "type_definition":
@@ -487,7 +531,7 @@ class _Collector:
                 if declarator is not None and declarator.type == "identifier" and node_text(declarator) == "namespace" and body is not None:
                     # `MACRO` on a line, then `namespace name {`: the grammar reads a function named
                     # `namespace`. Its body is the body of the namespace.
-                    self.scope(body)
+                    pending.extend((body, inner) for inner in reversed(body.named_children))
                     continue
                 name = _attributed_name(child) or _function_name(child.child_by_field_name("declarator"))
                 if name and name.upper() == name:
@@ -542,6 +586,7 @@ def parse_cpp(
     mtime: float,
     result_language: str = "cpp",
 ) -> FileResult:
+    content = _parsed_text(content)
     root = Parser(_CPP_LANGUAGE).parse(content.encode("utf-8")).root_node
     includes = _includes(root)
     import_lines: dict[str, list[int]] = {}
@@ -588,4 +633,4 @@ def parse_cpp(
 def cpp_use_positions(path: str, content: str) -> list[UsePayload]:
     """Every use site of a C or C++ file, for the positions `usages` and `entity --positions` list."""
     del path
-    return use_sites(Parser(_CPP_LANGUAGE).parse(content.encode("utf-8")).root_node)
+    return use_sites(Parser(_CPP_LANGUAGE).parse(_parsed_text(content).encode("utf-8")).root_node)

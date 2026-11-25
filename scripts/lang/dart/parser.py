@@ -106,9 +106,17 @@ def _directives(root) -> list[DartDirective]:
     directives: list[DartDirective] = []
     for child in root.named_children:
         if child.type == _PART_OF:
+            uris = _uri_texts(child)
+            if not uris:
+                # `part of app.main;`: the form that names the library; the resolver finds its file.
+                name = next(
+                    ("".join(node_text(item).split()) for item in child.named_children if item.type == "dotted_identifier_list"),
+                    "",
+                )
+                uris = [f"dart-library:{name}"] if name else []
             directives.extend(
                 DartDirective(uri, "part_of", line=child.start_point[0] + 1)
-                for uri in _uri_texts(child)
+                for uri in uris
             )
             continue
         if child.type == _PART:

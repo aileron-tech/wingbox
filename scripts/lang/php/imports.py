@@ -10,6 +10,16 @@ IDs for one repository:
                                     view namespaces
     php-livewire:counter            Livewire registrations, conventions, then
                                     a `livewire.<alias>` Blade view
+    php-function:format_money       the function of the namespace of the source
+                                    file, then the global one
+    php-const:\\App\\LIMIT          the constant a `use const` names in full
+    php-file:../Support/helpers.php a path from the folder of the source file
+                                    (`require __DIR__ . '/...'`)
+    php-component:alert             the class `View\\Components\\Alert` of the
+                                    application (`<x-alert>`)
+    php-controller:HomeController   a route action 'HomeController@index': the
+                                    class in full, else the one below
+                                    `Http\\Controllers` of the application
 
 Ambiguous lookups are settled only by Composer's PSR-4 autoload
 contract (the file Composer would load owns the class); otherwise they
@@ -22,7 +32,7 @@ import os
 import posixpath
 import re
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Mapping
 
@@ -36,9 +46,16 @@ _LOAD_VIEWS_CALL = re.compile(r"\bloadViewsFrom\s*\(")
 _ADD_NAMESPACE_CALL = re.compile(r"\bView\s*::\s*addNamespace\s*\(")
 _ADD_LOCATION_CALL = re.compile(r"\bView\s*::\s*addLocation\s*\(")
 _LIVEWIRE_COMPONENT_CALL = re.compile(r"\bLivewire\s*::\s*component\s*\(")
+# The name starts where no name is running (the look-behind): a long run of name characters is read once,
+# not once from each of its characters.
 _CLASS_CONSTANT_PATTERN = re.compile(
-    r"(\\?[A-Za-z_][A-Za-z0-9_]*(?:\\[A-Za-z_][A-Za-z0-9_]*)*)\s*::\s*class\b"
+    r"(?<![A-Za-z0-9_\\])(\\?[A-Za-z_][A-Za-z0-9_]*(?:\\[A-Za-z_][A-Za-z0-9_]*)*)\s*::\s*class\b"
 )
+# The arguments of one call are read in a window, as the Blade scanner reads them: a call that never
+# closes costs the window, not the rest of the file. The registrations read here take a line or two.
+_MAX_ARGUMENT_SCAN = 1024
+_ARGUMENT_MARK = re.compile(r"[()'\"]")
+_QUOTE_END = {"'": re.compile(r"\\.|'", re.S), '"': re.compile(r'\\.|"', re.S)}
 _LIVEWIRE_COMPONENT_IMPORT = re.compile(r"\buse\s+Livewire\\Component\b")
 # Helper functions whose first argument is a repository-relative directory;
 # base_path() itself means the repository root.
@@ -151,25 +168,28 @@ def _read_parenthesized(content: str, start: int) -> tuple[str, int]:
     """Read a parenthesized argument list, quotes and nesting respected."""
     depth = 1
     index = start
-    quote = ""
-    while index < len(content):
-        char = content[index]
-        if quote:
-            if char == "\\":
-                index += 2
-                continue
-            if char == quote:
-                quote = ""
-        elif char in "'\"":
-            quote = char
-        elif char == "(":
+    limit = min(len(content), start + _MAX_ARGUMENT_SCAN)
+    while True:
+        mark = _ARGUMENT_MARK.search(content, index, limit)
+        if mark is None:
+            return "", limit   # not closed in the window: no argument list is read
+        index = mark.end()
+        char = mark.group()
+        if char == "(":
             depth += 1
         elif char == ")":
             depth -= 1
             if depth == 0:
-                return content[start:index], index + 1
-        index += 1
-    return content[start:], len(content)
+                return content[start:mark.start()], index
+        else:
+            # A quoted string: to its closing quote, an escaped character skipped.
+            while True:
+                end = _QUOTE_END[char].search(content, index, limit)
+                if end is None:
+                    return "", limit
+                index = end.end()
+                if end.group() == char:
+                    break
 
 
 def _split_arguments(arguments: str) -> tuple[str, ...]:
@@ -567,6 +587,10 @@ class BoundPhpLanguage:
     livewire_view_names: Mapping[str, tuple[str, ...]]
     livewire_prefixes: tuple[str, ...]
     psr4: Psr4Map
+    # Qualified name -> the files that declare the function (casefolded: PHP function names ignore case)
+    # or the constant (as written), outside a class.
+    function_to_ids: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    constant_to_ids: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     @classmethod
     def create(
@@ -586,6 +610,8 @@ class BoundPhpLanguage:
 
         declaration_index: dict[str, set[str]] = {}
         exact_index: dict[str, set[str]] = {}
+        function_index: dict[str, set[str]] = {}
+        constant_index: dict[str, set[str]] = {}
         module_index: dict[str, set[str]] = {}
         namespaces: dict[str, str] = {}
         uses_by_source: dict[str, tuple[tuple[str, str], ...]] = {}
@@ -655,6 +681,10 @@ class BoundPhpLanguage:
                         set(),
                     ).add(node_id)
                     exact_index.setdefault(declared, set()).add(node_id)
+                for function in getattr(metadata, "functions", ()):
+                    function_index.setdefault(str(function).casefold(), set()).add(node_id)
+                for constant in getattr(metadata, "constants", ()):
+                    constant_index.setdefault(str(constant), set()).add(node_id)
                 if _is_livewire_component(content, declarations):
                     view_names = tuple(
                         dict.fromkeys(
@@ -701,6 +731,8 @@ class BoundPhpLanguage:
             livewire_view_names=livewire_views,
             livewire_prefixes=_livewire_prefixes(psr4, root_path),
             psr4=psr4,
+            function_to_ids=_freeze_index(function_index),
+            constant_to_ids=_freeze_index(constant_index),
         )
         view_namespaces = _freeze_view_namespaces(
             bound,
@@ -944,6 +976,78 @@ class BoundPhpLanguage:
             return None
         return self._resolve_view(f"livewire.{name}", self.view_roots)
 
+    def _resolve_function(self, raw_name: str, source_path: str) -> str | None:
+        """Resolve a function name as written in a call: `\\A\\f` in full; `A\\f` through a `use` of its first
+        segment, else below the namespace of the file; `f` in that namespace, then among the global
+        functions (PHP falls back to the global function). A name two files declare is not guessed."""
+        name = raw_name.strip()
+        absolute = name.startswith("\\")
+        name = name.lstrip("\\")
+        if not name:
+            return None
+        candidates = [name]
+        if not absolute:
+            source_key = self._source_key(source_path)
+            namespace = self.source_namespaces.get(source_key, "")
+            if "\\" in name:
+                first, _, rest = name.partition("\\")
+                alias = self._lookup_alias(self.source_uses.get(source_key, ()), first)
+                if isinstance(alias, _Ambiguous):
+                    return None
+                candidates = [f"{alias}\\{rest}" if alias else f"{namespace}\\{name}" if namespace else name]
+            elif namespace:
+                candidates = [f"{namespace}\\{name}", name]
+        for candidate in candidates:
+            declared = self.function_to_ids.get(candidate.casefold(), ())
+            if declared:
+                return declared[0] if len(declared) == 1 else None
+        return None
+
+    def _resolve_constant(self, raw_name: str) -> str | None:
+        declared = self.constant_to_ids.get(raw_name.strip().lstrip("\\"), ())
+        return declared[0] if len(declared) == 1 else None
+
+    def _resolve_file(self, relative: str, source_path: str) -> str | None:
+        """Resolve the path of a `require __DIR__ . '/...'`, taken from the folder of the requiring file."""
+        folder = os.path.dirname(self._source_key(source_path))
+        return self.path_to_id.get(_path_key(os.path.join(folder, *relative.split("/"))))
+
+    def _resolve_convention(self, logical_name: str, class_path: str) -> str | None:
+        """Resolve `<prefix><logical name>\\<class path>` for the class prefixes of the application
+        (`App\\` and the local Composer prefixes): the one class that has such a name, or none."""
+        matches: list[str] = []
+        seen: set[str] = set()
+        for prefix in self.livewire_prefixes:
+            candidate = f"{prefix}{logical_name}\\{class_path}"
+            if candidate.casefold() in seen:
+                continue
+            seen.add(candidate.casefold())
+            result = self._lookup_class(candidate)
+            if isinstance(result, _Ambiguous):
+                return None
+            if result is not None and result not in matches:
+                matches.append(result)
+        return matches[0] if len(matches) == 1 else None
+
+    def _resolve_component(self, name: str) -> str | None:
+        """Resolve `<x-forms.date-input>` to the class `View\\Components\\Forms\\DateInput` of the application."""
+        studly = _studly_class_path(name.strip())
+        return self._resolve_convention("View\\Components", studly) if studly else None
+
+    def _resolve_controller(self, raw_name: str) -> str | None:
+        """Resolve the controller of a route action string: the class of that full name, else
+        `Http\\Controllers\\<name>` of the application (the namespace Laravel gives such strings)."""
+        name = raw_name.strip().lstrip("\\")
+        if not name:
+            return None
+        if "\\" in name:
+            result = self._lookup_class(name)
+            if isinstance(result, _Ambiguous):
+                return None
+            if result is not None:
+                return result
+        return self._resolve_convention("Http\\Controllers", name)
+
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         if ":" not in import_name:
             return None
@@ -956,6 +1060,16 @@ class BoundPhpLanguage:
             return self._resolve_view(remainder)
         if prefix == "php-livewire":
             return self._resolve_livewire(remainder)
+        if prefix == "php-function":
+            return self._resolve_function(remainder, source_path)
+        if prefix == "php-const":
+            return self._resolve_constant(remainder)
+        if prefix == "php-file":
+            return self._resolve_file(remainder, source_path)
+        if prefix == "php-component":
+            return self._resolve_component(remainder)
+        if prefix == "php-controller":
+            return self._resolve_controller(remainder)
         return None
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:

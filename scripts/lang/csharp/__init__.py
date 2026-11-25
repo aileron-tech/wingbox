@@ -61,7 +61,7 @@ class CSharpLanguage:
         discovery_exclusions: DiscoveryExclusions,
     ) -> BoundLanguage:
         del discovery_exclusions
-        return BoundCSharpLanguage.create(path_to_id)
+        return BoundCSharpLanguage.create(path_to_id, root)
 
     def normalize_module_id(self, relative_path: str) -> str:
         if not relative_path.endswith(".cs"):

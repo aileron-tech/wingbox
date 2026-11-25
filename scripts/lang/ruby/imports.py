@@ -14,10 +14,50 @@ _SOURCE_SUFFIXES = (".rb", ".rake")
 _ACRONYM_PATTERN = re.compile(
     r"\b(?:inflect\.)?acronym\s*(?:\(\s*)?['\"]([A-Za-z][A-Za-z0-9]*)['\"]"
 )
-_AUTOLOAD_JOIN_PATTERN = re.compile(
-    r"autoload_(?:once_)?paths[^\n]*?(?:Rails|config)\.root\.join\(([^)]*)\)"
-)
+_AUTOLOAD_NAME_PATTERN = re.compile(r"autoload_(?:once_)?paths")
+# The arguments of one `Rails.root.join(...)`: read in a window, so a bracket that never closes costs no
+# more than the window.
+_ROOT_JOIN_PATTERN = re.compile(r"(?:Rails|config)\.root\.join\(([^)\n]{0,1024})\)")
 _QUOTED_SEGMENT_PATTERN = re.compile(r"['\"]([^'\"]+)['\"]")
+# The singular of a Rails association name: the rules of ActiveSupport's English inflections, the last
+# rule defined there first, as Rails applies them. A word that changes in no rule is left as it is.
+_UNCOUNTABLE = frozenset({"equipment", "information", "rice", "money", "species", "series", "fish", "sheep", "jeans", "police"})
+_SINGULAR_RULES = tuple((re.compile(pattern, re.IGNORECASE), replacement) for pattern, replacement in (
+    # The irregular words: zombie, move, sex, child, man, person.
+    (r"(z)ombies$", r"\1ombie"),
+    (r"(m)oves$", r"\1ove"),
+    (r"(s)exes$", r"\1ex"),
+    (r"(child)ren$", r"\1"),
+    (r"(m)en$", r"\1an"),
+    (r"(p)eople$", r"\1erson"),
+    (r"(database)s$", r"\1"),
+    (r"(quiz)zes$", r"\1"),
+    (r"(matr)ices$", r"\1ix"),
+    (r"(vert|ind)ices$", r"\1ex"),
+    (r"^(ox)en", r"\1"),
+    (r"(alias|status)(es)?$", r"\1"),
+    (r"(octop|vir)(us|i)$", r"\1us"),
+    (r"^(a)x[ie]s$", r"\1xis"),
+    (r"(cris|test)(is|es)$", r"\1is"),
+    (r"(shoe)s$", r"\1"),
+    (r"(o)es$", r"\1"),
+    (r"(bus)(es)?$", r"\1"),
+    (r"^(m|l)ice$", r"\1ouse"),
+    (r"(x|ch|ss|sh)es$", r"\1"),
+    (r"(m)ovies$", r"\1ovie"),
+    (r"(s)eries$", r"\1eries"),
+    (r"([^aeiouy]|qu)ies$", r"\1y"),
+    (r"([lr])ves$", r"\1f"),
+    (r"(tive)s$", r"\1"),
+    (r"(hive)s$", r"\1"),
+    (r"([^f])ves$", r"\1fe"),
+    (r"(^analy)(sis|ses)$", r"\1sis"),
+    (r"((a)naly|(b)a|(d)iagno|(p)arenthe|(p)rogno|(s)ynop|(t)he)(sis|ses)$", r"\1sis"),
+    (r"([ti])a$", r"\1um"),
+    (r"(n)ews$", r"\1ews"),
+    (r"(ss)$", r"\1"),
+    (r"s$", ""),
+))
 
 
 def _freeze_index(index: dict[str, set[str]]) -> dict[str, tuple[str, ...]]:
@@ -49,6 +89,24 @@ def _project_acronyms(
     return {acronym.lower(): acronym for acronym in _ACRONYM_PATTERN.findall(content)}
 
 
+def _autoload_join_arguments(content: str) -> list[str]:
+    """The arguments of the first `Rails.root.join(...)` (or `config.root.join`) after each mention of
+    `autoload_paths` or `autoload_once_paths` on its line. Each line is read once from left to right."""
+    found: list[str] = []
+    for line in content.splitlines():
+        position = 0
+        while True:
+            mention = _AUTOLOAD_NAME_PATTERN.search(line, position)
+            if mention is None:
+                break
+            join = _ROOT_JOIN_PATTERN.search(line, mention.end())
+            if join is None:
+                break   # no path after this mention, so none after a later one
+            found.append(join.group(1))
+            position = join.end()
+    return found
+
+
 def _custom_autoload_roots(
     root: Path,
     discovery_exclusions: DiscoveryExclusions,
@@ -65,8 +123,8 @@ def _custom_autoload_roots(
         ):
             continue
         content = _read_source(config_path, "autoload configuration")
-        for match in _AUTOLOAD_JOIN_PATTERN.finditer(content):
-            segments = _QUOTED_SEGMENT_PATTERN.findall(match.group(1))
+        for arguments in _autoload_join_arguments(content):
+            segments = _QUOTED_SEGMENT_PATTERN.findall(arguments)
             if not segments:
                 continue
             candidate = root.joinpath(*segments).resolve()
@@ -181,12 +239,14 @@ def _path_variants(base: Path) -> tuple[Path, ...]:
 
 
 def _singularize(name: str) -> str:
-    if name.endswith("ies") and len(name) > 3:
-        return f"{name[:-3]}y"
-    if name.endswith("sses"):
-        return name[:-2]
-    if name.endswith("s") and not name.endswith("ss"):
-        return name[:-1]
+    """The singular Rails derives the model of `has_many :name` from (the last word of a name with `_`)."""
+    head, separator, word = name.rpartition("_")
+    if word.lower() in _UNCOUNTABLE:
+        return name
+    for pattern, replacement in _SINGULAR_RULES:
+        singular, count = pattern.subn(replacement, word)
+        if count:
+            return f"{head}{separator}{singular}"
     return name
 
 
@@ -301,9 +361,20 @@ class BoundRubyLanguage:
         return None
 
     def _resolve_constant(self, name: str, source_path: str) -> str | None:
+        """Resolve a constant as written in a file. A scoped name that resolves nowhere names at least
+        its scope: `User::LIMIT`, with LIMIT defined in a concern that User includes, is resolved as
+        `User`, the longest leading part that resolves. A name that several files define stays unlinked."""
+        while True:
+            target, ambiguous = self._lookup_constant(name, source_path)
+            if target is not None or ambiguous or "::" not in name.removeprefix("::"):
+                return target
+            name = name.rpartition("::")[0]
+
+    def _lookup_constant(self, name: str, source_path: str) -> tuple[str | None, bool]:
+        """(the file that defines the constant, None when no single file does; whether several files do)."""
         normalized = name.removeprefix("::")
         if not normalized:
-            return None
+            return None, False
         source_key = str(Path(source_path).resolve())
         candidates: list[str] = []
         if name.startswith("::") or "::" in normalized:
@@ -328,10 +399,10 @@ class BoundRubyLanguage:
             seen.add(candidate)
             targets = self.constant_to_ids.get(candidate, ())
             if len(targets) == 1:
-                return targets[0]
+                return targets[0], False
             if len(targets) > 1:
-                return None
-        return None
+                return None, True
+        return None, False
 
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         if import_name.startswith("ruby-require-relative:"):

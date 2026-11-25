@@ -8,6 +8,7 @@ file system except ``file_hash``.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 import tree_sitter_php as _tsphp
@@ -66,6 +67,16 @@ _ASSOCIATION_NAMES = (
     "morphedByMany",
 )
 _ASSOCIATIONS = frozenset(name.casefold() for name in _ASSOCIATION_NAMES)
+# A function declared below one of these is declared when the function around it runs: no function of the file.
+_FUNCTION_SCOPES = frozenset({
+    "function_definition", "anonymous_function", "anonymous_function_creation_expression", "arrow_function",
+})
+_INCLUDE_NODES = frozenset({
+    "require_expression", "require_once_expression", "include_expression", "include_once_expression",
+})
+_ROUTE_VERBS = frozenset({"get", "post", "put", "patch", "delete", "options", "any", "match"})
+# `Controller@method`, the controller with or without its namespace.
+_ROUTE_ACTION = re.compile(r"\\?((?:[A-Za-z_]\w*\\)*[A-Za-z_]\w*)@[A-Za-z_]\w*")
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,9 @@ class PhpFileMetadata:
     namespace: str
     declarations: tuple[PhpDeclaration, ...]
     uses: tuple[tuple[str, str], ...]
+    # The functions and the constants declared outside a class, by their qualified names.
+    functions: tuple[str, ...] = ()
+    constants: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -239,34 +253,61 @@ def _declaration_info(node: Node, namespace: str) -> _DeclarationInfo | None:
     )
 
 
-def _collect_declarations(root: Node) -> list[_DeclarationInfo]:
+def _scan_declarations(root: Node) -> tuple[list[_DeclarationInfo], list[tuple[str, str, int]]]:
+    """The class-like declarations of a file, and (qualified name, "function" or "constant", line) of the
+    functions and the constants declared outside a class and outside another function."""
     declarations: list[_DeclarationInfo] = []
+    named: list[tuple[str, str, int]] = []
 
-    def scan(children: tuple[Node, ...], namespace: str) -> None:
-        current = namespace
-        for node in children:
-            if node.type == "namespace_definition":
-                name = _namespace_name(node)
-                body = _namespace_body(node)
-                if body is not None:
-                    scan(body.named_children, name)
-                    current = ""
-                else:
-                    current = name
-                continue
-            if node.type in _DECLARATION_NODES:
-                info = _declaration_info(node, current)
-                if info is not None:
-                    declarations.append(info)
-                scan(node.named_children, current)
-                continue
-            if node.type in ("anonymous_class", "namespace_use_declaration"):
-                continue
-            scan(node.named_children, current)
-
-    scan(root.named_children, "")
+    # One frame per list of siblings: [the siblings, the index of the next one, the namespace in force,
+    # inside a class or a function]. A stack of frames in place of recursion: an expression of a thousand
+    # operands is a thousand levels deep.
+    frames: list[list] = [[root.named_children, 0, "", False]]
+    while frames:
+        frame = frames[-1]
+        children, index, current, inside = frame
+        if index >= len(children):
+            frames.pop()
+            continue
+        frame[1] = index + 1
+        node = children[index]
+        if node.type == "namespace_definition":
+            name = _namespace_name(node)
+            body = _namespace_body(node)
+            if body is not None:
+                frame[2] = ""
+                frames.append([body.named_children, 0, name, inside])
+            else:
+                frame[2] = name
+            continue
+        if node.type in _DECLARATION_NODES:
+            info = _declaration_info(node, current)
+            if info is not None:
+                declarations.append(info)
+            frames.append([node.named_children, 0, current, True])
+            continue
+        if node.type in ("anonymous_class", "namespace_use_declaration"):
+            continue
+        if not inside and node.type == "function_definition":
+            name = node_text(node.child_by_field_name("name")).strip()
+            if name:
+                named.append((f"{current}\\{name}" if current else name, "function", node.start_point[0] + 1))
+        elif not inside and node.type == "const_declaration":
+            for element in node.named_children:
+                name = (
+                    node_text(element.named_children[0]).strip()
+                    if element.type == "const_element" and element.named_children
+                    else ""
+                )
+                if name:
+                    named.append((f"{current}\\{name}" if current else name, "constant", element.start_point[0] + 1))
+        frames.append([node.named_children, 0, current, inside or node.type in _FUNCTION_SCOPES])
     declarations.sort(key=lambda info: info.declaration.line)
-    return declarations
+    return declarations, named
+
+
+def _collect_declarations(root: Node) -> list[_DeclarationInfo]:
+    return _scan_declarations(root)[0]
 
 
 def _first_namespace(root: Node) -> str:
@@ -276,12 +317,15 @@ def _first_namespace(root: Node) -> str:
     return ""
 
 
+def _use_kind(node: Node) -> str:
+    """"function" or "const" for a `use` declaration or clause that says so, "" for one that imports a class."""
+    return next((child.type for child in node.children if child.type in ("function", "const")), "")
+
+
 def _use_clause_entry(
     clause: Node,
     prefix: str,
 ) -> tuple[str, str] | None:
-    if any(child.type in ("function", "const") for child in clause.children):
-        return None
     name_node = next(
         (child for child in clause.named_children if child.type in _NAME_NODES),
         None,
@@ -304,28 +348,30 @@ def _use_clause_entry(
     return alias, fqcn
 
 
-def _use_entries(node: Node) -> list[tuple[str, str]]:
-    if any(child.type in ("function", "const") for child in node.children):
-        return []
+def _use_entries(node: Node, kind: str = "") -> list[tuple[str, str]]:
+    """(alias, full name) of what one `use` declaration imports of a kind: classes (""), "function" or "const"."""
+    declared = _use_kind(node)
     group = node.child_by_field_name("body")
-    if group is not None and group.type == "namespace_use_group":
-        prefix = _first_class_name(node).lstrip("\\")
-        entries: list[tuple[str, str]] = []
-        for clause in group.named_children:
-            if clause.type != "namespace_use_clause":
-                continue
-            entry = _use_clause_entry(clause, prefix)
-            if entry is not None:
-                entries.append(entry)
-        return entries
-    entries = []
-    for clause in node.named_children:
-        if clause.type != "namespace_use_clause":
+    grouped = group is not None and group.type == "namespace_use_group"
+    prefix = _first_class_name(node).lstrip("\\") if grouped else ""
+    entries: list[tuple[str, str]] = []
+    for clause in (group.named_children if grouped else node.named_children):
+        if clause.type != "namespace_use_clause" or (_use_kind(clause) or declared) != kind:
             continue
-        entry = _use_clause_entry(clause, "")
+        entry = _use_clause_entry(clause, prefix)
         if entry is not None:
             entries.append(entry)
     return entries
+
+
+def _named_uses(root: Node, kind: str) -> list[tuple[str, str, int]]:
+    """(alias, full name, line) of every `use function` (kind "function") or `use const` ("const") of the file."""
+    return [
+        (alias, name, node.start_point[0] + 1)
+        for node in walk_named(root)
+        if node.type == "namespace_use_declaration"
+        for alias, name in _use_entries(node, kind)
+    ]
 
 
 def _collect_uses(root: Node) -> list[tuple[str, str]]:
@@ -416,6 +462,61 @@ def _literal_string(node: Node | None) -> str:
     return value
 
 
+def _literal_text(node: Node | None) -> str:
+    """The text of a string literal without interpolation, a doubled backslash read as one; "" otherwise."""
+    if node is None or node.type not in ("string", "encapsed_string"):
+        return ""
+    raw = node_text(node)
+    if len(raw) < 3 or raw[0] not in ("'", '"') or raw[-1] != raw[0] or "\n" in raw:
+        return ""
+    if node.type == "encapsed_string" and "$" in raw:
+        return ""
+    return raw[1:-1].replace("\\\\", "\\")
+
+
+def _folders_up(node: Node | None) -> int | None:
+    """How many folders above the folder of the file an expression names: 0 for `__DIR__` and
+    `dirname(__FILE__)`, n for `dirname(__DIR__, n)`; None for any other expression."""
+    levels = 0
+    while node is not None:
+        if node.type == "name":
+            return levels if node_text(node) == "__DIR__" else None
+        if node.type != "function_call_expression" or _function_name(node) != "dirname":
+            return None
+        arguments = [argument.named_children[0] for argument in _call_arguments(node) if argument.named_children]
+        if not arguments or len(arguments) > 2:
+            return None
+        count = 1
+        if len(arguments) == 2:
+            if arguments[1].type != "integer" or not node_text(arguments[1]).isdigit():
+                return None
+            count = int(node_text(arguments[1]))
+        if arguments[0].type == "name" and node_text(arguments[0]) == "__FILE__":
+            return levels + count - 1
+        levels += count
+        node = arguments[0]
+    return None
+
+
+def _included_path(node: Node) -> str:
+    """The file of `require __DIR__ . '/path'` (also include, _once, in brackets, with `dirname`), as a path
+    relative to the folder of the requiring file; "" for a path written another way, which PHP looks up
+    in the include path and the working directory."""
+    expression = node.named_children[0] if node.named_children else None
+    while expression is not None and expression.type == "parenthesized_expression":
+        expression = expression.named_children[0] if expression.named_children else None
+    if expression is None or expression.type != "binary_expression":
+        return ""
+    operator = expression.child_by_field_name("operator")
+    if operator is None or node_text(operator).strip() != ".":
+        return ""
+    levels = _folders_up(expression.child_by_field_name("left"))
+    path = _literal_string(expression.child_by_field_name("right"))
+    if levels is None or not path.startswith("/"):
+        return ""
+    return "../" * levels + path.lstrip("/")
+
+
 def _class_constant_class(node: Node | None) -> Node | None:
     if node is None or node.type != "class_constant_access_expression":
         return None
@@ -463,7 +564,12 @@ def _walk_dependencies(
     root: Node,
     own_full: frozenset[str],
     own_short: frozenset[str],
-) -> tuple[list[str], list[SourceRelationPayload]]:
+    function_aliases: dict[str, str],
+) -> tuple[list[str], list[SourceRelationPayload], dict[str, list[int]]]:
+    """The pseudo-imports and the relations of the code of a file, and the lines of the statements that
+    state an import (a `require`). function_aliases: the name a `use function` binds, casefolded, to the
+    full name of the function."""
+    lines: dict[str, list[int]] = {}
     imports: list[str] = []
     seen_imports: set[str] = set()
     relations: list[SourceRelationPayload] = []
@@ -507,7 +613,8 @@ def _walk_dependencies(
         if name:
             add_relation_target(f"php-symbol:{name}", relation)
 
-    def visit(node: Node, in_declaration: bool) -> None:
+    def visit(node: Node, in_declaration: bool) -> bool | None:
+        """Read one node; the answer is `in_declaration` for its children, None when they are not read."""
         node_type = node.type
         child_in_declaration = in_declaration
         if node_type in _DECLARATION_NODES:
@@ -516,7 +623,7 @@ def _walk_dependencies(
             child_in_declaration = False
 
         if node_type == "namespace_use_declaration":
-            return
+            return None
 
         if node_type in ("base_clause", "class_interface_clause"):
             for child in node.named_children:
@@ -556,6 +663,14 @@ def _walk_dependencies(
                 literal = _literal_string(_argument_expression(node, 1))
                 if literal:
                     add_relation_target(f"php-view:{literal}", "view")
+            elif method in _ROUTE_VERBS and _is_facade(receiver, "route"):
+                # The action of a route written as a string: 'Controller@method'.
+                for argument in _call_arguments(node):
+                    action = _ROUTE_ACTION.fullmatch(
+                        _literal_text(argument.named_children[0] if argument.named_children else None)
+                    )
+                    if action is not None:
+                        add_import(f"php-controller:{action.group(1)}")
         elif node_type == "member_call_expression":
             method = _method_name(node).casefold()
             if method in _ASSOCIATIONS and in_declaration:
@@ -583,9 +698,10 @@ def _walk_dependencies(
                         and _function_name(receiver) == "response"
                     )
                     or (
+                        # `$this->view('emails.welcome')`: the view of a mailable or of a test.
                         receiver.type == "variable_name"
                         and node_text(receiver).strip().casefold()
-                        == "$response"
+                        in ("$response", "$this")
                     )
                 ):
                     literal = _literal_string(_first_argument_expression(node))
@@ -609,6 +725,19 @@ def _walk_dependencies(
                 class_node = _new_class_node(_first_argument_expression(node))
                 if class_node is not None:
                     add_class_relation(node_text(class_node).strip(), "job")
+            # The function itself: the file that declares it is a dependency (a `use function` names it in
+            # full; else the resolver looks in the namespace of the file, then among the global functions).
+            called = node.child_by_field_name("function")
+            if called is not None and called.type in ("name", "qualified_name"):
+                written = node_text(called).strip()
+                imported = function_aliases.get(written.casefold()) if "\\" not in written else None
+                add_import(f"php-function:\\{imported}" if imported else f"php-function:{written}")
+        elif node_type in _INCLUDE_NODES:
+            included = _included_path(node)
+            if included:
+                add_import(f"php-file:{included}")
+                if f"php-file:{included}" in seen_imports:
+                    add_import_line(lines, f"php-file:{included}", node.start_point[0] + 1)
         elif node_type == "class_constant_access_expression":
             named = node.named_children
             if named and named[0].type in _NAME_NODES:
@@ -631,11 +760,31 @@ def _walk_dependencies(
                 if right is not None and right.type in _NAME_NODES:
                     add_reference(node_text(right).strip())
 
-        for child in node.named_children:
-            visit(child, child_in_declaration)
+        return child_in_declaration
 
-    visit(root, False)
-    return imports, relations
+    # In document order, with a stack in place of recursion (see _collect_declarations).
+    pending: list[tuple[Node, bool]] = [(root, False)]
+    while pending:
+        node, in_declaration = pending.pop()
+        child_in_declaration = visit(node, in_declaration)
+        if child_in_declaration is not None:
+            pending.extend((child, child_in_declaration) for child in reversed(node.named_children))
+    return imports, relations, lines
+
+
+def _named_entities(named: list[tuple[str, str, int]]) -> list[Entity]:
+    """The functions and the constants declared outside a class."""
+    return [
+        Entity(
+            name=name,
+            kind="function" if kind == "function" else "type",
+            line=line,
+            methods=[],
+            decorators=[] if kind == "function" else ["constant"],
+            bases=[],
+        )
+        for name, kind, line in named
+    ]
 
 
 def _entities(declarations: list[_DeclarationInfo]) -> list[Entity]:
@@ -669,12 +818,13 @@ def _entities(declarations: list[_DeclarationInfo]) -> list[Entity]:
 def php_metadata(content: str) -> PhpFileMetadata:
     """Return the namespace, declarations and class imports of one file."""
     root = _parse_root(content)
+    declarations, named = _scan_declarations(root)
     return PhpFileMetadata(
         namespace=_first_namespace(root),
-        declarations=tuple(
-            info.declaration for info in _collect_declarations(root)
-        ),
+        declarations=tuple(info.declaration for info in declarations),
         uses=tuple(_collect_uses(root)),
+        functions=tuple(name for name, kind, _line in named if kind == "function"),
+        constants=tuple(name for name, kind, _line in named if kind == "constant"),
     )
 
 
@@ -686,7 +836,7 @@ def parse_php_treesitter(
 ) -> FileResult:
     """Parse one PHP source file into the shared result contract."""
     root = _parse_root(content)
-    declarations = _collect_declarations(root)
+    declarations, named = _scan_declarations(root)
     own_full = frozenset(
         info.declaration.name.casefold() for info in declarations
     )
@@ -726,11 +876,30 @@ def parse_php_treesitter(
             line=stated[0] if stated else 0,
         ))
 
-    references, relations = _walk_dependencies(root, own_full, own_short)
+    # `use function` and `use const` name a function or a constant in full: the file that declares it.
+    function_aliases: dict[str, str] = {}
+    for kind, prefix in (("function", "php-function"), ("const", "php-const")):
+        for alias, name, line in _named_uses(root, kind):
+            target = f"{prefix}:\\{name}"
+            add_import(target)
+            add_import_line(import_lines, target, line)
+            imported_names.append(ImportedName(
+                local_name=alias,
+                original_name=_last_segment(name),
+                module=target,
+                line=line,
+            ))
+            if kind == "function":
+                function_aliases[alias.casefold()] = name
+
+    references, relations, stated_lines = _walk_dependencies(root, own_full, own_short, function_aliases)
     for target in references:
         add_import(target)
+    for target, lines in stated_lines.items():
+        for line in lines:
+            add_import_line(import_lines, target, line)
 
-    entities = _entities(declarations)
+    entities = [*_entities(declarations), *_named_entities(named)]
     entity_payloads = [entity.to_dict() for entity in entities]
     return FileResult(
         path=path,
@@ -756,7 +925,10 @@ def parse_php_treesitter(
         has_validation=bool(validation),
         entities=entity_payloads,
         imported_names=[item.to_dict() for item in imported_names],
-        exported_names=[info.declaration.name for info in declarations],
+        exported_names=[
+            *(info.declaration.name for info in declarations),
+            *(name for name, _kind, _line in named),
+        ],
         relations=relations,
         import_lines=import_lines,
         validation_evidence=validation,
