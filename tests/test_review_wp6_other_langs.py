@@ -287,5 +287,87 @@ class CSharpTypeBindingTest(unittest.TestCase):
         self.assertEqual({"Dup/A/Thing.cs", "Dup/B/Thing.cs"}, built.dependencies("Dup/D/Named.cs"))
 
 
+_JAVA_CORE = {
+    "core/src/main/java/com/acme/core/Limits.java": (
+        "package com.acme.core;\n\npublic class Limits {\n    public static final int MAX = 5;\n"
+        "    public static int clamp(int v) { return Math.min(v, MAX); }\n}\n"
+    ),
+    "core/src/main/java/com/acme/core/OrderStatus.java": "package com.acme.core;\n\npublic enum OrderStatus { NEW, PAID }\n",
+    "core/src/main/java/com/acme/core/Annot.java": "package com.acme.core;\n\npublic @interface Annot {}\n",
+    "core/src/main/java/com/acme/core/Jobs.java": "package com.acme.core;\n\npublic class Jobs {\n    public static void run() {}\n}\n",
+}
+_JAVA_FOLDER = "core/src/main/java/com/acme/core/"
+
+
+class JavaStaticUseTest(unittest.TestCase):
+    def test_a_class_used_through_static_members_is_a_dependency(self) -> None:
+        """/* REQ-JAVA-9620: A Java class of the own package used only through a static method, a constant, an enum constant or a method reference is a dependency. */"""
+        built = _Built({
+            **_JAVA_CORE,
+            _JAVA_FOLDER + "OrderService.java": (
+                "package com.acme.core;\n\npublic class OrderService {\n"
+                "    int limit() { return Limits.clamp(Limits.MAX); }\n"
+                "    boolean isNew(Object s) { return s == OrderStatus.NEW; }\n"
+                "    Runnable job = Jobs::run;\n}\n"
+            ),
+        })
+        self.assertEqual(
+            {_JAVA_FOLDER + "Limits.java", _JAVA_FOLDER + "OrderStatus.java", _JAVA_FOLDER + "Jobs.java"},
+            built.dependencies(_JAVA_FOLDER + "OrderService.java"),
+        )
+
+    def test_a_wildcard_import_brings_in_a_class_used_through_static_members(self) -> None:
+        """/* REQ-JAVA-9621: A class a wildcard import brings in is a dependency when only its static members are used. */"""
+        built = _Built({
+            **_JAVA_CORE,
+            "app/src/main/java/com/acme/app/Wild.java": (
+                "package com.acme.app;\n\nimport com.acme.core.*;\n\npublic class Wild {\n"
+                "    int f() { return Limits.MAX; }\n    Object g() { return OrderStatus.NEW; }\n}\n"
+            ),
+        })
+        self.assertEqual(
+            {_JAVA_FOLDER + "Limits.java", _JAVA_FOLDER + "OrderStatus.java"},
+            built.dependencies("app/src/main/java/com/acme/app/Wild.java"),
+        )
+
+    def test_an_annotation_of_the_own_package_is_a_dependency(self) -> None:
+        """/* REQ-JAVA-9622: An annotation of the own package written on a declaration is a dependency. */"""
+        built = _Built({
+            **_JAVA_CORE,
+            _JAVA_FOLDER + "Order.java": (
+                "package com.acme.core;\n\n@Annot\npublic class Order {\n    @Annot(\"x\") int total;\n}\n"
+            ),
+        })
+        self.assertEqual({_JAVA_FOLDER + "Annot.java"}, built.dependencies(_JAVA_FOLDER + "Order.java"))
+
+    def test_a_variable_named_like_a_class_gives_no_edge(self) -> None:
+        """/* REQ-JAVA-9623: A field, parameter or variable of the file whose name is that of a class of the package is not a use of the class. */"""
+        built = _Built({
+            **_JAVA_CORE,
+            _JAVA_FOLDER + "Holder.java": (
+                "package com.acme.core;\n\npublic class Holder {\n    static final java.util.List<String> Jobs = null;\n"
+                "    int size() { return Jobs.size(); }\n"
+                "    int low(String limits) { return limits.length(); }\n}\n"
+            ),
+        })
+        self.assertEqual(set(), built.dependencies(_JAVA_FOLDER + "Holder.java"))
+
+    def test_files_of_the_default_package_are_linked(self) -> None:
+        """/* REQ-JAVA-9624: A file without a package declaration depends on the class of the default package it names: the one of its folder when two folders declare the name. */"""
+        built = _Built({
+            "one/A.java": "public class A {\n    B b;\n    int n = Tool.COUNT;\n}\n",
+            "one/B.java": "public class B {}\n",
+            "one/Tool.java": "public class Tool {\n    static int COUNT = 1;\n}\n",
+            "two/Tool.java": "public class Tool {\n    static int COUNT = 2;\n}\n",
+            "two/C.java": "public class C {\n    B b;\n}\n",
+            "three/D.java": "public class D {\n    Tool t;\n}\n",
+            "four/src/E.java": "package four;\n\npublic class E {\n    B b;\n}\n",
+        })
+        self.assertEqual({"one/B.java", "one/Tool.java"}, built.dependencies("one/A.java"))
+        self.assertEqual({"one/B.java"}, built.dependencies("two/C.java"))
+        self.assertEqual(set(), built.dependencies("three/D.java"))
+        self.assertEqual(set(), built.dependencies("four/src/E.java"))
+
+
 if __name__ == "__main__":
     unittest.main()
