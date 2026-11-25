@@ -115,6 +115,19 @@ def _repo_of(root: str, path: str) -> str:
     return repo
 
 
+def _regular_file(root: str, path: str) -> bool:
+    """Whether path is a file discovery takes: a regular file that no symbolic link under root leads to
+    (discovery follows none, neither a linked file nor a linked folder)."""
+    if not os.path.isfile(path) or os.path.islink(path):
+        return False
+    folder = os.path.dirname(path)
+    while folder.startswith(root + os.sep):
+        if os.path.islink(folder):
+            return False
+        folder = os.path.dirname(folder)
+    return True
+
+
 def _discovered_language(root: str, path: str, skip_directories: frozenset[str]) -> Optional[str]:
     """The language discovery would give the file, ignoring the Git ignore rules; None when it is skipped."""
     exclusions = builder.DiscoveryExclusions(directory_names=skip_directories, paths=frozenset())
@@ -159,7 +172,7 @@ def classify(
             return NotApplicable(f"resolution config changed: {relative}")
         if name.endswith(builder.CONFIG_SUFFIXES) and os.path.dirname(path) in loaders:
             return NotApplicable(f"module loader config changed: {relative}")
-        language = _discovered_language(root, path, skip_directories) if os.path.isfile(path) else None
+        language = _discovered_language(root, path, skip_directories) if _regular_file(root, path) else None
         old = cached.get(path)
         if language is None:
             if old is not None:

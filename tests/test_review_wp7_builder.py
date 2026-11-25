@@ -86,7 +86,7 @@ class ProjectTestCase(unittest.TestCase):
         """A copy of the tree of root under the same folder name, with no .wingbox/ of an earlier build, built once.
         rewrite(copy) gives the files that hold absolute paths, written for the copy."""
         copy = self.folder() / root.name
-        shutil.copytree(root, copy, ignore=shutil.ignore_patterns(".wingbox", ".git"))
+        shutil.copytree(root, copy, ignore=shutil.ignore_patterns(".wingbox", ".git"), symlinks=True)
         subprocess.run(["git", "init", "-q", str(copy)], check=True)
         _write(copy, rewrite(copy) if rewrite else {})
         self.assertEqual(0, _build(copy)[0])
@@ -639,6 +639,30 @@ class InfraTopologyTest(ProjectTestCase):
             with self.subTest(manifest=name):
                 self.assertRegex(printed, rf"; warning: skipped \S*{re.escape(name)}: unexpected shape")
 
+
+class LinkedSourceTest(ProjectTestCase):
+    @unittest.skipIf(os.name == "nt", "creating a symbolic link needs a privilege on Windows")
+    def test_a_link_created_after_the_build_is_not_patched_into_the_graph(self) -> None:
+        """/* REQ-FRESH-9770: a symbolic link with a source extension, or a source file below a linked folder, that appears after the build is not patched into the graph: discovery follows no link, so the partial update leaves it out and the graph holds the modules a build from nothing holds; a source file replaced by a link leaves the graph. */"""
+        root = self.project(SHOP)
+        outside = self.folder()
+        _write(outside, {"secret.py": "class OutsideService:\n    def rotate(self):\n        return 1\n", "pkg/inner.py": "INNER = 1\n"})
+        self.assertEqual(0, _build(root)[0])
+        os.symlink(outside / "secret.py", root / "shop" / "link.py")
+        os.symlink(outside / "pkg", root / "shop" / "linked")
+        store = str(root / ".wingbox" / "graph-fragments.json")
+        result = graph_update.update_graph(str(root), ["shop/link.py", "shop/linked/inner.py"], store)
+        self.assertIsInstance(result, graph_update.Updated, result)
+        self.assertNotIn("OutsideService", _graph(root))
+        self.assertNotIn("inner", _graph(root))
+        modules = re.compile(r"^\((?:node|fn|cls|imports|refs) .*$", re.M)
+        self.assertEqual(modules.findall(_graph(self.from_nothing(root))), modules.findall(_graph(root)))
+        (root / "shop" / "generated.py").unlink()
+        os.symlink(outside / "secret.py", root / "shop" / "generated.py")
+        result = graph_update.update_graph(str(root), ["shop/generated.py"], store)
+        self.assertIsInstance(result, graph_update.Updated, result)
+        self.assertNotIn("generated", _graph(root))
+        self.assertNotIn("OutsideService", _graph(root))
 
 if __name__ == "__main__":
     unittest.main()
