@@ -47,7 +47,8 @@ def read_config_values(directory: str) -> tuple[ConfigValues, ...]:
             with open(path, encoding="utf-8-sig") as handle:
                 text = handle.read()
             values = config_names(name, text)
-        except (OSError, UnicodeDecodeError, ValueError) as error:
+        except (OSError, ValueError, RecursionError) as error:
+            # ValueError: not UTF-8, or malformed; RecursionError: nested deeper than its reader goes.
             print(f"[code-graph] WARNING: configuration file {path} not read: {error}", file=sys.stderr)
             continue
         if values:

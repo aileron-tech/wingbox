@@ -129,7 +129,7 @@ class ImpactEvidenceRustTest(unittest.TestCase):
 
 class ImpactEvidenceTypeScriptTest(unittest.TestCase):
     def test_a_typescript_row_at_depth_2_names_the_file_it_is_reached_through(self) -> None:
-        """/* REQ-CS-077: in any language a deeper row names the file it is reached through and how many other files of that depth lead to it: `through src/billing/invoice.ts (or 1 other file): imports it`; the graph of a TypeScript tree records no item lists. */"""
+        """/* REQ-CS-232: in any language a deeper row names the file it is reached through and how many other files of that depth lead to it: `through src/billing/invoice.ts (or 1 other file): imports it`; the graph of a TypeScript tree records no item lists. */"""
         with tempfile.TemporaryDirectory() as directory:
             graph, text = loaded_graph(Path(directory).resolve(), TS_FILES, "typescript")
             lines = impact(graph, "src/core/util.ts")

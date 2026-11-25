@@ -239,6 +239,9 @@ class BuildTarget:
     kind: str                  # executable or library
     stated: str                # the CMake file
     sources: tuple[str, ...]
+    # An argument of its source list was not read (a variable the file does not set once with literal
+    # values, a generator expression): the target may have sources that `sources` does not hold.
+    unread: bool = False
 
 
 @dataclass(frozen=True)
@@ -258,6 +261,107 @@ _TARGET_WORDS = frozenset({
 })
 _TARGET_FILE = re.compile(r"\$<TARGET_FILE:([A-Za-z0-9_.+-]+)>")
 _TEST_WORDS = frozenset({"WORKING_DIRECTORY", "CONFIGURATIONS", "COMMAND_EXPAND_LISTS"})
+# What starts a comment or a quoted argument, what ends a quoted argument, what opens a bracket comment.
+_CMAKE_MARK = re.compile(r'[#"]')
+_CMAKE_QUOTE_END = re.compile(r'\\.|"', re.DOTALL)
+_CMAKE_BRACKET = re.compile(r"\[(=*)\[")
+# One argument of a call: quoted (its text is group 1) or bare.
+_CMAKE_ARGUMENT = re.compile(r'"((?:[^"\\]|\\.)*)"|[^\s"]+', re.DOTALL)
+_CMAKE_COMMAND = re.compile(r"(?<![\w.$<:{-])([A-Za-z_]\w*)[ \t]*\(")
+_CMAKE_CALL_END = re.compile(r"((?:[^()]|\([^()]*\))*)\)")
+_CMAKE_WORD = re.compile(r'[^\s()"]+')
+_CMAKE_BLOCK_OPEN = frozenset({"if", "foreach", "while", "function", "macro", "block"})
+_CMAKE_BLOCK_CLOSE = frozenset({"endif", "endforeach", "endwhile", "endfunction", "endmacro", "endblock"})
+_CMAKE_WHOLE_VARIABLE = re.compile(r"\$\{(\w+)\}")
+# A source in the build folder is a file a build step writes: no file of the repository, and nothing unread.
+_CMAKE_BUILD_FOLDERS = ("${CMAKE_CURRENT_BINARY_DIR}", "${CMAKE_BINARY_DIR}", "${PROJECT_BINARY_DIR}")
+
+
+def _cmake_code(text: str) -> str:
+    """The text of a CMake file without its comments: `# ...` to the end of the line and the bracket
+    comment `#[[ ... ]]` (`#[=[ ... ]=]`), which runs to the end of the file when nothing closes it. A `#`
+    inside a quoted argument is text. One pass over the text."""
+    kept: list[str] = []
+    start = position = 0
+    while True:
+        mark = _CMAKE_MARK.search(text, position)
+        if mark is None:
+            break
+        if mark.group() == '"':
+            position = mark.end()
+            while True:
+                end = _CMAKE_QUOTE_END.search(text, position)
+                if end is None:
+                    position = len(text)
+                    break
+                position = end.end()
+                if end.group() == '"':
+                    break
+            continue
+        kept.append(text[start:mark.start()])
+        bracket = _CMAKE_BRACKET.match(text, mark.end())
+        if bracket is not None:
+            closing = "]" + bracket.group(1) + "]"
+            close = text.find(closing, bracket.end())
+            position = len(text) if close < 0 else close + len(closing)
+        else:
+            newline = text.find("\n", mark.end())
+            position = len(text) if newline < 0 else newline
+        start = position
+    kept.append(text[start:])
+    return "".join(kept)
+
+
+def _cmake_arguments(text: str) -> list[str]:
+    """The arguments of a call: a quoted argument is one argument, given without its quotes."""
+    return [match.group(1) if match.group(1) is not None else match.group() for match in _CMAKE_ARGUMENT.finditer(text)]
+
+
+def _cmake_variables(code: str) -> dict[str, tuple[int, tuple[str, ...]]]:
+    """Variable -> (where it is set, its values) for the variables the file sets once with `set(NAME a b c)`
+    outside every block (`if`, `foreach`, `function` ...), and names in no other call (`list(APPEND NAME`,
+    `file(GLOB NAME`, a second `set`). Nothing is evaluated: the values are the arguments as written."""
+    named: dict[str, int] = {}
+    for word in _CMAKE_WORD.findall(code):
+        named[word] = named.get(word, 0) + 1
+    found: dict[str, Optional[tuple[int, tuple[str, ...]]]] = {}
+    depth = 0
+    for command in _CMAKE_COMMAND.finditer(code):
+        name = command.group(1).lower()
+        if name in _CMAKE_BLOCK_OPEN:
+            depth += 1
+        elif name in _CMAKE_BLOCK_CLOSE:
+            depth = max(0, depth - 1)
+        elif name == "set":
+            call = _CMAKE_CALL_END.match(code, command.end())
+            arguments = _cmake_arguments(call.group(1)) if call is not None else []
+            if not arguments:
+                continue
+            variable, values = arguments[0], [value for argument in arguments[1:] for value in argument.split(";") if value]
+            literal = depth == 0 and variable not in found and values and "CACHE" not in values and "PARENT_SCOPE" not in values
+            found[variable] = (command.start(), tuple(values)) if literal else None
+    return {variable: stated for variable, stated in found.items() if stated is not None and named.get(variable) == 1}
+
+
+def _cmake_substituted(
+    arguments: Sequence[str], variables: dict[str, tuple[int, tuple[str, ...]]], position: int,
+) -> list[str]:
+    """The arguments with the variables of `_cmake_variables` set before `position` replaced: `${NAME}`
+    alone by its values, `${NAME}` inside an argument by its value when it has one."""
+    def values_of(name: str) -> tuple[str, ...]:
+        stated = variables.get(name)
+        return stated[1] if stated is not None and stated[0] < position else ()
+
+    replaced: list[str] = []
+    for argument in arguments:
+        for part in argument.split(";") if ";" in argument else [argument]:
+            whole = _CMAKE_WHOLE_VARIABLE.fullmatch(part)
+            if whole is not None and values_of(whole.group(1)):
+                replaced.extend(values_of(whole.group(1)))
+            elif part:
+                replaced.append(_CMAKE_WHOLE_VARIABLE.sub(
+                    lambda match: values_of(match.group(1))[0] if len(values_of(match.group(1))) == 1 else match.group(), part))
+    return replaced
 
 
 def _cmake_source(root: str, token: str, source_folder: str, list_folder: str, tops: Sequence[str]) -> Optional[str]:
@@ -276,10 +380,13 @@ def cmake_targets(
     """The build targets and the tests the CMake files state literally: `add_executable`, `add_library`,
     `target_sources`, and `add_test(NAME <test> COMMAND <command> ...)` or `add_test(<test> <command> ...)`.
     A name written with a variable, an alias and an imported target are left out; so is what a function
-    or a macro of the project adds, which no literal call states."""
+    or a macro of the project adds, which no literal call states. A source list may name a variable that
+    the same file sets once with literal values (`_cmake_variables`); a target with a source argument that
+    could not be read is marked `unread`."""
     files = sorted(cmake_files)
     list_folders = {os.path.dirname(path) for path in files if os.path.basename(path) == "CMakeLists.txt"}
     sources: dict[str, dict[str, None]] = {}
+    unread: set[str] = set()
     kinds: dict[str, tuple[str, str]] = {}
     tests: list[tuple[str, list[str], str, str, str, list[str]]] = []
     for path in files:
@@ -302,20 +409,21 @@ def cmake_targets(
         scope = above[0] if above else here
         tops = list(reversed(above)) or [""]
         # A comment may hold a bracket: the calls are read from the text without its comments.
-        code = re.sub(r"#[^\n]*", "", text)
+        code = _cmake_code(text)
+        variables = _cmake_variables(code) if "${" in code else {}
         for call in _BUILD_CALL.finditer(code):
             command = call.group(1).lower()
-            tokens = call.group(2).split()
+            tokens = _cmake_arguments(call.group(2))
             if not tokens or "$" in tokens[0]:
                 continue
             if command == "add_test":
                 if tokens[0] == "NAME":
                     if len(tokens) < 4 or "COMMAND" not in tokens or "$" in tokens[1]:
                         continue
-                    name = tokens[1].strip('"')
+                    name = tokens[1]
                     words = tokens[tokens.index("COMMAND") + 1:]
                 else:
-                    name, words = tokens[0].strip('"'), tokens[1:]
+                    name, words = tokens[0], tokens[1:]
                 arguments: list[str] = []
                 for word in words:
                     if word in _TEST_WORDS:
@@ -326,17 +434,22 @@ def cmake_targets(
                 continue
             if "ALIAS" in tokens or "IMPORTED" in tokens:
                 continue
-            name = tokens[0].strip('"')
+            name = tokens[0]
             if command != "target_sources":
                 kinds.setdefault(name, ("executable" if command == "add_executable" else "library", path))
             found = sources.setdefault(name, {})
-            for token in tokens[1:]:
+            for token in _cmake_substituted(tokens[1:], variables, call.start()):
                 if token in _TARGET_WORDS:
                     continue
                 source = _cmake_source(root, token, scope, here, tops)
                 if source is not None:
                     found[source] = None
-    targets = [BuildTarget(name, kind, stated, tuple(sources.get(name, ()))) for name, (kind, stated) in sorted(kinds.items())]
+                elif "$" in token and not token.startswith(_CMAKE_BUILD_FOLDERS):
+                    unread.add(name)
+    targets = [
+        BuildTarget(name, kind, stated, tuple(sources.get(name, ())), name in unread)
+        for name, (kind, stated) in sorted(kinds.items())
+    ]
     known = set(kinds)
     built: list[BuildTest] = []
     for name, arguments, stated, scope, here, tops in tests:

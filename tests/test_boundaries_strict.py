@@ -196,17 +196,20 @@ class BoundariesStrictTest(unittest.TestCase):
             lines[-1])
 
     def test_files_in_no_part_are_not_checked(self) -> None:
-        """/* REQ-BCOV-019: with --strict, source files that belong to no part of the configured architecture are listed as boundaries-not-checked with the reason in-no-part and make the result incomplete (exit status 2), where plain mode counts them as checked and says ok. */"""
+        """/* REQ-BCOV-019: with --strict, source files that belong to no part of the configured architecture are listed as boundaries-not-checked with the reason in-no-part and make the result incomplete (exit status 2); plain mode lists them the same way, with boundaries-partial in place of ok, and exits 0. */"""
         files = {"packages/shop/" + name: text for name, text in LAYERED.items()}
         files.update({"packages/legacy/package.json": '{"name": "legacy"}\n', **_flat("packages/legacy/", 3)})
         files[".wingbox/config.yaml"] = "parts:\n  packages/shop:\n    style: layered\n"
         root = self.project(files)
-        self.assertEqual((0, ["(boundaries-ok :checked 17)"]), self.plain(root))
+        self.assertEqual((0, [
+            "(boundaries-not-checked :part - :reason in-no-part :files-in-part 3)",
+            "(boundaries-partial :checked 14 :not-checked 3)",
+        ]), self.plain(root))
         status, lines = self.strict(root)
         self.assertEqual(2, status, lines)
         self.assertEqual([
-            "(boundaries-ok :checked 17)",
             "(boundaries-not-checked :part - :reason in-no-part :files-in-part 3)",
+            "(boundaries-partial :checked 14 :not-checked 3)",
             "(boundaries-checked :part packages/shop :style layered :modules 14)",
             "(boundaries-result :status incomplete :checked 14 :not-checked 3 :violations 0 :known 0 :reason part-not-checked)",
         ], lines)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wingbox-http"
-version = "0.19.1"
+version = "0.19.2"
 description = "Streamable HTTP transport for the Wingbox MCP server: call the code graph of a repository from another machine."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Software Development",
 ]
 # The version follows wingbox, and each release requires exactly its own wingbox (REQ-HTTP-021).
-dependencies = ["wingbox==0.19.1"]
+dependencies = ["wingbox==0.19.2"]
 
 [project.urls]
 Homepage = "https://wingbox.dev"

@@ -27,8 +27,8 @@ this file applies to you.
   `tools/build_openai_plugin.py` builds the OpenAI directory ZIPs from it
   (listing texts in `docs/store/`). `benchmarks/` holds the reproducible
   impact and build-time benchmarks.
-- Supported Python: 3.11, 3.12, 3.13 (the builder imports `tomllib`). macOS and
-  Linux.
+- Supported Python: 3.11, 3.12, 3.13 (the builder imports `tomllib`). macOS,
+  Linux and Windows (the test matrix of `tests.yml` runs all three).
 
 ## 2. Rules for changes
 
@@ -59,7 +59,8 @@ this file applies to you.
   `python3 tools/requirements_index.py`: it writes
   `docs/assurance/requirements.md`, the list of every requirement with the
   test that verifies it, and a test fails while the committed file differs
-  from that output (REQ-DOC-004). The other pages of `docs/assurance/` are
+  from that output (REQ-DOC-004). An id belongs to one test: the tool names
+  an id that two tests carry, writes nothing and exits 1. The other pages of `docs/assurance/` are
   written by hand and cite their sources; a statement the sources do not
   support is written "not assessed".
 - This repository is public. Code, tests, documentation, commit messages and

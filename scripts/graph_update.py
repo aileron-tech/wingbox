@@ -30,7 +30,9 @@ does not apply (NotApplicable, the caller runs an incremental build) when the
 store does not match the published graph, when a resolution config changed
 (package.json, tsconfig*.json, pyproject.toml, .gitignore, ...), when a
 changed source is not Python or TypeScript/JavaScript (the other languages
-read the contents of other files to resolve imports), when module IDs of
+read the contents of other files to resolve imports), when a changed file is
+one the build left out of the graph or cannot be parsed now (the build writes
+the record of such files), when module IDs of
 unchanged files move, when more than MAX_CHANGED_FILES files changed or more
 than MAX_AFFECTED_SHARE of the modules (and more than MIN_AFFECTED_LIMIT)
 would be redone.
@@ -113,6 +115,19 @@ def _repo_of(root: str, path: str) -> str:
     return repo
 
 
+def _regular_file(root: str, path: str) -> bool:
+    """Whether path is a file discovery takes: a regular file that no symbolic link under root leads to
+    (discovery follows none, neither a linked file nor a linked folder)."""
+    if not os.path.isfile(path) or os.path.islink(path):
+        return False
+    folder = os.path.dirname(path)
+    while folder.startswith(root + os.sep):
+        if os.path.islink(folder):
+            return False
+        folder = os.path.dirname(folder)
+    return True
+
+
 def _discovered_language(root: str, path: str, skip_directories: frozenset[str]) -> Optional[str]:
     """The language discovery would give the file, ignoring the Git ignore rules; None when it is skipped."""
     exclusions = builder.DiscoveryExclusions(directory_names=skip_directories, paths=frozenset())
@@ -143,14 +158,21 @@ def classify(
     # The configuration files beside a module loader name the modules it loads (registry-wires edges).
     loaders = {os.path.dirname(path) for path, result in cached.items()
                if isinstance(result, builder.FileResult) and result.module_loads}
+    try:
+        left_out = builder.unparsed_files(root)
+    except (OSError, ValueError) as error:
+        return NotApplicable(f"the record of the files left out of the graph cannot be read: {error}")
     for relative in sorted(set(changed)):
         path = os.path.join(root, *relative.split("/"))
         name = os.path.basename(path)
+        if relative in left_out or builder.has_control_character(relative):
+            # The build keeps the record of the files it leaves out: it decides again and writes it.
+            return NotApplicable(f"a file that is left out of the graph changed: {relative!r}")
         if builder.is_resolution_config(name):
             return NotApplicable(f"resolution config changed: {relative}")
         if name.endswith(builder.CONFIG_SUFFIXES) and os.path.dirname(path) in loaders:
             return NotApplicable(f"module loader config changed: {relative}")
-        language = _discovered_language(root, path, skip_directories) if os.path.isfile(path) else None
+        language = _discovered_language(root, path, skip_directories) if _regular_file(root, path) else None
         old = cached.get(path)
         if language is None:
             if old is not None:
@@ -201,7 +223,8 @@ def _folders(root: str, path: str) -> list[str]:
     return folders
 
 
-def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], NotApplicable]:
+def _load_cache(root: str) -> Union[tuple[str, str, dict[str, builder.FileResult]], NotApplicable]:
+    """(builder fingerprint, digest of the resolution configs, parse results by path) of the build cache."""
     try:
         with open(builder.cache_path(root), "r", encoding="utf-8") as handle:
             cache = json.load(handle)
@@ -211,7 +234,8 @@ def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], N
         return NotApplicable("build cache of another schema")
     entries = cache.get("entries")
     fingerprint = cache.get("builder_fingerprint")
-    if not isinstance(entries, dict) or not isinstance(fingerprint, str):
+    configs = cache.get(builder.RESOLUTION_CONFIGS_FIELD, "")
+    if not isinstance(entries, dict) or not isinstance(fingerprint, str) or not isinstance(configs, str):
         return NotApplicable("build cache without entries")
     results: dict[str, builder.FileResult] = {}
     for path, entry in entries.items():
@@ -219,7 +243,7 @@ def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], N
         if isinstance(decoded, builder.Err):
             return NotApplicable(f"invalid cache entry {path}: {decoded.error}")
         results[path] = decoded.value
-    return fingerprint, results
+    return fingerprint, configs, results
 
 
 def _relative_key(root: str):
@@ -238,11 +262,13 @@ def _published_key(output_path: str) -> Optional[str]:
     return None
 
 
-def _write_cache(root: str, fingerprint: str, results: list[builder.FileResult]) -> None:
-    """The build cache as save_cache writes it, with the fingerprint of the build it extends."""
+def _write_cache(root: str, fingerprint: str, configs: str, results: list[builder.FileResult]) -> None:
+    """The build cache as save_cache writes it, with the fingerprint and the resolution configs of the build
+    it extends (a changed resolution config is never patched in, so they are the ones of that build)."""
     cache = {
         "schema_version": builder.CACHE_SCHEMA_VERSION,
         "builder_fingerprint": fingerprint,
+        builder.RESOLUTION_CONFIGS_FIELD: configs,
         "entries": {result.path: builder._serialize_file_result(result) for result in results},
     }
     builder._atomic_write_text(
@@ -324,9 +350,9 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     loaded = _load_cache(root)
     if isinstance(loaded, NotApplicable):
         return loaded
-    fingerprint, cached = loaded
+    fingerprint, configs, cached = loaded
     old_list = sorted(cached.values(), key=_relative_key(root))
-    old_key = builder.symbol_index_key(old_list, fingerprint, _MODE)
+    old_key = builder.symbol_index_key(old_list, fingerprint, _MODE, configs)
     if _published_key(output_path) != old_key:
         return NotApplicable("the published graph does not match the build cache")
     store = builder.read_fragments(fragments_path, root)
@@ -356,7 +382,10 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
         if old is not None and isinstance(builder._cache_entry_result(path, builder._serialize_file_result(old)), builder.Ok):
             continue  # same content: nothing to redo
         repo = old.repo if old is not None else _repo_of(root, path)
-        new_by_path[path] = builder.parse_file((path, language.name, repo, root))
+        parsed = builder.parse_source((path, language.name, repo, root))
+        if isinstance(parsed, builder.UnparsedFile):
+            return NotApplicable(f"{os.path.relpath(path, root)} cannot be parsed ({parsed.reason}: {parsed.detail})")
+        new_by_path[path] = parsed
     if {result.language for result in new_by_path.values()} != {result.language for result in cached.values()}:
         return NotApplicable("the set of languages changed")
     new_list = sorted(new_by_path.values(), key=_relative_key(root))
@@ -398,9 +427,9 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
         return NotApplicable(built.error)
     content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list), built.value[0],
                                   builder.built_from(root, new_list))
-    new_key = builder.symbol_index_key(new_list, fingerprint, _MODE)
+    new_key = builder.symbol_index_key(new_list, fingerprint, _MODE, configs)
     uses = builder.render_uses_sexp(graph.nodes, new_key, content)
-    _write_cache(root, fingerprint, new_list)
+    _write_cache(root, fingerprint, configs, new_list)
     builder._atomic_write_text(output_path, content)
     builder._atomic_write_text(builder.uses_path(output_path), uses)
     builder.publish_layer_guesses(root, graph.nodes)

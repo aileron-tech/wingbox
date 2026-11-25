@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from dataclasses import dataclass
 
 try:
-    from . import portable
+    from . import git_safe
     from .lang.discovery import is_excluded_directory
     from .lang.interface import DiscoveryExclusions
 except ImportError:  # loaded as a top-level script module
-    import portable
+    import git_safe
     from lang.discovery import is_excluded_directory
     from lang.interface import DiscoveryExclusions
 
@@ -54,15 +53,16 @@ def _git_environment() -> dict[str, str]:
 
 def _repository_root(root: str) -> _RepositoryRootResult:
     try:
-        result = subprocess.run(
-            ("git", "-C", root, "rev-parse", "--show-toplevel"),
+        result = git_safe.run(
+            root,
+            "rev-parse",
+            ("--show-toplevel",),
             capture_output=True,
             check=False,
-            env=_git_environment(),
+            environment=_git_environment(),
             text=True,
             encoding="utf-8",
             errors="replace",
-            **portable.hidden_process_options(),
         )
     except OSError as error:
         return _RepositoryRootUnavailable(f"could not run Git: {error}")
@@ -168,23 +168,15 @@ def _ignored_candidates(repository_root: str, candidates: frozenset[str]) -> Git
         b"\0".join(os.fsencode(candidate) for candidate in relative_candidates) + b"\0"
     )
     try:
-        result = subprocess.run(
-            (
-                "git",
-                "-c",
-                f"core.excludesFile={os.devnull}",
-                "-C",
-                repository_root,
-                "check-ignore",
-                "--no-index",
-                "--stdin",
-                "-z",
-            ),
+        result = git_safe.run(
+            repository_root,
+            "check-ignore",
+            ("--no-index", "--stdin", "-z"),
+            config=(f"core.excludesFile={os.devnull}",),
             capture_output=True,
             check=False,
-            env=_git_environment(),
+            environment=_git_environment(),
             input=standard_input,
-            **portable.hidden_process_options(),
         )
     except OSError as error:
         return GitIgnoreUnavailable(f"could not run git check-ignore: {error}")
@@ -214,12 +206,13 @@ def _ignored_candidates(repository_root: str, candidates: frozenset[str]) -> Git
 def _tracked_paths(repository_root: str) -> GitIgnoreLoadResult:
     """Absolute paths of the files git tracks in the repository."""
     try:
-        result = subprocess.run(
-            ("git", "-C", repository_root, "ls-files", "-z"),
+        result = git_safe.run(
+            repository_root,
+            "ls-files",
+            ("-z",),
             capture_output=True,
             check=False,
-            env=_git_environment(),
-            **portable.hidden_process_options(),
+            environment=_git_environment(),
         )
     except OSError as error:
         return GitIgnoreUnavailable(f"could not run git ls-files: {error}")

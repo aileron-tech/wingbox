@@ -19,6 +19,7 @@ already lists is not repeated as advice).
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from dataclasses import dataclass
 from typing import Mapping
@@ -92,6 +93,20 @@ def _folder(path: str) -> str:
     return path.rsplit("/", 1)[0] if "/" in path else "."
 
 
+_FIX_NAME = re.compile(r"\{(source|target|source_folder|target_folder)\}")
+
+
+def fix_text(fix: str, source_file: str, target_file: str) -> str:
+    """The fix of a rule with its four names filled in: {source}, {target}, {source_folder}, {target_folder}.
+
+    Only these names are replaced, in one pass: any other brace of the text stays as it is (the text of a
+    declared rule holds the path of its file, and a path may hold braces).
+    """
+    values = {"source": source_file, "target": target_file,
+              "source_folder": _folder(source_file), "target_folder": _folder(target_file)}
+    return _FIX_NAME.sub(lambda match: values[match.group(1)], fix)
+
+
 def missing_folders(part: PartRules, targets: tuple[TargetFact, ...]) -> list[Advice]:
     found: list[Advice] = []
     for item in targets:
@@ -114,10 +129,7 @@ def fix_violations(part: PartRules, violations: tuple[Violation, ...], files: Ma
             continue
         reason, _severity, fix = part.denies.get((item.source_layer, item.target_layer), (item.reason, "", ""))
         source_file, target_file = files.get(item.source, item.source), files.get(item.target, item.target)
-        text = (fix or "").format(
-            source=source_file, target=target_file,
-            source_folder=_folder(source_file), target_folder=_folder(target_file),
-        ) or reason
+        text = fix_text(fix or "", source_file, target_file) or reason
         rule = f"{item.source_layer} -> {item.target_layer}"
         found.append(Advice(
             id=advice_id(part.path, "fix-violation", f"{source_file} -> {target_file}", rule), part=part.path,

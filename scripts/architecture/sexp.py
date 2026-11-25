@@ -4,9 +4,13 @@ from __future__ import annotations
 from typing import Optional
 
 
+# Every character that ends a line for a reader of text (str.splitlines): a fact is one line.
+_LINE_BREAKS = dict.fromkeys(map(ord, "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"), " ")
+
+
 def q(text: str) -> str:
-    """A quoted S-expression string."""
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
+    """A quoted S-expression string on one line: a line break of any kind becomes a space."""
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"').translate(_LINE_BREAKS) + '"'
 
 
 def parse(line: str) -> list[str]:

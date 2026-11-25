@@ -98,6 +98,7 @@ import hashlib
 import io
 import os
 import re
+import shlex
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -136,6 +137,7 @@ else:
 MAP_SCHEMA_VERSION = 1
 MAX_SEARCH_PATTERN_LENGTH = 256
 MAX_QUERY_DEPTH = 50
+MAX_QUERY_NESTING = 100   # levels of parentheses in one query expression; it is read and evaluated by recursion
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +208,7 @@ class EntityFact:
 _RETIRED_VALIDATION_MARK = ":validated"
 # Edge facts of the code graph; every kind except a pipeline data-flow is a dependency of its source.
 _EDGE_KINDS = ("imports", "calls-api", "data-flow", "refs", "calls", "http-calls", "registry-wires", "generated", "runs")
+_EDGE_FACTS = tuple(f"({kind} " for kind in _EDGE_KINDS)
 
 
 @dataclass(frozen=True)
@@ -272,8 +275,10 @@ def parse_search_pattern(raw: str, text: bool = False) -> SearchPatternResult:
 
     anchor_start = raw.startswith("^")
     body_start = 1 if anchor_start else 0
-    trailing_backslashes = len(raw) - len(raw.rstrip("\\"))
-    anchor_end = raw.endswith("$") and trailing_backslashes % 2 == 0
+    # A last `$` after an odd number of backslashes is escaped: it is text, not the end of the line.
+    before_last = raw[:-1]
+    escaping = len(before_last) - len(before_last.rstrip("\\"))
+    anchor_end = raw.endswith("$") and escaping % 2 == 0
     body_end = len(raw) - 1 if anchor_end else len(raw)
     body = raw[body_start:body_end]
 
@@ -458,7 +463,7 @@ def parse_name_route(token: str) -> Optional[NameRoute]:
     way, values = parts[0][1:], parts[1:]
     through = values.pop(0) if way in _ROUTES_WITH_THROUGH and values else ""
     count = len(values)
-    if len(values) >= 2 and values[-2] == ":of" and values[-1].isdigit():
+    if len(values) >= 2 and values[-2] == ":of" and values[-1].isdecimal():
         count, values = int(values[-1]), values[:-2]
     return NameRoute(way, through, tuple(values), count)
 
@@ -487,7 +492,18 @@ def _escaped(s: str) -> str:
 
 
 def _q(s: str) -> str:
-    """Quote a string for S-expression output if it contains spaces."""
+    """One atom of a fact line: bare when it is a plain symbol, else a quoted string. Empty text, a leading
+    colon (it would read as a keyword), white space, a quote, a parenthesis and a semicolon (the comment
+    sign) make it a quoted string, so a module or a file with such a name (`app/(group)/page`, `my dir/a`)
+    stays one atom for every reader. A backslash alone does not: a Windows path prints as it did."""
+    if s and not s.startswith(":") and not any(character in s for character in ' \t\n\r"();'):
+        return s
+    return '"' + _escaped(s) + '"'
+
+
+def _q013(s: str) -> str:
+    """An atom as versions up to 0.13 wrote it, quoted only for a space or a quote: the flat facts of
+    `impact --sexp` and `usages --sexp` keep it, byte for byte, with the names they print bare."""
     if " " in s or '"' in s:
         return '"' + _escaped(s) + '"'
     return s
@@ -504,10 +520,13 @@ def _sexp_list(tag: str, items: list[str]) -> str:
 # No-match error helper
 # ---------------------------------------------------------------------------
 
-def _no_match_fact(pattern: str, suggestions: Sequence[str]) -> str:
-    if suggestions:
-        return f"(error no-match {_q(pattern)} :suggestions {' '.join(suggestions)})"
-    return f"(error no-match {_q(pattern)})"
+def _no_match_fact(pattern: str, suggestions: Sequence[str], flat: bool = False) -> str:
+    """The no-match error; flat: as versions up to 0.13 wrote its atoms."""
+    if flat:
+        tail = f" :suggestions {' '.join(suggestions)}" if suggestions else ""
+        return f"(error no-match {_q013(pattern)}{tail})"
+    tail = f" :suggestions {' '.join(map(_q, suggestions))}" if suggestions else ""
+    return f"(error no-match {_q(pattern)}{tail})"
 
 
 def _print_no_match(g: CodeGraph, pattern: str, flat: bool = False) -> None:
@@ -517,7 +536,7 @@ def _print_no_match(g: CodeGraph, pattern: str, flat: bool = False) -> None:
     if outside is not None:
         print(impact_forms.missing_fact(impact_forms.ImpactMissing(outside.file, (), "", outside.reason, outside.language)))
         return
-    print(_no_match_fact(pattern, CodeGraph._suggest_similar(pattern, g.nodes)))
+    print(_no_match_fact(pattern, CodeGraph._suggest_similar(pattern, g.nodes), flat))
 
 
 @dataclass(frozen=True)
@@ -525,7 +544,8 @@ class OutsideGraph:
     """A file of the repository that is not in the graph, and why."""
 
     file: str       # relative to the graph root
-    reason: str     # not-parsed-language, skipped-language, excluded, not-source
+    reason: str     # not-parsed-language, skipped-language, excluded, not-source, or why the build left this
+                    # one file out (a key of source_kinds.UNPARSED_FILE_REASONS: parser-failed, binary, ...)
     language: str   # the display name of its language; "" for not-source
 
     @property
@@ -536,6 +556,8 @@ class OutsideGraph:
             why = f"the {self.language} parser is not installed"
         elif self.reason == "excluded":
             why = f"the build left this {self.language} file out (a skipped folder, a path Git ignores, a minified file)"
+        elif self.reason in source_kinds.UNPARSED_FILE_REASONS:
+            why = source_kinds.UNPARSED_FILE_REASONS[self.reason].format(language=self.language)
         else:
             why = "it is not a source file"
         return (f"{self.file} is not in the graph: {why}. Its dependents are not known here: "
@@ -549,7 +571,7 @@ def _state_text(g: CodeGraph, name: str) -> str:
     try:
         with open(os.path.join(os.path.dirname(g._map_path), name), "r", encoding="utf-8") as handle:
             return handle.read()
-    except OSError:
+    except (OSError, ValueError):   # ValueError: bytes that are not UTF-8
         return ""
 
 
@@ -560,7 +582,9 @@ def outside_graph(g: CodeGraph, target: str) -> Optional[OutsideGraph]:
     path = portable.local_path(target)
     absolute = path if os.path.isabs(path) else os.path.join(g._root, path)
     if not os.path.isfile(absolute):
-        return None
+        absolute = os.path.join(os.getcwd(), path)   # as a file argument is read: from the root, then from here
+        if not os.path.isfile(absolute):
+            return None
     relative = portable.relative_posix(absolute, g._root)
     if relative is None:
         return None
@@ -571,6 +595,9 @@ def outside_graph(g: CodeGraph, target: str) -> Optional[OutsideGraph]:
     name = os.path.basename(absolute)
     parsed = source_kinds.parsed_language(name)
     if parsed is not None:
+        left_out = source_kinds.read_unparsed_files(_state_text(g, "graph-unparsed.sexp")).get(relative)
+        if left_out is not None:
+            return OutsideGraph(relative, left_out, parsed)
         skipped = f"(skipped-language {source_kinds.LANGUAGE_NAMES[parsed]} " in _state_text(g, "graph-skipped.sexp")
         return OutsideGraph(relative, "skipped-language" if skipped else "excluded", parsed)
     other = source_kinds.not_parsed_language(name)
@@ -610,7 +637,8 @@ def _module_id_to_file(module_id: str, root: str) -> str:
         candidate = base + ext
         if os.path.isfile(candidate):
             return candidate
-    for idx in ("index.ts", "index.tsx", "index.js", "__init__.py", "mod.rs", "index.blade.php"):
+    # In the order the builder gives a folder its module ID; a Python index.py is the module of its folder too.
+    for idx in ("index.ts", "index.tsx", "index.js", "index.py", "__init__.py", "mod.rs", "index.blade.php"):
         candidate = os.path.join(base, idx)
         if os.path.isfile(candidate):
             return candidate
@@ -682,6 +710,11 @@ class CodeGraph:
         self._unloaded_imports: list[str] = []
         self._includes: Optional[dict[str, set[str]]] = None
         self._uses_file_read = False
+        # Why the use facts are not those of the use file ("" when they are): no-use-file, stale-use-file,
+        # unreadable-use-file. And whether the positions last asked for (_positions_of) were read in the
+        # files that hold the name only.
+        self._uses_gap = ""
+        self._positions_pending = False
         self._map_path = ""
         self._module_files: dict[tuple[str, str], str] = {}  # (root, module) -> file, worked out once
         self.pmap: dict[str, str] = {}
@@ -695,10 +728,12 @@ class CodeGraph:
         # modules its command names), as the CMake files state them.
         self.build_targets: dict[str, tuple[str, ...]] = {}
         self.build_tests: dict[str, tuple[str, tuple[str, ...]]] = {}
+        self.unread_targets: set[str] = set()   # targets marked `:sources unread`: their source list was not all read
         self._name_positions: dict[str, list[str]] = {}   # name -> its use lines read before the use file has positions
         self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
         self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
         self.entry_roots: dict[str, bool] = {}   # module -> nothing imports it and it imports a composition root
+        self.gate = GateFacts()   # what `boundaries` reads besides the labels and the rules
         self.arch_fixes: dict[tuple[str, str, str], str] = {}   # (part, from, to) -> fix the style prescribes
         self.arch_ranks: dict[str, dict[str, int]] = {}         # part -> layer -> rank
         self.arch_targets: list[tuple[str, str, str, str, bool, str, str]] = []   # part, layer, block, folder, proposed, present, source
@@ -743,6 +778,8 @@ class CodeGraph:
         self._includes = None
         self._name_positions = {}
         self._uses_file_read = False
+        self._uses_gap = ""
+        self._positions_pending = False
         self._map_path = path
         self._module_files = {}
         self.pmap = {}
@@ -752,9 +789,11 @@ class CodeGraph:
         self.generation_unresolved = []
         self.build_targets = {}
         self.build_tests = {}
+        self.unread_targets = set()
         self.arch_denies = {}
         self.candidate_rules = set()
         self.entry_roots = {}
+        self.gate = GateFacts()
         self.arch_fixes = {}
         self.arch_ranks = {}
         self.arch_targets = []
@@ -776,11 +815,12 @@ class CodeGraph:
         try:
             with open(path, "r", encoding="utf-8") as code_graph:
                 map_lines = code_graph.readlines()
-        except OSError as error:
+        except (OSError, ValueError) as error:   # ValueError: bytes that are not UTF-8
             return MapLoadErr(f"could not read {path}: {error}")
 
         pmap: dict[str, str] = {}
         declared_node_count: Optional[int] = None
+        declared_edge_count: Optional[int] = None   # None: a header that states no edge count
         found_header = False
         found_paths = False
 
@@ -811,10 +851,15 @@ class CodeGraph:
                     )
                 if (
                     nodes_index + 1 >= len(header_tokens)
-                    or not header_tokens[nodes_index + 1].isdigit()
+                    or not header_tokens[nodes_index + 1].isdecimal()   # isdigit takes a superscript two, int() does not
                 ):
                     return MapLoadErr("code-graph header has an invalid node count")
                 declared_node_count = int(header_tokens[nodes_index + 1])
+                if ":edges" in header_tokens:
+                    stated_edges = header_tokens[header_tokens.index(":edges") + 1:][:1]
+                    if not stated_edges or not stated_edges[0].isdecimal():
+                        return MapLoadErr("code-graph header has an invalid edge count")
+                    declared_edge_count = int(stated_edges[0])
                 continue
 
             if stripped == "(paths":
@@ -867,6 +912,7 @@ class CodeGraph:
                 return f"{pmap.get(mod, mod)}::{ent}"
             return pmap.get(sid, sid)
 
+        edge_facts = 0   # the edge facts of the file, read or not: the header declares their number
         for line in map_lines:
             if line.startswith(_LAZY_FACTS):
                 self._symbol_lines.append(line)
@@ -874,6 +920,8 @@ class CodeGraph:
             if focus is not None and focus not in line and not line.startswith(("(node ", "(code-graph")):
                 if line.startswith("(imports "):
                     self._unloaded_imports.append(line)   # read on need: who includes a header (includes_of)
+                if line.startswith(_EDGE_FACTS) or (line[:1].isspace() and line.lstrip().startswith(_EDGE_FACTS)):
+                    edge_facts += 1
                 continue
             tokens = tokenize(line)
             if not tokens:
@@ -902,7 +950,7 @@ class CodeGraph:
             elif kind in ("fn", "cls", "mod", "ifc", "typ", "enm") and len(tokens) >= 4:
                 module = _resolve(tokens[1])
                 name = tokens[2]
-                line_num = int(tokens[3]) if tokens[3].isdigit() else 0
+                line_num = int(tokens[3]) if tokens[3].isdecimal() else 0
                 bases, deco, methods = [], [], []
                 for t in tokens[4:]:
                     if t.startswith("(:bases"):
@@ -916,6 +964,7 @@ class CodeGraph:
                 self.entity_by_name.setdefault(name, []).append(ent)
 
             elif kind in _EDGE_KINDS and len(tokens) >= 3:
+                edge_facts += 1
                 source = _resolve(tokens[1])
                 target = _resolve(tokens[2])
                 flags = [t for t in tokens[3:] if t.startswith(":")]
@@ -955,10 +1004,12 @@ class CodeGraph:
                 self.generated_from_files.setdefault(tokens[2], []).append((_resolve(tokens[1]), flags))
             elif kind in ("target", "ctest") and len(tokens) >= 2:
                 values = _keywords(tokens[2:])
-                taken = {":runs"} | {token for key in ("kind", "in", "target") if key in values for token in (f":{key}", values[key])}
+                taken = {":runs"} | {token for key in ("kind", "in", "target", "sources") if key in values for token in (f":{key}", values[key])}
                 modules = tuple(_resolve(token) for token in tokens[2:] if token not in taken and token.strip('"') not in taken)
                 if kind == "target":
                     self.build_targets[tokens[1]] = modules
+                    if values.get("sources") == "unread":
+                        self.unread_targets.add(tokens[1])
                 else:
                     self.build_tests[tokens[1]] = (values.get("target", ""), modules)
             elif kind == "generation-unresolved" and len(tokens) >= 2:
@@ -972,7 +1023,7 @@ class CodeGraph:
                     self.candidate_rules.add((tokens[1], tokens[2], tokens[3]))
                 if values.get("fix"):
                     self.arch_fixes[(tokens[1], tokens[2], tokens[3])] = values["fix"]
-            elif kind == "arch-rank" and len(tokens) >= 4 and tokens[3].lstrip("-").isdigit():
+            elif kind == "arch-rank" and len(tokens) >= 4 and _WHOLE_NUMBER.match(tokens[3]):
                 self.arch_ranks.setdefault(tokens[1], {})[tokens[2]] = int(tokens[3])
             elif kind == "arch-target" and len(tokens) >= 4:
                 values = _keywords(tokens[4:])
@@ -982,15 +1033,19 @@ class CodeGraph:
                 ))
             elif kind == "arch-known" and len(tokens) >= 5:
                 pair = (_resolve(tokens[2]), _resolve(tokens[3]))
-                terms = _baseline.terms_of(tokens[5:])
-                if terms.expired(today):
-                    if pair not in self.known:
-                        self.known_expired[pair] = terms
-                    continue
-                self.known[pair] = tokens[4]
-                self.known_expired.pop(pair, None)
-                if terms.stated():
-                    self.known_terms[pair] = terms
+                entries = self.gate.known_entries.setdefault(pair, [])
+                entries.append((tokens[4], tokens[1], _baseline.terms_of(tokens[5:])))
+                self.gate.known_files[pair] = _settle_entries(
+                    pair, [(file, terms) for file, _part, terms in entries], today,
+                    self.known, self.known_terms, self.known_expired)
+            elif kind == "arch-known-rule" and len(tokens) >= 5:
+                self.gate.known_rules.setdefault((tokens[1], tokens[2], tokens[3]), set()).add(tokens[4])
+            elif kind in ("arch-not-parsed", "arch-capability-unread") and len(tokens) >= 3:
+                files = _keywords(tokens[3:]).get("files", "")
+                table = self.gate.not_parsed if kind == "arch-not-parsed" else self.gate.capability_unread
+                table.setdefault(tokens[1], {})[tokens[2]] = int(files) if files.isdigit() else 0
+            elif kind == "arch-rule-files":
+                self.gate.rule_digests = _keywords(tokens[1:])
             elif kind == "arch-capability" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])
                 self.arch_capabilities.setdefault(tokens[1], {})[tokens[2]] = CapabilityRuleFact(
@@ -1001,20 +1056,17 @@ class CodeGraph:
                 self.arch_patterns.setdefault(tokens[1], set()).add(tokens[2])
             elif kind == "capability" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])
+                stated_line = values.get("line", "")
                 self.capabilities.setdefault(_resolve(tokens[1]), []).append(CapabilityFact(
-                    tokens[2], int(values.get("line", "0") or 0), values.get("evidence", ""), ":suspect" in tokens,
+                    tokens[2], int(stated_line) if stated_line.isdecimal() else 0, values.get("evidence", ""), ":suspect" in tokens,
                 ))
             elif kind == "arch-declared-unread" and len(tokens) >= 3:
                 self.declared_unread.setdefault(tokens[1], []).append(tokens[2])
             elif kind == "capability-known" and len(tokens) >= 5:
                 key = (_resolve(tokens[2]), tokens[3])
-                terms = _baseline.terms_of(tokens[5:])
-                if terms.expired(today):
-                    self.capability_expired[key] = terms
-                    continue
-                self.capability_known[key] = tokens[4]
-                if terms.stated():
-                    self.capability_terms[key] = terms
+                entries = self.gate.capability_entries.setdefault(key, [])
+                entries.append((tokens[4], _baseline.terms_of(tokens[5:])))
+                _settle_entries(key, entries, today, self.capability_known, self.capability_terms, self.capability_expired)
             elif kind == "layer" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])  # :learned-from <id> is part of the rule text as well
                 self.labels[_resolve(tokens[1])] = ModuleLabel(
@@ -1033,6 +1085,13 @@ class CodeGraph:
                 f"code-graph node count mismatch: expected "
                 f"{declared_node_count}, loaded {len(self.nodes)}"
             )
+        if declared_edge_count is not None and edge_facts < declared_edge_count:
+            # The builder writes one fact per edge it counts: fewer is a file cut short, and its answers
+            # would name fewer dependents than there are. More is a graph written by hand: nothing is lost.
+            return MapLoadErr(
+                f"code-graph edge count mismatch: expected {declared_edge_count}, loaded {edge_facts} "
+                "(the file is cut short: run wingbox build)"
+            )
         return MapLoadOk()
 
     def _use_lines(self) -> list[str]:
@@ -1047,13 +1106,20 @@ class CodeGraph:
                 with open(self._map_path, "r", encoding="utf-8") as graph_file:
                     digest = hashlib.sha256(graph_file.read().encode("utf-8")).hexdigest()[:16]
             except FileNotFoundError:
+                if not self._symbol_lines:
+                    # A build writes the use file; only a graph written before there was one holds its use
+                    # facts itself. Without either, who uses a name is not known, and the answer says so.
+                    self._uses_gap = "no-use-file"
+                    print(f"(warning uses-missing {_q(path)} :rerun \"wingbox build\")", file=sys.stderr)
                 return self._symbol_lines
-            except OSError as error:
+            except (OSError, ValueError) as error:   # ValueError: bytes that are not UTF-8
+                self._uses_gap = "unreadable-use-file"
                 print(f"(warning uses-unreadable {_q(path)} {_q(str(error))})", file=sys.stderr)
                 return self._symbol_lines
             header = next((line for line in lines if line.startswith("(code-graph-uses ")), "")
             self._uses_header = header
             if f":graph {digest})" not in header:
+                self._uses_gap = "stale-use-file"
                 print(f"(warning uses-stale {_q(path)} :rerun \"wingbox build\")", file=sys.stderr)
                 return self._symbol_lines
             self._symbol_lines.extend(line for line in lines if line.startswith(_LAZY_FACTS))
@@ -1080,6 +1146,7 @@ class CodeGraph:
         positions, the builder reads only the files that hold the name (use_position_lines), which
         takes seconds where filling the whole file takes as long as a build, and starts that fill in
         a process of its own for the questions that follow."""
+        self._positions_pending = False
         lines = self._use_lines()
         header = self._uses_header
         if not header or ":positions no" not in header:
@@ -1095,6 +1162,8 @@ class CodeGraph:
                 return self._positions()   # the whole fill says why positions are not to be had
             self._name_positions[name] = found.value
             builder.start_position_fill(self._map_path, self._root)
+        # A file that uses the name under another one (an alias, a re-export) is not among the files read.
+        self._positions_pending = True
         return self._name_positions[name]
 
     def unresolved_calls_of(self, member: str) -> list[tuple[str, int, int]]:
@@ -1160,7 +1229,7 @@ class CodeGraph:
             for line in self._use_lines():
                 if line.startswith("(var "):
                     parts = line.strip().strip("()").split()
-                    if len(parts) == 4 and parts[3].isdigit():
+                    if len(parts) == 4 and parts[3].isdecimal():
                         module = self.pmap.get(parts[1], parts[1])
                         found.setdefault(parts[2], []).append(EntityFact(module, parts[2], "var", int(parts[3]), [], [], []))
             self._variables = found
@@ -1185,7 +1254,7 @@ class CodeGraph:
             found: dict[str, int] = {}
             for line in self._positions():
                 tokens = line.strip().strip("()").split()
-                if len(tokens) == 4 and tokens[0] == "unresolved" and tokens[3].isdigit():
+                if len(tokens) == 4 and tokens[0] == "unresolved" and tokens[3].isdecimal():
                     found[self.pmap.get(tokens[1], tokens[1])] = int(tokens[3])
             self._unresolved_counts = found
         return self._unresolved_counts
@@ -1259,15 +1328,29 @@ class CodeGraph:
     def resolve_module(self, pattern: str) -> list[str]:
         """Find module IDs: exact > suffix > substring > case-insensitive substring.
 
+        An argument that names a file (see _names_file) is the module whose file it is, or nothing: only a
+        module pattern is matched by its parts. A suffix match starts at a path or name boundary (`core`
+        is app/core, not app/hardcore). An empty pattern matches nothing.
+
         Returns an empty list when nothing matches (caller should use
         _print_no_match to report the failure with suggestions).
         """
+        if not pattern.strip():
+            return []
+        exact = _exact_module(self, pattern)
+        if exact is not None:
+            return [exact]
+        if _names_file(self, pattern):
+            return []
         resolved_pattern = self.resolve_alias(pattern)
         if resolved_pattern in self.nodes:
             return [resolved_pattern]
         if pattern in self.nodes:
             return [pattern]
-        suffix_matches = [nid for nid in self.nodes if nid.endswith("/" + pattern) or nid.endswith(pattern)]
+        suffix_matches = [
+            nid for nid in self.nodes
+            if nid.endswith(pattern) and (len(nid) == len(pattern) or not (nid[-len(pattern) - 1] + pattern[0]).isalnum())
+        ]
         if suffix_matches:
             return sorted(suffix_matches)
         sub_matches = [nid for nid in self.nodes if pattern in nid]
@@ -1371,32 +1454,61 @@ def _collect_rdep_mods(g: CodeGraph, nid: str) -> dict[str, str]:
     return seen
 
 
+def _shortest_depths(start: str, hops: int, neighbours: Callable[[str], dict[str, str]]) -> dict[str, int]:
+    """module -> the fewest hops from start to it, for start (0) and every module within hops of it."""
+    depths = {start: 0}
+    frontier = [start]
+    for depth in range(1, hops + 1):
+        found: list[str] = []
+        for module in frontier:
+            for other in neighbours(module):
+                if other not in depths:
+                    depths[other] = depth
+                    found.append(other)
+        if not found:
+            break
+        frontier = found
+    return depths
+
+
+def _walk_tree(
+    start: str, visited: set[str], max_depth: int, first_depth: int,
+    emit: Callable[[int, str, str, bool], None], neighbours: Callable[[str], dict[str, str]],
+) -> None:
+    """Emit the tree below start, depth first, as `deps` and `rdeps` print it: every module within the depth
+    on one line at its shortest depth, where it is followed further. A module that is already listed and
+    comes up again is emitted with the cycle mark and not followed, as versions up to 0.13 printed it. A
+    module that a longer path reaches before its shortest one is not emitted there: followed at the longer
+    depth (or not at all, at the last depth) it hid the modules behind it."""
+    shortest = _shortest_depths(start, max_depth - first_depth + 1, neighbours)
+
+    def below(module: str, depth: int) -> None:
+        if depth > max_depth:
+            return
+        for other, edge_type in sorted(neighbours(module).items()):
+            listed = other in visited
+            if not listed and first_depth - 1 + shortest[other] < depth:
+                continue
+            emit(depth, edge_type, other, listed)
+            if not listed:
+                visited.add(other)
+                below(other, depth + 1)
+
+    below(start, first_depth)
+
+
 def _walk_deps(
     g: CodeGraph, nid: str, visited: set[str], max_depth: int, depth: int,
     emit: Callable[[int, str, str, bool], None],
 ) -> None:
-    if depth > max_depth:
-        return
-    for tgt, etype in sorted(_collect_dep_mods(g, nid).items()):
-        cycle = tgt in visited
-        emit(depth, etype, tgt, cycle)
-        if not cycle:
-            visited.add(tgt)
-            _walk_deps(g, tgt, visited, max_depth, depth + 1, emit)
+    _walk_tree(nid, visited, max_depth, depth, emit, functools.partial(_collect_dep_mods, g))
 
 
 def _walk_rdeps(
     g: CodeGraph, nid: str, visited: set[str], max_depth: int, depth: int,
     emit: Callable[[int, str, str, bool], None],
 ) -> None:
-    if depth > max_depth:
-        return
-    for src, etype in sorted(_collect_rdep_mods(g, nid).items()):
-        cycle = src in visited
-        emit(depth, etype, src, cycle)
-        if not cycle:
-            visited.add(src)
-            _walk_rdeps(g, src, visited, max_depth, depth + 1, emit)
+    _walk_tree(nid, visited, max_depth, depth, emit, functools.partial(_collect_rdep_mods, g))
 
 
 # ---------------------------------------------------------------------------
@@ -1444,7 +1556,7 @@ def _stored_layer_guesses(root: str) -> dict[str, str]:
 
 def _entity_sexp(e: EntityFact, lang: str = "") -> str:
     """Format an entity as an S-expression fact with :lang."""
-    parts = [e.kind, e.module, e.name, str(e.line)]
+    parts = [e.kind, _q(e.module), _q(e.name), str(e.line)]
     if lang:
         parts.append(f":lang {lang}")
     if e.bases:
@@ -1466,7 +1578,7 @@ def _edge_marks(e: Edge) -> str:
 
 def _edge_sexp(e: Edge, lines: bool = False) -> str:
     """Format an edge as an S-expression fact; with `lines`, an imports or refs fact names its source lines."""
-    return f"({e.etype} {e.source} {e.target}{_edge_marks(e)}{_edge_lines(e) if lines else ''})"
+    return f"({e.etype} {_q(e.source)} {_q(e.target)}{_edge_marks(e)}{_edge_lines(e) if lines else ''})"
 
 
 def _edge_lines(e: Edge) -> str:
@@ -1495,24 +1607,25 @@ def _read_edge_lines(tokens: list[str]) -> tuple[int, ...]:
         if token in (":line", ":lines"):
             found: list[int] = []
             for value in tokens[index + 1:]:
-                if not value.isdigit():
+                if not value.isdecimal():
                     break
                 found.append(int(value))
             return tuple(found)
     return ()
 
 
-def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> None:
+def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> int:
+    """Print the module with its entities and edges; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     for nid in matches:
         node = g.nodes[nid]
         fpath = g.module_to_file(nid)
         mod_lang = g.module_lang(nid)
-        print(f"(node {nid} :lang {mod_lang} {_q(node.purpose)} :file {_q(fpath)})")
+        print(f"(node {_q(nid)} :lang {mod_lang} {_q(node.purpose)} :file {_q(fpath)})")
         for e in sorted(g.entities.get(nid, []), key=lambda x: x.line):
             print(_entity_sexp(e, mod_lang))
         for e in sorted(g.edges_from.get(nid, []), key=lambda x: (x.etype, x.target)):
@@ -1520,32 +1633,37 @@ def cmd_module(g: CodeGraph, module_id: str, lines: bool = False) -> None:
         for e in sorted(g.edges_to.get(nid, []), key=lambda x: (x.etype, x.source)):
             if e.source.split("::")[0] != nid:
                 print(_edge_sexp(e, lines))
+    return 0
 
 
-def cmd_deps(g: CodeGraph, module_id: str, max_depth: int) -> None:
+def cmd_deps(g: CodeGraph, module_id: str, max_depth: int) -> int:
+    """Print the dependency tree of a module; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     for start in matches:
         visited: set[str] = {start}
-        print(f"(deps-root {start} :lang {g.module_lang(start)})")
+        print(f"(deps-root {_q(start)} :lang {g.module_lang(start)})")
         _walk_deps(g, start, visited, max_depth, 1,
-                   lambda d, et, tgt, cyc: print(f"(dep {start} {tgt} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+                   lambda d, et, tgt, cyc: print(f"(dep {_q(start)} {_q(tgt)} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+    return 0
 
 
-def cmd_rdeps(g: CodeGraph, module_id: str, max_depth: int) -> None:
+def cmd_rdeps(g: CodeGraph, module_id: str, max_depth: int) -> int:
+    """Print the tree of the modules that depend on a module; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     for start in matches:
         visited: set[str] = {start}
-        print(f"(rdeps-root {start} :lang {g.module_lang(start)})")
+        print(f"(rdeps-root {_q(start)} :lang {g.module_lang(start)})")
         _walk_rdeps(g, start, visited, max_depth, 1,
-                    lambda d, et, src, cyc: print(f"(rdep {start} {src} :lang {g.module_lang(src)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+                    lambda d, et, src, cyc: print(f"(rdep {_q(start)} {_q(src)} :lang {g.module_lang(src)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -1787,7 +1905,14 @@ _ROLE_GUESS_STYLES = ("layered",)
 
 
 def _default_labels(g: CodeGraph) -> None:
-    """Labels of a graph without architecture facts (written by hand): one part, the layered style."""
+    """Labels of a graph without architecture facts (written by hand): one part, the layered style.
+
+    Only in a project without .wingbox/config.yaml. Where a config states the parts and the graph still
+    has none, the parts of the config hold no file: the files are in no part and no style is assumed."""
+    if g.gate.no_default is None:
+        g.gate.no_default = bool(g._root) and os.path.isfile(os.path.join(g._root, ".wingbox", "config.yaml"))
+    if g.gate.no_default:
+        return
     library = load_library()
     style = library.style("layered")
     assert style is not None
@@ -1934,28 +2059,72 @@ def _rerun(command: str) -> str:
 _FOLDER_MODULE_FILES = ("/index", "/__init__", "/mod")
 
 
-def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]:
-    """Modules named by an impact target.
+def _names_file(g: CodeGraph, target: str) -> bool:
+    """Whether an argument names a file and not a module pattern: its name has the extension of a programming
+    language, parsed or not (`operatives.service` has none), or a file of that path is on disk under the
+    graph root or the current folder (a document, a data file)."""
+    path = portable.local_path(target)
+    name = os.path.basename(path)
+    if source_kinds.parsed_language(name) is not None or source_kinds.not_parsed_language(name) is not None:
+        return True
+    return any(os.path.isfile(os.path.join(base, path)) for base in (g._root, os.getcwd()) if base)
 
-    A file that shares its name with another one is a module named by its full
-    path (src/tool.py next to src/tool.ts), so the path as given is tried first.
-    An index file is the module of its folder (src/lib/index.ts -> src/lib).
-    """
-    target = portable.local_path(target)
-    as_given = target.replace(os.sep, "/")
-    if g._root and os.path.isabs(target):
-        relative = portable.relative_posix(target, g._root)
-        if relative is not None:
-            as_given = relative
-    if as_given.startswith("./"):
-        as_given = as_given[2:]
-    if as_given in g.nodes:
-        return [as_given]
-    if pattern in g.nodes:
-        return [pattern]
-    for suffix in _FOLDER_MODULE_FILES:
-        if pattern.endswith(suffix) and pattern[: -len(suffix)] in g.nodes:
-            return [pattern[: -len(suffix)]]
+
+def _root_relative(g: CodeGraph, target: str, from_cwd: bool = False) -> Optional[str]:
+    """A path as given, written relative to the graph root with /: an absolute path, a path relative to the
+    root or, with from_cwd, a path relative to the current folder. None for a path outside the root."""
+    path = portable.local_path(target)
+    if from_cwd and not os.path.isabs(path):
+        path = os.path.join(os.getcwd(), path)
+    if os.path.isabs(path):
+        return portable.relative_posix(path, g._root) if g._root else None
+    relative = path.replace(os.sep, "/")
+    return relative[2:] if relative.startswith("./") else relative
+
+
+def _module_of_file(g: CodeGraph, relative: str) -> Optional[str]:
+    """The module whose module ID, or whose file, is the path given (relative to the graph root).
+
+    A file that shares its name with another one is a module named by its full path (src/tool.py next to
+    src/tool.ts), so the path as given is tried first. An index file is the module of its folder
+    (src/lib/index.ts -> src/lib). A module found by the path without its extension is taken only when its
+    file is that path (app/tool.cs is not the module of app/tool.rs) or is not on disk to compare."""
+    if relative in g.nodes:
+        return relative
+    stem = _target_to_module_pattern(relative, "")
+    if stem == relative:
+        return None
+    for module in (stem, *(stem[: -len(suffix)] for suffix in _FOLDER_MODULE_FILES if stem.endswith(suffix))):
+        if module not in g.nodes:
+            continue
+        file = _impact_file(g, module)
+        # The same file also when the path given reaches it through a link.
+        if file in (relative, module) or (g._root and file == portable.relative_posix(os.path.join(g._root, relative), g._root)):
+            return module
+    return None
+
+
+def _exact_module(g: CodeGraph, target: str) -> Optional[str]:
+    """The module an argument names exactly: by its module ID or by the path of its file, absolute or relative
+    to the graph root; the path of a file is then read relative to the current folder. None for anything
+    else: a file is never answered for another file whose name is like it."""
+    relative = _root_relative(g, target)
+    module = _module_of_file(g, relative) if relative else None
+    if module is None and _names_file(g, target):
+        from_cwd = _root_relative(g, target, from_cwd=True)
+        if from_cwd and from_cwd != relative:
+            module = _module_of_file(g, from_cwd)
+    return module
+
+
+def _impact_target_modules(g: CodeGraph, target: str, pattern: str) -> list[str]:
+    """Modules named by an impact target: the module a file path or a module ID names exactly (see
+    _exact_module); for an argument that names no file, the modules its pattern matches."""
+    exact = _exact_module(g, target)
+    if exact is not None:
+        return [exact]
+    if not target.strip() or _names_file(g, target):
+        return []
     return g.resolve_module(pattern)
 
 
@@ -1993,7 +2162,8 @@ def _affected_build(g: CodeGraph, modules: set[str]) -> Optional[impact_forms.Af
     targets = sorted(name for name, sources in g.build_targets.items() if modules.intersection(sources))
     reached = set(targets)
     tests = sorted(name for name, (target, runs) in g.build_tests.items() if target in reached or modules.intersection(runs))
-    return impact_forms.Affected(tuple(targets), tuple(tests))
+    # The targets whose source list was not all read may hold the file too: they are named, never left out silently.
+    return impact_forms.Affected(tuple(targets), tuple(tests), tuple(sorted(g.unread_targets - reached)))
 
 
 _GENERATION_RELATIONS = frozenset({"generated", "runs", "reads"})
@@ -2057,7 +2227,7 @@ def impact_answer(
         return impact_forms.ImpactFound(root_file, max_depth, levels, read_first, note_fact, note_text, said, only, affected)
     return impact_forms.ImpactFound(
         root_file, max_depth, levels, read_first,
-        f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})",
+        f"(impact-ambiguous {_q(pattern)} :showing {_q(root_id)} :others {' '.join(map(_q, others))})",
         f"Note: {len(matches)} modules match {pattern}; showing {root_id}. Others: {', '.join(others)}",
         said, only, affected,
     )
@@ -2141,8 +2311,8 @@ def _print_impact_flat(g: CodeGraph, target: str, max_depth: int, show_all: bool
         budget -= len(shown_levels[-1])
     hidden = total - sum(len(level) for level in shown_levels)
     if others:
-        print(f"(impact-ambiguous {_q(pattern)} :showing {root_id} :others {' '.join(others)})")
-    print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q(root_file)})")
+        print(f"(impact-ambiguous {_q013(pattern)} :showing {root_id} :others {' '.join(others)})")
+    print(f"(impact-root {root_id} :lang {g.module_lang(root_id)} :file {_q013(root_file)})")
     for depth, level in enumerate(shown_levels, start=1):
         for row in level:
             print(impact_fact(g, root_id, row, depth))
@@ -2150,7 +2320,7 @@ def _print_impact_flat(g: CodeGraph, target: str, max_depth: int, show_all: bool
         print(f"(impact-more {root_id} :hidden {hidden} :rerun {_rerun(f'impact {target} {max_depth}')})")
     print(f"(impact-summary {root_id} :direct {direct} :total {total} :depth {max_depth})")
     for path in read_first:
-        print(f"(read-first {_q(path)})")
+        print(f"(read-first {_q013(path)})")
     if read_first_count > len(read_first):
         print(f"(read-first-more :hidden {read_first_count - len(read_first)})")
     for item in module_advice(g, root_id):
@@ -2188,7 +2358,7 @@ def cmd_impact_summary(
         sys.stdout.write(impact_forms.summary_text(answers))
         for item in changed or ():
             print(f"  changed {item.symbol} (line {item.line}): used by {len(item.used_by)} "
-                  f"{'test files' if only else 'files'}"
+                  f"{'test files' if only else 'files'}{impact_forms.other_users_text(item)}"
                   + (f"; tests to run: {len(item.affected.tests)}" if item.affected is not None else ""))
     else:
         sys.stdout.write(impact_forms.summary_sexp(answers, header if len(answers) > 1 or header.not_parsed else None))
@@ -2229,14 +2399,30 @@ def impact_options(args: Sequence[str]) -> Union[str, tuple[list[str], str, Opti
     return rest, only, diff, summary
 
 
-def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[list[str], list[impact_forms.Changed]]]:
-    """(the files a diff against ref changes that still exist, the functions it changes) for `impact --diff`;
-    an error fact when Git cannot give the diff. The files that use a changed function are read from the
-    use lines of the graph, also those that use it through the declaration in its header."""
-    ranges = _diff_ranges(g, ref)
-    if isinstance(ranges, str):
-        return ranges
-    files = sorted(path for path in ranges if os.path.isfile(os.path.join(g._root or "", os.path.normpath(path))))
+def diff_changes(
+    g: CodeGraph, ref: str, only: str = "",
+) -> Union[str, tuple[list[str], list[impact_forms.Changed], list[impact_forms.ChangedFile]]]:
+    """(the files a diff against ref changes that are files now, the functions it changes, the paths it
+    removes: a deleted file, the path a renamed file had) for `impact --diff`; an error fact when ref is no
+    ref or Git cannot give the diff. The files that use a changed function are read from the use lines of
+    the graph, also those that use it through the declaration in its header."""
+    diff = _diff_files(g, ref)
+    if isinstance(diff, str):
+        return diff
+
+    def on_disk(path: str) -> bool:
+        return os.path.isfile(os.path.join(g._root or "", os.path.normpath(path)))
+
+    # A path Git reports as deleted that is still a file (taken out of the index only) is answered as a file.
+    current = [item for item in diff if item.status != "deleted" or on_disk(item.path)]
+    files = sorted(item.path for item in current)
+    gone = sorted(
+        [impact_forms.ChangedFile(item.path, "deleted") for item in diff if item.status == "deleted" and not on_disk(item.path)]
+        + [impact_forms.ChangedFile(item.old_path, "renamed", item.path)
+           for item in diff if item.status == "renamed" and not on_disk(item.old_path)],
+        key=lambda item: item.file,
+    )
+    ranges = {item.path: item.ranges for item in current}
     changed: list[impact_forms.Changed] = []
     for qualified, entity, _diff_file in sorted(_diff_functions(g, ranges), key=lambda item: (item[2], item[1].line)):
         module, _, name = qualified.partition("::")
@@ -2247,12 +2433,16 @@ def diff_changes(g: CodeGraph, ref: str, only: str = "") -> Union[str, tuple[lis
         # The targets and tests of the file and of the files that use the function: narrower than those of
         # every dependent of the file.
         affected = _affected_build(g, users | {module}) if only == "tests" else None
+        other_users = 0
         if only == "tests":
-            users = {user for user in users if module_layer(g, user) == "test"}
+            tests = {user for user in users if module_layer(g, user) == "test"}
+            other_users = len(users) - len(tests)
+            users = tests
         changed.append(impact_forms.Changed(
             f"{_impact_file(g, module)}::{name}", entity.line, tuple(sorted(_impact_file(g, user) for user in users)), affected,
+            other_users,
         ))
-    return files, changed
+    return files, changed, gone
 
 
 def _impact_status(answers: Sequence[impact_forms.ImpactAnswer]) -> int:
@@ -2290,6 +2480,8 @@ def cmd_impact(
             print("\nChanged functions and the files that use them")
             for item in changed:
                 used = ", ".join(item.used_by) if item.used_by else "no other file"
+                if impact_forms.other_users_text(item):
+                    used = "no test file" + impact_forms.other_users_text(item)
                 if item.affected is not None:
                     used += f"; tests to run: {', '.join(item.affected.tests) if item.affected.tests else 'none'}"
                 print(f"  {item.symbol:<{width}}   line {item.line}: {used}")
@@ -2331,7 +2523,7 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
                 unique_refs.append(e)
 
     for defn in definitions:
-        print(f"(entity-def {defn.kind} {defn.module} {defn.name} {defn.line} :lang {g.module_lang(defn.module)} :file {_q(g.module_to_file(defn.module))})")
+        print(f"(entity-def {defn.kind} {_q(defn.module)} {_q(defn.name)} {defn.line} :lang {g.module_lang(defn.module)} :file {_q(g.module_to_file(defn.module))})")
     # Modules that reach a definition only through a re-export: in the use file, not in the graph.
     referencing = {(e.source.split("::")[0], e.target) for e in unique_refs}
     for defn in definitions:
@@ -2354,7 +2546,7 @@ def cmd_entity(g: CodeGraph, name: str, positions: bool = False) -> None:
             for source, line, column, _kind in found
         )
         for file_path, line, column, source, target in sites:
-            print(f"(use {source} {line} {column} {target} :file {_q(file_path)})")
+            print(f"(use {_q(source)} {line} {column} {_q(target)} :file {_q(file_path)})")
 
 
 _KIND_WORDS = {"cls": "class", "fn": "function", "ifc": "interface", "typ": "type", "enm": "enum", "mod": "module",
@@ -2364,13 +2556,15 @@ _USAGES_LIMIT = usages_forms.USAGES_LIMIT
 
 @dataclass(frozen=True)
 class Usage:
-    """One place that uses the symbol; line 0 when its language has no use positions."""
+    """One place that uses the symbol; line 0 when its language has no use positions, or when the positions
+    of its file are not read yet (pending)."""
 
     file: str
     module: str
     line: int
     column: int
     kind: str
+    pending: bool = False
 
 
 def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact]]:
@@ -2379,8 +2573,9 @@ def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact
     owner = symbol.split(".", 1)[0]
     if not separator:
         return symbol, g.definitions_named(owner)
-    pattern = _target_to_module_pattern(file_part, g._root)
-    modules = _impact_target_modules(g, file_part, pattern)[:1]
+    # A file path names one module; a module pattern may match several, and the definitions of all of them
+    # are found: the caller lists them as candidates instead of answering for the first.
+    modules = _usages_modules(g, file_part)
     found = [entity for module in modules for entity in g.definitions_named(owner) if entity.module == module]
     if found or not modules:
         return symbol, found
@@ -2389,10 +2584,15 @@ def _usages_definitions(g: CodeGraph, target: str) -> tuple[str, list[EntityFact
         entity
         for target, sites in g.uses_named(owner).items()
         if target.endswith(f"::{owner}")
-        and any(source == modules[0] and kind == "re-export" for source, _line, _column, kind in sites)
+        and any(source in modules and kind == "re-export" for source, _line, _column, kind in sites)
         for entity in g.definitions_named(owner)
         if entity.module == target.rsplit("::", 1)[0]
     ]
+
+
+def _usages_modules(g: CodeGraph, file_part: str) -> list[str]:
+    """The modules the part before `::` of a usages target names."""
+    return _impact_target_modules(g, file_part, _target_to_module_pattern(file_part, g._root))
 
 
 def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[Usage], int]:
@@ -2420,6 +2620,14 @@ def _usages_of(g: CodeGraph, definition: EntityFact, symbol: str) -> tuple[list[
         if edge.etype == "refs" and edge.target == target and source not in with_positions:
             with_positions.add(source)
             found.append(Usage(_impact_file(g, source), source, 0, 0, "reference"))
+    if g._positions_pending:
+        # Positions were read only in the files that hold the name as text: a file the use lines name
+        # besides them (it uses the symbol under another name) is listed without a position, not left out,
+        # and the answer says that the positions of such a file are still to be read.
+        users = g.use_pairs.get(target, set())
+        for source in sorted(users - with_positions):
+            found.append(Usage(_impact_file(g, source), source, 0, 0, "reference"))
+        found = [replace(usage, pending=True) if not usage.line and usage.module in users else usage for usage in found]
     return sorted(found, key=lambda usage: (usage.file, usage.line, usage.column, usage.kind)), unresolved
 
 
@@ -2529,6 +2737,7 @@ def usages_answer(g: CodeGraph, target: str) -> usages_forms.UsagesAnswer:
         definition.line,
         tuple(usages_forms.Site(usage.file, usage.line, usage.column, usage.kind) for usage in usages),
         unresolved,
+        g._uses_gap or ("positions-pending" if any(usage.pending for usage in usages) else ""),
     )
 
 
@@ -2545,7 +2754,7 @@ def _print_usages_flat(g: CodeGraph, target: str, show_all: bool) -> None:
         rows = _candidate_rows(g, definitions)
         print(f"(usages-ambiguous {symbol} :definitions {len(rows)})")
         for file_path, d in rows:
-            print(f"(usages-candidate {d.module}::{symbol} :kind {d.kind} :file {_q(file_path)} :line {d.line})")
+            print(f"(usages-candidate {d.module}::{symbol} :kind {d.kind} :file {_q013(file_path)} :line {d.line})")
         return
     definition = one or definitions[0]
     usages, unresolved = _usages_together(g, definitions, symbol) if one is not None else _usages_of(g, definition, symbol)
@@ -2555,45 +2764,59 @@ def _print_usages_flat(g: CodeGraph, target: str, show_all: bool) -> None:
     hidden = len(usages) - len(shown)
     resolved_count = len(usages) - unresolved
     files = len({usage.file for usage in usages if usage.kind != "unresolved-call"})
-    print(f"(usages-target {target_id} :kind {definition.kind} :file {_q(definition_file)} :line {definition.line})")
+    print(f"(usages-target {target_id} :kind {definition.kind} :file {_q013(definition_file)} :line {definition.line})")
     for usage in shown:
         if usage.line:
-            print(f"(usage {usage.module} {usage.line} {usage.column} :kind {usage.kind} :file {_q(usage.file)})")
+            print(f"(usage {usage.module} {usage.line} {usage.column} :kind {usage.kind} :file {_q013(usage.file)})")
         else:
-            print(f"(usage-file {usage.module} :kind {usage.kind} :file {_q(usage.file)})")
+            print(f"(usage-file {usage.module} :kind {usage.kind} :file {_q013(usage.file)})")
     if hidden:
         print(f"(usages-more {target_id} :hidden {hidden} :rerun {_rerun(f'usages {target}')})")
     print(f"(usages-summary {target_id} :uses {resolved_count} :files {files} :unresolved {unresolved})")
 
 
-def cmd_usages(g: CodeGraph, target: str, form: str = "sexp", show_all: bool = False) -> None:
+def _usages_status(g: CodeGraph, target: str, answer: usages_forms.UsagesAnswer) -> int:
+    """1 when the file a usages target names (`<file>::Name`) is not in the graph, else 0: an unknown bare
+    name is an answer, a file that is not there is not."""
+    file_part, separator, _symbol = target.rpartition("::")
+    missing = isinstance(answer, usages_forms.UsagesMissing) and bool(separator) and not _usages_modules(g, file_part)
+    return 1 if missing else 0
+
+
+def cmd_usages(g: CodeGraph, target: str, form: str = "sexp", show_all: bool = False) -> int:
     """Print every place that uses one symbol, by file, with line:column and the kind of use.
 
     form is "sexp" (the compact form agents read, complete), "json" (the same content), "human" (text, at
     most 200 uses unless show_all) or "flat" (the facts of versions up to 0.13, with the same limit). A bare
-    name defined in several files lists the candidates instead of mixing them.
+    name defined in several files lists the candidates instead of mixing them. Returns 1 when the file the
+    target names is not in the graph, but for "flat", which answers 0 as those versions did.
     """
     if form == "flat":
         _print_usages_flat(g, target, show_all)
-    elif form == "json":
-        print(fact_json.render(usages_forms.usages_json(usages_answer(g, target))))
+        return 0
+    answer = usages_answer(g, target)
+    if form == "json":
+        print(fact_json.render(usages_forms.usages_json(answer)))
     elif form == "human":
-        sys.stdout.write(usages_forms.usages_text(usages_answer(g, target), show_all))
+        sys.stdout.write(usages_forms.usages_text(answer, show_all))
     else:
-        sys.stdout.write(usages_forms.usages_sexp(usages_answer(g, target)))
+        sys.stdout.write(usages_forms.usages_sexp(answer))
+    return _usages_status(g, target, answer)
 
 
-def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> None:
+def cmd_flow(g: CodeGraph, module_id: str, entity_name: str) -> int:
+    """Print the flow from an entity of a module; returns 1 when the module is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     start_mod = matches[0]
     full_id = f"{start_mod}::{entity_name}"
 
     visited: set[str] = set()
     _trace_flow(g, full_id, visited, 0)
+    return 0
 
 
 def _trace_flow(
@@ -2606,7 +2829,7 @@ def _trace_flow(
     # Entity-level edges via index
     for edge in g.edges_from_entity.get(entity_id, []):
         tgt_lang = g.module_lang(edge.target.split("::")[0])
-        print(f"(flow {entity_id} {edge.target} :lang {tgt_lang} :via {edge.etype} :depth {depth})")
+        print(f"(flow {_q(entity_id)} {_q(edge.target)} :lang {tgt_lang} :via {edge.etype} :depth {depth})")
         _trace_flow(g, edge.target, visited, depth + 1)
 
     # Module-level edges for cross-module flow
@@ -2617,25 +2840,25 @@ def _trace_flow(
                 continue
             tgt_mod = edge.target.split("::")[0]
             if tgt_mod not in visited:
-                print(f"(flow {entity_id} {edge.target} :lang {g.module_lang(tgt_mod)} :via {edge.etype} :depth {depth} :module-level)")
+                print(f"(flow {_q(entity_id)} {_q(edge.target)} :lang {g.module_lang(tgt_mod)} :via {edge.etype} :depth {depth} :module-level)")
                 _trace_flow(g, edge.target, visited, depth + 1)
 
 
-def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None:
-    """Output the minimal set of files for a change boundary.
+def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> int:
+    """Output the minimal set of files for a change boundary; returns 1 when the name is not in the graph.
 
     When files_only is True, emit one bare file path per line instead of sexp.
     """
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     nid = matches[0]
     node = g.nodes.get(nid)
     if not node:
         print(f"(error no-node {_q(nid)})")
-        return
+        return 1
 
     target_file = g.module_to_file(nid)
     import_mods = _collect_dep_mods(g, nid)
@@ -2649,31 +2872,32 @@ def cmd_boundary(g: CodeGraph, module_id: str, files_only: bool = False) -> None
             if path not in seen:
                 seen.add(path)
                 print(path)
-        return
+        return 0
 
     lang = g.module_lang(nid)
-    print(f"(boundary {nid} :lang {lang} :file {_q(target_file)} :purpose {_q(node.purpose)})")
+    print(f"(boundary {_q(nid)} :lang {lang} :file {_q(target_file)} :purpose {_q(node.purpose)})")
     for e in sorted(ents, key=lambda x: x.line):
         print(_entity_sexp(e, lang))
     for mod, etype in sorted(import_mods.items()):
-        print(f"(boundary-dep {nid} {mod} :lang {g.module_lang(mod)} :file {_q(g.module_to_file(mod))} :relation {etype})")
+        print(f"(boundary-dep {_q(nid)} {_q(mod)} :lang {g.module_lang(mod)} :file {_q(g.module_to_file(mod))} :relation {etype})")
     for mod, etype in sorted(dependent_mods.items()):
-        print(f"(boundary-rdep {nid} {mod} :lang {g.module_lang(mod)} :file {_q(g.module_to_file(mod))} :relation {etype})")
-    print(f"(boundary-summary {nid} :total {1 + len(import_mods) + len(dependent_mods)} :deps {len(import_mods)} :rdeps {len(dependent_mods)})")
+        print(f"(boundary-rdep {_q(nid)} {_q(mod)} :lang {g.module_lang(mod)} :file {_q(g.module_to_file(mod))} :relation {etype})")
+    print(f"(boundary-summary {_q(nid)} :total {1 + len(import_mods) + len(dependent_mods)} :deps {len(import_mods)} :rdeps {len(dependent_mods)})")
+    return 0
 
 
-def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
-    """Full architectural analysis of a module."""
+def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> int:
+    """Full architectural analysis of a module; returns 1 when the name is not in the graph."""
     matches = g.resolve_module(module_id)
     if not matches:
         _print_no_match(g, module_id)
-        return
+        return 1
 
     nid = matches[0]
     node = g.nodes.get(nid)
     if not node:
         print(f"(error no-node {_q(nid)})")
-        return
+        return 1
 
     target_file = _impact_file(g, nid)
     ents = g.entities.get(nid, [])
@@ -2740,6 +2964,7 @@ def cmd_analyze(g: CodeGraph, module_id: str, show_all: bool = False) -> None:
                   ref_targets, data_flow_targets, call_targets,
                   importers, referencers, key_entity_usage,
                   boundary_files, show_all)
+    return 0
 
 
 def _analyze_sexp(
@@ -2753,9 +2978,10 @@ def _analyze_sexp(
     show_all: bool = False,
 ) -> None:
     rerun = _rerun(f"analyze {nid}")
+    shown = _q(nid)   # the module as one atom of a fact line
     # Module header
     lang = g.module_lang(nid)
-    print(f"(analyze {nid} :lang {lang} {_q(node.purpose)} :file {_q(target_file)})")
+    print(f"(analyze {shown} :lang {lang} {_q(node.purpose)} :file {_q(target_file)})")
 
     # Entities
     for e in sorted(ents, key=lambda x: x.line):
@@ -2763,20 +2989,20 @@ def _analyze_sexp(
 
     # Imports
     for t in sorted(import_targets):
-        print(f"(analyze-import {nid} {t} :lang {g.module_lang(t)} :file {_q(_impact_file(g, t))})")
+        print(f"(analyze-import {shown} {_q(t)} :lang {g.module_lang(t)} :file {_q(_impact_file(g, t))})")
 
     # Data flows
     # Data flows: the marks are those of the stored fact, one line per different set of marks
     for t, marks in sorted(data_flow_targets):
-        print(f"(analyze-dataflow {nid} {t} :lang {g.module_lang(t)}{marks})")
+        print(f"(analyze-dataflow {shown} {_q(t)} :lang {g.module_lang(t)}{marks})")
 
     # Entity refs
     for src, tgt in sorted(ref_targets):
-        print(f"(refs {src} {tgt})")
+        print(f"(refs {_q(src)} {_q(tgt)})")
 
     # Call edges
     for src, tgt in sorted(call_targets):
-        print(f"(calls {src} {tgt})")
+        print(f"(calls {_q(src)} {_q(tgt)})")
 
     # Dependents
     all_dependents = importers | referencers
@@ -2787,38 +3013,38 @@ def _analyze_sexp(
             kinds.append("imports")
         if src in referencers:
             kinds.append("refs")
-        print(f"(analyze-dependent {nid} {src} :lang {g.module_lang(src)} :via {' '.join(kinds)} :file {_q(_impact_file(g, src))})")
+        print(f"(analyze-dependent {shown} {_q(src)} :lang {g.module_lang(src)} :via {' '.join(kinds)} :file {_q(_impact_file(g, src))})")
     if len(all_dependents) > len(shown_dependents):
-        print(f"(analyze-more {nid} :dependents {len(all_dependents) - len(shown_dependents)} :rerun {rerun})")
+        print(f"(analyze-more {shown} :dependents {len(all_dependents) - len(shown_dependents)} :rerun {rerun})")
 
     # Dependency tree (depth 2)
     visited: set[str] = {nid}
     _walk_deps(g, nid, visited, 2, 1,
-               lambda d, et, tgt, cyc: print(f"(dep {nid} {tgt} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
+               lambda d, et, tgt, cyc: print(f"(dep {shown} {_q(tgt)} :lang {g.module_lang(tgt)} :via {et} :depth {d}{' :cycle' if cyc else ''})"))
 
     # Key entities: the count is complete, the modules are a sample unless show_all
     for et, ref_count, ref_mods in key_entity_usage:
-        print(f"(key-entity {nid} {et.name} :lang {lang} :kind {et.kind} :line {et.line} :refs {ref_count} :modules {len(ref_mods)})")
+        print(f"(key-entity {shown} {_q(et.name)} :lang {lang} :kind {et.kind} :line {et.line} :refs {ref_count} :modules {len(ref_mods)})")
         shown_refs = sorted(ref_mods) if show_all else sorted(ref_mods)[:_KEY_ENTITY_REF_LIMIT]
         for rm in shown_refs:
-            print(f"(key-entity-ref {et.name} {rm} :lang {g.module_lang(rm)})")
+            print(f"(key-entity-ref {_q(et.name)} {_q(rm)} :lang {g.module_lang(rm)})")
         if len(ref_mods) > len(shown_refs):
-            print(f"(key-entity-more {nid} {et.name} :modules {len(ref_mods) - len(shown_refs)} :rerun {rerun})")
+            print(f"(key-entity-more {shown} {_q(et.name)} :modules {len(ref_mods) - len(shown_refs)} :rerun {rerun})")
 
     # Boundary files
     for f in boundary_files:
-        print(f"(boundary-file {nid} {_q(f)})")
+        print(f"(boundary-file {shown} {_q(f)})")
 
     # Architecture layers
     for t in sorted(import_targets):
         label = module_label(g, t)
-        print(f"(layer {nid} {t.split('/')[-1]} :layer {label.layer} :style {label.style} :rule {_q(label.rule)})")
+        print(f"(layer {shown} {_q(t.split('/')[-1])} :layer {label.layer} :style {label.style} :rule {_q(label.rule)})")
 
     for item in module_advice(g, nid):
         print(advice_sexp(item))
 
     # Summary
-    print(f"(analyze-summary {nid} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len({t for t, _marks in data_flow_targets})} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
+    print(f"(analyze-summary {shown} :entities {len(ents)} :imports {len(import_targets)} :dataflows {len({t for t, _marks in data_flow_targets})} :refs {len(ref_targets)} :dependents {len(all_dependents)} :boundary-files {len(boundary_files)})")
 
 
 def cmd_quick(g: CodeGraph, keyword: str, sexp_path: str, show_all: bool = False) -> None:
@@ -2874,7 +3100,7 @@ def cmd_search(_g: CodeGraph, pattern: str, sexp_path: str, lines: bool = False)
     module_matches = _g.search_modules(parsed_pattern.value)
     if module_matches:
         for nid in module_matches:
-            print(f"(result {nid})")
+            print(f"(result {_q(nid)})")
         print(f"(result-count {len(module_matches)})")
         return
 
@@ -2909,13 +3135,148 @@ class BoundaryBreak:
     severity: str = "violation"   # candidate: the rule itself gives candidates (a utility on infrastructure)
 
 
+@dataclass
+class GateFacts:
+    """What `boundaries` reads of a graph besides the labels and the rules, and what it works out once."""
+
+    stale_files: Optional[int] = None   # changed files the graph is known to miss; None when nobody checked
+    rule_digests: dict[str, str] = field(default_factory=dict)   # arch-rule-files: what the build read of each rule file
+    not_parsed: dict[str, dict[str, int]] = field(default_factory=dict)   # part -> language no parser reads -> source files
+    capability_unread: dict[str, dict[str, int]] = field(default_factory=dict)   # part -> language the detector skips -> files
+    # (source, target) -> (baseline file, part, terms) of each entry; the files that accept the pair today;
+    # (part, source, target) -> the rules the entries of .wingbox/baseline.sexp state for it.
+    known_entries: dict[tuple[str, str], list[tuple[str, str, _baseline.Acceptance]]] = field(default_factory=dict)
+    known_files: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
+    known_rules: dict[tuple[str, str, str], set[str]] = field(default_factory=dict)
+    capability_entries: dict[tuple[str, str], list[tuple[str, _baseline.Acceptance]]] = field(default_factory=dict)
+    judged: Optional[dict[str, ModuleLabel]] = None   # _judged_names, once per graph
+    no_default: Optional[bool] = None   # the project has a config: a graph without parts gets no default style
+
+
+def _settle_entries(
+    key: tuple[str, str], entries: Sequence[tuple[str, _baseline.Acceptance]], today: str,
+    known: dict[tuple[str, str], str], stated: dict[tuple[str, str], _baseline.Acceptance],
+    expired: dict[tuple[str, str], _baseline.Acceptance],
+) -> tuple[str, ...]:
+    """Set what the baseline entries of one finding come to, and return the files that accept it.
+
+    A baseline file accepts the finding when none of its entries for it is past its end date: another entry
+    of the same file (written for another part, or without terms) does not undo an end date. The project's
+    own baseline and .wingbox/baseline.sexp are two files: each accepts on its own.
+    """
+    by_file: dict[str, list[_baseline.Acceptance]] = {}
+    for file, terms in entries:
+        by_file.setdefault(file, []).append(terms)
+    live = sorted(file for file, items in by_file.items() if not any(terms.expired(today) for terms in items))
+    for table in (known, stated, expired):
+        table.pop(key, None)
+    if live:
+        known[key] = live[-1]
+        with_terms = [terms for terms in by_file[live[-1]] if terms.stated()]
+        if with_terms:
+            stated[key] = with_terms[-1]
+    else:
+        expired[key] = next(terms for items in by_file.values() for terms in items if terms.expired(today))
+    return tuple(live)
+
+
+def _accepting_file(g: CodeGraph, pair: tuple[str, str], rule: str) -> str:
+    """The baseline file that accepts a break of `rule` between two modules, or "".
+
+    An entry of .wingbox/baseline.sexp that states a rule accepts a break of that rule only: the same two
+    files breaking another rule (their layers changed) are a new finding. An entry that states no rule,
+    and the project's own baseline, accept the pair whatever the rule.
+    """
+    file = g.known.get(pair, "")
+    for candidate in reversed(g.gate.known_files.get(pair, ())):
+        if candidate != _baseline.BASELINE_FILE:
+            return candidate
+        parts = {part for entry_file, part, _terms in g.gate.known_entries[pair] if entry_file == candidate}
+        stated = [g.gate.known_rules.get((part, *pair)) for part in parts]
+        if any(rules is None or rule in rules for rules in stated):
+            return candidate
+        file = ""
+    return file
+
+
+def _label_beside(g: CodeGraph, module_id: str, label: ModuleLabel, by_folder: dict[str, list[str]]) -> Optional[ModuleLabel]:
+    """The label of a test file judged like the files of its folder: the layer most files of a layer have
+    in its folder, else in the nearest folder above it; None when no folder above it holds such a file."""
+    folder = _label_path(g, module_id)
+    while "/" in folder:
+        folder = folder.rpartition("/")[0]
+        layers = collections.Counter(
+            beside.layer for beside in (module_label(g, other) for other in by_folder.get(folder, ()))
+            if beside.part == label.part and beside.layer not in ("other", "test")
+            and beside.match not in ("role", "package", "none")
+        )
+        if layers:
+            layer = min(layers, key=lambda name: (-layers[name], name))
+            return replace(label, layer=layer, rule=f"test file that a file of a layer imports: judged as {folder}/ ({layer})")
+    return None
+
+
+def _judged_names(g: CodeGraph) -> dict[str, ModuleLabel]:
+    """The files that a name exempts from the rules and that a file of a layer imports, each with the
+    label it is judged by.
+
+    A composition root (main.ts, container.ts, ...) wires the layers and a test may import anything: no
+    rule is stated for them. A file of a layer that imports one of them would reach every layer through
+    it, so such a file is judged like any file of its folder instead: a composition root by the layer of
+    its own label, a test by the layer of the files beside it. A file that only composition roots and
+    tests (and files in no layer) import keeps the exemption. Worked out once per graph, to a fixed
+    point: a file that a judged file imports is judged too.
+    """
+    if g.gate.judged is not None:
+        return g.gate.judged
+    labels = {module: module_label(g, module) for module in g.nodes}
+    exempt = {module: label for module, label in labels.items() if label.root or label.layer == "test"}
+    by_folder: dict[str, list[str]] = {}   # folder -> its modules, filled when the first test is judged
+    importers = {module: [other for other in _collect_rdep_mods(g, module) if other in labels] for module in exempt}
+    judged: dict[str, ModuleLabel] = {}
+    unplaced: set[str] = set()   # tests with no file of a layer beside them: nothing to judge them by
+    changed = True
+    while changed:
+        changed = False
+        for module, label in exempt.items():
+            if module in judged or module in unplaced:
+                continue
+            if not any(other in judged or (other not in exempt and _layer_is_certain(g, other))
+                       for other in importers[module]):
+                continue
+            if label.layer != "test":
+                as_label: Optional[ModuleLabel] = replace(label, root=False)
+            else:
+                if not by_folder:
+                    for other in g.nodes:
+                        by_folder.setdefault(_label_path(g, other).rpartition("/")[0], []).append(other)
+                as_label = _label_beside(g, module, label, by_folder)
+            if as_label is None:
+                unplaced.add(module)
+            else:
+                judged[module] = as_label
+                changed = True
+    g.gate.judged = judged
+    return judged
+
+
+def _judged_label(g: CodeGraph, module_id: str) -> ModuleLabel:
+    """The label the rules judge a module by: its own, or the one of `_judged_names`."""
+    return _judged_names(g).get(module_id) or module_label(g, module_id)
+
+
 def _is_entry_root(g: CodeGraph, module_id: str) -> bool:
-    """A composition root by its label, or an entry point: nothing imports it and it imports a composition root."""
-    if module_label(g, module_id).root:
-        return True
+    """A composition root by its label that no file of a layer imports (`_judged_names`), or an entry point:
+    nothing imports it and it imports such a composition root. A file whose layer a rule sets is never
+    an entry point this way: the root it imports is judged, because a file of a layer imports it."""
     if module_id not in g.entry_roots:
-        g.entry_roots[module_id] = not _collect_rdep_mods(g, module_id) and any(
-            module_label(g, target).root for target in _collect_dep_mods(g, module_id)
+        judged = _judged_names(g)
+
+        def is_root(module: str) -> bool:
+            return module_label(g, module).root and module not in judged
+
+        g.entry_roots[module_id] = is_root(module_id) or (
+            not _collect_rdep_mods(g, module_id) and any(is_root(target) for target in _collect_dep_mods(g, module_id))
         )
     return g.entry_roots[module_id]
 
@@ -2937,13 +3298,14 @@ def boundary_violations(g: CodeGraph, scope_mods: set[str]) -> list[BoundaryBrea
     Rules apply between two modules of the same part only: a part is judged by
     its own style, and a dependency between parts is a dependency between
     packages, not between layers. A part without a determined style has no rules. A composition
-    root (main.ts, app.module.ts, Program.cs) wires the layers and may import every one.
+    root (main.ts, app.module.ts, Program.cs) wires the layers and may import every one, and so may a
+    test; one that a file of a layer imports is judged like the files of its folder (`_judged_names`).
     """
     if not g.arch_parts:
         _default_labels(g)
     found: list[BoundaryBreak] = []
     for src_mod in sorted(scope_mods):
-        source = module_label(g, src_mod)
+        source = _judged_label(g, src_mod)
         rules = g.arch_denies.get(source.part)
         if not rules or _is_entry_root(g, src_mod):
             continue
@@ -2953,17 +3315,18 @@ def boundary_violations(g: CodeGraph, scope_mods: set[str]) -> list[BoundaryBrea
             tgt_mod = edge.target.split("::")[0]
             if tgt_mod == src_mod:
                 continue
-            target = module_label(g, tgt_mod)
+            target = _judged_label(g, tgt_mod)
             if target.part != source.part or target.layer == source.layer:
                 continue
             reason = rules.get((source.layer, target.layer))
             if reason is None:
                 continue
+            rule = f"{source.layer} -> {target.layer}"
             found.append(BoundaryBreak(
                 source=src_mod, target=tgt_mod, source_layer=source.layer, target_layer=target.layer,
                 kind=edge.etype, reason=reason, part=source.part, style=source.style if source.style != "-" else
                 g.arch_parts.get(source.part, {}).get("style", "-"),
-                rule=f"{source.layer} -> {target.layer}", known=g.known.get((src_mod, tgt_mod), ""),
+                rule=rule, known=_accepting_file(g, (src_mod, tgt_mod), rule),
                 severity="candidate" if (source.part, source.layer, target.layer) in g.candidate_rules else "violation",
             ))
     return found
@@ -3032,7 +3395,7 @@ def capability_violations(g: CodeGraph, scope_mods: set[str]) -> list[Capability
         facts = g.capabilities.get(module)
         if not facts:
             continue
-        label = module_label(g, module)
+        label = _judged_label(g, module)
         rules = _capability_rules(g, label.part)
         if not rules or label.layer in ("other", "test") or _is_entry_root(g, module):
             continue
@@ -3064,7 +3427,7 @@ def pattern_violations(g: CodeGraph, scope_mods: set[str]) -> list[PatternBreak]
         _default_labels(g)
     found: list[PatternBreak] = []
     for module in sorted(scope_mods):
-        label = module_label(g, module)
+        label = _judged_label(g, module)
         patterns = g.arch_patterns.get(label.part, set())
         if not patterns or not _layer_is_certain(g, module) or _is_entry_root(g, module):
             continue
@@ -3097,10 +3460,27 @@ def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> int:
 
 def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int, int]:
     """Print the capability and pattern facts; (capability violations and pattern breaks, known ones)."""
+    lines, violations, known = _capability_findings(g, scope_mods, boundaries_coverage(g, scope_mods).checked)
+    for line in lines:
+        print(line)
+    return violations, known
+
+
+def _capability_findings(g: CodeGraph, scope_mods: set[str], checked: int) -> tuple[list[str], int, int]:
+    """(the capability and pattern facts, capability violations and pattern breaks, known ones).
+
+    First, for each part of the scope that has capability rules, the files in a language the capability
+    detector does not read: `(capability-not-read :part P :language L :files N)`. `checked` is the number
+    of files the rules place, as `boundaries` counts them."""
+    lines: list[str] = []
+    for part in sorted({module_label(g, module).part for module in scope_mods} & set(g.gate.capability_unread)):
+        unread = g.gate.capability_unread[part]
+        lines.extend(f"(capability-not-read :part {_q(part)} :language {_q(language)} :files {unread[language]})"
+                     for language in sorted(unread, key=lambda name: (-unread[name], name)))
     breaks = capability_violations(g, scope_mods)
     patterns = pattern_violations(g, scope_mods)
     if not breaks and not patterns:
-        return 0, 0
+        return lines, 0, 0
     counts = {"capability-violation": 0, "capability-violation-known": 0, "capability-candidate": 0}
     for item in breaks:
         fact = "capability-candidate" if item.severity == "candidate" else (
@@ -3112,7 +3492,7 @@ def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int,
         if fact == "capability-violation":
             known = _expired_terms(g.capability_expired, (item.module, item.capability))
         pattern = f" :pattern {item.pattern}" if item.pattern else ""
-        print(
+        lines.append(
             f"({fact} {_q(module_file(g, item.module))} :capability {item.capability} :layer {item.layer}{allowed}{forbidden} "
             f":line {item.line} :evidence {_q(item.evidence)} :part {_q(item.part)} :style {item.style}{known}{pattern}"
             f"{' :fix ' + _q(item.fix) if item.fix else ''})"
@@ -3120,13 +3500,13 @@ def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int,
     for item in patterns:
         target = f" :target {_q(module_file(g, item.target))}" if item.target else ""
         line = f" :line {item.line} :evidence {_q(item.evidence)}" if item.line else ""
-        print(f"(pattern-violation {_q(module_file(g, item.source))} :pattern {item.pattern}{target}{line} "
-              f":part {_q(item.part)} :style {item.style} {_q(item.reason)})")
-    print(
+        lines.append(f"(pattern-violation {_q(module_file(g, item.source))} :pattern {item.pattern}{target}{line} "
+                     f":part {_q(item.part)} :style {item.style} {_q(item.reason)})")
+    lines.append(
         f"(capability-summary :violations {counts['capability-violation']} :known {counts['capability-violation-known']} "
-        f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {len(scope_mods)})"
+        f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {checked})"
     )
-    return counts["capability-violation"] + len(patterns), counts["capability-violation-known"]
+    return lines, counts["capability-violation"] + len(patterns), counts["capability-violation-known"]
 
 
 def _known_terms(terms: dict[tuple[str, str], _baseline.Acceptance], key: tuple[str, str]) -> str:
@@ -3154,9 +3534,11 @@ class NotChecked:
     """A part with files that no rule checked: saying ok for it would be a false pass."""
 
     part: str
-    reason: str               # declared-rules-not-read | style-undetermined | no-layer-style | too-few-files
+    reason: str               # declared-rules-not-read | style-undetermined | no-layer-style | too-few-files;
+    #                           from boundaries_coverage also in-no-part | no-file-in-a-layer | not-parsed-language
     files: tuple[str, ...]    # the rule files that were not read
-    count: int                # files (modules) of the part in the scope
+    count: int                # files (modules) of the part in the scope; not-parsed-language: files in no module
+    languages: tuple[str, ...] = ()   # not-parsed-language: the languages, most files first
 
 
 _NOT_CHECKED_WORDS = {
@@ -3164,6 +3546,9 @@ _NOT_CHECKED_WORDS = {
     "style-undetermined": "style not determined",
     "no-layer-style": "no layer style",
     "too-few-files": "too few files to judge a style",
+    "in-no-part": "in no part",
+    "no-file-in-a-layer": "no file in a layer",
+    "not-parsed-language": "a language no parser reads",
 }
 
 
@@ -3199,14 +3584,102 @@ def not_checked_parts(g: CodeGraph, scope_mods: set[str]) -> list[NotChecked]:
     return found
 
 
+@dataclass(frozen=True)
+class Coverage:
+    """What `boundaries` judged of a scope, in files.
+
+    `checked` counts the files a rule places (in a layer, or as a test) in a part that has rules. The
+    other files are not checked, each group with its reason (`unchecked`), or belong to a checked part and
+    to no layer of it (`no_layer`): the rules say nothing about those, and they are counted apart.
+    """
+
+    unchecked: tuple[NotChecked, ...]
+    parts: tuple[tuple[str, str, int], ...]   # (part, style, modules of the scope) of each checked part
+    no_layer: tuple[tuple[str, int], ...]     # (checked part, its files that no rule places)
+    checked: int
+
+    @property
+    def not_checked(self) -> int:
+        return sum(item.count for item in self.unchecked)
+
+    @property
+    def unplaced(self) -> int:
+        return sum(count for _part, count in self.no_layer)
+
+
+_NOTHING_CHECKED = Coverage((), (), (), 0)
+
+
+def boundaries_coverage(g: CodeGraph, scope_mods: set[str], whole: bool = False) -> Coverage:
+    """Sort the files of a scope into checked, not checked and in no layer.
+
+    Not checked, besides the parts of `not_checked_parts`: the files in no part of the plan, a part with
+    rules in which no file is in a layer, and the source files of a part in a language no parser reads
+    (they are in no module; `whole` counts them for every part, a narrower scope for the parts it touches).
+    """
+    unchecked = not_checked_parts(g, scope_mods)
+    left_out = {item.part for item in unchecked}
+    by_part: dict[str, list[str]] = {}
+    for module in scope_mods:
+        by_part.setdefault(module_label(g, module).part, []).append(module)
+    parts: list[tuple[str, str, int]] = []
+    no_layer: list[tuple[str, int]] = []
+    checked = 0
+    for part, modules in sorted(by_part.items()):
+        if part in left_out:
+            continue
+        if part not in g.arch_parts:
+            unchecked.append(NotChecked(part, "in-no-part", (), len(modules)))
+            continue
+        placed = sum(1 for module in modules if _layer_is_certain(g, module))
+        if not placed:
+            unchecked.append(NotChecked(part, "no-file-in-a-layer", (), len(modules)))
+            continue
+        checked += placed
+        parts.append((part, g.arch_parts[part].get("style", "-"), len(modules)))
+        if placed < len(modules):
+            no_layer.append((part, len(modules) - placed))
+    for part, counts in sorted(g.gate.not_parsed.items()):
+        if whole or part in by_part:
+            languages = tuple(sorted(counts, key=lambda name: (-counts[name], name)))
+            unchecked.append(NotChecked(part, "not-parsed-language", (), sum(counts.values()), languages))
+    return Coverage(tuple(unchecked), tuple(parts), tuple(no_layer), checked)
+
+
+def _not_checked_fact(item: NotChecked) -> str:
+    files = f" :files ({' '.join(_q(name) for name in item.files)})" if item.files else ""
+    languages = f" :languages ({' '.join(_q(name) for name in item.languages)})" if item.languages else ""
+    return f"(boundaries-not-checked :part {_q(item.part)} :reason {item.reason}{files}{languages} :files-in-part {item.count})"
+
+
+def _rule_reader(root: str) -> Callable[[str], Optional[str]]:
+    """The reader of repository files the build uses: the digests are compared on the same text."""
+    if __package__:
+        from .architecture.repository import text_reader
+    else:
+        from architecture.repository import text_reader
+    return text_reader(root)
+
+
+def changed_rule_files(g: CodeGraph) -> tuple[str, ...]:
+    """The rule files (.wingbox/config.yaml, baseline.sexp, the learned layers of decisions.sexp) that were
+    edited, added or deleted since the build recorded them: the facts of the graph are older than the
+    rules. None for a graph that holds no record."""
+    if not g.gate.rule_digests or not g._root:
+        return ()
+    return _baseline.changed_rule_files(g.gate.rule_digests, _baseline.rule_file_digests(_rule_reader(g._root)))
+
+
 STRICT_EXIT = {"pass": 0, "fail": 1, "incomplete": 2, "error": 3}
 
 
 def boundaries_result_line(status: str, checked: int = 0, not_checked: int = 0, violations: int = 0, known: int = 0,
-                           reason: str = "") -> str:
-    """The one line a gate reads in strict mode; the counts are files (modules), violations and known breaks."""
+                           reason: str = "", no_layer: int = 0) -> str:
+    """The one line a gate reads in strict mode; the counts are files (modules), violations and known breaks.
+    `:no-layer` (files of the checked parts that no rule places) is written only when it is not zero."""
     return (f"(boundaries-result :status {status} :checked {checked} :not-checked {not_checked} "
-            f":violations {violations} :known {known}{' :reason ' + reason if reason else ''})")
+            f":violations {violations} :known {known}{f' :no-layer {no_layer}' if no_layer else ''}"
+            f"{' :reason ' + reason if reason else ''})")
 
 
 def _strict_error(reason: str) -> int:
@@ -3215,41 +3688,36 @@ def _strict_error(reason: str) -> int:
     return STRICT_EXIT["error"]
 
 
-def _strict_result(g: CodeGraph, scope_mods: set[str], unchecked: list[NotChecked], violations: int, known: int) -> int:
-    """The strict lines after the plain output: a fact per checked part, then the result; returns the exit status.
+def _strict_status(g: CodeGraph, cover: Coverage, violations: int, changed: Sequence[str]) -> tuple[str, str]:
+    """(status, reason) of the strict result.
 
-    pass: every part with files was checked, at least one file was checked and nothing breaks a rule.
-    fail: a violation. incomplete: a part was not checked, for any reason, or no file was checked.
+    pass: every part with files was checked, at least one file was checked, the facts are current and
+    nothing breaks a rule. fail: a violation. incomplete, first that applies: the graph is known to miss
+    changed files; a rule file changed since the build; a part or the files in no part were not checked;
+    source files were not read (no parser); no file is in a layer of a part, or no file was checked.
     """
-    by_part: dict[str, int] = {}
-    for module in scope_mods:
-        part = module_label(g, module).part
-        by_part[part] = by_part.get(part, 0) + 1
-    left_out = {item.part for item in unchecked}
-    not_checked = sum(item.count for item in unchecked)
-    checked_lines: list[str] = []
-    for part, count in sorted(by_part.items()):
-        if part in left_out:
-            continue
-        if part not in g.arch_parts:
-            # Files outside every part of the plan have no rules: plain mode does not count them apart.
-            print(f"(boundaries-not-checked :part {_q(part)} :reason in-no-part :files-in-part {count})")
-            not_checked += count
-            continue
-        style = g.arch_parts[part].get("style", "-")
-        checked_lines.append(f"(boundaries-checked :part {_q(part)} :style {style} :modules {count})")
-    for line in checked_lines:
-        print(line)
-    checked = len(scope_mods) - not_checked
+    reasons = {item.reason for item in cover.unchecked}
     if violations:
-        status, reason = "fail", ""
-    elif not_checked:
-        status, reason = "incomplete", "part-not-checked"
-    elif checked == 0:
-        status, reason = "incomplete", "no-files-checked"
-    else:
-        status, reason = "pass", ""
-    print(boundaries_result_line(status, checked, not_checked, violations, known, reason))
+        return "fail", ""
+    if g.gate.stale_files:
+        return "incomplete", "graph-stale"
+    if changed:
+        return "incomplete", "rules-changed"
+    if reasons - {"not-parsed-language", "no-file-in-a-layer"}:
+        return "incomplete", "part-not-checked"
+    if "not-parsed-language" in reasons:
+        return "incomplete", "not-parsed-language"
+    if reasons or cover.checked == 0:
+        return "incomplete", "no-files-checked"
+    return "pass", ""
+
+
+def _strict_result(g: CodeGraph, cover: Coverage, violations: int, known: int, changed: Sequence[str]) -> int:
+    """The strict lines after the plain output: a fact per checked part, then the result; returns the exit status."""
+    for part, style, modules in cover.parts:
+        print(f"(boundaries-checked :part {_q(part)} :style {style} :modules {modules})")
+    status, reason = _strict_status(g, cover, violations, changed)
+    print(boundaries_result_line(status, cover.checked, cover.not_checked, violations, known, reason, cover.unplaced))
     return STRICT_EXIT[status]
 
 
@@ -3262,9 +3730,18 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
     Each line names the part, the style and the rule; `:known` names the
     project's own baseline when it already lists the pair.
 
+    What was not checked comes first (`boundaries-not-checked`, with
+    `boundaries-partial` in place of ok), then the files of a checked part that
+    no rule places (`boundaries-no-layer`); `:checked` counts the files a rule
+    places. `boundaries-ok` is a pass: it is not printed beside a violation of
+    any kind, nor when a rule file changed since the build
+    (`boundaries-rules-changed`). Exit status: 2 when a part's declared rules
+    were not read or the scope matches nothing, 1 for a violation, else 0.
+
     With `strict` the same lines are followed by a `boundaries-checked` fact
     per checked part and one `boundaries-result` line, and the exit status is
-    the one of that line (STRICT_EXIT): a part that was not checked is never a pass.
+    the one of that line (STRICT_EXIT): what was not checked or not read, and
+    facts known to be older than the files or the rules, are never a pass.
     """
     if module_id == "all":
         scope_mods = set(g.nodes.keys())
@@ -3272,25 +3749,35 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
         matches = g.resolve_module(module_id)
         if not matches:
             _print_no_match(g, module_id)
-            return _strict_result(g, set(), [], 0, 0) if strict else None
+            return _strict_result(g, _NOTHING_CHECKED, 0, 0, ()) if strict else 2
         scope_mods = set(matches)
 
     violations = boundary_violations(g, scope_mods)
-    unchecked = not_checked_parts(g, scope_mods)
-    for item in unchecked:
-        files = f" :files ({' '.join(_q(name) for name in item.files)})" if item.files else ""
-        print(f"(boundaries-not-checked :part {_q(item.part)} :reason {item.reason}{files} :files-in-part {item.count})")
-    not_checked = sum(item.count for item in unchecked)
-    coverage = (f"(boundaries-partial :checked {len(scope_mods) - not_checked} :not-checked {not_checked})"
-                if unchecked else "")
+    cover = boundaries_coverage(g, scope_mods, whole=module_id == "all")
+    changed = changed_rule_files(g)
+    if changed:
+        print(f"(boundaries-rules-changed :files ({' '.join(_q(name) for name in changed)}) "
+              f":hint {_q('rebuild: wingbox build')})")
+    for item in cover.unchecked:
+        print(_not_checked_fact(item))
+    for part, count in cover.no_layer:
+        print(f"(boundaries-no-layer :part {_q(part)} :files-in-part {count})")
+    no_layer = f" :no-layer {cover.unplaced}" if cover.unplaced else ""
+    coverage = (f"(boundaries-partial :checked {cover.checked} :not-checked {cover.not_checked}{no_layer})"
+                if cover.unchecked else "")
     # Exit 2: a part whose own rules were not read was not checked; 1: a violation; 0 otherwise.
-    status = 2 if any(item.reason == "declared-rules-not-read" for item in unchecked) else 0
+    status = 2 if any(item.reason == "declared-rules-not-read" for item in cover.unchecked) else 0
+    capability_lines, broken, accepted = _capability_findings(g, scope_mods, cover.checked)
 
     if not violations:
-        print(coverage or f"(boundaries-ok :checked {len(scope_mods)})")
-        broken, accepted = _print_capability_findings(g, scope_mods)
+        if coverage:
+            print(coverage)
+        elif not broken and not changed and (not strict or _strict_status(g, cover, 0, changed)[0] == "pass"):
+            print(f"(boundaries-ok :checked {cover.checked}{no_layer})")
+        for line in capability_lines:
+            print(line)
         if strict:
-            return _strict_result(g, scope_mods, unchecked, broken, accepted)
+            return _strict_result(g, cover, broken, accepted, changed)
         return max(status, 1 if broken else 0)
     pairs: dict[str, set[tuple[str, str]]] = {
         "violation": set(), "violation-known": set(), "violation-type-only": set(), "violation-candidate": set(),
@@ -3316,14 +3803,14 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
     print(
         f"(boundaries-summary :violations {len(pairs['violation'])} :known {len(pairs['violation-known'])} "
         f":type-only {len(pairs['violation-type-only'])} "
-        f":candidates {len(pairs['violation-candidate'])} :checked {len(scope_mods)})"
+        f":candidates {len(pairs['violation-candidate'])} :checked {cover.checked}{no_layer})"
     )
     if coverage:
         print(coverage)
-    broken, accepted = _print_capability_findings(g, scope_mods)
+    for line in capability_lines:
+        print(line)
     if strict:
-        return _strict_result(g, scope_mods, unchecked, len(pairs["violation"]) + broken,
-                              len(pairs["violation-known"]) + accepted)
+        return _strict_result(g, cover, len(pairs["violation"]) + broken, len(pairs["violation-known"]) + accepted, changed)
     return status or (1 if pairs["violation"] or broken else 0)
 
 
@@ -3798,7 +4285,7 @@ def cmd_find_function(g: CodeGraph, name: str) -> None:
             key = f"{ent.module}::{ent.name}.{method}"
             if key not in seen:
                 seen.add(key)
-                print(f"(fn-def {ent.module}::{ent.name}.{method} :line {ent.line} :lang {lang} :file {_q(fpath)} :kind method)")
+                print(f"(fn-def {_q(key)} :line {ent.line} :lang {lang} :file {_q(fpath)} :kind method)")
         else:
             key = f"{ent.module}::{ent.name}"
             if key not in seen:
@@ -3808,7 +4295,7 @@ def cmd_find_function(g: CodeGraph, name: str) -> None:
                     if _short_function_name(ent.name) != ent.name
                     else "function"
                 )
-                print(f"(fn-def {ent.module}::{ent.name} :line {ent.line} :lang {lang} :file {_q(fpath)} :kind {function_kind})")
+                print(f"(fn-def {_q(key)} :line {ent.line} :lang {lang} :file {_q(fpath)} :kind {function_kind})")
 
 
 def cmd_find_type(g: CodeGraph, name: str) -> None:
@@ -3843,7 +4330,7 @@ def cmd_find_type(g: CodeGraph, name: str) -> None:
             extras += " " + _sexp_list("bases", ent.bases)
         if ent.methods:
             extras += " " + _sexp_list("methods", ent.methods)
-        print(f"(type-def {ent.kind} {ent.module}::{ent.name} :line {ent.line} :lang {lang} :file {_q(fpath)}{extras})")
+        print(f"(type-def {ent.kind} {_q(f'{ent.module}::{ent.name}')} :line {ent.line} :lang {lang} :file {_q(fpath)}{extras})")
 
 
 def _resolve_fn_entity(g: CodeGraph, fn_name: str) -> list[tuple[str, EntityFact]]:
@@ -3883,6 +4370,12 @@ def _resolve_fn_entity(g: CodeGraph, fn_name: str) -> list[tuple[str, EntityFact
     return results
 
 
+def _calls_hint(text: str) -> None:
+    """Say on standard error why an answer holds no calls edge and where calls are listed. Standard output
+    keeps the lines versions up to 0.13 printed; the MCP server adds standard error to its answer."""
+    print(f"; the graph holds calls edges only after a build with --lsp (wingbox build . --lsp). {text}", file=sys.stderr)
+
+
 def cmd_find_callers(g: CodeGraph, fn_name: str, max_depth: int) -> None:
     """Find all callers of a function (incoming call graph).
 
@@ -3901,7 +4394,7 @@ def cmd_find_callers(g: CodeGraph, fn_name: str, max_depth: int) -> None:
         target_qualified.add(qid)
         lang = g.module_lang(ent.module)
         fpath = g.module_to_file(ent.module)
-        print(f"(callers-target {qid} :line {ent.line} :lang {lang} :file {_q(fpath)})")
+        print(f"(callers-target {_q(qid)} :line {ent.line} :lang {lang} :file {_q(fpath)})")
 
     # Collect direct callers via calls edges
     direct_callers: list[Edge] = []
@@ -3914,17 +4407,18 @@ def cmd_find_callers(g: CodeGraph, fn_name: str, max_depth: int) -> None:
     if direct_callers:
         for e in sorted(direct_callers, key=lambda x: (x.source, x.target)):
             src_mod = e.source.split("::")[0]
-            print(f"(caller {e.source} -> {e.target} :lang {g.module_lang(src_mod)} :file {_q(g.module_to_file(src_mod))} {' '.join(e.flags)})")
+            print(f"(caller {_q(e.source)} -> {_q(e.target)} :lang {g.module_lang(src_mod)} :file {_q(g.module_to_file(src_mod))} {' '.join(e.flags)})")
     else:
         # Fallback: use module-level edges (imports/refs) pointing at target modules
         print("; no calls edges found, showing module-level callers via imports/refs")
+        _calls_hint(f"The call sites the build resolved are listed by: wingbox usages {shlex.quote(fn_name)}")
 
     # Walk reverse deps to given depth
     for tgt_mod in target_mods:
         visited: set[str] = {tgt_mod}
         _walk_rdeps(g, tgt_mod, visited, max_depth, 1,
                     lambda d, et, src, cyc: print(
-                        f"(caller-module {src} -> {tgt_mod} :via {et} :depth {d} "
+                        f"(caller-module {_q(src)} -> {_q(tgt_mod)} :via {et} :depth {d} "
                         f":lang {g.module_lang(src)} :file {_q(g.module_to_file(src))}"
                         f"{' :cycle' if cyc else ''})"))
 
@@ -3946,7 +4440,7 @@ def cmd_find_calls(g: CodeGraph, fn_name: str, max_depth: int) -> None:
         source_qualified.add(qid)
         lang = g.module_lang(ent.module)
         fpath = g.module_to_file(ent.module)
-        print(f"(calls-source {qid} :line {ent.line} :lang {lang} :file {_q(fpath)})")
+        print(f"(calls-source {_q(qid)} :line {ent.line} :lang {lang} :file {_q(fpath)})")
 
     # Collect direct calls via calls edges
     direct_calls: list[Edge] = []
@@ -3959,16 +4453,18 @@ def cmd_find_calls(g: CodeGraph, fn_name: str, max_depth: int) -> None:
     if direct_calls:
         for e in sorted(direct_calls, key=lambda x: (x.source, x.target)):
             tgt_mod = e.target.split("::")[0]
-            print(f"(calls-target {e.source} -> {e.target} :lang {g.module_lang(tgt_mod)} :file {_q(g.module_to_file(tgt_mod))} {' '.join(e.flags)})")
+            print(f"(calls-target {_q(e.source)} -> {_q(e.target)} :lang {g.module_lang(tgt_mod)} :file {_q(g.module_to_file(tgt_mod))} {' '.join(e.flags)})")
     else:
         print("; no calls edges found, showing module-level deps via imports")
+        _calls_hint(f"What a function calls is in its text (wingbox source {shlex.quote(fn_name)}); who calls a function "
+                    "is listed by: wingbox usages <name>")
 
     # Walk forward deps to given depth
     for src_mod in source_mods:
         visited: set[str] = {src_mod}
         _walk_deps(g, src_mod, visited, max_depth, 1,
                    lambda d, et, tgt, cyc: print(
-                       f"(calls-module {src_mod} -> {tgt} :via {et} :depth {d} "
+                       f"(calls-module {_q(src_mod)} -> {_q(tgt)} :via {et} :depth {d} "
                        f":lang {g.module_lang(tgt)} :file {_q(g.module_to_file(tgt))}"
                        f"{' :cycle' if cyc else ''})"))
 
@@ -4026,7 +4522,7 @@ def cmd_find_callchain(g: CodeGraph, src_fn: str, tgt_fn: str, max_depth: int) -
             mod = node.split("::")[0]
             lang = g.module_lang(mod)
             fpath = g.module_to_file(mod)
-            print(f"(callchain-step {i} {node} :lang {lang} :file {_q(fpath)})")
+            print(f"(callchain-step {i} {_q(node)} :lang {lang} :file {_q(fpath)})")
         print(f"(callchain-summary :length {len(found_path)} :hops {len(found_path) - 1})")
         return
 
@@ -4064,18 +4560,53 @@ def cmd_find_callchain(g: CodeGraph, src_fn: str, tgt_fn: str, max_depth: int) -
             for i, mod in enumerate(mod_path):
                 lang = g.module_lang(mod)
                 fpath = g.module_to_file(mod)
-                print(f"(callchain-module-step {i} {mod} :lang {lang} :file {_q(fpath)})")
+                print(f"(callchain-module-step {i} {_q(mod)} :lang {lang} :file {_q(fpath)})")
             print(f"(callchain-module-summary :length {len(mod_path)} :hops {len(mod_path) - 1})")
             return
 
     print(f"(callchain-none {_q(src_fn)} -> {_q(tgt_fn)} :max-depth {max_depth})")
 
 
+_BRACKET_LINE = ("(", ")", "[", "]", "{", "}")
+
+
+def _indentation(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def _method_at(lines: list[str], entity: EntityFact, last: int, index: int) -> Optional[str]:
+    """Which definition of a class holds the line at index (0-based), read from the text of the class, lines
+    entity.line to last: `Class.method` for a line of a method, `Class` for a line of the class that is in no
+    method, None for a line that is not in the class (its own line, its closing bracket, code after it).
+
+    The graph names the methods of a class without their lines, so the lines are found here: the members of
+    a class are the lines at the smallest indentation below that of its first line, and a method starts at
+    the member line that holds its name. A member line that is only a bracket (the end of a signature over
+    several lines, a brace on a line of its own) belongs to what is above it."""
+    first = entity.line - 1
+    own = _indentation(lines[first])
+    deeper = [_indentation(line) for line in lines[first + 1:last] if line.strip() and _indentation(line) > own]
+    if deeper and _indentation(lines[index]) <= own:
+        return None
+    member = min(deeper) if deeper else own
+    for above in range(index, first, -1):
+        line = lines[above]
+        if not line.strip() or _indentation(line) != member:
+            continue
+        for method in entity.methods:
+            if re.search(rf"(?<![\w$]){re.escape(method)}(?![\w$])", line):
+                return f"{entity.name}.{method}"
+        if not line.lstrip().startswith(_BRACKET_LINE):
+            break
+    return entity.name
+
+
 def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
     """Search function bodies using the supported linear pattern grammar.
 
-    For each function in the code graph, reads the source file and searches
-    the function body (from definition line to next entity or EOF).
+    For each function and each class with methods of the code graph, reads the source file and searches the
+    body (from the definition line to the next definition of the file, or to its end). A line of a method is
+    named `<module>::<Class>.<method>` (see _method_at). Only files of the graph are read (see _source_file).
     """
     parsed_pattern = parse_search_pattern(pattern)
     if isinstance(parsed_pattern, SearchPatternErr):
@@ -4083,50 +4614,37 @@ def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
         return
     results: list[tuple[str, str, int, str]] = []  # (module::fn, file, match_line, match_text)
 
-    # Group entities by file for efficient reading
-    file_entities: dict[str, list[tuple[str, EntityFact]]] = {}
-    for mod, ent_list in g.entities.items():
-        fpath = g.module_to_file(mod)
-        if fpath == mod:
-            continue  # file not found on disk
-        for ent in ent_list:
-            if ent.kind == "fn":
-                file_entities.setdefault(fpath, []).append((mod, ent))
+    def searched(entity: EntityFact) -> bool:
+        return entity.kind == "fn" or (entity.kind in ("cls", "mod") and bool(entity.methods))
 
-    for fpath, fn_list in sorted(file_entities.items()):
-        if not os.path.isfile(fpath):
-            continue
+    files = sorted((g.module_to_file(mod), mod) for mod, ent_list in g.entities.items() if any(map(searched, ent_list)))
+    for fpath, mod in files:
+        located = _source_file(g, mod)
+        if located is None:
+            continue  # not on disk, or not a file that may be read
         try:
-            with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
+            lines = _read_source_lines(located[0])
         except OSError as error:
             print(
                 f"(error source-read-failed {_q(fpath)} {_q(str(error))})"
             )
             continue
 
-        # Sort functions by line number to determine body ranges
-        sorted_fns = sorted(fn_list, key=lambda x: x[1].line)
-
-        for idx, (mod, ent) in enumerate(sorted_fns):
+        # Sort the definitions by line number to determine body ranges
+        ordered = sorted(g.entities[mod], key=lambda entity: entity.line)
+        for idx, ent in enumerate(ordered):
             start = ent.line - 1  # 0-indexed
-            if start < 0 or start >= len(lines):
+            if not searched(ent) or start < 0 or start >= len(lines):
                 continue
-            # End at next entity's line or +100 lines, whichever is smaller
-            if idx + 1 < len(sorted_fns):
-                end = min(sorted_fns[idx + 1][1].line - 1, start + 100, len(lines))
-            else:
-                end = min(start + 100, len(lines))
-
+            # End at the next definition of the file, or at its end
+            end = min(ordered[idx + 1].line - 1, len(lines)) if idx + 1 < len(ordered) else len(lines)
             for line_idx in range(start, end):
                 line = lines[line_idx]
-                if search_pattern_matches(parsed_pattern.value, line):
-                    results.append((
-                        f"{mod}::{ent.name}",
-                        fpath,
-                        line_idx + 1,
-                        line.rstrip(),
-                    ))
+                if not search_pattern_matches(parsed_pattern.value, line):
+                    continue
+                holder = ent.name if ent.kind == "fn" else _method_at(lines, ent, end, line_idx)
+                if holder is not None:
+                    results.append((f"{mod}::{holder}", fpath, line_idx + 1, _one_line(line.rstrip())))
 
     if not results:
         print(f"(grep-functions-empty {_q(pattern)})")
@@ -4134,7 +4652,7 @@ def cmd_grep_functions(g: CodeGraph, pattern: str) -> None:
 
     for qid, fpath, line_num, text in results:
         lang = g.module_lang(qid.split("::")[0])
-        print(f"(grep-fn {qid} :line {line_num} :lang {lang} :file {_q(fpath)} :match {_q(text)})")
+        print(f"(grep-fn {_q(qid)} :line {line_num} :lang {lang} :file {_q(fpath)} :match {_q(text)})")
     print(f"(grep-functions-summary :matches {len(results)} :pattern {_q(pattern)})")
 
 
@@ -4225,6 +4743,28 @@ def _source_file(g: CodeGraph, module: str) -> Optional[tuple[str, str]]:
     return real, relative.replace(os.sep, "/")
 
 
+# The characters besides the line feed at which str.splitlines ends a line: a carriage return, a vertical
+# tab, a form feed, the file, group and record separators, NEL, the line and the paragraph separator.
+_LINE_LIKE = str.maketrans({character: " " for character in "\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"})
+
+
+def _read_source_lines(path: str) -> list[str]:
+    """The lines of a source file as the graph numbers them: a line ends at a line feed, and a carriage
+    return before it belongs to the line end. Nothing else ends a line: the parsers count line feeds, so a
+    form feed inside a line must not shift the numbers of the lines below it."""
+    with open(path, "r", encoding="utf-8", errors="replace", newline="") as handle:
+        lines = handle.read().split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return [line[:-1] if line.endswith("\r") else line for line in lines]
+
+
+def _one_line(text: str) -> str:
+    """The text of a source line as an answer prints it: a character at which a reader of lines would end the
+    line (see _LINE_LIKE) is a space, so the answer keeps one fact a line."""
+    return text.translate(_LINE_LIKE)
+
+
 def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Optional[int] = None) -> None:
     """The lines of one source file of the graph, or of one definition in it, numbered and quoted.
 
@@ -4247,8 +4787,7 @@ def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Opt
         return
     real, shown_path = located
     try:
-        with open(real, "r", encoding="utf-8", errors="replace") as handle:
-            text_lines = handle.read().splitlines()
+        text_lines = _read_source_lines(real)
     except OSError as error:
         print(f"(error source-read-failed {_q(shown_path)} {_q(error.strerror or type(error).__name__)})")
         return
@@ -4269,7 +4808,7 @@ def cmd_source(g: CodeGraph, target: str, first: Optional[int] = None, last: Opt
     for number in range(start, min(end, start + SOURCE_LINE_LIMIT - 1) + 1):
         text = text_lines[number - 1]
         cut = f" :cut {len(text)}" if len(text) > SOURCE_LINE_CHARS else ""
-        line = f'(line {number} "{_escaped(text[:SOURCE_LINE_CHARS])}"{cut})'
+        line = f'(line {number} "{_escaped(_one_line(text[:SOURCE_LINE_CHARS]))}"{cut})'
         if printed and characters + len(line) > SOURCE_CHAR_LIMIT:
             break
         printed.append(line)
@@ -4302,7 +4841,7 @@ def _grep_arguments(words: list[str]) -> Union[tuple[str, Optional[str], int], s
         word = words[index]
         if word == "--first":
             value = words[index + 1] if index + 1 < len(words) else ""
-            if not (value.isdigit() and int(value) >= 1):
+            if not (value.isdecimal() and int(value) >= 1):
                 return "grep: --first takes the number of a match, from 1"
             first = int(value)
             index += 2
@@ -4357,8 +4896,7 @@ def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, fir
             continue
         read.add(real)
         try:
-            with open(real, "r", encoding="utf-8", errors="replace") as handle:
-                text_lines = handle.read().splitlines()
+            text_lines = _read_source_lines(real)
         except OSError:
             unread += 1
             continue
@@ -4370,7 +4908,7 @@ def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, fir
             if matches < first or full:
                 continue
             cut = f" :cut {len(text)}" if len(text) > GREP_LINE_CHARS else ""
-            line = f'(match {_q(shown_path)} {number} "{_escaped(text[:GREP_LINE_CHARS])}"{cut})'
+            line = f'(match {_q(shown_path)} {number} "{_escaped(_one_line(text[:GREP_LINE_CHARS]))}"{cut})'
             if len(printed) == GREP_MATCH_LIMIT or (printed and characters + len(line) > GREP_CHAR_LIMIT):
                 full = True
                 continue
@@ -4394,148 +4932,273 @@ def cmd_grep(g: CodeGraph, pattern: str, path_pattern: Optional[str] = None, fir
     print(f"(matches-summary :matches {matches}{part} :files {files_matched}{tail} :pattern {_q(pattern)}{scope})")
 
 
-def _diff_ranges(g: CodeGraph, ref: str) -> Union[str, dict[str, list[tuple[int, int]]]]:
-    """file -> the line ranges `git diff <ref>` changes in it (the new side), or the error fact when Git
-    cannot give the diff. Paths are those Git prints, relative to the repository root, with /."""
+@dataclass(frozen=True)
+class DiffFile:
+    """One file a diff changes, as Git names it."""
+
+    path: str            # relative to the graph root, with /: where the file is now; of a deleted file, where it was
+    status: str          # "modified", "added", "deleted" or "renamed"
+    old_path: str = ""   # of a renamed file: the path it had
+    hunks: int = 0
+    # The line ranges that changed, as lines of the file now. Removed lines count for the line above them.
+    ranges: tuple[tuple[int, int], ...] = ()
+
+
+@dataclass
+class _DiffSection:
+    """What the header lines and the hunks of one `diff --git` section of a patch say."""
+
+    header: str                  # its `diff --git` line
+    old: Optional[str] = None    # the path before, from `--- ` or `rename from`
+    new: Optional[str] = None    # the path now, from `+++ `, `rename to` or `copy to`
+    deleted: bool = False
+    added: bool = False
+    renamed: bool = False
+    hunks: int = 0
+    ranges: list[tuple[int, int]] = field(default_factory=list)
+
+
+# The look of the patch is fixed here, whatever the Git configuration of the repository or of the user says
+# (diff.noprefix, diff.mnemonicPrefix, color.diff, diff.renames, diff.relative, diff.interHunkContext): no
+# colour, the prefixes a/ and b/, hunks without context, renames found, and paths relative to the folder Git
+# runs in, which is the graph root. Only what changed below that folder is listed.
+_DIFF_FORMAT = ("--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--unified=0", "--inter-hunk-context=0",
+                "--find-renames", "--relative")
+_DIFF_TIMEOUT_SECONDS = 30
+_HUNK_HEADER = re.compile(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+_C_ESCAPES = {"a": "\a", "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v"}
+
+
+def _git_safe():
+    """scripts/git_safe.py: every Git call goes through it."""
+    try:
+        from . import git_safe
+    except ImportError:  # loaded as a top-level script module
+        import git_safe
+    return git_safe
+
+
+def _diff_files(g: CodeGraph, ref: str) -> Union[str, list[DiffFile]]:
+    """The files `git diff <ref>` changes below the graph root (the files on disk against ref), in path
+    order; the error fact when ref is no ref or Git cannot give the diff."""
     import subprocess
 
-    # Use the code graph root as git working directory (not cwd)
-    git_cwd = g._root or None
+    git_safe = _git_safe()
+    problem = git_safe.ref_problem(ref)
+    if problem is not None:
+        return f"(error invalid-argument {fact_json.atom(problem)})"
+
+    def diff(*revisions: str) -> "subprocess.CompletedProcess[str]":
+        # After --end-of-options a word is a revision and never an option; before the last -- it is never a path.
+        return git_safe.run(
+            g._root or None, "diff", (*_DIFF_FORMAT, "--end-of-options", *revisions, "--"), config=("core.quotepath=off",),
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=_DIFF_TIMEOUT_SECONDS,
+        )
 
     try:
-        result = subprocess.run(
-            ["git", "-c", "core.quotepath=off", "diff", "--unified=0", ref],
-            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=git_cwd,
-            **portable.hidden_process_options(),
-        )
+        result = diff(ref)
         if result.returncode != 0:
-            # Try as a commit ref
-            result = subprocess.run(
-                ["git", "-c", "core.quotepath=off", "diff", "--unified=0", ref, "HEAD"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, cwd=git_cwd,
-                **portable.hidden_process_options(),
-            )
+            first, result = result, diff(ref, "HEAD")   # no work tree to compare: ref against the commit checked out
             if result.returncode != 0:
-                return f"(error git-diff-failed {_q(result.stderr.strip())})"
+                # What Git said to the first call, without the usage text it can add; atom makes it one line.
+                message = first.stderr.split("\nusage:", 1)[0].strip()
+                return f"(error git-diff-failed {fact_json.atom(message)})"
     except FileNotFoundError:
         return "(error git-not-found)"
     except subprocess.TimeoutExpired:
         return "(error git-diff-timeout)"
+    except OSError as error:   # git_safe refuses the call, or Git cannot be started
+        return f"(error git-diff-failed {fact_json.atom(str(error))})"
+    files = _parse_diff(result.stdout)
+    if isinstance(files, str):
+        return f"(error git-diff-failed {fact_json.atom('cannot read the diff header: ' + files)})"
+    return files
 
-    # Parse diff output to extract file -> changed line ranges
-    changed_ranges: dict[str, list[tuple[int, int]]] = {}  # file -> [(start, end)]
-    current_file = ""
 
-    for line in result.stdout.splitlines():
-        if line.startswith("+++ b/"):
-            current_file = line[6:]
+def _diff_error_status(fact: str) -> int:
+    """The exit status of an error fact of _diff_files: 2 for a ref that is refused, as every invalid
+    argument, 1 when Git cannot give the diff."""
+    return 2 if fact.startswith("(error invalid-argument ") else 1
+
+
+def _parse_diff(text: str) -> Union[str, list[DiffFile]]:
+    """The files of a patch that `git diff` wrote with _DIFF_FORMAT, in path order; the `diff --git` line of
+    a section that names no file, when there is one. The lines of a hunk are counted by its header, so a line
+    of a file is never read as a header of the patch."""
+    sections: list[_DiffSection] = []
+    old_left = new_left = 0
+    for line in text.split("\n"):   # not splitlines(): a line of a file may hold a form feed or a carriage return
+        if old_left > 0 or new_left > 0:
+            if line.startswith("-"):
+                old_left -= 1
+            elif line.startswith("+"):
+                new_left -= 1
+            elif not line.startswith("\\"):   # a context line; "\ No newline at end of file" is no line
+                old_left -= 1
+                new_left -= 1
+            continue
+        if line.startswith("diff --git "):
+            sections.append(_DiffSection(line))
+            continue
+        if not sections:
+            continue
+        section = sections[-1]
+        hunk = _HUNK_HEADER.match(line)
+        if hunk is not None:
+            old_left = 1 if hunk.group(1) is None else int(hunk.group(1))
+            new_start = int(hunk.group(2))
+            new_left = 1 if hunk.group(3) is None else int(hunk.group(3))
+            section.hunks += 1
+            if new_left:
+                section.ranges.append((new_start, new_start + new_left - 1))
+            elif new_start:   # lines were only removed, below line new_start
+                section.ranges.append((new_start, new_start))
+        elif line.startswith("--- "):
+            section.old = _diff_side(line[4:], "a/")
         elif line.startswith("+++ "):
-            current_file = ""   # a deleted file: +++ /dev/null
-        elif line.startswith("@@ ") and current_file:
-            # Parse hunk header: @@ -old,count +new,count @@
-            parts = line.split(" ")
-            for part in parts:
-                if part.startswith("+") and "," in part:
-                    nums = part[1:].split(",")
-                    start = int(nums[0])
-                    count = int(nums[1]) if len(nums) > 1 else 1
-                    if count > 0:
-                        changed_ranges.setdefault(current_file, []).append(
-                            (start, start + count - 1)
-                        )
-                elif part.startswith("+") and part[1:].isdigit():
-                    start = int(part[1:])
-                    changed_ranges.setdefault(current_file, []).append(
-                        (start, start)
-                    )
-    return changed_ranges
+            section.new = _diff_side(line[4:], "b/")
+        elif line.startswith("rename from "):
+            section.old, section.renamed = _c_unquoted(line[len("rename from "):]), True
+        elif line.startswith("rename to "):
+            section.new = _c_unquoted(line[len("rename to "):])
+        elif line.startswith("copy to "):
+            section.new = _c_unquoted(line[len("copy to "):])
+        elif line.startswith("deleted file mode "):
+            section.deleted = True
+        elif line.startswith("new file mode "):
+            section.added = True
+    files: dict[str, DiffFile] = {}
+    for section in sections:
+        item = _diff_file(section)
+        if item is None:
+            return section.header
+        known = files.get(item.path)
+        if known is not None:   # removed and created again in one diff (its type changed): one changed file
+            item = DiffFile(item.path, "modified", "", known.hunks + item.hunks, known.ranges + item.ranges)
+        files[item.path] = item
+    return [files[path] for path in sorted(files)]
+
+
+def _diff_file(section: _DiffSection) -> Optional[DiffFile]:
+    ranges = tuple(section.ranges)
+    if section.renamed and section.old and section.new:
+        return DiffFile(section.new, "renamed", section.old, section.hunks, ranges)
+    # A section without a text patch (a mode change, a binary file, an empty file) has no --- and +++ lines.
+    path = (section.old if section.deleted else section.new) or _diff_header_path(section.header)
+    if path is None:
+        return None
+    return DiffFile(path, "deleted" if section.deleted else "added" if section.added else "modified", "", section.hunks, ranges)
+
+
+def _diff_side(text: str, prefix: str) -> Optional[str]:
+    """The path of a `--- ` or `+++ ` line, None for /dev/null. Git ends the line with a tab when the name
+    holds a space: that tab is no part of the name."""
+    name = _c_unquoted(text[:-1] if text.endswith("\t") else text)
+    if name == "/dev/null":
+        return None
+    return name[len(prefix):] if name.startswith(prefix) else name
+
+
+def _diff_header_path(header: str) -> Optional[str]:
+    """The path of a `diff --git a/<path> b/<path>` line that names one path twice; None when the two differ."""
+    rest = header[len("diff --git "):]
+    if rest.startswith('"'):
+        end = 1
+        while end < len(rest) and rest[end] != '"':
+            end += 2 if rest[end] == "\\" else 1
+        first, second = _c_unquoted(rest[:end + 1]), _c_unquoted(rest[end + 2:])
+    else:
+        half = (len(rest) - 1) // 2
+        first, second = rest[:half], rest[half + 1:]
+    if first.startswith("a/") and second.startswith("b/") and first[2:] == second[2:]:
+        return first[2:]
+    return None
+
+
+def _c_unquoted(text: str) -> str:
+    """A path as Git writes it in a patch: as it is, or between double quotes with the escapes of C when it
+    holds a quote, a backslash or a control character."""
+    if len(text) < 2 or not (text.startswith('"') and text.endswith('"')):
+        return text
+    out: list[str] = []
+    index, end = 1, len(text) - 1
+    while index < end:
+        if text[index] != "\\" or index + 1 >= end:
+            out.append(text[index])
+            index += 1
+            continue
+        octal = text[index + 1:index + 4]
+        if len(octal) == 3 and all(digit in "01234567" for digit in octal):
+            out.append(chr(int(octal, 8)))
+            index += 4
+        else:
+            out.append(_C_ESCAPES.get(text[index + 1], text[index + 1]))
+            index += 2
+    return "".join(out)
 
 
 def _diff_functions(
-    g: CodeGraph, changed_ranges: dict[str, list[tuple[int, int]]],
+    g: CodeGraph, changed_ranges: dict[str, Sequence[tuple[int, int]]],
 ) -> list[tuple[str, EntityFact, str]]:
-    """(module::name, the entity, the file as the diff names it) of every definition a changed range touches."""
-    # Build file -> sorted entities index
+    """(module::name, the entity, the file) of every definition a changed range touches. A file of the diff
+    is the file of the graph with that very path, relative to the graph root. A definition runs to the line
+    before the next one of its file, the last one to the end of the file."""
     file_entities: dict[str, list[tuple[str, EntityFact]]] = {}
     for mod, ent_list in g.entities.items():
-        fpath = g.module_to_file(mod)
-        for ent in ent_list:
-            file_entities.setdefault(fpath, []).append((mod, ent))
+        if ent_list:
+            file_entities.setdefault(_impact_file(g, mod), []).extend((mod, ent) for ent in ent_list)
 
-    # Normalize paths for matching (diff paths are relative to repo root)
-    repo_root = g._root
     results: list[tuple[str, EntityFact, str]] = []  # (qualified_id, entity, file)
-
+    named: set[str] = set()
     for diff_file, ranges in changed_ranges.items():
-        # Try matching against code graph files
-        # git prints paths with '/', the graph holds them with the system's separator
-        local_file = os.path.normpath(diff_file)
-        abs_path = os.path.join(repo_root, local_file)
-        # Also try relative path
-        candidates = [abs_path, local_file]
-
-        matched_ents: list[tuple[str, EntityFact]] = []
-        for candidate in candidates:
-            if candidate in file_entities:
-                matched_ents = file_entities[candidate]
-                break
-
-        if not matched_ents:
-            # Try suffix matching
-            for fpath, ent_list in file_entities.items():
-                if fpath.endswith(local_file) or local_file.endswith(fpath.lstrip("./")):
-                    matched_ents = ent_list
-                    break
-
-        if not matched_ents:
-            continue
-
-        # Sort entities by line to determine body ranges
-        sorted_ents = sorted(matched_ents, key=lambda x: x[1].line)
-
+        sorted_ents = sorted(file_entities.get(diff_file, ()), key=lambda x: x[1].line)
         for start, end in ranges:
             for idx, (mod, ent) in enumerate(sorted_ents):
-                ent_start = ent.line
-                if idx + 1 < len(sorted_ents):
-                    ent_end = sorted_ents[idx + 1][1].line - 1
-                else:
-                    ent_end = ent_start + 200  # approximate
-
-                # Check overlap
-                if start <= ent_end and end >= ent_start:
+                last = idx + 1 == len(sorted_ents)
+                if end >= ent.line and (last or start < sorted_ents[idx + 1][1].line):
                     qid = f"{mod}::{ent.name}"
-                    if not any(r[0] == qid for r in results):
+                    if qid not in named:
+                        named.add(qid)
                         results.append((qid, ent, diff_file))
     return results
 
 
-def cmd_diff_functions(g: CodeGraph, ref: str) -> None:
-    """Identify which functions were changed in a git diff.
+def _diff_file_fact(item: DiffFile) -> str:
+    if item.status == "renamed":
+        return f"(diff-file {_q(item.old_path)} :hunks {item.hunks} :status renamed :to {_q(item.path)})"
+    return f"(diff-file {_q(item.path)} :hunks {item.hunks}{' :status deleted' if item.status == 'deleted' else ''})"
 
-    Parses 'git diff <ref>' output to find changed line ranges,
-    then maps those ranges to function definitions in the code graph.
-    """
-    changed_ranges = _diff_ranges(g, ref)
-    if isinstance(changed_ranges, str):
-        print(changed_ranges)
-        return
-    if not changed_ranges:
+
+def cmd_diff_functions(g: CodeGraph, ref: str) -> int:
+    """Print the definitions a git diff changes: the changed line ranges of `git diff <ref>`, mapped to the
+    definitions of the graph. A file the diff removes or renames is named with `:status`. Returns the exit
+    status: 0, 2 for a ref that is refused, 1 when Git cannot give the diff."""
+    files = _diff_files(g, ref)
+    if isinstance(files, str):
+        print(files)
+        return _diff_error_status(files)
+    if not files:
         print(f"(diff-functions-empty {_q(ref)})")
-        return
+        return 0
 
-    results = _diff_functions(g, changed_ranges)
+    results = _diff_functions(g, {item.path: item.ranges for item in files if item.status != "deleted"})
+    listed = sorted(files, key=lambda item: item.old_path or item.path)
     if not results:
         # Report changed files even if no function mapping
-        for diff_file in sorted(changed_ranges.keys()):
-            print(f"(diff-file {_q(diff_file)} :hunks {len(changed_ranges[diff_file])})")
-        print(f"(diff-functions-no-match :files {len(changed_ranges)} :ref {_q(ref)})")
-        return
+        for item in listed:
+            print(_diff_file_fact(item))
+        print(f"(diff-functions-no-match :files {len(files)} :ref {_q(ref)})")
+        return 0
 
-    for qid, ent, diff_file in sorted(results, key=lambda x: (x[2], x[1].line)):
+    for qid, ent, _diff_path in sorted(results, key=lambda x: (x[2], x[1].line)):
         lang = g.module_lang(ent.module)
         fpath = g.module_to_file(ent.module)
-        print(f"(diff-fn {qid} :kind {ent.kind} :line {ent.line} :lang {lang} :file {_q(fpath)})")
-    print(f"(diff-functions-summary :changed {len(results)} :files {len(changed_ranges)} :ref {_q(ref)})")
+        print(f"(diff-fn {_q(qid)} :kind {ent.kind} :line {ent.line} :lang {lang} :file {_q(fpath)})")
+    for item in listed:
+        if item.status in ("deleted", "renamed"):   # no file of the graph now: no definition can name it
+            print(_diff_file_fact(item))
+    print(f"(diff-functions-summary :changed {len(results)} :files {len(files)} :ref {_q(ref)})")
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -4605,7 +5268,7 @@ _QUERY_HELP = """\
 def _query_problem(expr: str) -> Optional[str]:
     """What makes the text of a query unreadable, or None. It reads strings and comments as the tokenizer of
     _SchemeEval does, so a parenthesis inside a string or after a comment sign is text."""
-    depth, index, holds_something = 0, 0, False
+    depth, deepest, index, holds_something = 0, 0, 0, False
     while index < len(expr):
         character = expr[index]
         if character == ";":
@@ -4623,6 +5286,7 @@ def _query_problem(expr: str) -> Optional[str]:
             continue
         if character == "(":
             depth += 1
+            deepest = max(deepest, depth)
             holds_something = True
         elif character == ")":
             depth -= 1
@@ -4635,7 +5299,13 @@ def _query_problem(expr: str) -> Optional[str]:
         return "the expression is empty"
     if depth:
         return "a parenthesis is not closed"
+    if deepest > MAX_QUERY_NESTING:
+        return f"the expression is nested deeper than {MAX_QUERY_NESTING} levels"
     return None
+
+
+# The functions of the query language that work on a set given as their first argument.
+_SET_FUNCTIONS = frozenset({"intersect", "diff", "filter", "files", "count", "layer-of"})
 
 
 class _SchemeEval:
@@ -4738,6 +5408,10 @@ class _SchemeEval:
 
     def _apply(self, fn: str, args: list[object]) -> object:
         g = self._g
+
+        if fn in _SET_FUNCTIONS and not args:
+            self.problems.append(f"{fn} takes a set as its first argument")
+            return set()
 
         if fn == "resolve":
             pattern = str(args[0]) if args else ""
@@ -4952,6 +5626,9 @@ class _SchemeEval:
 
         if fn == "diff-functions" or fn == "diff_functions":
             ref = str(args[0]) if args else "HEAD"
+            problem = _git_safe().ref_problem(ref)
+            if problem is not None:
+                return QueryError("invalid-argument", problem)
             cmd_diff_functions(g, ref)
             return set()
 
@@ -4961,24 +5638,32 @@ class _SchemeEval:
     def _collect_deps(
         self, nid: str, visited: set[str], max_depth: int, depth: int, result: set[str],
     ) -> None:
-        if depth > max_depth:
-            return
-        for tgt in _collect_dep_mods(self._g, nid):
-            result.add(tgt)
-            if tgt not in visited:
-                visited.add(tgt)
-                self._collect_deps(tgt, visited, max_depth, depth + 1, result)
+        # Level by level: a module is followed from the nearest depth that reaches it, so none within the
+        # depth is left out because a longer path came first.
+        frontier = [nid]
+        for _depth in range(depth, max_depth + 1):
+            found: list[str] = []
+            for module in frontier:
+                for tgt in _collect_dep_mods(self._g, module):
+                    result.add(tgt)
+                    if tgt not in visited:
+                        visited.add(tgt)
+                        found.append(tgt)
+            frontier = found
 
     def _collect_rdeps(
         self, nid: str, visited: set[str], max_depth: int, depth: int, result: set[str],
     ) -> None:
-        if depth > max_depth:
-            return
-        for src in _collect_rdep_mods(self._g, nid):
-            result.add(src)
-            if src not in visited:
-                visited.add(src)
-                self._collect_rdeps(src, visited, max_depth, depth + 1, result)
+        frontier = [nid]
+        for _depth in range(depth, max_depth + 1):
+            found: list[str] = []
+            for module in frontier:
+                for src in _collect_rdep_mods(self._g, module):
+                    result.add(src)
+                    if src not in visited:
+                        visited.add(src)
+                        found.append(src)
+            frontier = found
 
     @staticmethod
     def _to_set(val: object) -> set[str]:
@@ -5011,21 +5696,23 @@ def _format_result(val: object) -> None:
         print(f"(result {_q(str(val))})")
 
 
-def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> None:
-    """Evaluate a single Scheme query expression; `(help)` lists the functions of the language."""
+def cmd_query(g: CodeGraph, expr: str, sexp_path: str) -> int:
+    """Evaluate a single Scheme query expression; `(help)` lists the functions of the language. Returns the
+    exit status: 2 when the expression gives Git a ref that is refused, else 0."""
     if expr.strip() in ("(help)", "help"):
         print(_QUERY_HELP)
-        return
+        return 0
     problem = _query_problem(expr)
     if problem is not None:
         print(f'(error invalid-query "{_escaped(expr)}" "{problem}")')
-        return
+        return 0
     evaluator = _SchemeEval(g, sexp_path)
     result = evaluator.eval_str(expr)
     if evaluator.problems:
         print(f'(error invalid-query "{_escaped(expr)}" "{evaluator.problems[0]}; (help) lists the functions")')
-        return
+        return 0
     _format_result(result)
+    return 2 if isinstance(result, QueryError) and result.kind == "invalid-argument" else 0
 
 
 def cmd_repl(g: CodeGraph, sexp_path: str) -> None:
@@ -5155,6 +5842,9 @@ def _extract_query_paths(
 def _validate_cli_command(args: list[str]) -> Optional[str]:
     if not args:
         return None
+    # `grep` and `query` say what is wrong with an empty text in their own words.
+    if args[0] not in ("grep", "query") and any(not argument.strip() for argument in args[1:]):
+        return f"{args[0]}: an argument is empty"
     pattern_commands = {
         "entity",
         "search",
@@ -5201,7 +5891,7 @@ def _validate_cli_command(args: list[str]) -> Optional[str]:
         if len(args) > 4:
             return "source takes a target and at most two line numbers: first and last"
         numbers = args[2:4]
-        if not all(number.isdigit() and int(number) >= 1 for number in numbers):
+        if not all(number.isdecimal() and int(number) >= 1 for number in numbers):
             return "source: first and last are line numbers from 1"
         if len(numbers) == 2 and int(numbers[1]) < int(numbers[0]):
             return "source: last is before first"
@@ -5342,7 +6032,13 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
             return _strict_error("no-graph"), None
     sexp_path = explicit_map or find_sexp_file(explicit_root)
     g = CodeGraph()
-    load_result = g.load(sexp_path, explicit_root, focus=_load_focus(args))
+    focus = _load_focus(args)
+    load_result = g.load(sexp_path, explicit_root, focus=focus)
+    if isinstance(load_result, MapLoadOk) and focus is not None and args[0] == "entity" \
+            and not g.definitions_named(next(argument for argument in args[1:] if argument != "--positions")):
+        # No name is spelled as asked: `entity` then matches names by pattern, the letter case ignored
+        # (`entity engine` finds Engine), and the facts read for the one name do not hold them.
+        load_result = g.load(sexp_path, explicit_root)
     if isinstance(load_result, MapLoadErr):
         print(f"(error invalid-map {_q(load_result.error)})")
         return (_strict_error("invalid-graph") if strict else 1), None
@@ -5355,18 +6051,30 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
         changes = diff_changes(g, diff_ref, only)
         if isinstance(changes, str):
             print(changes)
-            return 1, None
-        targets, changed = changes
-        if not targets:
-            if form == "json":
-                return 0, impact_forms.impact_json([], graph_header(g, graph_stale), [])
+            return _diff_error_status(changes), None
+        targets, changed, gone = changes
+        # The empty form is for a diff in which Git reports no change below the graph root, and for no other.
+        if not targets and not gone and form != "json":
             print(f"(impact-diff-empty {_q(diff_ref)})")
             return 0, None
-        if summary:
-            return cmd_impact_summary(g, targets, max_depth, form, graph_stale, only, changed)
-        if form == "json":
-            return impact_document(g, targets, max_depth, graph_stale, only, changed)
-        return cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only, changed), None
+        status, document = 0, None
+        if not targets:
+            document = impact_forms.impact_json([], graph_header(g, graph_stale), changed) if form == "json" else None
+        elif summary:
+            status, document = cmd_impact_summary(g, targets, max_depth, form, graph_stale, only, changed)
+        elif form == "json":
+            status, document = impact_document(g, targets, max_depth, graph_stale, only, changed)
+        else:
+            status = cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only, changed)
+        # The paths the diff removes follow the answers of the files that are there.
+        if document is not None:
+            document["changed_files"] = [impact_forms.changed_file_json(item) for item in gone]
+        elif form == "human":
+            sys.stdout.write(("\n" if targets and gone else "") + impact_forms.changed_files_text(gone))
+        else:
+            for item in gone:
+                print(impact_forms.changed_file_fact(item))
+        return status, document
     if cmd == "impact" and len(args) >= 2:
         targets, depth = impact_arguments(args[1:])
         max_depth = DEFAULT_IMPACT_DEPTH if depth is None else int(depth)
@@ -5377,9 +6085,10 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
         return cmd_impact(g, targets, max_depth, form, show_all, graph_stale, only), None
     if cmd == "usages" and len(args) >= 2:
         if form == "json":
-            return 0, usages_forms.usages_json(usages_answer(g, args[1]))
-        cmd_usages(g, args[1], form, show_all)
-        return 0, None
+            answer = usages_answer(g, args[1])
+            return _usages_status(g, args[1], answer), usages_forms.usages_json(answer)
+        return cmd_usages(g, args[1], form, show_all), None
+    g.gate.stale_files = graph_stale   # boundaries --strict: a graph known to miss changes is not a pass
     return _run_fact_command(g, args, sexp_path, show_all, strict), None
 
 
@@ -5387,11 +6096,11 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
     """Run a command whose answer is a list of fact lines; they are printed as they are found."""
     cmd = args[0]
     if cmd == "analyze" and len(args) >= 2:
-        cmd_analyze(g, args[1], show_all=show_all)
+        return cmd_analyze(g, args[1], show_all=show_all)
     elif cmd == "boundary" and len(args) >= 2:
         files_only = "--files-only" in args
         module_arg = [a for a in args[1:] if a != "--files-only"][0]
-        cmd_boundary(g, module_arg, files_only=files_only)
+        return cmd_boundary(g, module_arg, files_only=files_only)
     elif cmd == "quick" and len(args) >= 2:
         cmd_quick(g, args[1], sexp_path, show_all=show_all)
     elif cmd == "module" and len(args) >= 2:
@@ -5399,18 +6108,18 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         if not module_args:
             print(f"(error invalid-argument {_q('module requires a module ID')})")
             return 2
-        cmd_module(g, module_args[0], lines="--lines" in args)
+        return cmd_module(g, module_args[0], lines="--lines" in args)
     elif cmd == "deps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
-        cmd_deps(g, args[1], depth)
+        return cmd_deps(g, args[1], depth)
     elif cmd == "rdeps" and len(args) >= 2:
         depth = int(args[2]) if len(args) >= 3 else 2
-        cmd_rdeps(g, args[1], depth)
+        return cmd_rdeps(g, args[1], depth)
     elif cmd == "entity" and len(args) >= 2:
         entity_args = [argument for argument in args[1:] if argument != "--positions"]
         cmd_entity(g, entity_args[0], positions="--positions" in args)
     elif cmd == "flow" and len(args) >= 3:
-        cmd_flow(g, args[1], args[2])
+        return cmd_flow(g, args[1], args[2])
     elif cmd == "search" and len(args) >= 2:
         search_args = [argument for argument in args[1:] if argument != "--lines"]
         if not search_args:
@@ -5444,7 +6153,7 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         cmd_grep_functions(g, args[1])
     elif cmd == "diff_functions":
         ref = args[1] if len(args) >= 2 else "HEAD"
-        cmd_diff_functions(g, ref)
+        return cmd_diff_functions(g, ref)
     elif cmd == "files":
         cmd_files(g, args[1] if len(args) >= 2 else None)
     elif cmd == "source" and len(args) >= 2:
@@ -5454,7 +6163,7 @@ def _run_fact_command(g: CodeGraph, args: list[str], sexp_path: str, show_all: b
         if not isinstance(asked, str):   # _validate_cli_command refused anything else
             cmd_grep(g, *asked)
     elif cmd == "query" and len(args) >= 2:
-        cmd_query(g, " ".join(args[1:]), sexp_path)
+        return cmd_query(g, " ".join(args[1:]), sexp_path)
     elif cmd == "repl":
         cmd_repl(g, sexp_path)
     else:

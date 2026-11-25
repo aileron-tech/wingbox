@@ -146,8 +146,12 @@ def _load_databases(root: str) -> dict[str, _Folders]:
         try:
             with open(database, "r", encoding="utf-8-sig") as handle:
                 entries = json.load(handle)
-        except (OSError, ValueError) as error:
-            print(f"[code-graph] Cannot read the compilation database {database}: {error}", file=sys.stderr)
+        except (OSError, ValueError, RecursionError) as error:
+            # ValueError: text that is not JSON or not UTF-8; RecursionError: nested deeper than the reader goes.
+            print(
+                f"[code-graph] Cannot read the compilation database {database}: {type(error).__name__}: {error}",
+                file=sys.stderr,
+            )
             continue
         if not isinstance(entries, list):
             continue
@@ -245,10 +249,13 @@ class BoundCppLanguage:
     # Without a database for the file: what the CMake files name, then the tree itself.
     cmake_folders: tuple[str, ...]
     by_name: Mapping[str, tuple[str, ...]]
+    # The files by their path and by their name, both in lower case: for an include written in another case.
+    by_folded_path: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    by_folded_name: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     _resolved: dict[tuple[str, str], str | None] = field(default_factory=dict, compare=False, repr=False)
     # The includes found without the folders a compiler was given: through the CMake files or by the end of a path.
     _inferred: set[tuple[str, str]] = field(default_factory=set, compare=False, repr=False)
-    _nearest: dict[str, _Folders] = field(default_factory=dict, compare=False, repr=False)
+    _nearest: dict[str, tuple[_Folders, bool]] = field(default_factory=dict, compare=False, repr=False)
     _ordered_cmake: dict[str, tuple[str, ...]] = field(default_factory=dict, compare=False, repr=False)
 
     @classmethod
@@ -266,33 +273,40 @@ class BoundCppLanguage:
         for source in sorted(units):
             in_folder.setdefault(os.path.dirname(source), []).append(units[source])
         by_name: dict[str, list[str]] = {}
+        by_folded_path: dict[str, list[str]] = {}
+        by_folded_name: dict[str, list[str]] = {}
         for path in sorted(path_to_id):
             if CPP_LANGUAGE.accepts_file(path):
                 by_name.setdefault(os.path.basename(path), []).append(path)
+                by_folded_path.setdefault(path.casefold(), []).append(path)
+                by_folded_name.setdefault(os.path.basename(path).casefold(), []).append(path)
         return cls(
             root=root,
             path_to_id=path_to_id,
             unit_folders=units,
             folder_folders={folder: _merged(items) for folder, items in in_folder.items()},
             database_folders=_merged([units[source] for source in sorted(units)]),
-            # The CMake files are read only when no database says what the compiler was given.
-            cmake_folders=() if units else _cmake_folders(root, discovery_exclusions),
+            # For the files no entry of a database covers: a database may hold part of the tree.
+            cmake_folders=_cmake_folders(root, discovery_exclusions),
             by_name={name: tuple(paths) for name, paths in by_name.items()},
+            by_folded_path={name: tuple(paths) for name, paths in by_folded_path.items()},
+            by_folded_name={name: tuple(paths) for name, paths in by_folded_name.items()},
         )
 
-    def _database_folders_for(self, source: str) -> _Folders:
-        """The include folders of a file: its own entry, else the entries of the nearest folder at or
-        above it that holds a translation unit, else every folder of the database."""
+    def _database_folders_for(self, source: str) -> tuple[_Folders, bool]:
+        """The include folders of a file and whether the database covers the file: its own entry, else the
+        entries of the nearest folder at or above it that holds a translation unit. A file the database
+        does not cover gets every folder of the database: what some compiler was given, not this one."""
         own = self.unit_folders.get(source)
         if own is not None:
-            return own
+            return own, True
         start = os.path.dirname(source)
         if start not in self._nearest:
             current = start
-            found = self.database_folders
+            found = (self.database_folders, False)
             while _inside(current, self.root):
                 if current in self.folder_folders:
-                    found = self.folder_folders[current]
+                    found = (self.folder_folders[current], True)
                     break
                 if current == self.root:
                     break
@@ -331,20 +345,46 @@ class BoundCppLanguage:
         source = os.path.normpath(os.path.abspath(source_path))
         folder = os.path.dirname(source)
         stated: list[str] = [folder] if is_quoted else []
-        stated.extend(self._database_folders_for(source).of(is_quoted))
+        database, covered = self._database_folders_for(source)
+        if covered:
+            stated.extend(database.of(is_quoted))
         for base in stated:
             target_id = self.path_to_id.get(os.path.normpath(os.path.join(base, name)))
             if target_id is not None:
                 return target_id
-        for base in self._cmake_folders_for(folder):
+        # A file no entry of a database covers: the folders the CMake files name, then every folder of
+        # the database. Neither is what a compiler was given for this file, so the edge is inferred.
+        guessed = [] if covered else [*self._cmake_folders_for(folder), *database.of(is_quoted)]
+        for base in guessed:
             target_id = self.path_to_id.get(os.path.normpath(os.path.join(base, name)))
             if target_id is not None:
                 self._inferred.add((import_name, source_path))
                 return target_id
         target_id = self._by_path_end(name) if is_quoted else None
+        if target_id is None and is_quoted:
+            target_id = self._in_another_case(name, stated)
         if target_id is not None:
             self._inferred.add((import_name, source_path))
         return target_id
+
+    def _in_another_case(self, name: str, folders: list[str]) -> str | None:
+        """The one file a quoted name names when the case of its letters is not compared (`"Core.h"` for
+        `core.h`, which a file system that ignores case accepts): in the folders searched, then by the end
+        of its path. With two such files there is no answer."""
+        if name in _STANDARD_HEADERS:
+            return None
+        for base in folders:
+            matches = self.by_folded_path.get(os.path.normpath(os.path.join(base, name)).casefold(), ())
+            if matches:
+                return self.path_to_id.get(matches[0]) if len(matches) == 1 else None
+        if name.startswith(("../", "./")) or "/../" in name:
+            return None
+        ending = (os.sep + os.path.normpath(name)).casefold()
+        matches = [
+            path for path in self.by_folded_name.get(os.path.basename(name).casefold(), ())
+            if path.casefold().endswith(ending)
+        ]
+        return self.path_to_id.get(matches[0]) if len(matches) == 1 else None
 
     def import_basis(self, import_name: str, source_path: str) -> str:
         """`inferred` for an include that was found through the CMake files or by the end of its path, ""

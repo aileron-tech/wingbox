@@ -10,18 +10,26 @@ Usage::
 
     git_descendants.py              # descendants of HEAD
     git_descendants.py <ref>        # descendants of a specific commit/ref
+
+Git is started through git_safe: no program of the repository's configuration runs, and a ref that
+starts with "-" is refused.
 """
 
 from __future__ import annotations
 
-import subprocess
 import sys
+
+try:
+    from . import git_safe
+except ImportError:  # run as a script
+    import git_safe
+
+_TEXT = dict(capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def run_git(arguments: list[str], cwd: str | None = None) -> list[str]:
     """Run git with an argument list (no shell) and return its output lines, decoded as UTF-8."""
-    result = subprocess.run(["git", *arguments], capture_output=True, text=True, encoding="utf-8",
-                            errors="replace", cwd=cwd)
+    result = git_safe.run(cwd, arguments[0], arguments[1:], **_TEXT)
     if result.returncode != 0:
         print(f"Error running: git {' '.join(arguments)}", file=sys.stderr)
         print(result.stderr, file=sys.stderr)
@@ -31,9 +39,11 @@ def run_git(arguments: list[str], cwd: str | None = None) -> list[str]:
 
 def get_commit_sha(ref: str = "HEAD", cwd: str | None = None) -> str:
     """Resolve a ref to a full SHA."""
-    result = subprocess.run(
-        ["git", "rev-parse", ref], capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=cwd,
-    )
+    problem = git_safe.ref_problem(ref)
+    if problem is not None:
+        print(f"Error: {problem}", file=sys.stderr)
+        sys.exit(1)
+    result = git_safe.run(cwd, "rev-parse", (ref,), **_TEXT)
     if result.returncode != 0:
         print(f"Error: cannot resolve ref '{ref}'", file=sys.stderr)
         sys.exit(1)
@@ -94,10 +104,7 @@ def main() -> None:
     ref = sys.argv[1] if len(sys.argv) > 1 else "HEAD"
 
     full_sha = get_commit_sha(ref)
-    short_sha = subprocess.run(
-        ["git", "rev-parse", "--short", full_sha],
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
-    ).stdout.strip()
+    short_sha = git_safe.run(None, "rev-parse", ("--short", full_sha), **_TEXT).stdout.strip()
 
     print(f"Finding descendants of {ref}: {short_sha}", file=sys.stderr)
     print(f"Full SHA: {full_sha}", file=sys.stderr)
@@ -112,9 +119,8 @@ def main() -> None:
 
     if descendants:
         for commit in sorted(descendants):
-            commit_info = subprocess.run(
-                ["git", "-c", "i18n.logOutputEncoding=UTF-8", "log", "-1", "--format=%h %s", commit],
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            commit_info = git_safe.run(
+                None, "log", ("-1", "--format=%h %s", commit), config=("i18n.logOutputEncoding=UTF-8",), **_TEXT,
             ).stdout.strip()
             print(commit_info)
     else:

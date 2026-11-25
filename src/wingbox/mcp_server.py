@@ -77,10 +77,13 @@ FIRST_BUILD_WAIT_SECONDS = 45   # below the usual 60 s tool-call limit of MCP cl
 USAGE = """usage: wingbox mcp [--root DIR] [--build-missing]
        wingbox mcp --http [--root DIR] [--host ADDRESS] [--port N] ...
 
-Run the Wingbox MCP server on stdio for the repository at DIR (default: the
-current directory). With --build-missing it builds the code graph of DIR in the
-background when there is none. An MCP client starts this command; see the README
-section "Use from an MCP client".
+Run the Wingbox MCP server on stdio for the project that holds DIR (default:
+the current directory): the nearest folder at or above DIR with a code graph,
+as every wingbox command finds it. DIR is where that search starts, not a
+boundary; the first log line names the project that is served. With
+--build-missing it builds the code graph of the repository of DIR in the
+background when there is none. An MCP client starts this command; see the
+README section "Use from an MCP client".
 
 With --http the server is reached over HTTP instead, from this or another
 machine. That transport is the separate package wingbox-http
@@ -175,6 +178,8 @@ def _value_error(name: str, rule: dict[str, Any], value: Any) -> Optional[str]:
     elif kind == "array":
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             return f"{name} must be a list of strings"
+        if any(len(item) < rule.get("items", {}).get("minLength", 0) for item in value):
+            return f"{name} must not hold an empty item"
     return None
 
 
@@ -232,6 +237,12 @@ class Server:
             self._search = cli.load_script("code_graph_search")
         return self._search
 
+    def project(self) -> str:
+        """The folder whose graph is served: the nearest one at or above root that holds a graph, as every
+        `wingbox` command finds it (root is where the search starts, not a boundary). Without a graph: the
+        repository a first build was started for, else root, which is what `build_graph` then builds."""
+        return freshness.find_project(self.root) or self._repository or self.root
+
     def start_first_build(self) -> None:
         """Build the graph of root's repository in a child process when it has none (--build-missing).
 
@@ -257,7 +268,7 @@ class Server:
         helpers = freshness.portable()
         builder = cli.load_script("build_code_graph")
         builder.prepare_wingbox_directory(self._repository)
-        handle = open(os.path.join(builder.wingbox_directory(self._repository), "first-build.lock"), "a+", encoding="utf-8")
+        handle = helpers.open_unlinked(os.path.join(builder.wingbox_directory(self._repository), "first-build.lock"), "a+", encoding="utf-8")
         if not helpers.lock(handle, blocking=False) or self._lock_busy(builder._lock_path(self._repository)):
             handle.close()
             if not self._waiting:
@@ -278,7 +289,7 @@ class Server:
     def _lock_busy(path: str) -> bool:
         helpers = freshness.portable()
         try:
-            with open(path, "a+", encoding="utf-8") as handle:
+            with helpers.open_unlinked(path, "a+", encoding="utf-8") as handle:
                 if helpers.lock(handle, blocking=False):
                     helpers.unlock(handle)
                     return False
@@ -333,14 +344,9 @@ class Server:
             return GraphMissing(waiting)
         project = freshness.find_project(self.root)
         if project is None:
-            from pathlib import Path
-
-            from wingbox import hook
-
-            if hook.source_repository(self.root, str(Path.home())) is None:
-                return GraphMissing(f"No repository here: {self.root} is in no source repository (no .git and no "
-                                    "project manifest with source files), so Wingbox has nothing to map.")
-            return GraphMissing(f"No .wingbox/ in {self.root} or its parents: call the `build_graph` tool first.")
+            return GraphMissing(
+                _no_repository(self.root) or f"No .wingbox/ in {self.root} or its parents: call the `build_graph` tool first."
+            )
         path = freshness.graph_path(project)
         fresh = freshness.ensure_graph_fresh(project, freshness.refresh_wait())
         try:
@@ -356,6 +362,27 @@ class Server:
                 return GraphMissing(f"Cannot read the code graph {path}: {loaded.error}. Call the `build_graph` tool.")
             self._cache_key, self._cache_graph = key, graph
         return GraphReady(self._cache_graph, path, freshness.notes(fresh, project), freshness.known_stale(fresh))
+
+
+def _no_repository(root: str) -> Optional[str]:
+    """What a tool answers where there is nothing to map: root is in no source repository (no .git and no project
+    manifest with source files at or above it; an app may start the server in the home folder). None in one."""
+    from pathlib import Path
+
+    from wingbox import hook
+
+    if hook.source_repository(root, str(Path.home())) is not None:
+        return None
+    return (f"No repository here: {root} is in no source repository (no .git and no project manifest with source "
+            "files), so Wingbox has nothing to map.")
+
+
+def serving(server: Server) -> str:
+    """For the first log line: the project whose graph is served, and --root when that is a folder below it."""
+    project = server.project()
+    if os.path.normcase(project) == os.path.normcase(server.root):
+        return project
+    return f"{project} (the project that holds --root {server.root})"
 
 
 def _captured(action: Callable[[], Any]) -> tuple[Any, str, str]:
@@ -396,7 +423,13 @@ def _run_build(server: Server, arguments: dict[str, Any]) -> ToolAnswer:
     waiting = server.first_build_message()
     if waiting is not None:
         return ToolAnswer((waiting,), is_error=True)
-    argv = ["build", freshness.find_project(server.root) or server.root]
+    project = freshness.find_project(server.root)
+    if project is None:
+        # The check of the first build (start_first_build): this tool maps no folder that is in no repository.
+        nothing = _no_repository(server.root)
+        if nothing is not None:
+            return ToolAnswer((nothing,), is_error=True)
+    argv = ["build", project or server.root]
     if arguments.get("full"):
         argv.append("--full")
     for name in arguments.get("exclude_dirs", []):
@@ -529,7 +562,7 @@ TOOLS: tuple[Tool, ...] = (
             "full": {"type": "boolean", "default": False, "description": "Reparse every file instead of only changed ones."},
             "exclude_dirs": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {"type": "string", "minLength": 1},
                 "description": "Directory names to skip, e.g. [\"generated\"].",
             },
         },
@@ -552,7 +585,7 @@ TOOLS: tuple[Tool, ...] = (
             "target": _string("File path relative to the repository root, or a module ID."),
             "targets": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {"type": "string", "minLength": 1},
                 "description": "Several file paths or module IDs; one answer each, in this order, after a fact that "
                                "says when the graph was built and how many changed files it misses.",
             },
@@ -805,9 +838,9 @@ def _server_info() -> dict[str, str]:
     return {"name": "wingbox", "title": "Wingbox", "version": cli._version()}
 
 
-def _instructions(root: str) -> str:
+def _instructions(project: str) -> str:
     return (
-        f"Wingbox answers questions about the code graph of {root}. Call `analyze_impact` before editing a file: it lists "
+        f"Wingbox answers questions about the code graph of {project}. Call `analyze_impact` before editing a file: it lists "
         "what the change reaches and the files to read first. Call `describe_module` to understand a module or find a "
         "feature, `find_usages` for every use of one function or type, `read_source` for the text of a file, "
         "`search_source` for a text that is not a name. "
@@ -905,7 +938,7 @@ def handle_request(server: Server, method: str, params: dict[str, Any]) -> dict[
             "protocolVersion": version,
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": _server_info(),
-            "instructions": _instructions(server.root),
+            "instructions": _instructions(server.project()),
         }
     if method == "server/discover":
         if modern is None:
@@ -913,7 +946,7 @@ def handle_request(server: Server, method: str, params: dict[str, Any]) -> dict[
         result: dict[str, Any] = {
             "supportedVersions": list(SUPPORTED_VERSIONS),
             "capabilities": {"tools": {}},
-            "instructions": _instructions(server.root),
+            "instructions": _instructions(server.project()),
             "ttlMs": LIST_TTL_MS,
             "cacheScope": "public",
         }
@@ -936,7 +969,7 @@ def handle_line(server: Server, line: str) -> Optional[dict[str, Any]]:
     """The reply to one line of input, or None for a notification."""
     try:
         message = json.loads(line)
-    except ValueError as error:
+    except (ValueError, RecursionError) as error:   # RecursionError: brackets nested deeper than the reader goes
         return _error(None, PARSE_ERROR, f"Parse error: {error}")
     if not isinstance(message, dict):
         return _error(None, INVALID_REQUEST, "Invalid Request: expected one JSON-RPC object per line")
@@ -1036,11 +1069,11 @@ def main(args: list[str], cwd: str) -> int:
     protocol = os.fdopen(os.dup(sys.stdout.fileno()), "wb", buffering=0)
     os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
     sys.stdout = sys.stderr
-    print(f"[wingbox] MCP server {cli._version()} on stdio for {root}", file=sys.stderr)
     server = Server(root)
     try:
         if "--build-missing" in args:
             server.start_first_build()
+        print(f"[wingbox] MCP server {cli._version()} on stdio for {serving(server)}", file=sys.stderr)
         return serve(server, sys.stdin.buffer, protocol)
     except KeyboardInterrupt:
         return 0

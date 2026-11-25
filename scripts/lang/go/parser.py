@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import tree_sitter_go as _tsg
 from tree_sitter import Language as _TreeSitterLanguage
 from tree_sitter import Node, Parser
@@ -135,6 +137,184 @@ def _attach_methods(root: Node, entities: list[Entity]) -> None:
         entity = entities_by_name.get(receiver)
         if entity is not None and method and method not in entity.methods:
             entity.methods.append(method)
+
+
+@dataclass(frozen=True)
+class GoFileNames:
+    """What links a file to the other files of its package: the package it states, the names it declares at
+    package level and the names it uses that nothing in the file binds."""
+
+    package: str
+    declared: frozenset[str]
+    used: frozenset[str]
+
+
+_FUNCTION_NODES = frozenset({"function_declaration", "method_declaration", "func_literal"})
+# A node that opens a block of its own; a name declared in it ends with it.
+_SCOPE_NODES = _FUNCTION_NODES | frozenset({
+    "block", "if_statement", "for_statement", "expression_switch_statement", "type_switch_statement",
+    "select_statement", "expression_case", "type_case", "default_case", "communication_case",
+    "type_spec", "type_alias",
+})
+_PARAMETER_NODES = frozenset({
+    "parameter_declaration", "variadic_parameter_declaration", "type_parameter_declaration",
+})
+# The literal types whose keys are expressions; the key of any other literal may be the name of a struct field.
+_KEYED_BY_EXPRESSION = frozenset({"map_type", "slice_type", "array_type", "implicit_length_array_type"})
+# Not read for names: the package clause, the imports and a type of another package (`other.Type`).
+_NAMELESS_NODES = frozenset({"package_clause", "import_declaration", "qualified_type", "comment"})
+_LEAVE_SCOPE = object()
+
+
+def _identifiers(node: Node | None) -> frozenset[str]:
+    """The names an expression list on the left of `:=` binds."""
+    if node is None:
+        return frozenset()
+    nodes = [node] if node.type == "identifier" else node.named_children
+    return frozenset(node_text(item) for item in nodes if item.type == "identifier")
+
+
+def _parameter_names(node: Node) -> frozenset[str]:
+    """The receiver, the parameters, the named results and the type parameters of a function or a type;
+    the type parameters of a method are the names its receiver gives them (`func (b *Box[T]) Get() T`)."""
+    names: set[str] = set()
+    for field_name in ("type_parameters", "receiver", "parameters", "result"):
+        parameters = node.child_by_field_name(field_name)
+        if parameters is None:
+            continue
+        for declaration in parameters.named_children:
+            if declaration.type in _PARAMETER_NODES:
+                names.update(node_text(name) for name in _field_children(declaration, "name"))
+        if field_name == "receiver":
+            pending = list(parameters.named_children)
+            while pending:
+                current = pending.pop()
+                if current.type == "type_arguments":
+                    names.update(
+                        node_text(item) for element in current.named_children
+                        for item in ([element] if element.type == "type_identifier" else element.named_children)
+                        if item.type == "type_identifier"
+                    )
+                else:
+                    pending.extend(current.named_children)
+    return frozenset(names)
+
+
+def _binds_with_define(node: Node) -> bool:
+    return any(child.type == ":=" for child in node.children)
+
+
+def _package_level_names(root: Node) -> set[str]:
+    names: set[str] = set()
+    for declaration in root.named_children:
+        if declaration.type == "function_declaration":
+            names.add(node_text(declaration.child_by_field_name("name")))
+        elif declaration.type in ("type_declaration", "const_declaration", "var_declaration"):
+            specs = [
+                spec
+                for child in declaration.named_children
+                for spec in (child.named_children if child.type.endswith("_spec_list") else [child])
+            ]
+            for spec in specs:
+                if spec.type in ("type_spec", "type_alias", "const_spec", "var_spec"):
+                    names.update(node_text(name) for name in _field_children(spec, "name"))
+    names.discard("")
+    names.discard("_")
+    return names
+
+
+def _free_names(root: Node) -> set[str]:
+    """The identifiers of the file that no parameter, local declaration or `:=` of an enclosing block binds
+    at the place of use. Walks with a stack of its own, so a deep tree cannot exhaust the interpreter's."""
+    used: set[str] = set()
+    scopes: list[set[str]] = []
+    stack: list[object] = list(reversed(root.named_children))
+    while stack:
+        item = stack.pop()
+        if item is _LEAVE_SCOPE:
+            scopes.pop()
+            continue
+        if isinstance(item, frozenset):   # names bound from here to the end of the block
+            if scopes:
+                scopes[-1].update(item)
+            continue
+        node: Node = item  # type: ignore[assignment]
+        kind = node.type
+        if kind in ("identifier", "type_identifier"):
+            name = node_text(node)
+            if name != "_" and not any(name in scope for scope in scopes):
+                used.add(name)
+            continue
+        if kind in _NAMELESS_NODES:
+            continue
+        named = [
+            (child, node.field_name_for_child(index))
+            for index, child in enumerate(node.children)
+            if child.is_named
+        ]
+        follow: list[object]
+        if kind in _FUNCTION_NODES:
+            follow = [_parameter_names(node), *(child for child, field in named if field != "name")]
+        elif kind in ("type_spec", "type_alias"):
+            if scopes:   # a type declared in a function: its name is bound in the enclosing block
+                scopes[-1].add(node_text(node.child_by_field_name("name")))
+            follow = [_parameter_names(node), *(child for child, field in named if field != "name")]
+        elif kind in _PARAMETER_NODES:
+            follow = [child for child, field in named if field != "name"]
+        elif kind in ("var_spec", "const_spec"):
+            follow = [child for child, field in named if field != "name"]
+            follow.append(frozenset(node_text(child) for child, field in named if field == "name"))
+        elif kind == "short_var_declaration" or (
+            kind in ("range_clause", "receive_statement") and _binds_with_define(node)
+        ):
+            follow = [child for child, field in named if field != "left"]
+            follow.append(_identifiers(node.child_by_field_name("left")))
+        elif kind == "type_switch_statement":
+            follow = []
+            for child, field in named:
+                if field != "alias":
+                    follow.append(child)
+                if field == "value":
+                    follow.append(_identifiers(node.child_by_field_name("alias")))
+        elif kind == "keyed_element":
+            owner = node.parent.parent if node.parent is not None else None
+            literal_type = (
+                owner.child_by_field_name("type")
+                if owner is not None and owner.type == "composite_literal"
+                else None
+            )
+            by_expression = literal_type is not None and literal_type.type in _KEYED_BY_EXPRESSION
+            follow = [
+                child
+                for child, field in named
+                if by_expression
+                or field != "key"
+                or [item.type for item in child.named_children] != ["identifier"]
+            ]
+        else:
+            follow = [child for child, _field in named]
+        if kind in _SCOPE_NODES:
+            scopes.append(set())
+            stack.append(_LEAVE_SCOPE)
+        stack.extend(reversed(follow))
+    return used
+
+
+def go_file_names(content: str) -> GoFileNames:
+    root = Parser(_GO_LANGUAGE).parse(content.encode("utf-8")).root_node
+    package = next(
+        (
+            node_text(name)
+            for clause in root.named_children
+            if clause.type == "package_clause"
+            for name in clause.named_children
+            if name.type == "package_identifier"
+        ),
+        "",
+    )
+    declared = _package_level_names(root)
+    imported = {alias or import_path.rsplit("/", 1)[-1] for import_path, alias, _line in _import_specs(root)}
+    return GoFileNames(package, frozenset(declared), frozenset(_free_names(root) - declared - imported))
 
 
 def parse_go_treesitter(

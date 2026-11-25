@@ -145,12 +145,42 @@ def _parse_import(node: Node) -> JavaImport | None:
     )
 
 
+# Declarations that bind a name which is not a class: a variable of that name is not a use of a class.
+_VARIABLE_NODES = frozenset({
+    "variable_declarator", "formal_parameter", "catch_formal_parameter", "resource", "enum_constant",
+})
+
+
 def _referenced_type_names(root: Node) -> list[str]:
-    return unique_strings(
-        node_text(node)
-        for node in walk_named(root)
-        if node.type == "type_identifier"
-    )
+    """The names the file uses as a class: where a type is written, and a capitalized name before the dot of
+    a static call or constant (`Limits.clamp()`, `OrderStatus.NEW`), before `::`, or after `@`."""
+    type_names: list[str] = []
+    owners: list[str] = []
+    annotations: list[str] = []
+    variables: set[str] = set()
+    for node in walk_named(root):
+        kind = node.type
+        if kind == "type_identifier":
+            type_names.append(node_text(node))
+        elif kind in ("method_invocation", "field_access"):
+            owner = node.child_by_field_name("object")
+            if owner is not None and owner.type == "identifier":
+                owners.append(node_text(owner))
+        elif kind == "method_reference":
+            owner = node.named_children[0] if node.named_children else None
+            if owner is not None and owner.type == "identifier":
+                owners.append(node_text(owner))
+        elif kind in ("marker_annotation", "annotation"):
+            name = node.child_by_field_name("name")
+            if name is not None and name.type == "identifier":
+                annotations.append(node_text(name))
+        elif kind in _VARIABLE_NODES:
+            variables.add(node_text(node.child_by_field_name("name")))
+    return unique_strings(iter([
+        *type_names,
+        *annotations,
+        *(name for name in owners if name[:1].isupper() and name not in variables),
+    ]))
 
 
 def parse_java_treesitter(
@@ -213,15 +243,15 @@ def parse_java_treesitter(
             line=java_import.line,
         ))
 
-    if package:
-        for type_name in referenced_types:
-            candidate = f"{package}.{type_name}"
-            imports.append(candidate)
-            imported_names.append(ImportedName(
-                local_name=type_name,
-                original_name=type_name,
-                module=candidate,
-            ))
+    # A file without a package declaration is in the default package, whose types have no qualifier.
+    for type_name in referenced_types:
+        candidate = f"{package}.{type_name}" if package else type_name
+        imports.append(candidate)
+        imported_names.append(ImportedName(
+            local_name=type_name,
+            original_name=type_name,
+            module=candidate,
+        ))
 
     entity_payloads = [entity.to_dict() for entity in entities]
     exports_abstract = [

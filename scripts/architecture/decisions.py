@@ -71,11 +71,14 @@ class Store:
     runs: int = 0                                                 # builds so far, a rebuild of the same graph counted once
     last_graph: str = ""                                          # the graph hash of the last (build-run ...) line
     given_at_run: dict[str, int] = field(default_factory=dict)    # id -> runs when it was given
+    skipped: list[str] = field(default_factory=list)              # lines that were not read: "line <n>: <why>"
 
 
 def read_store(text: str) -> Store:
+    """The store as its lines state it. A line with a value that cannot be read is left out and named
+    in `skipped`: a damaged line of a file that people commit and merge never stops a command."""
     store = Store()
-    for line in text.splitlines():
+    for number, line in enumerate(text.splitlines(), start=1):
         tokens = parse(line)
         if not tokens:
             continue
@@ -94,9 +97,13 @@ def read_store(text: str) -> Store:
             )
         elif head == "advice-outcome" and len(tokens) > 2:
             outcome = tokens[2].lstrip(":")
+            runs = keyword(tokens, "runs", "0") or "0"
+            if outcome == "ignored" and not (runs.isascii() and runs.isdigit()):
+                store.skipped.append(f"line {number}: :runs {runs!r} is not a number")
+                continue
             store.outcomes[tokens[1]] = outcome
             if outcome == "ignored":
-                store.ignored_runs[tokens[1]] = int(keyword(tokens, "runs", "0") or 0)
+                store.ignored_runs[tokens[1]] = int(runs)
         elif head == "learned-layer" and len(tokens) > 3:
             store.learned.append(Learned(tokens[1], tokens[2], tokens[3], keyword(tokens, "from", "") or ""))
         elif head == "learned-removed" and len(tokens) > 2:

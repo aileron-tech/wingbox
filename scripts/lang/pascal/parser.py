@@ -178,9 +178,12 @@ def extract_pascal_imports(content: str) -> tuple[PascalImport, ...]:
     while index < len(tokens):
         token = tokens[index]
         if token.kind == "directive":
-            match = re.match(r"\$(?:i|include)\s+(.+?)\s*$", token.value, re.I)
-            if match:
-                path = match.group(1).strip().strip("'\"")
+            # The path is what follows the directive name, read without a pattern for it: one that tries
+            # every split between the path and the space after it takes quadratic time.
+            match = re.match(r"\$(?:i|include)\s+", token.value, re.I)
+            rest = token.value[match.end():].rstrip() if match else ""
+            if rest and "\n" not in rest:
+                path = rest.strip("'\"")
                 if path:
                     imports.append(PascalImport(f"pascal-include:{path}", path, token.line))
             index += 1

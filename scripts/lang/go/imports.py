@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
 from dataclasses import dataclass
 from typing import Mapping
@@ -14,6 +13,30 @@ from ..interface import DiscoveryExclusions, FileResult
 class GoModule:
     import_path: str
     directory: str
+
+
+def _module_path(content: str) -> str:
+    """The path of the `module` directive of a go.mod: `module a/b`, `module "a/b"` or the block form, a
+    `//` comment after it left out. Read line by line, so the time is linear in the size of the file."""
+    in_block = False
+    for line in content.splitlines():
+        words = line.split("//", 1)[0].replace("(", " ( ").replace(")", " ) ").split()
+        if not words:
+            continue
+        if not in_block:
+            if words[0] != "module":
+                continue
+            words = words[1:]
+        for word in words:
+            if word == "(":
+                in_block = True
+            elif word == ")":
+                return ""
+            else:
+                return word.strip('"`')
+        if not in_block:
+            return ""
+    return ""
 
 
 def _load_go_modules(
@@ -35,17 +58,17 @@ def _load_go_modules(
         try:
             with open(manifest_path, "r", encoding="utf-8-sig") as manifest:
                 content = manifest.read()
-        except OSError as error:
+        except (OSError, ValueError) as error:   # ValueError: a byte that is not UTF-8
             print(
                 f"[code-graph] Cannot read Go module identity from {manifest_path}: {error}",
                 file=sys.stderr,
             )
             continue
-        match = re.search(r"^\s*module\s+([^\s]+)\s*$", content, re.MULTILINE)
-        if match is not None:
+        import_path = _module_path(content)
+        if import_path:
             modules.append(
                 GoModule(
-                    import_path=match.group(1),
+                    import_path=import_path,
                     directory=os.path.normpath(directory_path),
                 )
             )
@@ -58,6 +81,49 @@ def _load_go_modules(
     )
 
 
+def _same_package_ids(path_to_id: Mapping[str, str]) -> dict[str, tuple[str, ...]]:
+    """For every Go file, the files of its directory and package that declare a package-level name it uses.
+
+    No import states these dependencies: the files of a package see each other's names. A name that two files
+    of the package declare (one per build constraint, `init`) names no single file and gives no edge. A test
+    file sees every file of the package; another file sees the files that are not tests.
+    """
+    from .parser import go_file_names
+
+    by_directory: dict[str, list[str]] = {}
+    for path in path_to_id:
+        if path.endswith(".go"):
+            by_directory.setdefault(os.path.dirname(path), []).append(path)
+    linked: dict[str, tuple[str, ...]] = {}
+    for paths in by_directory.values():
+        if len(paths) < 2:
+            continue
+        packages: dict[str, list[tuple[str, frozenset[str], frozenset[str]]]] = {}
+        for path in sorted(paths):
+            try:
+                with open(path, "r", encoding="utf-8-sig", errors="replace") as source:
+                    names = go_file_names(source.read())
+            except (OSError, RecursionError) as error:
+                print(
+                    f"[code-graph] Cannot read the package names of {path}: {type(error).__name__}: {error}",
+                    file=sys.stderr,
+                )
+                continue
+            packages.setdefault(names.package, []).append((path, names.declared, names.used))
+        for files in packages.values():
+            for path, _declared, used in files:
+                is_test = path.endswith("_test.go")
+                declaring: dict[str, list[str]] = {}
+                for other, declared, _used in files:
+                    if other != path and (is_test or not other.endswith("_test.go")):
+                        for name in used & declared:
+                            declaring.setdefault(name, []).append(other)
+                targets = {found[0] for found in declaring.values() if len(found) == 1}
+                if targets:
+                    linked[path] = tuple(sorted(path_to_id[target] for target in targets))
+    return linked
+
+
 @dataclass(frozen=True)
 class BoundGoLanguage:
     path_to_id: Mapping[str, str]
@@ -66,6 +132,8 @@ class BoundGoLanguage:
     # package (a directory), and scanning every file for every import made a
     # 1,200-file build spend nine tenths of its time here.
     package_ids_by_directory: Mapping[str, tuple[str, ...]]
+    # The files of its own package whose package-level names a file uses, by the path of the file.
+    same_package_ids: Mapping[str, tuple[str, ...]]
 
     @classmethod
     def create(
@@ -84,6 +152,7 @@ class BoundGoLanguage:
             path_to_id,
             _load_go_modules(root, discovery_exclusions),
             {directory: tuple(sorted(ids)) for directory, ids in by_directory.items()},
+            _same_package_ids(path_to_id),
         )
 
     def _package_ids(self, import_name: str) -> tuple[str, ...]:
@@ -116,6 +185,7 @@ class BoundGoLanguage:
                     for import_name in result.imports
                     for node_id in self._package_ids(import_name)
                 }
+                | set(self.same_package_ids.get(result.path, ()))
             )
         )
 

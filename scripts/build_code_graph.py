@@ -150,13 +150,13 @@ try:
         from .lang.interface import EntityPayload
         from .lang.symbols import SymbolIndex, supports_symbols
         from .lang.source import file_hash
-        from .lang.typescript.javascript import is_minified_javascript
+        from .lang.typescript.javascript import is_minified_javascript, minified_notice
         from .git_ignore import (
             GitIgnoreUnavailable,
             load_git_ignored_paths,
         )
         from . import generation, graph_snapshot, layer_guess, portable, source_kinds
-        from .architecture.config import ConfigErr, plan_from_config, read_config
+        from .architecture.config import CONFIG_FILE, ConfigErr, plan_from_config, read_config
         from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -164,9 +164,10 @@ try:
         from .architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
         from .architecture.library import load_library
         from .architecture.plan import RepositoryPlan, detect_plan
-        from .architecture.repository import list_files, text_reader
+        from .architecture.repository import file_reader, list_files, text_reader
         from .architecture.decisions import STORE_FILE, learned_layers, read_store
-        from .architecture.plan import apply_learned
+        from .architecture.plan import apply_learned, unknown_learned
+        from .architecture.labels import unmatched_folders
     else:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
@@ -186,7 +187,7 @@ try:
         from lang.interface import EntityPayload
         from lang.symbols import SymbolIndex, supports_symbols
         from lang.source import file_hash
-        from lang.typescript.javascript import is_minified_javascript
+        from lang.typescript.javascript import is_minified_javascript, minified_notice
         from git_ignore import (
             GitIgnoreUnavailable,
             load_git_ignored_paths,
@@ -196,7 +197,7 @@ try:
         import layer_guess
         import portable
         import source_kinds
-        from architecture.config import ConfigErr, plan_from_config, read_config
+        from architecture.config import CONFIG_FILE, ConfigErr, plan_from_config, read_config
         from architecture.baseline import read_baseline_terms, terms_sexp
         from architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -204,9 +205,10 @@ try:
         from architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
         from architecture.library import load_library
         from architecture.plan import RepositoryPlan, detect_plan
-        from architecture.repository import list_files, text_reader
+        from architecture.repository import file_reader, list_files, text_reader
         from architecture.decisions import STORE_FILE, learned_layers, read_store
-        from architecture.plan import apply_learned
+        from architecture.plan import apply_learned, unknown_learned
+        from architecture.labels import unmatched_folders
 except ModuleNotFoundError as dependency_error:
     print(
         f"Error: missing Python dependency {dependency_error.name}. "
@@ -290,9 +292,10 @@ def cache_path(root: str) -> str:
 
 
 def prepare_wingbox_directory(root: str) -> None:
-    """Create ROOT/.wingbox/ and its .gitignore (kept when a person rewrote it)."""
+    """Create ROOT/.wingbox/ and its .gitignore (kept when a person rewrote it). A .wingbox that is a symbolic
+    link is refused (portable.LinkRefused, an OSError): nothing is written through it."""
     folder = wingbox_directory(root)
-    os.makedirs(folder, exist_ok=True)
+    portable.make_folder(folder)
     path = os.path.join(folder, ".gitignore")
     # Two processes may prepare the folder at once (two MCP servers started together): portable.read_text
     # waits a moment on Windows while the other one is replacing the file.
@@ -304,6 +307,7 @@ def prepare_wingbox_directory(root: str) -> None:
 # 6: validation is read from the syntax tree and stored with its evidence.
 # 7: results carry the lines of their import statements (import_lines, line of a name) and text_hash.
 CACHE_SCHEMA_VERSION = 8
+RESOLUTION_CONFIGS_FIELD = "resolution_configs"  # in cache.json: resolution_config_digest of the build
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -418,6 +422,42 @@ def parse_file(args: tuple[str, ...]) -> FileResult:
     return result
 
 
+@dataclass(frozen=True)
+class UnparsedFile:
+    """A source file a build leaves out of the graph, and why: the build records it and goes on."""
+
+    path: str    # absolute
+    reason: str  # a key of source_kinds.UNPARSED_FILE_REASONS
+    detail: str  # what happened, for the notice of the build
+
+
+# A file with a NUL byte this early is no text: an image or an archive under a source extension, UTF-16.
+BINARY_PROBE_BYTES = 8192
+
+
+def _error_text(error: BaseException) -> str:
+    """`RecursionError: maximum recursion depth exceeded`: one short line of an error, for a notice."""
+    message = " ".join(str(error).split())
+    return f"{type(error).__name__}: {message}"[:160] if message else type(error).__name__
+
+
+def parse_source(args: tuple[str, ...]) -> FileResult | UnparsedFile:
+    """parse_file, with the failure of this one file as a value instead of an exception: content that is no
+    text, a file that cannot be read, a parser that raises (RecursionError on an expression of a thousand
+    terms, as generated code has them). A worker process returns it like a result."""
+    path = args[0]
+    try:
+        with open(path, "rb") as source_file:
+            head = source_file.read(BINARY_PROBE_BYTES)
+        if b"\0" in head:
+            return UnparsedFile(path, "binary", "a NUL byte in its first 8 KB")
+        return parse_file(args)
+    except OSError as error:
+        return UnparsedFile(path, "unreadable", _error_text(error))
+    except Exception as error:  # whatever a parser raises on one file must not end the build of the others
+        return UnparsedFile(path, "parser-failed", _error_text(error))
+
+
 # ---------------------------------------------------------------------------
 # File discovery
 # ---------------------------------------------------------------------------
@@ -456,6 +496,22 @@ def is_resolution_config(name: str) -> bool:
     return name in RESOLUTION_CONFIG_NAMES or any(
         name.startswith(prefix) and name.endswith(suffix) for prefix, suffix in RESOLUTION_CONFIG_PATTERNS
     )
+
+
+def resolution_config_digest(root: str, paths: Iterable[str]) -> str:
+    """Identity of the files outside the sources that decide how imports resolve (is_resolution_config), as
+    discovery saw them: the path and the content of each; "" without such a file.
+
+    Parse results do not depend on these files, so the build cache keeps its entries when one changes. What
+    was resolved does: the digest is part of symbol_index_key (the use file and the fragment store of other
+    settings are written again) and of the surface of the walk cache (_surface_digest)."""
+    digest = hashlib.sha256()
+    found = False
+    for path in sorted(paths):
+        relative = os.path.relpath(path, root).replace(os.sep, "/")
+        digest.update(f"{relative}\0{file_hash(path)}\n".encode("utf-8", "surrogateescape"))
+        found = True
+    return digest.hexdigest()[:32] if found else ""
 
 
 @dataclass
@@ -517,9 +573,11 @@ def discover_files(
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
     snapshot: Optional[TreeSnapshot] = None,
     not_parsed: Optional[dict[str, int]] = None,
+    configs: Optional[list[str]] = None,
 ) -> list[tuple[str, str, str]]:
     """Source files under root: (path, language, repository). With snapshot, also record what was seen;
-    with not_parsed, count per language the files of languages no parser reads (source_kinds)."""
+    with not_parsed, count per language the files of languages no parser reads (source_kinds); with
+    configs, collect the paths of the resolution configs that are no sources (resolution_config_digest)."""
     results: list[tuple[str, str, str]] = []
     root_path = Path(root).resolve()
 
@@ -572,6 +630,8 @@ def discover_files(
                             _record_file(entry)
                         elif is_resolution_config(entry.name):
                             _record_file(entry)
+                            if configs is not None:
+                                configs.append(entry.path)
                         if language is None and not_parsed is not None:
                             other = source_kinds.not_parsed_language(entry.name)
                             if other is not None:
@@ -627,7 +687,8 @@ def _dependency_issues(
 OPTIONAL_LANGUAGE_EXTRAS: dict[str, str] = {name: name for name in PIP_EXTRA_LANGUAGES}
 # What the last build left out, for the readers of the graph: one `(skipped-language ...)` fact per language.
 SKIPPED_FILE = "graph-skipped.sexp"
-# The files of languages Wingbox has no parser for: one `(not-parsed-language "<name>" :files N)` fact per language.
+# The files of languages Wingbox has no parser for: one `(not-parsed-language "<name>" :files N)` fact per
+# language; and the source files a build left out, one `(not-parsed-file "<path>" :reason <reason>)` fact each.
 NOT_PARSED_FILE = "graph-unparsed.sexp"
 
 
@@ -667,11 +728,40 @@ def not_parsed_text(counts: Mapping[str, int]) -> str:
     return ", ".join(f"{files} {language} file{'' if files == 1 else 's'}" for language, files in ordered)
 
 
-def _publish_not_parsed(root: str, counts: Mapping[str, int]) -> None:
-    """Write the record beside the graph, or remove the one of an earlier build when every language is parsed."""
+def unparsed_files(root: str) -> dict[str, str]:
+    """path (relative, with /) -> reason of the source files the last build of root left out of the graph."""
+    text = portable.read_text(os.path.join(wingbox_directory(root), NOT_PARSED_FILE))
+    return source_kinds.read_unparsed_files(text or "")
+
+
+def _report_unparsed(root: str, unparsed: Sequence[UnparsedFile]) -> dict[str, str]:
+    """Print the one notice of a build about the source files it leaves out (how many, why, the first of
+    them) and return the record: path relative to root -> reason."""
+    if not unparsed:
+        return {}
+    ordered = sorted(unparsed, key=lambda item: item.path)
+    shown = "; ".join(
+        f"{_escape_control(os.path.relpath(item.path, root).replace(os.sep, '/'))} ({item.reason}: {_escape_control(item.detail)})"
+        for item in ordered[:_UNPARSED_SHOWN]
+    )
+    more = f"; and {len(ordered) - _UNPARSED_SHOWN} more" if len(ordered) > _UNPARSED_SHOWN else ""
+    print(
+        f"[code-graph] WARNING: {len(ordered)} source file{'' if len(ordered) == 1 else 's'} left out of the graph: "
+        f"{shown}{more}. The other files are mapped; the list is in .wingbox/{NOT_PARSED_FILE}",
+        file=sys.stderr,
+    )
+    return {os.path.relpath(item.path, root).replace(os.sep, "/"): item.reason for item in ordered}
+
+
+_UNPARSED_SHOWN = 5
+
+
+def _publish_not_parsed(root: str, counts: Mapping[str, int], files: Optional[Mapping[str, str]] = None) -> None:
+    """Write the record beside the graph (the languages without a parser, the source files left out), or
+    remove the one of an earlier build when there is nothing to record."""
     path = os.path.join(wingbox_directory(root), NOT_PARSED_FILE)
-    if counts:
-        _atomic_write_text(path, source_kinds.not_parsed_facts(dict(counts)))
+    if counts or files:
+        _atomic_write_text(path, source_kinds.not_parsed_facts(dict(counts)) + source_kinds.unparsed_file_facts(files or {}))
         return
     try:
         os.unlink(path)
@@ -782,8 +872,12 @@ def _builder_fingerprint(
 
 
 def _atomic_write_text(path: str, content: str) -> None:
-    """Atomically replace a text file after durable same-directory staging."""
+    """Atomically replace a text file after durable same-directory staging.
+
+    Below a project's .wingbox the folder is never reached through a symbolic link (portable.LinkRefused). A
+    link in place of the file itself is replaced by the regular file: the rename does not follow it."""
     directory = os.path.dirname(os.path.abspath(path))
+    portable.refuse_links(directory)
     descriptor, temporary_path = tempfile.mkstemp(
         dir=directory,
         prefix=f".{os.path.basename(path)}.",
@@ -859,13 +953,17 @@ def save_cache(
     entries: dict,
     language_names: frozenset[str],
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
+    configs: str = "",
 ) -> None:
+    """Write the build cache. configs (resolution_config_digest) is kept for the readers that work out the
+    key of the published graph from the cache: a partial update and the fill of use positions."""
     cache = {
         "schema_version": CACHE_SCHEMA_VERSION,
         "builder_fingerprint": _builder_fingerprint(
             language_names,
             exclusions,
         ),
+        RESOLUTION_CONFIGS_FIELD: configs,
         "entries": entries,
     }
     serialized = json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n"
@@ -1378,6 +1476,67 @@ def class_methods(result: FileResult) -> set[str]:
     }
 
 
+def _manifest_being_read(error: BaseException, root: str) -> Optional[str]:
+    """The file under root that the code which raised error was reading: the file an OSError names, else the
+    first path among the local variables of the failing calls, innermost first, that is a file of the
+    repository and no source file (the manifest a reader was given)."""
+    base = os.path.realpath(root)
+
+    def manifest(value: object) -> Optional[str]:
+        if not isinstance(value, (str, os.PathLike)):
+            return None
+        path = os.fspath(value)
+        if not isinstance(path, str) or not os.path.isabs(path) or language_for_file(os.path.basename(path)) is not None:
+            return None
+        real = os.path.realpath(path)
+        return real if real.startswith(base + os.sep) and os.path.isfile(real) else None
+
+    named = manifest(getattr(error, "filename", None))
+    if named is not None:
+        return named
+    frames = []
+    trace = error.__traceback__
+    while trace is not None:
+        frames.append(trace.tb_frame)
+        trace = trace.tb_next
+    for frame in reversed(frames):
+        for value in frame.f_locals.values():
+            named = manifest(value)
+            if named is not None:
+                return named
+    return None
+
+
+def bind_language(
+    language: Language,
+    root: str,
+    path_to_id: Mapping[str, str],
+    exclusions: DiscoveryExclusions,
+) -> BoundLanguage:
+    """language.bind, with a safety net around the manifest readers of the language: when binding raises
+    while it reads a manifest (bytes that are not UTF-8, a shape the reader does not expect), the file is
+    named in a warning and the language is bound again without it, as if it were ignored. An error that
+    names no manifest, or the same one twice, is raised as it is."""
+    left_out: frozenset[str] = frozenset()
+    while True:
+        try:
+            return language.bind(
+                root, path_to_id,
+                dataclasses.replace(exclusions, paths=exclusions.paths | left_out) if left_out else exclusions,
+            )
+        except Exception as error:
+            manifest = _manifest_being_read(error, root)
+            excluded = os.path.normcase(manifest) if manifest else None
+            if excluded is None or excluded in left_out or excluded in exclusions.paths:
+                raise
+            left_out |= {excluded}
+            print(
+                f"[code-graph] WARNING: cannot read {_escape_control(os.path.relpath(manifest, os.path.realpath(root)).replace(os.sep, '/'))} "
+                f"({_error_text(error)}); {language.display_name} imports are resolved without it",
+                file=sys.stderr,
+            )
+
+
 def graph_context(
     results: list[FileResult],
     root: str,
@@ -1390,7 +1549,7 @@ def graph_context(
 
     result_languages = {result.language for result in results}
     bound_languages = {
-        language.name: language.bind(root, path_to_id, exclusions)
+        language.name: bind_language(language, root, path_to_id, exclusions)
         for language in LANGUAGES
         if result_languages.intersection(language.result_languages)
     }
@@ -1781,9 +1940,10 @@ def _module_uses(
     members: set[str] = set()
     sites: dict[str, list[tuple[int, int]]] = {}
     for use in result.uses:
-        resolved = index.resolve(node_id, use)
-        if resolved is not None:
-            found.add((resolved.line, resolved.column, resolved.module, resolved.name, resolved.kind))
+        # One written path may name two definitions: the class and its member (Store.create()).
+        resolved = index.resolve_all(node_id, use)
+        if resolved:
+            found.update((site.line, site.column, site.module, site.name, site.kind) for site in resolved)
         elif use.get("member"):
             count += 1
             members.add(use["member"])
@@ -2243,7 +2403,8 @@ def _generation_edges(context: GraphContext, results: Sequence[FileResult]) -> l
     # graph (a file of a language without a parser) is left out of the list of a target.
     for target in build_targets:
         edges.append({"source": anchor, "target": anchor, "type": "BUILD_TARGET", "name": target.name, "kind": target.kind,
-                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of]})
+                      "stated": target.stated, "modules": [module_of[path] for path in target.sources if path in module_of],
+                      "unread": target.unread})
     for test in build_tests:
         edges.append({"source": anchor, "target": anchor, "type": "BUILD_TEST", "name": test.name, "runs_target": test.target,
                       "stated": test.stated, "modules": [module_of[path] for path in test.runs if path in module_of]})
@@ -3500,9 +3661,38 @@ def enrich_with_lsp(
 # ---------------------------------------------------------------------------
 
 
+# What ends a line for one of the readers of a graph file (str.splitlines, a file read line by line) or cannot
+# be shown: the C0 and C1 control characters, DEL, and the Unicode line and paragraph separators.
+_CONTROL = re.compile("[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+_CONTROL_ESCAPES = {"\n": "\\n", "\r": "\\r", "\t": "\\t"}
+
+
+def has_control_character(text: str) -> bool:
+    return _CONTROL.search(text) is not None
+
+
+def _escape_control(text: str) -> str:
+    """text with each control character written as an escape (\\n, \\r, \\t, \\xNN, \\uNNNN). Every line of a
+    graph file goes through it: whatever a file name or a name read from source holds, a fact stays on its
+    line and no text of a repository becomes a fact of its own."""
+    if _CONTROL.search(text) is None:
+        return text
+    return _CONTROL.sub(
+        lambda match: _CONTROL_ESCAPES.get(match.group())
+        or (f"\\x{ord(match.group()):02x}" if ord(match.group()) < 256 else f"\\u{ord(match.group()):04x}"),
+        text,
+    )
+
+
 def _sexp_escape(s: str) -> str:
     """Escape a string for S-expression output (double-quote delimited)."""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    return _escape_control(s.replace("\\", "\\\\").replace('"', '\\"'))
+
+
+def _fact_atom(name: str) -> str:
+    """A name as one atom of a fact: quoted when it holds a bracket, a space or a quote, which would end
+    or split a bare atom for the reader; any other name as it is."""
+    return f'"{_sexp_escape(name)}"' if any(ch in name for ch in ' "()') else name
 
 
 def _entity_id(module_path: str, entity_name: str) -> str:
@@ -3606,6 +3796,48 @@ def _is_safe_path_atom(path: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9_./@+-]+", path))
 
 
+def _letters(index: int) -> str:
+    """a, b, ..., z, aa, ab, ...: the index-th word of letters."""
+    word = ""
+    index += 1
+    while index > 0:
+        index, digit = divmod(index - 1, 26)
+        word = chr(ord("a") + digit) + word
+    return word
+
+
+def _repo_prefix(repo: str, taken: Iterable[str]) -> str:
+    """The prefix of the short IDs of a repository: the initials of the first two words of its name, or its
+    first two characters; when that is taken or cannot be a prefix, one more character of the name, then a
+    word of letters.
+
+    A short ID is a prefix and a number, so a prefix never ends in a digit: `db2` + 0 would be the ID `db` +
+    20 of another repository. It holds letters, digits and `_ . @ + -` only, so it is an atom whatever the
+    folder is named."""
+    used = set(taken)
+
+    def usable(prefix: str) -> bool:
+        return (
+            bool(prefix)
+            and prefix not in used
+            and prefix[-1] not in "0123456789"
+            and all(character.isalnum() or character in "_.@+-" for character in prefix)
+        )
+
+    parts = repo.replace("-", " ").split()
+    base = parts[0][0] + parts[1][0] if len(parts) >= 2 else repo[:2]
+    if usable(base):
+        return base
+    for index in range(2, len(repo)):
+        if usable(base + repo[index]):
+            return base + repo[index]
+    stem = "".join(character for character in base if character.isalnum() or character in "_.@+-")
+    index = 0
+    while not usable(stem + _letters(index)):
+        index += 1
+    return stem + _letters(index)
+
+
 def _path_ids(nodes: list[dict]) -> tuple[list[dict], dict[str, str]]:
     """Nodes sorted by ID and the short ID of each (repo prefix + sequence number), as the graph names them."""
     sorted_nodes = sorted(nodes, key=lambda n: n["id"])
@@ -3619,21 +3851,7 @@ def _path_ids(nodes: list[dict]) -> tuple[list[dict], dict[str, str]]:
     for node in sorted_nodes:
         repo = node.get("repo", "unknown")
         if repo not in _REPO_PREFIX:
-            # Build 2-char prefix from repo name
-            parts = repo.replace("-", " ").split()
-            if len(parts) >= 2:
-                prefix = parts[0][0] + parts[1][0]
-            else:
-                prefix = repo[:2]
-            # Deduplicate prefixes
-            base = prefix
-            idx = 2
-            while prefix in _REPO_PREFIX.values():
-                prefix = (
-                    base + repo[idx : idx + 1] if idx < len(repo) else base + str(idx)
-                )
-                idx += 1
-            _REPO_PREFIX[repo] = prefix
+            _REPO_PREFIX[repo] = _repo_prefix(repo, _REPO_PREFIX.values())
             _repo_counters[repo] = 0
 
         seq = _repo_counters[repo]
@@ -3642,6 +3860,66 @@ def _path_ids(nodes: list[dict]) -> tuple[list[dict], dict[str, str]]:
         path_to_sid[node["id"]] = sid
 
     return sorted_nodes, path_to_sid
+
+
+def _edge_fact_lines(real_edges: Sequence[dict], _pid: Callable[[str], str]) -> list[str]:
+    """The fact lines of the edges section, one per edge, in the order of the file."""
+    lines: list[str] = []
+    sorted_edges = sorted(
+        real_edges, key=lambda e: (e["type"], e["source"], e["target"])
+    )
+    for edge in sorted_edges:
+        src = _pid(edge["source"])
+        tgt = _pid(edge["target"])
+        etype = edge["type"]
+
+        if etype == "IMPORTS":
+            flags = " :via-base" if edge.get("via_base") else ""
+            if edge.get("type_only"):
+                flags += " :type-only"
+            relation_flags = "".join(
+                f" :{relation}" for relation in sorted(edge.get("relations", []))
+            )
+            lsp = " :lsp" if edge.get("lsp_verified") else ""
+            lines.append(
+                f"(imports {src} {tgt}{flags}{relation_flags}{lsp}{_edge_lines_sexp(edge)}"
+                f"{_edge_names_sexp(edge.get('names'))})"
+            )
+        elif etype == "CALLS_API":
+            lsp = " :lsp" if edge.get("lsp_verified") else ""
+            lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
+        elif etype == "DATA_FLOWS_TO":
+            evidence = edge.get("validation_evidence", "")
+            flags = f' :validation-module :evidence "{_sexp_escape(evidence)}"' if evidence else ""
+            if edge.get("pipeline"):
+                flags += " :pipeline"
+            lines.append(f"(data-flow {src} {tgt}{flags})")
+        elif etype == "REGISTRY_WIRES":
+            config = edge.get("config", "")
+            flags = f" :config {config}" if config and _is_safe_path_atom(config) else ""
+            lines.append(f"(registry-wires {src} {tgt}{flags})")
+        elif etype == "REFERENCES":
+            relation_flags = "".join(
+                f" :{relation}" for relation in sorted(edge.get("relations", []))
+            )
+            lsp = " :lsp" if edge.get("lsp_verified") else ""
+            lines.append(f"(refs {src} {tgt}{relation_flags}{lsp}{_edge_lines_sexp(edge)})")
+        elif etype == "CALLS":
+            fl = edge.get("from_lines", [])
+            lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
+            flags = (" :registry" if edge.get("registry") else "") + (" :lsp" if edge.get("lsp_verified") else "")
+            lines.append(f"(calls {src} {tgt}{lns}{flags})")
+        elif etype == "HTTP_CALLS":
+            client = edge.get("client_entity", "")
+            client_str = f" :client {client}" if client else ""
+            lines.append(f"(http-calls {src} {tgt} :transport http{client_str})")
+        elif etype == "GENERATED":
+            lines.append(f"(generated {src} {tgt} :{edge['role']} :{edge['basis']})")
+        elif etype == "RUNS":
+            fl = edge.get("from_lines", [])
+            lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
+            lines.append(f"(runs {src} {tgt} :{edge['basis']}{lns})")
+    return lines
 
 
 def render_sexp(
@@ -3708,14 +3986,17 @@ def render_sexp(
         and not (e.get("type") == "REFERENCES" and "reexport" in e.get("relations", []))
     ]
 
+    edge_lines = _edge_fact_lines(real_edges, _pid)
     lines.append("; Code Graph")
     lines.append(f"; mode {mode}")
     lines.append(
-        f"; {total_files} files {len(sorted_nodes)} nodes {len(real_edges)} edges {len(violations)} violations"
+        f"; {total_files} files {len(sorted_nodes)} nodes {len(edge_lines)} edges {len(violations)} violations"
     )
+    # :edges is the number of fact lines of the edges section below (imports, calls-api, data-flow, refs,
+    # calls, http-calls, registry-wires, generated, runs); :violations the number of violation lines.
     lines.append(
         f"(code-graph :schema {MAP_SCHEMA_VERSION} :files {total_files} "
-        f":nodes {len(sorted_nodes)} :edges {len(real_edges)} "
+        f":nodes {len(sorted_nodes)} :edges {len(edge_lines)} "
         f":violations {len(violations)})"
     )
     if snapshot is not None:
@@ -3773,75 +4054,24 @@ def render_sexp(
             deco = ent.get("decorators", [])
             methods = ent.get("methods", [])
 
+            # A name with a bracket in it (the C++ call operator `operator()`) is written quoted.
+            written = _fact_atom(name)
             if not bases and not deco and not methods:
-                lines.append(f"({kind_tag} {sid} {name} {line_num} :eid {eid})")
+                lines.append(f"({kind_tag} {sid} {written} {line_num} :eid {eid})")
             else:
-                parts = [f"({kind_tag} {sid} {name} {line_num} :eid {eid}"]
+                parts = [f"({kind_tag} {sid} {written} {line_num} :eid {eid}"]
                 if bases:
                     parts.append(f"(:bases {' '.join(bases)})")
                 if deco:
                     parts.append(f"(:deco {' '.join(deco)})")
                 if methods:
-                    parts.append(f"(:methods {' '.join(methods)})")
+                    parts.append(f"(:methods {' '.join(_fact_atom(method) for method in methods)})")
                 lines.append(" ".join(parts) + ")")
     lines.append("")
 
     # -- Edges --
     lines.append("; --- edges ---")
-    sorted_edges = sorted(
-        real_edges, key=lambda e: (e["type"], e["source"], e["target"])
-    )
-    for edge in sorted_edges:
-        src = _pid(edge["source"])
-        tgt = _pid(edge["target"])
-        etype = edge["type"]
-
-        if etype == "IMPORTS":
-            flags = " :via-base" if edge.get("via_base") else ""
-            if edge.get("type_only"):
-                flags += " :type-only"
-            relation_flags = "".join(
-                f" :{relation}" for relation in sorted(edge.get("relations", []))
-            )
-            lsp = " :lsp" if edge.get("lsp_verified") else ""
-            lines.append(
-                f"(imports {src} {tgt}{flags}{relation_flags}{lsp}{_edge_lines_sexp(edge)}"
-                f"{_edge_names_sexp(edge.get('names'))})"
-            )
-        elif etype == "CALLS_API":
-            lsp = " :lsp" if edge.get("lsp_verified") else ""
-            lines.append(f"(calls-api {src} {tgt} :via-ifc{lsp})")
-        elif etype == "DATA_FLOWS_TO":
-            evidence = edge.get("validation_evidence", "")
-            flags = f' :validation-module :evidence "{_sexp_escape(evidence)}"' if evidence else ""
-            if edge.get("pipeline"):
-                flags += " :pipeline"
-            lines.append(f"(data-flow {src} {tgt}{flags})")
-        elif etype == "REGISTRY_WIRES":
-            config = edge.get("config", "")
-            flags = f" :config {config}" if config and _is_safe_path_atom(config) else ""
-            lines.append(f"(registry-wires {src} {tgt}{flags})")
-        elif etype == "REFERENCES":
-            relation_flags = "".join(
-                f" :{relation}" for relation in sorted(edge.get("relations", []))
-            )
-            lsp = " :lsp" if edge.get("lsp_verified") else ""
-            lines.append(f"(refs {src} {tgt}{relation_flags}{lsp}{_edge_lines_sexp(edge)})")
-        elif etype == "CALLS":
-            fl = edge.get("from_lines", [])
-            lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
-            flags = (" :registry" if edge.get("registry") else "") + (" :lsp" if edge.get("lsp_verified") else "")
-            lines.append(f"(calls {src} {tgt}{lns}{flags})")
-        elif etype == "HTTP_CALLS":
-            client = edge.get("client_entity", "")
-            client_str = f" :client {client}" if client else ""
-            lines.append(f"(http-calls {src} {tgt} :transport http{client_str})")
-        elif etype == "GENERATED":
-            lines.append(f"(generated {src} {tgt} :{edge['role']} :{edge['basis']})")
-        elif etype == "RUNS":
-            fl = edge.get("from_lines", [])
-            lns = f" :lines {' '.join(str(line) for line in fl)}" if fl else ""
-            lines.append(f"(runs {src} {tgt} :{edge['basis']}{lns})")
+    lines.extend(edge_lines)
 
     if build_facts:
         lines.append("")
@@ -3849,12 +4079,16 @@ def render_sexp(
         for fact in sorted(build_facts, key=lambda e: (e["type"], e["name"])):
             modules = "".join(f" {_pid(module)}" for module in sorted(fact["modules"]))
             stated = f' :in "{_sexp_escape(fact["stated"])}"'
+            # A test may be named with a space (`add_test(NAME "quoted name" ...)`): such a name is quoted.
+            name = _fact_atom(fact["name"])
             if fact["type"] == "BUILD_TARGET":
-                lines.append(f"(target {fact['name']} :kind {fact['kind']}{stated}{modules})")
+                # `:sources unread`: an argument of the source list was not read (generation.BuildTarget.unread).
+                unread = " :sources unread" if fact.get("unread") else ""
+                lines.append(f"(target {name} :kind {fact['kind']}{unread}{stated}{modules})")
             elif fact["runs_target"]:
-                lines.append(f"(ctest {fact['name']} :target {fact['runs_target']}{stated}{modules})")
+                lines.append(f"(ctest {name} :target {fact['runs_target']}{stated}{modules})")
             else:
-                lines.append(f"(ctest {fact['name']} :runs{stated}{modules})")
+                lines.append(f"(ctest {name} :runs{stated}{modules})")
 
     if generation_facts:
         lines.append("")
@@ -3915,7 +4149,7 @@ def render_sexp(
             detail = _sexp_escape(v.get("detail", ""))
             lines.append(f'(violation {rule} {src} {tgt} "{detail}")')
 
-    return "\n".join(lines) + "\n"
+    return "\n".join(map(_escape_control, lines)) + "\n"
 
 
 USES_SCHEMA_VERSION = 1
@@ -3944,9 +4178,10 @@ def text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-def symbol_index_key(results: Sequence[FileResult], fingerprint: str, mode: str) -> str:
-    """Identity of every input of use resolution: each file and its content, the builder, the mode."""
-    digest = hashlib.sha256(f"{fingerprint}|{mode}".encode("utf-8"))
+def symbol_index_key(results: Sequence[FileResult], fingerprint: str, mode: str, configs: str = "") -> str:
+    """Identity of every input of use resolution: each file and its content, the builder, the mode, and
+    the resolution configs (resolution_config_digest)."""
+    digest = hashlib.sha256((f"{fingerprint}|{mode}" + (f"|{configs}" if configs else "")).encode("utf-8"))
     for result in sorted(results, key=lambda item: item.path):
         digest.update(f"\n{result.path}\0{result.content_hash}".encode("utf-8"))
     return digest.hexdigest()[:32]
@@ -3966,7 +4201,7 @@ def render_uses_sexp(nodes: list[dict], key: str, graph_text: str, positions: bo
     lines = _uses_header(key, graph_text, positions)
     for node in sorted_nodes:
         lines.extend(_use_block(node, path_to_sid, positions))
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n"   # _use_block escapes control characters: one fact, one line
 
 
 def _uses_header(key: str, graph_text: str, positions: bool) -> list[str]:
@@ -4002,7 +4237,7 @@ def _use_block(node: Mapping[str, Any], path_to_sid: Mapping[str, str], position
             f"(unresolved-call {sid} {member} " + " ".join(f"{line}:{column}" for line, column in found) + ")"
             for member, found in sorted(unresolved.sites.items())
         )
-    return lines
+    return [_escape_control(line) for line in lines]
 
 
 @dataclass(frozen=True)
@@ -4132,11 +4367,11 @@ def _load_walk_cache(path: str, fingerprint: str) -> WalkCache:
     return WalkCache(str(cache.get("surface", "")), files, imports)
 
 
-def _surface_digest(results: Sequence[FileResult]) -> str:
-    """What resolving one file's uses reads of the others: every path, and the definitions and
-    bindings of the files with a use index. While it is the same, a file whose content did not
-    change resolves as before."""
-    digest = hashlib.sha256()
+def _surface_digest(results: Sequence[FileResult], configs: str = "") -> str:
+    """What resolving one file's uses reads of the others: every path, the definitions and
+    bindings of the files with a use index, and the resolution configs (resolution_config_digest).
+    While it is the same, a file whose content did not change resolves as before."""
+    digest = hashlib.sha256(configs.encode("utf-8"))
     for result in sorted(results, key=lambda item: item.path):
         digest.update(result.path.encode("utf-8") + b"\0")
         if supports_symbols(result.language):
@@ -4159,7 +4394,7 @@ class _LazyBoundLanguages(dict):
             paths=frozenset() if isinstance(git_ignore_result, GitIgnoreUnavailable) else git_ignore_result.paths,
         )
         language = next(item for item in LANGUAGES if item.name == name)
-        self[name] = language.bind(self._root, self._path_to_id, exclusions)
+        self[name] = bind_language(language, self._root, self._path_to_id, exclusions)
         return self[name]
 
 
@@ -4183,10 +4418,10 @@ def _modified_since(result: FileResult) -> bool:
         return True
 
 
-def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, list[FileResult]], str]:
+def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, list[FileResult], str], str]:
     """(the text of the graph, the key of its use file, the builder fingerprint, the parse results of the
-    build cache) for filling use positions; Err with the reason when the use file, the graph and the cache
-    do not belong together."""
+    build cache, the digest of the resolution configs of that build) for filling use positions; Err with the
+    reason when the use file, the graph and the cache do not belong together."""
     try:
         with open(uses_path(map_path), "r", encoding="utf-8") as uses_file:
             header = next((line for line in uses_file if line.startswith("(code-graph-uses ")), "")
@@ -4210,9 +4445,10 @@ def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, li
         results.append(decoded.value)
     mode_match = re.search(r"^; mode (.+)$", graph_text, re.M)
     fingerprint = str(cache.get("builder_fingerprint", ""))
-    if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1)) != key_match.group(1):
+    configs = str(cache.get(RESOLUTION_CONFIGS_FIELD, ""))
+    if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1), configs) != key_match.group(1):
         return Err("the build cache does not match the code graph")
-    return Ok((graph_text, key_match.group(1), fingerprint, results))
+    return Ok((graph_text, key_match.group(1), fingerprint, results, configs))
 
 
 def use_position_lines(map_path: str, root: str, name: str) -> Result[list[str], str]:
@@ -4228,7 +4464,7 @@ def use_position_lines(map_path: str, root: str, name: str) -> Result[list[str],
     inputs = _position_inputs(map_path, root)
     if isinstance(inputs, Err):
         return inputs
-    _graph_text, _key, _fingerprint, results = inputs.value
+    _graph_text, _key, _fingerprint, results, _configs = inputs.value
     wanted = name.encode("utf-8")
     candidates: list[FileResult] = []
     for result in results:
@@ -4291,6 +4527,8 @@ def start_position_fill(map_path: str, root: str) -> bool:
     if os.environ.get("WINGBOX_POSITIONS_FILL", "1") == "0":
         return False
     lock = os.path.join(os.path.dirname(os.path.abspath(map_path)), POSITIONS_LOCK)
+    if portable.linked_part(lock) is not None:
+        return False   # no lock and no use file through a symbolic link at .wingbox or below it
     try:
         if time.time() - os.path.getmtime(lock) < _POSITIONS_LOCK_SECONDS:
             return False
@@ -4345,7 +4583,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
     inputs = _position_inputs(map_path, root)
     if isinstance(inputs, Err):
         return inputs
-    graph_text, key, fingerprint, results = inputs.value
+    graph_text, key, fingerprint, results, configs = inputs.value
     indexed = [result for result in results if supports_symbols(result.language)]
     # A file whose modification time is the one the build saw is not read again to compare hashes.
     changed = [result.path for result in indexed if _modified_since(result) and file_hash(result.path) != result.content_hash]
@@ -4354,7 +4592,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
 
     walk_cache_path = uses_cache_path(map_path)
     walk_cache = _load_walk_cache(walk_cache_path, fingerprint)
-    surface = _surface_digest(results)
+    surface = _surface_digest(results, configs)
     same_surface = walk_cache.surface == surface
     entries_out: dict[str, list] = {}
     to_walk: list[tuple[str, str]] = []
@@ -4618,7 +4856,16 @@ def _run_build(options: BuilderOptions) -> int:
     prepare_wingbox_directory(root)
     snapshot = TreeSnapshot() if options.snapshot_path else None
     not_parsed: dict[str, int] = {}
-    files = discover_files(root, exclusions, snapshot, not_parsed)
+    config_paths: list[str] = []
+    files = discover_files(root, exclusions, snapshot, not_parsed, config_paths)
+    # A path with a line break or another control character cannot be a name in the graph: left out, recorded.
+    unparsed = [
+        UnparsedFile(path, "file-name", "a control character in its path")
+        for path, _language, _repo in files if has_control_character(os.path.relpath(path, root))
+    ]
+    if unparsed:
+        odd = {item.path for item in unparsed}
+        files = [item for item in files if item[0] not in odd]
     language_counts = {
         language.name: sum(
             1 for _, language_name, _ in files if language_name == language.name
@@ -4636,6 +4883,9 @@ def _run_build(options: BuilderOptions) -> int:
     print(f"[code-graph] Supported source: {extensions}")
     if not_parsed:
         print(f"[code-graph] Not in the graph: {not_parsed_text(not_parsed)} (no parser for these languages)")
+    left_out = minified_notice(root)
+    if left_out:
+        print(f"[code-graph] {left_out}")
 
     active_language_names = frozenset(language_name for _, language_name, _ in files)
     dependency_issues = _dependency_issues(active_language_names)
@@ -4681,13 +4931,18 @@ def _run_build(options: BuilderOptions) -> int:
 
     new_results: list[FileResult] = []
     if to_parse:
-        new_results = parse_files(to_parse)
+        for outcome in parse_files(to_parse):
+            (unparsed if isinstance(outcome, UnparsedFile) else new_results).append(outcome)
+    left_out = _report_unparsed(root, unparsed)
 
     all_results = sorted(
         cached_results + new_results,
         key=lambda result: os.path.relpath(result.path, root).replace(os.sep, "/"),
     )
-    symbol_key = symbol_index_key(all_results, _builder_fingerprint(active_language_names, exclusions), mode)
+    # A changed tsconfig.json, composer.json or compile_commands.json changes the key with no source change:
+    # nothing resolved under the old settings (use file, fragment store) is taken over.
+    configs = resolution_config_digest(root, config_paths)
+    symbol_key = symbol_index_key(all_results, _builder_fingerprint(active_language_names, exclusions), mode, configs)
     # A fragment store that does not match these inputs is rewritten, which needs the uses resolved.
     stale_store = bool(options.fragments_path) and fragments_key(options.fragments_path or "") != symbol_key
     reused = (
@@ -4763,12 +5018,13 @@ def _run_build(options: BuilderOptions) -> int:
         new_cache,
         active_language_names,
         exclusions,
+        configs,
     )
     _atomic_write_text(options.output_path, map_content)
     _atomic_write_text(uses_path(options.output_path), uses_content)
     publish_layer_guesses(root, nodes, again=options.full_rebuild)
     _publish_skipped(root, skipped_counts)
-    _publish_not_parsed(root, not_parsed)
+    _publish_not_parsed(root, not_parsed, left_out)
     if options.fragments_path and graph_result.value.fragments and not options.use_lsp:
         write_fragments(options.fragments_path, symbol_key, graph_result.value.fragments, root, exclusions)
     if options.snapshot_path and snapshot is not None:
@@ -4799,18 +5055,73 @@ def _run_build(options: BuilderOptions) -> int:
     return 0
 
 
-def parse_files(to_parse: list[tuple[str, ...]]) -> list[FileResult]:
+def parse_files(to_parse: list[tuple[str, ...]]) -> list[FileResult | UnparsedFile]:
     """Parse files in worker processes (the start method of portable.start_method); in this process
-    when a pool cannot start (a sandbox without semaphores, a system without processes)."""
+    when a pool cannot start (a sandbox without semaphores, a system without processes). A file that
+    cannot be parsed comes back as an UnparsedFile (parse_source), the others as their results."""
     workers = portable.worker_count(len(to_parse))
     if workers > 1:
         try:
-            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context(portable.start_method())) as pool:
-                futures = {pool.submit(parse_file, item): item for item in to_parse}
-                return [future.result() for future in as_completed(futures)]
+            return _parse_in_workers(to_parse, workers)
         except (OSError, BrokenProcessPool) as error:
             print(f"[code-graph] WARNING: parallel parsing failed ({error}); parsing in one process", file=sys.stderr)
-    return [parse_file(item) for item in to_parse]
+    return [parse_source(item) for item in to_parse]
+
+
+def _parse_in_workers(to_parse: list[tuple[str, ...]], workers: int) -> list[FileResult | UnparsedFile]:
+    """parse_files in a pool. A worker that dies (a crash inside a parser, the system killing it) breaks the
+    pool and with it every file not answered yet: those are parsed again one at a time in a process of their
+    own, so that only a file whose process dies is left out. BrokenProcessPool is raised when no worker
+    ever answers: worker processes do not work here."""
+    context = multiprocessing.get_context(portable.start_method())
+    outcomes: list[FileResult | UnparsedFile] = []
+    unanswered: list[tuple[str, ...]] = []
+    with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
+        futures = {}
+        for item in to_parse:
+            try:
+                futures[pool.submit(parse_source, item)] = item
+            except BrokenProcessPool:   # a worker died while the files were still being handed out
+                unanswered.append(item)
+        for future in as_completed(futures):
+            try:
+                outcomes.append(future.result())
+            except BrokenProcessPool:
+                unanswered.append(futures[future])
+    if not unanswered:
+        return outcomes
+    print(
+        f"[code-graph] WARNING: a parser process died; parsing {len(unanswered)} file{'' if len(unanswered) == 1 else 's'} "
+        "again, one at a time",
+        file=sys.stderr,
+    )
+    answered = bool(outcomes)
+    died: list[tuple[str, ...]] = []
+    pool = None
+    try:
+        for item in unanswered:
+            if pool is None:
+                pool = ProcessPoolExecutor(max_workers=1, mp_context=context)
+            try:
+                outcomes.append(pool.submit(parse_source, item).result())
+                answered = True
+            except BrokenProcessPool:
+                died.append(item)
+                pool.shutdown()
+                pool = None
+                if not answered and len(died) >= _DEATHS_WITHOUT_AN_ANSWER:
+                    break
+    finally:
+        if pool is not None:
+            pool.shutdown()
+    if not answered:
+        raise BrokenProcessPool("no worker process answered")
+    outcomes.extend(UnparsedFile(item[0], "parser-failed", "the process that parsed it died") for item in died)
+    return outcomes
+
+
+# After this many processes died one after the other and none has ever answered, the pool is given up.
+_DEATHS_WITHOUT_AN_ANSWER = 3
 
 
 def _published_modules(path: str) -> bool:
@@ -4850,6 +5161,7 @@ def project_architecture(
         _node_capabilities(root, nodes, {os.path.relpath(r.path, root).replace(os.sep, "/"): r.content_hash for r in results}),
         read_capability_baseline(baseline_text),
         read_baseline_terms(baseline_text),
+        read_text=text_reader(root),   # the graph records what the build read of the rule files
     )
     return Ok((architecture, plan.value))
 
@@ -4938,20 +5250,38 @@ def architecture_plan(
     root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str],
     listed: Optional[tuple[str, ...]] = None,
 ) -> Result[RepositoryPlan, str]:
-    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection."""
+    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection.
+
+    A config file that is there and cannot be read is an error, never a reason to detect instead. A line
+    of .wingbox/decisions.sexp that cannot be read or applied is skipped with a warning: it stops nothing.
+    """
     library = load_library()
     paths = listed if listed is not None else list_files(root, skip_directories, ignored_paths)
     read = text_reader(root)
-    config = read_config(read, library)
+    config = read_config(file_reader(root), library)
     if isinstance(config, ConfigErr):
         return Err(config.error)
     if config is not None and config.note:
         print(f"[wingbox] note: {config.note}", file=sys.stderr)
-    learned = learned_layers(read_store(read(STORE_FILE) or ""))
+    store = read_store(read(STORE_FILE) or "")
+    for problem in store.skipped:
+        print(f"[wingbox] WARNING: {STORE_FILE} {problem}: the line is skipped", file=sys.stderr)
+    learned = learned_layers(store)
     if config is None:
         plan = detect_plan(paths, read, library)
-        return Ok(apply_learned(plan, learned))
-    return Ok(apply_learned(plan_from_config(config, paths, read, library), learned, from_config=True))
+        for item in unknown_learned(plan, learned, library):
+            print(f"[wingbox] WARNING: {STORE_FILE}: learned-layer {item.part!r} {item.folder!r}: {item.layer!r} "
+                  "is no layer of the style of the part: the line is ignored", file=sys.stderr)
+        return Ok(apply_learned(plan, learned, library=library))
+    plan = plan_from_config(config, paths, read, library)
+    for part in plan.empty:
+        print(f"[wingbox] WARNING: {CONFIG_FILE}: part {part} holds no source file: nothing is checked there",
+              file=sys.stderr)
+    for part, layer, folder in unmatched_folders(plan, paths):
+        # A typo or a renamed folder: the entry places no file, so the rules of the layer judge nothing there.
+        print(f"[wingbox] WARNING: {CONFIG_FILE}: part {part}: layer {layer} lists the folder {folder}, and the part "
+              "has no such folder: no file gets the layer from it", file=sys.stderr)
+    return Ok(apply_learned(plan, learned, from_config=True))
 
 
 def _ignore_note(reason: str) -> str:
@@ -5000,7 +5330,7 @@ def main(args: Optional[list[str]] = None) -> int:
     lock_path = _lock_path(options.root)
     try:
         prepare_wingbox_directory(options.root)
-        lock_file = open(lock_path, "a+", encoding="utf-8")
+        lock_file = portable.open_unlinked(lock_path, "a+", encoding="utf-8")
     except OSError as error:
         print(
             f"[code-graph] ERROR: could not open build lock {lock_path}: {error}",

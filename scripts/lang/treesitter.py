@@ -12,9 +12,13 @@ def node_text(node: Node | None) -> str:
 
 
 def walk_named(node: Node) -> Iterator[Node]:
-    yield node
-    for child in node.named_children:
-        yield from walk_named(child)
+    """The node and every named node below it, in document order. Walks with a stack of its own: a tree a
+    thousand levels deep (one expression of a thousand operands) cannot exhaust the interpreter's."""
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        yield current
+        pending.extend(reversed(current.named_children))
 
 
 def unique_strings(values: Iterator[str]) -> list[str]:

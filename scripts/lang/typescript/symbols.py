@@ -47,17 +47,19 @@ def _specifier(node: Node) -> str:
 
 def pattern_names(node: Node | None) -> Iterator[str]:
     """Names a binding pattern binds (identifier, object and array patterns, defaults, rest)."""
-    if node is None:
-        return
-    if node.type in ("identifier", "shorthand_property_identifier_pattern"):
-        yield _text(node)
-    elif node.type == "pair_pattern":
-        yield from pattern_names(node.child_by_field_name("value"))
-    elif node.type in ("assignment_pattern", "object_assignment_pattern"):
-        yield from pattern_names(node.child_by_field_name("left"))
-    elif node.type in ("object_pattern", "array_pattern", "rest_pattern"):
-        for child in node.named_children:
-            yield from pattern_names(child)
+    todo = [node]
+    while todo:
+        current = todo.pop()
+        if current is None:
+            continue
+        if current.type in ("identifier", "shorthand_property_identifier_pattern"):
+            yield _text(current)
+        elif current.type == "pair_pattern":
+            todo.append(current.child_by_field_name("value"))
+        elif current.type in ("assignment_pattern", "object_assignment_pattern"):
+            todo.append(current.child_by_field_name("left"))
+        elif current.type in ("object_pattern", "array_pattern", "rest_pattern"):
+            todo.extend(reversed(current.named_children))
 
 
 def _parameter_names(node: Node) -> set[str]:
@@ -173,21 +175,29 @@ def module_names(root: Node) -> frozenset[str]:
 
 def _type_path(node: Node | None) -> tuple[str, ...] | None:
     """A type or constructor written as a name or a qualified name; None for anything else."""
-    if node is None:
-        return None
-    if node.type == "type_annotation":
-        inner = node.named_children[0] if node.named_children else None
-        return _type_path(inner)
-    if node.type in ("type_identifier", "identifier"):
-        return (_text(node),)
-    if node.type in ("nested_type_identifier", "member_expression", "nested_identifier"):
-        owner = node.child_by_field_name("module") or node.child_by_field_name("object") or (
-            node.named_children[0] if node.named_children else None)
+    while node is not None and node.type == "type_annotation":
+        node = node.named_children[0] if node.named_children else None
+    names: list[str] = []  # the last name first
+    while node is not None and node.type in ("nested_type_identifier", "member_expression", "nested_identifier"):
         name = node.child_by_field_name("name") or node.child_by_field_name("property") or (
             node.named_children[-1] if node.named_children else None)
-        head = _type_path(owner)
-        return (*head, _text(name)) if head is not None and name is not None else None
-    return None
+        if name is None:
+            return None
+        names.append(_text(name))
+        node = node.child_by_field_name("module") or node.child_by_field_name("object") or (
+            node.named_children[0] if node.named_children else None)
+    if node is None or node.type not in ("type_identifier", "identifier"):
+        return None
+    return (_text(node), *reversed(names))
+
+
+def declared_type(declarator: Node) -> tuple[str, ...] | None:
+    """The class a declared variable holds when it is in sight: its annotation, or `new C()`."""
+    written = _type_path(declarator.child_by_field_name("type"))
+    value = declarator.child_by_field_name("value")
+    if written is None and value is not None and value.type == "new_expression":
+        written = _type_path(value.child_by_field_name("constructor"))
+    return written
 
 
 def _local_types(node: Node) -> dict[str, tuple[str, ...] | None]:
@@ -200,23 +210,16 @@ def _local_types(node: Node) -> dict[str, tuple[str, ...] | None]:
         if pattern is not None and pattern.type == "identifier":
             found.setdefault(_text(pattern), set()).add(_type_path(parameter.child_by_field_name("type")))
 
-    def visit(current: Node) -> None:
+    body = node.child_by_field_name("body")
+    todo = [body] if body is not None else []
+    while todo:
+        current = todo.pop()
         if current.type == "variable_declarator":
             name = current.child_by_field_name("name")
             if name is not None and name.type == "identifier":
-                written = _type_path(current.child_by_field_name("type"))
-                value = current.child_by_field_name("value")
-                if written is None and value is not None and value.type == "new_expression":
-                    written = _type_path(value.child_by_field_name("constructor"))
-                found.setdefault(_text(name), set()).add(written)
-        if current.type in _FUNCTION_NODES:
-            return
-        for child in current.named_children:
-            visit(child)
-
-    body = node.child_by_field_name("body")
-    if body is not None:
-        visit(body)
+                found.setdefault(_text(name), set()).add(declared_type(current))
+        if current.type not in _FUNCTION_NODES:
+            todo.extend(current.named_children)
     return {name: next(iter(types)) if len(types) == 1 else None for name, types in found.items()}
 
 
@@ -260,19 +263,16 @@ def _function_names(node: Node) -> set[str]:
     names = {_text(parameters)} if parameters is not None and parameters.type == "identifier" else \
         _parameter_names(node) | _type_parameter_names(node)
 
-    def visit(current: Node) -> None:
+    body = node.child_by_field_name("body")
+    todo = [body] if body is not None else []
+    while todo:
+        current = todo.pop()
         if current.type == "variable_declaration":
             for declarator in current.named_children:
                 if declarator.type == "variable_declarator":
                     names.update(pattern_names(declarator.child_by_field_name("name")))
-        if current.type in _FUNCTION_NODES:
-            return
-        for child in current.named_children:
-            visit(child)
-
-    body = node.child_by_field_name("body")
-    if body is not None:
-        visit(body)
+        if current.type not in _FUNCTION_NODES:
+            todo.extend(current.named_children)
     return names
 
 
@@ -342,6 +342,10 @@ class _ScopeNames:
     def __init__(self) -> None:
         self._names: dict[int, frozenset[str]] = {}
         self._types: dict[int, dict[str, tuple[str, ...] | None]] = {}
+        # Per node already climbed through: the scopes at and above it, and whether what lies below it is
+        # outside the import and export statements. The names of one long expression share their way up.
+        self._around: dict[int, tuple[tuple[Node, str], ...]] = {}
+        self._outside: dict[int, bool] = {}
 
     def names(self, node: Node, kind: str) -> frozenset[str]:
         if node.id not in self._names:
@@ -352,19 +356,46 @@ class _ScopeNames:
             self._names[node.id] = frozenset(found)
         return self._names[node.id]
 
-    def scopes_of(self, node: Node) -> list[tuple[Node, str]]:
+    def scopes_of(self, node: Node) -> tuple[tuple[Node, str], ...]:
         """The scopes around node, innermost first."""
-        found: list[tuple[Node, str]] = []
+        around = self._around
+        climbed: list[Node] = []
         current = node.parent
-        while current is not None:
+        while current is not None and current.id not in around:
+            climbed.append(current)
+            current = current.parent
+        found = around[current.id] if current is not None else ()
+        for current in reversed(climbed):
             kind = _SCOPE_KINDS.get(current.type)
             if kind is None and current.type in _TYPE_PARAMETER_OWNERS and \
                     current.child_by_field_name("type_parameters") is not None:
                 kind = "function"
             if kind is not None:
-                found.append((current, kind))
-            current = current.parent
+                found = ((current, kind), *found)
+            around[current.id] = found
         return found
+
+    def outside_statements(self, node: Node) -> bool:
+        """False for a name inside an import statement or an export clause (read on their own)."""
+        outside = self._outside
+        climbed: list[int] = []
+        current = node.parent
+        answer = True
+        while current is not None:
+            known = outside.get(current.id)
+            if known is not None:
+                answer = known
+                break
+            if current.type in ("import_statement", "export_clause"):
+                answer = False
+                break
+            if current.type in ("statement_block", "program"):
+                break
+            climbed.append(current.id)
+            current = current.parent
+        for seen in climbed:
+            outside[seen] = answer
+        return answer
 
     def is_bound(self, node: Node, name: str) -> bool:
         return any(name in self.names(scope, kind) for scope, kind in self.scopes_of(node))
@@ -399,18 +430,6 @@ def _is_binding(node: Node) -> bool:
         "catch_clause": "parameter", "for_in_statement": "left", "arrow_function": "parameter",
     }.get(parent.type)
     return field is not None and parent.child_by_field_name(field) == current
-
-
-def _outside_statements(node: Node) -> bool:
-    """False for a name inside an import statement or an export clause (read on their own)."""
-    current = node.parent
-    while current is not None:
-        if current.type in ("import_statement", "export_clause"):
-            return False
-        if current.type in ("statement_block", "program"):
-            return True
-        current = current.parent
-    return True
 
 
 def _chain_from_head(node: Node) -> tuple[Node, list[Segment]] | None:
@@ -516,7 +535,7 @@ def use_sites(
             continue
         if parent is not None and parent.type in ("labeled_statement", "break_statement", "continue_statement"):
             continue
-        if _is_binding(node) or not _outside_statements(node):
+        if _is_binding(node) or not scopes.outside_statements(node):
             continue
         name = _text(node)
         if scopes.is_bound(node, name):
@@ -552,4 +571,4 @@ def use_sites(
     return uses
 
 
-__all__ = ["module_bindings", "module_names", "pattern_names", "use_sites"]
+__all__ = ["declared_type", "module_bindings", "module_names", "pattern_names", "use_sites"]

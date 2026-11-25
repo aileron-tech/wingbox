@@ -27,17 +27,32 @@ In scope:
 - the `wingbox` command and Python package (`src/`, `scripts/`);
 - the MCP server `wingbox mcp` and the hooks (`wingbox hook pre-search`,
   `dirty`, `session-start`, `git`);
+- the HTTP transport of the MCP server, `packages/wingbox-http` (the
+  distribution `wingbox-http`, started with `wingbox mcp --http`): the only
+  code in this repository that listens on a port;
 - the plugins in `plugins/wingbox` (manifests, skill) and
   `wingbox install` / `uninstall` / `update`;
 - any network connection opened by Wingbox itself: the package holds no code
   that opens one, and a test fails on an import that could
   (`tests/test_local_only.py`). `wingbox update` starts your package
   installer (pipx, uv or pip), which reaches the package index;
-- any write outside the two places Wingbox writes to: the repository's
-  `.wingbox/` folder and the user's own settings in the home folder (the
-  assistants' files and `~/.wingbox/`). A test runs every command in a
-  temporary repository with a temporary home folder and fails on any other
-  changed path (`tests/test_write_zones.py`).
+- any write outside the places Wingbox writes to: the repository's
+  `.wingbox/` folder; the project's `.gitignore`, to which `wingbox init`
+  appends the rule `/.wingbox/` unless the file already has a rule about
+  `.wingbox`; the user's own settings in the home folder (the assistants'
+  files and `~/.wingbox/`); and Git's global excludes file, only when asked
+  (`wingbox install --global-gitignore` or its checkbox in the install
+  list). Three options write where their name says: `wingbox init
+  --scaffold` creates the empty folders of a new project's layout,
+  `wingbox infra --append FILE` appends to FILE, and `wingbox uninstall
+  --project` removes what versions before 0.9.0 wrote into a repository. A
+  test runs every command in a temporary repository with a temporary home
+  folder and fails on any other changed path (`tests/test_write_zones.py`);
+- any write through a symbolic link at `.wingbox` or below it: Wingbox
+  refuses a `.wingbox` that is a link and a linked file it would write
+  into, and a file that a build replaces as a whole becomes a regular file,
+  so a repository that commits such a link cannot make Wingbox write
+  outside the project.
 
 Out of scope:
 

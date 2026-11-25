@@ -5,7 +5,8 @@
 # Needs: git, uv (https://docs.astral.sh/uv/). Network: GitHub and PyPI. No model, no key.
 # Everything is written under <work dir>. The same run in a clean container: Dockerfile.benchmark.
 #
-# WINGBOX_SPEC   the Wingbox under test (default: the release named below), e.g. a path to a checkout.
+# WINGBOX_SPEC   the Wingbox under test, e.g. a path to a checkout (default: the release named below, the
+#                one the committed results were made with, results/versions.json).
 # RUN_ONLY=corpus  stop after the environments and the corpus are in place (used by tools/time_builds.py).
 # VERIFY=0       do not compare the results with the committed ones (first run of a new version).
 set -eu
@@ -15,7 +16,7 @@ T=$HERE/tools
 W=${1:?usage: run.sh <work dir>}
 mkdir -p "$W"
 W=$(cd "$W" && pwd)
-WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.2.3}
+WINGBOX_SPEC=${WINGBOX_SPEC:-wingbox==0.10.0}
 GRIMP_SPEC=grimp==3.20
 cd "$W"
 mkdir -p out corpus/karpathy bench/plain bench/wb bench/log

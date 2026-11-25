@@ -10,7 +10,7 @@ from typing import Callable, Mapping
 from ..interface import DiscoveryExclusions, FileResult
 from .cargo import RustPackage, load_rust_packages as _load_rust_packages
 from .definers import Definers, ItemRoute
-from .modules import ModuleLayout, PathModule, path_modules
+from .modules import ModuleLayout, PathModule, included_path, path_modules
 
 
 def _is_within(path: str, directory: str) -> bool:
@@ -69,8 +69,10 @@ _EXPORTED_MACRO = re.compile(
     r"#\[macro_export[^\]]*\]\s*(?:#\[[^\]]*\]\s*)*macro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)"
 )
 _MACRO = re.compile(r"(?<![A-Za-z0-9_])macro_rules!\s*([A-Za-z_][A-Za-z0-9_]*)")
+# One line: blanks between the words are spaces and tabs, so that the many empty lines of a file are not
+# read again from the start of each of them.
 _EXTERN_CRATE_ALIAS = re.compile(
-    r"^\s*(?:pub\s+)?extern\s+crate\s+([A-Za-z_][A-Za-z0-9_]*)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*;", re.M
+    r"^[ \t]*(?:pub[ \t]+)?extern[ \t]+crate[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]+as[ \t]+([A-Za-z_][A-Za-z0-9_]*)[ \t]*;", re.M
 )
 
 
@@ -186,11 +188,21 @@ class BoundRustLanguage:
         return _candidate_id(macro_file, self.path_to_id) if macro_file is not None else None
 
     def _crate_named(self, name: str, owner: RustPackage | None) -> RustPackage | None:
-        """The local package code of owner names by a crate name: a renamed dependency first."""
-        renamed = dict(owner.renamed_dependencies).get(name) if owner is not None else None
-        if renamed is not None:
-            return next((package for package in self.packages if package.package_name == renamed), None)
-        return next((package for package in self.packages if package.crate_name == name), None)
+        """The local package code of owner names by a crate name: the package itself, then what its
+        manifest takes from a folder of the tree under that name. A name its manifest takes from a
+        registry is no local package, whatever the tree holds; a name the manifest does not state (a
+        file outside every package, a manifest that could not be read) is the one local package of
+        that name, and none when two packages share it."""
+        if owner is not None and owner.crate_name == name:
+            return owner
+        if owner is not None:
+            directory = dict(owner.local_dependencies).get(name)
+            if directory is not None:
+                return next((package for package in self.packages if package.directory == directory), None)
+            if name in owner.foreign_dependencies:
+                return None
+        named = [package for package in self.packages if package.crate_name == name]
+        return named[0] if len(named) == 1 else None
 
     def _resolve_in_crate(self, source: str, owner: RustPackage | None, segments: tuple[str, ...],
                           root_fallback: bool = True) -> str | None:
@@ -219,6 +231,10 @@ class BoundRustLanguage:
             return None
 
         absolute_source = os.path.normpath(source_path)
+        included = included_path(import_name)
+        if included is not None:
+            # include!("file.rs"): that file, relative to the folder of the including file.
+            return _candidate_id(os.path.join(os.path.dirname(absolute_source), included), self.path_to_id)
         owner = _owning_package(absolute_source, self.packages)
         first = segments[0]
 

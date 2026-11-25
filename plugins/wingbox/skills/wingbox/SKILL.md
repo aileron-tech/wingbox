@@ -88,15 +88,16 @@ Each of these prints facts as text; add `--sexp` for S-expressions.
 
 ## Scripts
 
-This skill bundles Python scripts. Resolve the skill and target roots before
-running them so the scanned project is always explicit:
-
-- `scripts/code_graph_search.py` -- query the code graph
-- `scripts/build_code_graph.py` -- generate the code graph from source
-- `scripts/build_infra_topology.py` -- extract Kustomize, Helm, and Terraform topology facts
-- `scripts/git_descendants.py` -- find all commits descending from HEAD (or a given ref)
-
-Never use project-local copies of these scripts -- they may be outdated and output JSON instead of sexp.
+Every example in this file is written as `wingbox <command>`. An installed
+skill (from `wingbox install` or a plugin) holds this file and `references/`,
+and no script. The scripts behind the command are in a clone of the Wingbox
+repository only; there, without the command, run them by path with the same
+arguments: `python3 scripts/code_graph_search.py <command> ...` for a query,
+`python3 scripts/build_code_graph.py --root <project>` for `wingbox build
+<project>`, `python3 scripts/build_infra_topology.py` for `wingbox infra`
+(`scripts/git_descendants.py` lists the commits that descend from a ref).
+Never use a copy of these scripts that lies in the project you work on: it may
+be outdated.
 
 ## Prerequisite
 
@@ -104,29 +105,21 @@ Locate the code graph. If absent, build it:
 
 ```bash
 ls .wingbox/index.sexp 2>/dev/null
-SKILL_ROOT="$(pwd -P)"
-TARGET_ROOT="$(cd /absolute/path/to/project && pwd -P)"
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
+wingbox build .                              # in the project folder
+wingbox build /absolute/path/to/project      # or name the project
+wingbox build . --full                       # parse every file again
 ```
 
 Python indexing has no external parser dependency. When the parser of
 TypeScript or Rust is absent or has the wrong version, the first build fails
 before publication; files of C#, Java, Go, Ruby, PHP, Dart, C or C++ without
 their parser are skipped with a warning (a project of such a language alone fails
-too). Either way the builder prints the exact per-language command to run, such as:
-
-```bash
-python3 -m pip install -r "$SKILL_ROOT/requirements/typescript.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/csharp.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/ruby.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/php.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/dart.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/cpp.txt"
-```
-
-Install only the requirement files named by the builder, then rerun it.
-`requirements.txt` is reserved for the infrastructure-topology dependency.
+too). Either way the builder prints what to run: `pip install
+"wingbox[<language>]"` for a language that is a pip extra, a reinstall of
+`wingbox` for TypeScript and Rust, whose parsers are its own dependencies,
+and in a clone of the repository `python3 -m pip install -r` with the
+requirements file of the language. Run only what the builder prints, in the
+environment that runs Wingbox, then build again.
 
 ## Mandatory Workflow: Query Before Code
 
@@ -137,7 +130,7 @@ already been inspected.
 
 **Fast first pass when the task has a clear keyword:**
 ```bash
-python3 scripts/code_graph_search.py quick "keyword"
+wingbox quick "keyword"
 ```
 `quick` searches for the first matching module and immediately runs `analyze`.
 Use it to get boundary files, dependencies, reverse dependencies, layers, and
@@ -146,14 +139,14 @@ explicit `search` -> `analyze` flow below.
 
 **Step 1 -- Find the module ID:**
 ```bash
-python3 scripts/code_graph_search.py search "keyword"
-python3 scripts/code_graph_search.py entity EntityName
+wingbox search "keyword"
+wingbox entity EntityName
 ```
 Use `search` or `entity` to locate the module ID. Module IDs are **full relative paths** like `billing-service/src/modules/invoice/invoice.service`, not short codes like `bs34`. The code graph may contain short path-map IDs internally, but they are resolved automatically -- always pass human-readable path-like strings. Do NOT guess or invent module IDs -- always confirm with `search` first.
 
 **Step 2 -- Analyze the module (do this IMMEDIATELY, not optionally):**
 ```bash
-python3 scripts/code_graph_search.py analyze <module-id>
+wingbox analyze <module-id>
 ```
 `analyze` is the PRIMARY command. It returns the full context: boundary files, dependencies, reverse dependencies, architecture layer, and violations. Always run it before reading any source.
 
@@ -174,7 +167,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `usages <symbol>` | Every use of one symbol (`Name`, `<file>::Name`, `<file>::Class.method`) through re-exports and aliases, by file, `line:col` and kind (import, re-export, call, type, extends, reference; `unresolved-call` for a method call whose receiver type is not in sight); a name defined in several files lists the candidates | `usages src/billing/invoice.ts::Invoice` |
 | `deps <id> [depth]` | Outgoing dependency tree | `deps operatives.service 3` |
 | `rdeps <id> [depth]` | Blast radius (who depends on this) | `rdeps drive_schema 2` |
-| `impact <file\|id> [<file\|id> ...] [depth] [--only tests] [--summary]`, `impact --diff [ref]` | Blast radius of each file asked, one answer per file in the order given: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; a last argument that is a number is the depth; with several files the answer opens with `(graph :built ... :files N :stale N)`; a file that is not in the graph gives `(error no-match ...)` in its place and exit status 1; ends with the advice that concerns the file. `--only tests` keeps the test files (the tests to run) and, where the CMake files state targets and tests, adds `(affected-targets <file> <target> ...)` and `(affected-tests <file> <test> ...)`; `--summary` answers in a few lines for a file with hundreds of dependents: `(impact-summary <file> :direct N :total M ...)` with the counts by depth and kind, the folders, twenty files to look at first and the command of the complete list; `--diff [ref]` answers for the files a diff changes (default: the working tree against `HEAD`) and adds `(changed <file>::<name> :line N :used-by (...))` per changed function; a C or C++ source file is answered through its header, rows marked `:basis paired-header` | `impact src/billing/invoice.service.ts src/billing/tax.ts 2`, `impact --diff --only tests` |
+| `impact <file\|id> [<file\|id> ...] [depth] [--only tests] [--summary]`, `impact --diff [ref]` | Blast radius of each file asked, one answer per file in the order given: dependents by shortest depth, each with the reason it is listed (the import, the item names, the file it is reached through) + files to read first; a last argument that is a number is the depth; with several files the answer opens with `(graph :built ... :files N :stale N)`; a file that is not in the graph gives `(error no-match ...)` in its place and exit status 1; ends with the advice that concerns the file. `--only tests` keeps the test files (the tests to run) and, where the CMake files state targets and tests, adds `(affected-targets <file> <target> ...)` and `(affected-tests <file> <test> ...)`, and `(unread-targets <file> <target> ...)` for the targets whose source list was not all read; `--summary` answers in a few lines for a file with hundreds of dependents: `(impact-summary <file> :direct N :total M ...)` with the counts by depth and kind, the folders, twenty files to look at first and the command of the complete list; `--diff [ref]` answers for the files a diff changes (default: the working tree against `HEAD`) and adds `(changed <file>::<name> :line N :used-by (...))` per changed function; a C or C++ source file is answered through its header, rows marked `:basis paired-header` | `impact src/billing/invoice.service.ts src/billing/tax.ts 2`, `impact --diff --only tests` |
 | `flow <id> <fn>` | Trace call/data flow | `flow drive_api fetchFiles` |
 | `module <id> [--lines]` | Single module with edges; `--lines`: each `imports` and `refs` fact names the line of the statement it is read from (`:line 7`, `:lines 3 9`), in the file of its source module | `module operatives.controller --lines` |
 | `wingbox init --from-folders PART [--force] [--sexp]` | For a part no layer style fits (`.` is the repository, or a folder): read the graph and write the part into `.wingbox/config.yaml` with `style: declared` and `order:`, one layer per folder, lowest first; adds `/.wingbox/` to the project ignore file and prints the order and upward imports. Then `wingbox build .`, `wingbox boundaries`; `wingbox align --learn` accepts today's upward imports | `wingbox init --from-folders engine/src` |
@@ -184,7 +177,7 @@ python3 scripts/code_graph_search.py analyze <module-id>
 | `wingbox place "<what>" [--part PART]` | Layer and folder for new code by the placement rules of the part's style (`:new` when the folder does not exist yet) and what it may import | `wingbox place "repository for invoices"` |
 | `wingbox compare` | Parts of a monorepo per language: style, layers, differences (missing layers, a folder name meaning another layer, a style unlike the majority) and advice for the part that deviates | `wingbox compare` |
 | `wingbox learn --agent [PART] [--sexp]` / `wingbox learn --apply [FILE]` | `/wingbox learn`: run `wingbox learn --agent`, read the files it names, answer only in its format (`(layer <part> <folder> <layer> :because "...")`, `(unknown ...)`, at most one `(style ...)`), pipe the answer to `wingbox learn --apply`, show the result; on errors fix the named lines and send the whole answer again. When the code does not decide a folder, ask the user in the chat and answer with `:because "operator: <their words>"`; never guess. To change `.wingbox/config.yaml`, follow the instructions at its top | `wingbox learn --agent` |
-| `boundaries [id\|all]` | Check the boundary rules of each part's style (or of rules the part declares); each line names `:part`, `:style` and `:rule`; type-only imports and guessed layers are reported apart; then what files do that their layer may not (`capability-violation`: SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the domain, with `:line` and `:evidence`) and the style's pattern checks (`pattern-violation`). `boundaries-ok` only when every part was checked; a part whose declared rules were not read, or without a determined style, is `boundaries-not-checked` with `boundaries-partial` instead of ok. Exit status: 2 not checked (declared rules not read), 1 violations, 0 otherwise - never report a pass on exit 2. For a gate add `--strict`: the last line is `(boundaries-result :status pass\|fail\|incomplete\|error :checked N :not-checked N :violations N :known N [:reason R])`, each checked part has a `(boundaries-checked :part P :style S :modules N)` fact, and the exit status is 0 pass, 1 violation, 2 incomplete (any part not checked, or no file checked), 3 error (no graph or a graph that cannot be read) | `boundaries all`, `boundaries all --strict` |
+| `boundaries [id\|all]` | Check the boundary rules of each part's style (or of rules the part declares); each line names `:part`, `:style` and `:rule`; type-only imports and guessed layers are reported apart; then what files do that their layer may not (`capability-violation`: SQL outside the repositories, outbound HTTP outside infrastructure, the framework in the domain, with `:line` and `:evidence`) and the style's pattern checks (`pattern-violation`). `boundaries-ok` only when every part was checked and nothing breaks a rule; a part whose declared rules were not read or without a determined style, files in no part, a part with no file in a layer and source files in a language without a parser are `boundaries-not-checked` (with the `:reason`) with `boundaries-partial` instead of ok. `:checked` counts the files a rule places; files of a checked part in no layer are counted apart (`boundaries-no-layer`, `:no-layer N`). `boundaries-rules-changed`: a rule file changed after the build, rebuild. Exit status: 2 not checked (declared rules not read, or a scope that matches no module), 1 violations, 0 otherwise - never report a pass on exit 2. For a gate add `--strict`: the last line is `(boundaries-result :status pass\|fail\|incomplete\|error :checked N :not-checked N :violations N :known N [:no-layer N] [:reason R])`, each checked part has a `(boundaries-checked :part P :style S :modules N)` fact, and the exit status is 0 pass, 1 violation, 2 incomplete (anything not checked or not read, a graph older than the files or the rule files, or no file checked), 3 error (no graph or a graph that cannot be read) | `boundaries all`, `boundaries all --strict` |
 | `invariants [id\|all]` | Check naming convention violations | `invariants all` |
 | `layers` | Show all modules by layer, with the part, style and rule that set each layer | `layers` |
 | `cycles [folder]` | What the import graph says without a layer style: `(cycle ...)` groups of files that depend on each other, `(hub ...)` files with ten or more dependents and dependencies, `(folder-cycle a b ...)` folders that depend on each other, `(folder-order ...)` the folders from dependents to dependencies; with a folder, its files and subfolders | `cycles`, `cycles engine/src` |
@@ -230,34 +223,42 @@ once, the list not cut, test files included). In Claude Code's Code Mode follow
 [references/code-mode.md](references/code-mode.md): one call in one block of
 code whose value is the answer.
 
-## Quick Reference: rg Queries
+## Quick Reference: Targeted Lookups
 
-When you need fast, targeted lookups without invoking the Python script, query the code graph directly with `rg`. The builder writes the graph to `.wingbox/index.sexp`:
+Do not search `.wingbox/index.sexp` for a path with `rg`. The graph file
+names every module by a short ID and maps the paths to those IDs once, in its
+`(paths ...)` form, so an import is stored as `(imports q21 q24 :line 1)`:
+`rg 'imports .* src/billing/tax' .wingbox/index.sexp` finds nothing, and
+nothing found there does not mean that nothing imports the module. Ask the
+commands, which print full paths:
 
 ```bash
-# All facts about a module
-rg 'drive/modules/drive_db/api ' .wingbox/index.sexp
+# One module: its entities and edges, each import and ref with its line
+wingbox module drive/modules/drive_db/api/drive_db_api --lines
 
-# Who imports a module
-rg 'imports .* drive/modules/commons/result' .wingbox/index.sexp
+# Who imports a module, and what it imports (one hop)
+wingbox rdeps drive/modules/commons/result 1
+wingbox deps drive/modules/drive_db/api/drive_db_api 1
 
-# What does a module import
-rg 'imports drive/modules/drive_db/api' .wingbox/index.sexp
+# Where an entity is defined and which modules refer to it
+wingbox entity DriveDbCommitResponse
 
-# All references to an entity
-rg 'DriveDbCommitResponse' .wingbox/index.sexp
+# The classes, interfaces and types whose name matches
+wingbox find_type "Drive.*Response"
 
-# All classes in a repo
-rg '^\(cls drive/' .wingbox/index.sexp
+# The stored facts of one kind, as the graph file holds them
+wingbox search "data-flow" --lines
+wingbox search "registry-wires" --lines      # Python modules loaded by a name read from a configuration file
 
-# Data flow edges
-rg 'data-flow' .wingbox/index.sexp
-
-# Python modules loaded by a name read from a configuration file
-rg 'registry-wires' .wingbox/index.sexp
+# A text in the source files of the graph
+wingbox grep "Basket is empty"
 ```
 
-These one-liners are useful for quick checks. For structured output and full analysis, use the Python script commands.
+`search <pattern>` answers with module IDs when the pattern matches a module
+path; otherwise it prints the stored facts that match, with `--lines` as the
+file holds them. Those facts name modules by short ID: `wingbox module <short
+id>` prints the module of one. A short ID belongs to one build of the graph,
+so never keep one or pass one on.
 
 ## Output Notation
 
@@ -385,35 +386,40 @@ If a command returns `(error no-match ...)`:
 3. Use the `:suggestions` field if present -- it lists similar module IDs
 
 ```bash
-# Wrong: guessing IDs
-python3 scripts/code_graph_search.py analyze bs34        # fails: bs34 is a short path-map ID
-python3 scripts/code_graph_search.py analyze invoice.service  # fails: incomplete path
+# Wrong: guessing IDs until one answers
+wingbox analyze invoices_service
+wingbox analyze bs34          # a short ID of the graph file: after the next build it names another module
 
 # Right: search first, then use the full path from results
-python3 scripts/code_graph_search.py search "invoice.*service"
-# Output shows: billing-service/src/modules/invoice/invoice.service
-python3 scripts/code_graph_search.py analyze billing-service/src/modules/invoice/invoice.service
+wingbox search "invoice.*service"
+# Output shows: (result billing-service/src/modules/invoice/invoice.service)
+wingbox analyze billing-service/src/modules/invoice/invoice.service
 ```
 
 ## Anti-patterns
 
-- **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are internal path-map IDs and must not be used directly. Always `search` first.
+- **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are the IDs of one build of the graph file: the next build may give them to other modules. Always `search` first.
 - **Build but never query.** Building the code graph and then never running `search`, `analyze`, or `boundary` provides zero value.
 - **Querying after reading source.** The first source-code read should come from the `boundary-file` lines and the `:file` of the `analyze-dependent` lines in `analyze` output.
-- **Reading `.wingbox/index.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
+- **Reading `.wingbox/index.sexp` as a whole file, or searching it for a path with `rg`.** The file names modules by short ID, so a path is not in its facts. Use `search`, `analyze` or `module` to query specific facts.
 - **Skipping the code graph for cross-module tasks.** Always query the graph to understand boundaries before reading source files.
 - **Reading all files in a directory.** When the boundary shows 2-3 files, read only those.
-- **Using project-local scripts.** Always use this skill's bundled scripts. Project copies may output JSON instead of sexp.
+- **Using project-local scripts.** Always use the `wingbox` command. A copy of its scripts inside a project may be outdated.
 
 ## Rebuilding the Graph
 
 ```bash
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --lsp
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" \
-  --root "$TARGET_ROOT" --exclude-dir review-bundles
+wingbox build .                                # parse the files that changed
+wingbox build . --full                         # parse every file again
+wingbox build . --lsp                          # add the edges a language server finds
+wingbox build . --exclude-dir review-bundles
 ```
+
+`--lsp` starts the language servers installed on the machine. Such a server
+can run the build of the project and fetch its dependencies from a package
+registry, so use `--lsp` only when the user asks for it: it is the one build
+option under which the code of the project may run and the network may be
+reached.
 
 Use repeatable `--exclude-dir NAME` options for tracked snapshots, generated
 fixtures, or other source-shaped trees that are not part of the live product.
@@ -433,8 +439,9 @@ backslash escapes. Other regex operators are rejected.
 
 The TypeScript AST contract covers TS/TSX imports and re-exports, literal
 `import()`/`require()`, `import = require()`, literal template imports, emitted
-`.js`/`.jsx` specifiers, project-scoped path aliases including `paths`
-inherited through a relative `extends` chain, and imports that name a package
+`.js`/`.jsx` specifiers, project-scoped path aliases (of `tsconfig.json`,
+`jsconfig.json` and the project files their `references` name) including `paths`
+inherited through a relative `extends` chain inside the repository, and imports that name a package
 of the repository: the package entry (`exports`, `source`, `types`, `module`,
 `main`) and its subpaths resolve to the TypeScript source, also when the entry
 points at build output. Packages outside the repository stay external. It does
@@ -446,7 +453,7 @@ contract. An import written as `./x.js` names `x.ts` when it exists and the
 real `x.js` otherwise; `.mjs` and `.cjs` are matched by their own extension.
 Minified files (`*.min.js`, or any line longer than 5,000 characters) and
 bundles (`bundle` in the file name) are left out, like everything in excluded
-or ignored directories.
+or ignored directories. A build names the files it left out for a long line.
 
 An import that goes through the `outDir` of a `tsconfig*.json`, written as a
 relative path, through an alias or as a package entry, resolves to the file
@@ -462,18 +469,34 @@ loader. A method called in a loop on an object such a registry returns for the
 loop variable is a `calls ... :registry` edge to each wired module that defines
 it, and `data-flow ... :pipeline` when the call replaces its own argument
 (`data = stage.process(data)`), in the order of the configuration list. Names
-computed any other way stay unlinked.
+computed any other way stay unlinked. An absolute import is looked up at the
+repository root, beside a script (never beside a module of a package), in the
+`src/` folders above the importing file and then in the source roots of the
+repository: a folder with a `pyproject.toml`, `setup.py` or `setup.cfg`, its
+`src/` and the folders those files name. A name that several source roots hold
+stays unlinked.
 
-C# indexing follows namespaces and referenced local types; Java indexing
-follows packages, explicit imports, and referenced wildcard types. Unused
-namespace or wildcard imports do not create guessed edges. Go indexing resolves
-local module imports to the source files that make up the imported package.
+C# indexing follows namespaces and referenced local types: a name binds as the
+compiler searches (the own namespace, the usings written in it, each enclosing
+namespace, the global namespace, then the usings of the file and the `global
+using` directives of its project folder), a type declared `partial` in several
+files of one project links each of them, and a name that two namespaces of one
+step declare stays unlinked. Java indexing follows packages, explicit imports,
+and referenced wildcard types, also a class used only through static members,
+`::` or `@`, and the default package. Unused namespace or wildcard imports do
+not create guessed edges. Go indexing resolves local module imports to the
+source files that make up the imported package, and links the files of one
+package (its `_test.go` files too) through the package-level names they use
+of each other; a name that two files of the package declare stays unlinked,
+and a method called on a value links no file.
 Standard .NET `bin`/`obj` output and Go `vendor` dependencies are excluded.
 
 Ruby indexing discovers `.rb` and `.rake` files and resolves explicit requires,
 local constants, Rails application roots, statically configured autoload roots,
-project acronyms, concerns, associations, callbacks, jobs, mailers, and spec
-references. It never boots Rails. Reopened or otherwise ambiguous constants and
+project acronyms, concerns, associations (their names made singular by the
+rules of Rails), callbacks, jobs, mailers, and spec references; a scoped
+constant that resolves nowhere links the file of its scope. It never boots
+Rails. Reopened or otherwise ambiguous constants and
 polymorphic associations remain unlinked instead of producing guessed edges.
 Rails relation flags are preserved as `:association`, `:concern`, `:callback`,
 `:job`, `:mailer`, or `:spec` in the generated map.
@@ -483,7 +506,12 @@ classes through the `autoload.psr-4` and `autoload-dev.psr-4` prefixes of every
 `composer.json` in the repository, longest prefix first, and follows `use`
 aliases, inheritance, traits, Blade `@extends`/`@include*`/`@component`/`@each`
 directives, `<x-*>` components, Livewire aliases and registrations, Eloquent
-associations, events and jobs. `view()` references resolve through
+associations, events and jobs. Functions and constants declared outside a
+class are entities: `use function`, `use const`, a call of a function one file
+declares and `require __DIR__ . '/...'` are edges, and so are the classes a
+Blade template names (`@inject`, `@use`, a qualified name before `::`), the
+class of an `<x-*>` component, `$this->view()` and a route action written
+`'Controller@method'`. `view()` references resolve through
 `resources/views` and through view namespaces registered with `loadViewsFrom`
 or `View::addNamespace`. It never boots Laravel. Unresolved or ambiguous class,
 view and component names remain unlinked, and a duplicate class declaration
@@ -499,8 +527,11 @@ its header (`:basis paired-header`), and says `(impact-no-includers ...)` when
 it has no header: an empty list there does not mean nothing uses it. An include is
 looked for beside the including file (a quoted name), then in the include
 folders of `compile_commands.json` (at the root, in `build/` or one level
-below), without that file in the folders the CMake files name, and last, for
-a quoted name, as the one file whose path ends with the written name. A system
+below), without that file, or for a file that no entry of it covers, in the
+folders the CMake files name, and last, for a quoted name, as the one file
+whose path ends with the written name, the case of the letters not compared
+when nothing else answers. An include found without the folders a compiler
+was given is marked `inferred`. A system
 header, a library outside the repository and an ambiguous name create no
 edge. `wingbox usages <header>::<name>` lists the uses of a function, type,
 macro or enum in the files that include the header; a method called on an
@@ -512,7 +543,7 @@ Dart indexing discovers `.dart` files and reads each one with a tree-sitter
 Dart grammar: classes, mixins, enums, extension types, extensions, type
 aliases, top-level functions, the members of each type, and `extends`, `with`,
 `implements` and `on`. It resolves `import` and `export` directives and
-`part`/`part of` pairs. A `package:<name>/path.dart` URI whose name is the
+`part`/`part of` pairs, a `part of` that names its library included. A `package:<name>/path.dart` URI whose name is the
 top-level `name:` of a `pubspec.yaml` in the repository resolves to
 `lib/path.dart` of that package, the nearest owning pubspec first, so a Dart
 monorepo links across its packages. A relative URI resolves to the neighbouring
@@ -539,20 +570,20 @@ languages in directories with that name remain indexable.
 
 ## Infrastructure Topology
 
-Extract service topology from Kustomize, Helm, and Terraform files. This script requires `PyYAML` (`pip3 install pyyaml`).
+Extract service topology from Kustomize, Helm, and Terraform files (`PyYAML`, which the command needs, is installed with the package).
 
 ```bash
-python3 scripts/build_infra_topology.py                    # auto-detect all IaC
-python3 scripts/build_infra_topology.py --kustomize .      # kustomize only
-python3 scripts/build_infra_topology.py --helm ./charts    # helm charts only
-python3 scripts/build_infra_topology.py --terraform ./infra # terraform only
-python3 scripts/build_infra_topology.py --append .wingbox/index.sexp  # merge into graph
+wingbox infra                                # auto-detect all IaC
+wingbox infra --kustomize .                  # kustomize only
+wingbox infra --helm ./charts                # helm charts only
+wingbox infra --terraform ./infra            # terraform only
+wingbox infra --append .wingbox/index.sexp   # merge into graph
 ```
 
-Emits `infra-node`, `k8s-depends`, `k8s-service`, `helm-depends`, `tf-depends`, and `infra-maps` edges. Query with:
+Emits `infra-node`, `k8s-depends`, `k8s-service`, `helm-depends`, `tf-depends`, and `infra-maps` edges. These facts name services, not modules, so they are stored as they are printed. Query with:
 ```bash
-rg 'infra-node' .wingbox/index.sexp                  # all services
-rg 'k8s-depends' .wingbox/index.sexp                 # service dependencies
-rg 'infra-node.*:component database' .wingbox/index.sexp  # all databases
-rg 'infra-maps.*app-service' .wingbox/index.sexp     # infra -> source code mapping
+wingbox search "infra-node" --lines                       # all services
+wingbox search "k8s-depends" --lines                      # service dependencies
+wingbox search "infra-node.*:component database" --lines  # all databases
+wingbox search "infra-maps.*app-service" --lines          # infra -> source code mapping
 ```

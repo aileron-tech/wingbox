@@ -25,6 +25,7 @@ PARSE_ERROR = -32700
 INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INTERNAL_ERROR = -32603
+SERVER_BUSY = -32000   # implementation-defined: more connections or waiting calls than the listener takes
 HEADER_MISMATCH = -32020
 UNSUPPORTED_PROTOCOL_VERSION = -32022
 
@@ -32,6 +33,12 @@ UNSUPPORTED_PROTOCOL_VERSION = -32022
 NAMED_METHODS = frozenset({"tools/call", "resources/read", "prompts/get"})
 _LOOPBACK_ORIGIN = re.compile(r"^https?://(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$", re.IGNORECASE)
 _STATUS_400 = frozenset({PARSE_ERROR, INVALID_REQUEST, HEADER_MISMATCH, UNSUPPORTED_PROTOCOL_VERSION})
+# What a browser asks leave for before a page of another origin may POST here (its preflight).
+_PREFLIGHT = (
+    ("Access-Control-Allow-Methods", "POST"),
+    ("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, MCP-Protocol-Version, Mcp-Method, Mcp-Name"),
+    ("Access-Control-Max-Age", "600"),
+)
 
 
 @dataclass(frozen=True)
@@ -68,6 +75,8 @@ class Request:
 
 @dataclass(frozen=True)
 class Refuse:
+    """Answered here, not by the MCP server: a refusal, or the answer to a browser's preflight (204)."""
+
     status: int
     headers: tuple[tuple[str, str], ...]
     body: bytes
@@ -100,6 +109,16 @@ def _origin_allowed(policy: Policy, origin: str) -> bool:
     return origin in policy.origins or _LOOPBACK_ORIGIN.match(origin) is not None
 
 
+def cors_headers(policy: Policy, origin: Optional[str]) -> tuple[tuple[str, str], ...]:
+    """The headers that let a page of `origin` read an answer: only for an origin given with --allow-origin.
+
+    Never for a loopback origin, although its requests pass: a page of any local site would otherwise read
+    a listener that asks for no token. Without these headers its browser hands it nothing."""
+    if origin is None or origin not in policy.origins:
+        return ()
+    return (("Access-Control-Allow-Origin", origin), ("Vary", "Origin"))
+
+
 def _authorized(access: Access, header: str) -> bool:
     if isinstance(access, Open):
         return True
@@ -116,6 +135,8 @@ def admit(policy: Policy, request: Request) -> Union[Refuse, Admit]:
     origin = request.headers.get("origin")
     if origin is not None and not _origin_allowed(policy, origin):
         return _refuse(403, "Origin not allowed")
+    if request.method == "OPTIONS" and origin in policy.origins and "access-control-request-method" in request.headers:
+        return Refuse(204, _PREFLIGHT, b"")   # before the token: a browser sends none with its preflight
     if not _authorized(policy.access, request.headers.get("authorization", "")):
         return _refuse(401, "Unauthorized: send Authorization: Bearer <token>", headers=(("WWW-Authenticate", 'Bearer realm="wingbox"'),))
     if request.method != "POST":
@@ -162,7 +183,7 @@ def decide(policy: Policy, request: Request) -> Union[Refuse, Forward]:
     try:
         text = request.body.decode("utf-8")
         message = json.loads(text)
-    except ValueError as error:   # UnicodeDecodeError and json.JSONDecodeError are both ValueError
+    except (ValueError, RecursionError) as error:   # UnicodeDecodeError, json.JSONDecodeError; brackets nested too deeply
         return _refuse(400, f"Parse error: {error}", code=PARSE_ERROR)
     if not isinstance(message, dict):
         return _refuse(400, "Invalid Request: expected one JSON-RPC object, batches are not supported")

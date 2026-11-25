@@ -50,8 +50,7 @@ class PythonLanguage:
         path_to_id: Mapping[str, str],
         discovery_exclusions: DiscoveryExclusions,
     ) -> BoundLanguage:
-        del discovery_exclusions
-        return BoundPythonLanguage(root, path_to_id)
+        return BoundPythonLanguage(root, path_to_id, exclusions=discovery_exclusions)
 
     def normalize_module_id(self, relative_path: str) -> str:
         if not relative_path.endswith(".py"):

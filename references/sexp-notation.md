@@ -56,6 +56,25 @@ print text and print their facts with `--sexp`.
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
 
+In the file, `<id>`, `<mod>`, `<src>` and `<tgt>` are short IDs, not paths.
+The file maps every module path to a short ID once, in a `(paths ...)` form
+before the facts, nested by folder, and every fact after it names modules by
+those IDs:
+
+```scheme
+(paths
+  (shop
+    (sh1 checkout)
+    (sh2 pricing)))
+(imports sh1 sh2 :line 1)        ; shop/checkout imports shop/pricing
+```
+
+So a text search of the file for a path (`rg 'imports .* shop/pricing'
+.wingbox/index.sexp`) finds nothing, whatever imports the module. The query
+commands read the map and print the Module IDs of this page; only `search
+<pattern> --lines` prints facts as the file holds them, and `module <short
+id>` names the module of an ID. A short ID belongs to one build of the graph.
+
 `built-from` names what the graph was built from. `:tree` is a digest of the
 path and the text of every source file in the graph, as the parsers read it
 (without a byte order mark, every line ending `\n`): the same files give the
@@ -140,7 +159,11 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
 (arch-part <part> :style <style> :state <state> :origin detected|config|declared :level system|container|component :kind "<kind>" :files <n> [:source "<citation>"] [:declared "<file>"])
 (arch-deny <part> <from-layer> <to-layer> "<reason>")
 (arch-known <part> <src> <tgt> "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <YYYY-MM-DD>])
+(arch-known-rule <part> <src> <tgt> "<from -> to>")
+(arch-not-parsed <part> "<language>" :files <n>)
+(arch-rule-files :config <digest> :baseline <digest> :learned <digest>)
 (arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix "<text>"])
+(arch-capability-unread <part> "<language>" :files <n>)
 (arch-pattern <part> <pattern>)
 (capability <mod> <capability> :line <n> :evidence "<source line>" [:suspect])
 (capability-known <part> <mod> <capability> "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <YYYY-MM-DD>])
@@ -159,7 +182,20 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
   known exceptions (for example `layers.known-upward-imports.json`), or in
   `.wingbox/baseline.sexp`, with the owner, the reason and the end date its
   entry states. A query compares `:expires` with the current day: past it
-  (or with a date that cannot be read) the pair is not known any more.
+  (or with a date that is no day of the calendar) the pair is not known any
+  more, whatever another entry of the same file says.
+  `(arch-known-rule <part> <source> <target> "<rule>")` is the rule an entry
+  of `.wingbox/baseline.sexp` states: that entry accepts a break of that rule
+  only. A pair with an entry that states no rule has no such fact.
+- `(arch-not-parsed <part> "<language>" :files <n>)`: source files of the
+  part (`-`: of no part) in a language no parser reads; they are in no
+  module. `(arch-capability-unread <part> "<language>" :files <n>)`: files of
+  a part with capability rules in a language the capability detector does
+  not read. `(arch-rule-files :config <digest> :baseline <digest> :learned
+  <digest>)`: what the build read of `.wingbox/config.yaml`,
+  `.wingbox/baseline.sexp` and the learned layers of
+  `.wingbox/decisions.sexp` (`-`: missing); `boundaries` compares them with
+  the files.
 - `layer`: `:rule` says what set the layer (`folder routes/ -> api`,
   `file *.tsx -> ui`, `route file page.* in src/app/`, `<file>: layer core`,
   `test file`); `:match` says how the folder name matched the style's word.
@@ -291,7 +327,12 @@ entry when it writes the file again and never adds them itself.
 (compare-part <part> :language <lang> :style <style> :layers "<layers>")
 (compare-diff <lang> :kind missing-layer|folder-meaning|style :detail "<what differs>")
 (advice <part> :id <id> :kind deviates :target <part> :style <style> :rule "majority <style>" :reason "..." :evidence "...")
+(compare-none :parts <parts of the repository> :reason "<why no part is shown>")
 ```
+
+A part is shown when it has a style and a language that a manifest names;
+parts are compared within a language. `compare-none` is the whole answer
+when no part is shown: the command never prints nothing.
 
 ## learn Output
 
@@ -464,7 +505,12 @@ each kind followed by its `line:col` positions. Kinds: `import`, `re-export`,
 `call`, `type`, `extends` (extends or implements), `reference`,
 `unresolved-call`. `:unresolved` is said only when it is not 0. A bare name
 with several definitions answers with the candidates, each written as it can
-be asked. The form is complete.
+be asked. The form is complete, unless its head says `:incomplete <reason>`
+(`"incomplete"` with `--json`, a line of the text): `positions-pending` while
+the positions of the use file are still being read (a file listed without a
+position uses the symbol; ask again for its lines), `no-use-file`,
+`stale-use-file` or `unreadable-use-file` when the use file cannot be used
+(only the references the graph itself holds are listed; run `wingbox build`).
 
 `usages --json` prints `{"usages": {"symbol", "kind", "file", "line", "uses",
 "files", "unresolved", "rows"}}` with one row `{"file", "line", "column",
@@ -500,6 +546,11 @@ line, module IDs, uses sorted by file, line and column, at most 200 unless
 (rdep <root> <src> :lang tsx :via imports :depth 1)
 ```
 
+Every module within the depth has one line without `:cycle`, at its shortest
+depth, and is followed from there. A line with `:cycle` is a module that is
+already listed and comes up again on another path; it is not followed again.
+`<mod>` is a module ID, a pattern of one, or the path of a file of the graph.
+
 ## flow Output
 
 ```scheme
@@ -515,35 +566,54 @@ line, module IDs, uses sorted by file, line and column, at most 200 unless
 (violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "infra -> api" :src-file <path> :tgt-file <path> "<reason>")
 (violation-known <src> <tgt> ... :known "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <date>] ... "<reason>")
 (violation <src> <tgt> ... :rule "domain -> api" :expired <date> [:owner "<who>"] ... "<reason>")   ; its baseline entry is past its end date
-(boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587)
-(boundaries-ok :checked 3587)
-(boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files [:files (<rule file> ...)] :files-in-part <n>)
-(boundaries-partial :checked <n> :not-checked <m>)
+(boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587 [:no-layer <n>])
+(boundaries-ok :checked 3587 [:no-layer <n>])
+(boundaries-rules-changed :files (<rule file> ...) :hint "rebuild: wingbox build")
+(boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files|in-no-part|no-file-in-a-layer|not-parsed-language [:files (<rule file> ...)] [:languages (<language> ...)] :files-in-part <n>)
+(boundaries-no-layer :part <part> :files-in-part <n>)
+(boundaries-partial :checked <n> :not-checked <m> [:no-layer <n>])
 ; with --strict only, after the lines above:
 (boundaries-checked :part <part> :style <style> :modules <n>)
-(boundaries-result :status pass|fail|incomplete|error :checked <files> :not-checked <files> :violations <n> :known <n> [:reason part-not-checked|no-files-checked|no-graph|invalid-graph|invalid-argument])
+(boundaries-result :status pass|fail|incomplete|error :checked <files> :not-checked <files> :violations <n> :known <n> [:no-layer <files>] [:reason graph-stale|rules-changed|part-not-checked|not-parsed-language|no-files-checked|no-graph|invalid-graph|invalid-argument])
 ```
 
 `boundaries-ok` is printed only when every part with files was checked against
-rules that were read or determined. A part whose declared rules were not read,
-whose style is undetermined, that has no layer style or too few files to judge
-is listed first as `boundaries-not-checked`, and `boundaries-partial` replaces
-`boundaries-ok` (it follows `boundaries-summary` when there are violations).
-Exit status: 2 when a part's declared rules were not read (that part was not
-checked), else 1 when a violation, a capability violation or a pattern break
+rules that were read or determined and nothing breaks a rule (a layer rule, a
+capability rule or a pattern). What was not checked is listed first as
+`boundaries-not-checked`, and `boundaries-partial` replaces `boundaries-ok` (it
+follows `boundaries-summary` when there are violations): a part whose declared
+rules were not read, whose style is undetermined, that has no layer style or
+too few files to judge; the files in no part (`in-no-part`, part `-`); a part
+with rules in which no file is in a layer (`no-file-in-a-layer`); the source
+files of a part in a language no parser reads (`not-parsed-language`, with
+`:languages`; these files are in no module, `:files-in-part` is their number).
+`:checked` counts the files a rule places: in a layer, or as a test. A file of
+a checked part that no rule places is not judged and not counted as checked:
+`boundaries-no-layer` gives the number per part and `:no-layer` the total, on
+every line that carries `:checked`; the keyword is absent when the number is
+zero. `boundaries-rules-changed` comes first when `.wingbox/config.yaml`,
+`.wingbox/baseline.sexp` or the learned layers of `.wingbox/decisions.sexp`
+differ from what the build read (`arch-rule-files`): the facts are older than
+the rules, and no `boundaries-ok` is printed. Exit status: 2 when a part's
+declared rules were not read (that part was not checked) or the scope matches
+no module, else 1 when a violation, a capability violation or a pattern break
 was found, else 0.
 
 `boundaries --strict` is the form for a gate. It prints the same lines, then a
 `boundaries-checked` fact for each part that was checked and `boundaries-result`
-as the last line of standard output. Its exit status follows `:status`: 0
-`pass` (every part with files was checked, at least one file was checked,
-nothing breaks a rule), 1 `fail` (a violation, a capability violation or a
-pattern break), 2 `incomplete` (a part was not checked for any reason,
-including an undetermined style, no layer style, too few files and files in
-no part - reason `in-no-part` on their `boundaries-not-checked` line - or no
-file was checked), 3 `error` (no graph, a graph that cannot be read, an
-invalid argument). `:known` counts the breaks accepted in a baseline; they do
-not change the status.
+as the last line of standard output; `boundaries-ok` is printed only when the
+result is `pass`. Its exit status follows `:status`: 0 `pass` (every part with
+files was checked, at least one file was checked, the graph is not known to
+be older than the files or the rule files, nothing breaks a rule), 1 `fail`
+(a violation, a capability violation or a pattern break), 2 `incomplete`, 3
+`error` (no graph, a graph that cannot be read, an invalid argument). The
+`:reason` of `incomplete` is the first that applies: `graph-stale` (the graph
+is known to miss changed files: the refresh is off, failed or timed out),
+`rules-changed`, `part-not-checked` (a `boundaries-not-checked` line with one
+of the first five reasons), `not-parsed-language`, `no-files-checked` (a part
+with no file in a layer, or no file checked at all). `:known` counts the
+breaks accepted in a baseline and `:no-layer` the files no rule places; they
+do not change the status.
 
 `violation`: both layers come from rules. `violation-known`: the same, but the
 pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`
@@ -567,6 +637,7 @@ What a layer may do (capability rules) follows, when a file breaks one:
 (pattern-violation <file> :pattern controller-skips-service :target <repository file> :part <part> :style <style> "<reason>")
 (pattern-violation <file> :pattern service-builds-http-response :line 12 :evidence "return JSONResponse(...)" ...)
 (capability-summary :violations 3 :known 0 :candidates 1 :patterns 2 :checked 707)
+(capability-not-read :part <part> :language <language> :files <n>)   ; before the lines above
 ```
 
 Capabilities (`scripts/architecture/capabilities.py`), found by syntax in
@@ -581,8 +652,13 @@ style states `allowed_in` or `forbidden_in` layers per capability (its
 replaces a rule. One line per file and capability, at the first line that
 shows it. `capability-candidate`: a SQL literal no query call on the line (or
 the call opened just above) receives, or a layer guessed from the role of the
-file. A composition root, tests and files in no layer are not judged; a part
-with declared rules has no capability rules. Pattern checks of the style:
+file. A composition root, tests and files in no layer are not judged (a
+composition root or a test that a file of a layer imports is judged like the
+files of its folder); a part with declared rules has no capability rules.
+`capability-not-read`: the part has capability rules and files in a language
+the detector does not read (Rust, Dart, Pascal, C and C++), so nothing is
+said about what those files do; the status does not change. The detector
+reads the first 2000 characters of a line. Pattern checks of the style:
 `controller-skips-service` (a controller imports a repository and the style
 has a service layer), `service-builds-http-response`, `domain-imports-orm`
 (set on the db-client violation of a domain file).
@@ -619,12 +695,25 @@ names the file and its direct dependents. With `--only tests` the form says
 `:only tests` and holds the test files alone; in a graph with `(target ...)`
 and `(ctest ...)` facts (the build targets and tests of the CMake files) it
 is followed by `(affected-targets <file> <target> ...)` and `(affected-tests
-<file> <test> ...)`. Before the form of a C or C++
+<file> <test> ...)`, and by `(unread-targets <file> <target> ...)` when the
+graph holds targets marked `:sources unread` (an argument of their source
+list was not read) that the answer does not name. Before the form of a C or C++
 source file stands `(impact-paired-header <file> <header>)` (the rows marked
 `:basis paired-header` include that header) or `(impact-no-includers <file>)`.
 `impact --diff [ref]` ends with one `(changed <file>::<name> :line N :used-by
 (<file> ...))` fact per changed function, with `:targets (...) :tests (...)`
-after `:used-by` under `--only tests` in a graph with build facts. The form is complete: nothing is cut.
+after `:used-by` under `--only tests` in a graph with build facts. Under
+`--only tests` the list holds test files: a function that no test file uses
+directly and N other files do use carries `:other-users N` after its empty
+`:used-by ()`. Lines that were only removed count for the definition that
+holds the line above them. After these facts stands one `(changed-file <path>
+:status deleted :dependents unknown)` per file the diff deletes and one
+`(changed-file <old path> :status renamed :to <new path> :dependents
+unknown)` per renamed file (`changed_files` in JSON): such a path is no
+longer in the graph, so the files that depended on it are not listed (search
+for its name with `grep`); the new path of a rename has its own form.
+`(impact-diff-empty <ref>)` means that Git reports no change below the graph
+root, and nothing else. The form is complete: nothing is cut.
 The `(advice ...)` facts that concern a file follow its form.
 
 `impact --summary` prints `(impact-summary <file> :direct N :total M :depth D
@@ -634,7 +723,8 @@ depth, `(kinds :generated N :tests N :entry-points N :other N)`, `(folders
 `(first <file> ... [:more N])` at most twenty files, `(build :targets N :tests
 M)` under `--only tests` in a graph with build facts, and `(full "<command>")`,
 the command of the complete list. With `--diff` each changed function is one
-`(changed-summary <file>::<name> :line N :used-by K [:targets T :tests M])`.
+`(changed-summary <file>::<name> :line N :used-by K [:other-users N]
+[:targets T :tests M])`, followed by the same `(changed-file ...)` facts.
 
 `graph` says when the graph file was written (UTC), how many files it holds
 and how many changed files it is known to miss: 0 after the refresh that every
@@ -734,6 +824,7 @@ graph gives its `(error no-match ...)` line and exit status 0.
 
 ```scheme
 (grep-fn <mod>::<fn> :line 55 :lang ts :file <path> :match "matched line text")
+(grep-fn <mod>::<Class>.<method> :line 71 :lang py :file <path> :match "a line inside a method")
 (grep-functions-summary :matches 12 :pattern "pattern")
 (grep-functions-empty "pattern")
 ```
@@ -786,9 +877,24 @@ read or are a symbolic link; their lines are never printed.
 (diff-fn <mod>::<name> :kind fn :line 42 :lang ts :file <path>)
 (diff-functions-summary :changed 5 :files 3 :ref "HEAD")
 (diff-file <path> :hunks 2)
+(diff-file <path> :hunks 1 :status deleted)
+(diff-file <old path> :hunks 0 :status renamed :to <new path>)
 (diff-functions-no-match :files 3 :ref "HEAD")
 (diff-functions-empty "HEAD")
+(error git-diff-failed "<the message of Git, on one line>")
+(error invalid-argument "not a git ref: ...")
 ```
+
+The files are those Git reports as changed below the graph root, by their
+paths relative to it. A changed line belongs to the definition that starts
+at or above it (the last definition of a file runs to its end), and lines
+that were only removed to the definition that holds the line above them. `diff-file`
+lines stand in place of `diff-fn` lines when no definition matches; those
+with `:status` name a file the diff deletes or renames and are printed in
+every answer. `diff-functions-empty` means that Git reports no change. An
+error ends the command with a non-zero exit status: 2 for a ref that starts
+with `-` (Git would read it as an option; Git is not started), 1 when Git
+cannot give the diff.
 
 ## query / repl Output
 

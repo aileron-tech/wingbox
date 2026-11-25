@@ -102,16 +102,28 @@ Wingbox is safe to run on code that must not leave the company:
   `docker run --rm --network none -v "$PWD":/repo wingbox`
   (PowerShell: `docker run --rm --network none -v "${PWD}:/repo" wingbox`).
   The one command that reaches the network is `wingbox update`, which runs
-  your package installer (pipx, uv or pip) when you ask it to.
+  your package installer (pipx, uv or pip) when you ask it to. The one build
+  option that can is `--lsp`, off by default: see "never run" below.
   Wingbox listens on no port either. Serving the MCP server to another machine is a
   separate package, `wingbox-http`, that you install and start yourself; it only
   answers the requests that reach it and opens no connection of its own.
 - **No model, no account, no key, no telemetry.** Nothing is sent to a model
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
-  parsers and calls `git` for the ignore rules; it does not execute the code,
-  the tests or the build of the repository. The `--lsp` option, off by
-  default, starts a language server that is installed on the machine.
+  parsers and calls `git` for the ignore rules, the state of the work tree
+  and a diff; it does not execute the code, the tests or the build of the
+  repository. Every `git` call on a repository switches off the programs
+  that its own Git configuration can name (`core.fsmonitor`, hooks,
+  filter, diff and signature programs, Git inside a submodule, a fetch of
+  missing objects). One option is the exception:
+  `wingbox build --lsp`, off by default, starts the language servers that are
+  installed on the machine (`rust-analyzer`, `gopls`, `jdtls`, `csharp-ls`,
+  `typescript-language-server`, `pyright-langserver`, `clangd`, `ruby-lsp`,
+  `intelephense`, `dart language-server`), and what such a server does is its
+  own: it can run the build of the project (Cargo build scripts and
+  procedural macros, a Gradle or Maven import) and fetch dependencies from a
+  package registry. Leave `--lsp` off for code you do not trust and where
+  nothing may leave the machine.
 - **The results stay in one folder of the repository, `.wingbox/`:** the
   graph `index.sexp`, `REPORT.md` and `map.html`. The map is one HTML file
   that loads nothing from outside and opens offline.
@@ -301,8 +313,8 @@ of a codebase, documents and images for coding agents; CodeGraph and OntoIndex
 index code for agents. Wingbox is narrower: a deterministic graph of the code
 alone, built without a model, and exact lists of what depends on a file. The
 four ran on the same public repositories, questions, reference lists and
-scoring (Wingbox 0.5.1, Graphify 0.9.110, CodeGraph 1.6.2, OntoIndex 3.1.9;
-no model inside any of the tools):
+scoring (Wingbox 0.10.0, the FastAPI row with Wingbox 0.9.1; Graphify 0.9.110,
+CodeGraph 1.6.2, OntoIndex 3.1.9; no model inside any of the tools):
 
 | Test | Wingbox | Graphify | CodeGraph | OntoIndex |
 |---|---|---|---|---|
@@ -316,7 +328,7 @@ Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
 Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).
 
 What the others do better: CodeGraph's answers are the shortest where it
-answers (1,000 tokens against 1,065 for Wingbox on the same three questions),
+answers (1,000 tokens against 1,454 for Wingbox on the same three questions),
 and per its documentation it covers more languages (Swift, Kotlin, C, C++, Lua
 and others); per its documentation Graphify also maps documents, PDFs, images
 and videos. `graphify affected` follows calls and references as well as
@@ -514,15 +526,26 @@ Four options narrow or widen what `impact` answers:
   targets and tests, two more facts follow: `(affected-targets <file> <target>
   ...)`, the targets that compile the file or one of its listed dependents,
   and `(affected-tests <file> <test> ...)`, the names to give to `ctest -R`
-  (`targets` and `tests` in JSON); see
+  (`targets` and `tests` in JSON); `(unread-targets <file> <target> ...)`
+  names the targets whose source list was not all read; see
   [C and C++ dependency search](#c-and-c-dependency-search).
 - `wingbox impact --diff [ref]` answers for every file a diff changes (`ref`
   defaults to `HEAD`: the changes of the working tree) and adds one
   `(changed <file>::<name> :line N :used-by (<file> ...))` fact per changed
   function with the other files that use it. For a C or C++ function the files
-  that use it through the declaration in its header are included. Both options
+  that use it through the declaration in its header are included. Lines that
+  were only removed count for the definition that holds the line above them.
+  A file the diff deletes and the path a renamed file had are no longer in
+  the graph, so the files that depended on them cannot be listed: each is
+  named by `(changed-file <path> :status deleted :dependents unknown)` or
+  `(changed-file <old path> :status renamed :to <new path> :dependents
+  unknown)` (`changed_files` in JSON), and the new path of a rename gets its
+  answer. `(impact-diff-empty <ref>)` is printed only when Git reports no
+  change below the graph root. Both options
   go together: `wingbox impact --diff --only tests`, where each changed
-  function also names the CMake targets and tests of the files that use it.
+  function also names the CMake targets and tests of the files that use it;
+  a function that no test file uses directly and N other files do use says
+  `:other-users N` after its empty `:used-by ()`.
 - `wingbox impact <file> ... --summary` answers in a few lines where the
   complete list has hundreds: the number of dependents at each depth and of
   each kind (made from the file or started by it, test files, entry points,
@@ -577,7 +600,9 @@ positions of every file and keeps them. In a larger one it reads the positions
 from the files that hold the name (a few seconds where the build takes a
 minute) and answers; it also starts one process that reads the positions of
 every file (about as long as a build) and keeps them, so the next calls answer
-at once. `WINGBOX_POSITIONS_FILL=0` leaves that process out: every `usages`
+at once. A file that uses the symbol under another name (an alias, a
+re-export) does not hold the name: such an answer lists it without a position
+and says `:incomplete positions-pending`. `WINGBOX_POSITIONS_FILL=0` leaves that process out: every `usages`
 then reads the files that hold its name; `=1` takes that way in a small
 repository too. Python, TypeScript, JavaScript, Rust, C and C++
 have use positions; in other languages `usages` names the files that
@@ -688,7 +713,10 @@ parts:
 ```
 
 Move a folder to another entry, put two folders into one layer
-(`- sales: [shop, app]`) or reorder the entries, then build again. From then
+(`- sales: [shop, app]`) or reorder the entries, then build again. A layer
+name is one word of letters, digits, `_`, `.` and `-`, and a folder has one
+layer; the build stops, with the line, on a key it does not know, on a key
+or a part folder written twice and on a file it cannot read. From then
 on `wingbox boundaries`, the report, `wingbox place` and the pull request
 check treat the part like any part with a style: an import of a higher layer
 is a violation, and the ones accepted with `wingbox align --learn` are
@@ -700,7 +728,8 @@ graph, C and C++ included.
 
 `wingbox init [PATH] [--force] [--sexp] [--details]` splits the repository into parts and
 judges the architecture style of each, then writes `.wingbox/config.yaml` and
-adds `/.wingbox/` to the project's `.gitignore`:
+adds `/.wingbox/` to the project's `.gitignore` (a file that already has a rule
+about `.wingbox` is left as it is):
 
 ```
 $ wingbox init
@@ -749,6 +778,28 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
 - **Folder names.** A folder matches a style word as a whole name after
   lowercasing and dropping `-` and `_`; a spelling variant one edit away
   matches (`controlers`). Each label says which step matched.
+- **Files the rules exempt.** A test may import anything and a composition
+  root wires the layers, so no rule is stated for them. Tests are the files
+  in a test folder (`test`, `tests`, `spec`, `specs`, `testing`, `mocks`,
+  `fixtures`, `__tests__`, `__mocks__`, `e2e`, `testdata`,
+  `integration_test`, or a folder whose name starts with `test`, `tests`,
+  `spec`, `specs` or `e2e` and a `-`, `_` or `.`: `test-utils`) and the
+  files named `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `test_*`,
+  `*.test-*`, `*.spec-*`, `tests.py`, `*Test.java`, `*Tests.cs` or
+  `*Test.cs` (a pattern with a capital letter is matched as written:
+  `Latest.java` is no test). A composition root is a file of a layer named
+  `main.*`, `program.*`, `startup.*`, `bootstrap.*`, `container.*`,
+  `composition*.*`, `app.module.*`, `dependencyinjection.*` or `wire.go`
+  (`index.ts` in the part folder or one folder below it), or a file that
+  imports a name that starts the application (`NestFactory`, a
+  nest-commander command). The names are in
+  `scripts/architecture/styles/index.toml`. The exemption holds while only
+  tests and composition roots import the file. Once a file of a layer
+  imports it, it could pass any import on, so it is judged like any file of
+  its folder: `src/models/container.ts` imported by a model is a domain
+  file, and a test helper imported by production code takes the layer of
+  the files beside it. Importing a file named `main.*` does not exempt the
+  importing file either.
 
 - **Target layout.** For each part with a style, `init` lists the full layout
   of that style: one folder per layer and the building blocks of the domain
@@ -799,7 +850,12 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   `capabilities:` of a part in `.wingbox/config.yaml` restates a rule; REPORT.md
   ("What layers do") and `wingbox advice` (`fix-capability`, `fix-pattern`)
   name the fix; `align --learn` accepts the current ones in the baseline. SQL
-  assembled at run time or behind a helper of another package is not seen.
+  assembled at run time or behind a helper of another package is not seen,
+  nor is what stands after the first 2000 characters of a line. In a part
+  with capability rules, the files of a language the detector does not read
+  (Rust, Dart, Pascal, C and C++) are named:
+  `(capability-not-read :part . :language Rust :files 21)`; the status does
+  not change.
 
 - **Align.** `wingbox align [PART] [--to STYLE] [--learn]` measures the gaps
   of each part against its style: files placed, dependencies that follow the
@@ -824,10 +880,17 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
 
   (one line in the file). `wingbox boundaries` prints the owner, the reason
   and the date on the `violation-known` line. `:expires` is the last day the
-  entry holds: from the next day, or when the date is not `YYYY-MM-DD`, the
-  break is a `violation` again (with `:expired <date>`), `boundaries` exits 1
-  and `wingbox advice` asks for the fix again. `baseline-capability` entries
-  take the same fields.
+  entry holds: from the next day, or when the date is not a `YYYY-MM-DD` day
+  of the calendar (`2026-99-99`), the break is a `violation` again (with
+  `:expired <date>`), `boundaries` exits 1 and `wingbox advice` asks for the
+  fix again. An end date is changed in its entry: a second entry for the same
+  two files does not undo it (of two end dates the earlier holds).
+  `baseline-capability` entries take the same fields. An entry that states a
+  `:rule` accepts a break of that rule only: when the layers of the two files
+  change and they break another rule, that is a new violation. An entry
+  without `:rule` accepts the pair whatever the rule, and a
+  `baseline-capability` entry accepts its capability in the whole file (its
+  `:line` is where it was first seen).
 
 - **A new project.** In a folder without source files, `init` asks the
   language and offers the styles that fit it, best first: the style of the
@@ -1149,6 +1212,15 @@ not in the graph, and Wingbox says so instead of answering around them:
   `not-source` (a document, a data file). For such a file search the text
   (`wingbox grep`, `rg`): the graph knows nothing about it. `--sexp` keeps the
   `no-match` line of version 0.13.
+- One source file never stops a build. A file the parser fails on
+  (`parser-failed`), a file that cannot be read (`unreadable`), binary content
+  under a source extension, which is a NUL byte in the first 8 KB (`binary`),
+  and a file whose path holds a line break or another control character
+  (`file-name`) are left out. The build prints one warning with their number
+  and the first of them, maps every other file and writes one
+  `(not-parsed-file "<path>" :reason <reason>)` fact per file to
+  `.wingbox/graph-unparsed.sexp`; a question about such a file answers
+  `not-in-graph` with that reason.
 
 The count covers the programming, build and shader languages listed in
 `scripts/source_kinds.py`; a document or a data file is not a language.
@@ -1250,7 +1322,9 @@ The generated files are rewritten on every build and never committed thanks to
 `.wingbox/.gitignore`. `wingbox init` ignores the whole folder at the project
 level. Files already tracked by Git continue to be tracked. A `.wingbox/`
 folder copied or moved to another place is read as it is but never refreshed
-there: queries say `rebuild`. Wingbox deletes nothing outside `.wingbox/`;
+there: queries say `rebuild`, and it gives no skipped-language note. Wingbox
+writes nothing through a symbolic link at `.wingbox` or below it: a command
+that would names the link and stops. Wingbox deletes nothing outside `.wingbox/`;
 `wingbox update` names files that versions before 0.4.1 left in a project
 (`.code_graph*`, `wingbox-out/`) so that you can remove them.
 
@@ -1380,9 +1454,18 @@ annotations: a title, and read-only for every tool except `build_graph`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
 ```bash
-wingbox mcp                         # serve the current directory
+wingbox mcp                         # serve the project of the current directory
 wingbox mcp --root /path/to/project
 ```
+
+`--root DIR` (default: the current directory) is where the search for the code
+graph starts, as for every `wingbox` command, not a boundary: the server serves
+the project that holds DIR, the nearest folder at or above it with
+`.wingbox/index.sexp`, and the tools answer for that whole project. Its first
+log line and its `instructions` name the project that is served. In a folder
+that is in no source repository (no `.git` and no project manifest with source
+files at or above it) every tool, `build_graph` included, answers that there
+is nothing to map, and nothing is written.
 
 The server speaks protocol revision 2026-07-28 (requests with per-request
 `_meta`, `server/discover`) and the `initialize` handshake of revisions
@@ -1519,12 +1602,22 @@ library, listens and answers, and opens no connection of its own.
 - Any other address is refused without a token of at least 32 characters, from
   `WINGBOX_HTTP_TOKEN` or `--token-file FILE`. Clients send it as
   `Authorization: Bearer <token>`; it is never read from the command line and
-  never logged.
+  never logged: an option the command does not know is refused by its name,
+  without repeating what was typed after it.
 - `--tls-cert` and `--tls-key` serve HTTPS. Without them the token travels
   unencrypted: keep the port inside a private network or behind a TLS proxy.
-- A browser request from a foreign origin is answered 403 (`--allow-origin`
-  adds one). `GET` and `DELETE` are answered 405: the server keeps no session
-  and opens no stream of its own.
+- A browser request from a foreign origin is answered 403. `--allow-origin
+  ORIGIN` adds one and lets its pages read the answers: its preflight
+  (`OPTIONS`) is answered, and the answers carry `Access-Control-Allow-Origin`.
+  Requests from loopback origins pass without the option but never get such a
+  header: its absence is what keeps a page of another local site from reading
+  a listener that asks for no token. `GET` and `DELETE` are answered 405: the
+  server keeps no session and opens no stream of its own.
+- What a client can hold is bounded, with or without a token: at most 64 open
+  connections and 16 calls running or waiting, beyond which the answer is 503;
+  the header and the body of a request must arrive within 30 seconds in all;
+  and a call that still waits for its turn when its client closes the
+  connection is not run. A call that is running cannot be interrupted.
 - A call that runs longer than a second, such as `build_graph` on a large
   repository, is answered as an event stream with a keep-alive line every ten
   seconds, so an idle timeout on the way does not cut it.
@@ -1586,13 +1679,28 @@ keeps reading the same lines. `boundaries` reports
 an import of TypeScript types only apart from the violations: the compiler
 erases it, but a change of the type still reaches the importing file.
 `boundaries` prints `boundaries-ok` only when every part with files was
-checked. A part whose own rule files were not read (or without a determined
-style) comes first as `(boundaries-not-checked :part . :reason
-declared-rules-not-read :files (.dependency-cruiser.js) :files-in-part 1177)`,
-and `(boundaries-partial :checked N :not-checked M)` replaces `ok`. Exit
-status: 2 when a part's declared rules were not read, 1 when a violation was
-found, 0 otherwise; REPORT.md, `wingbox advice` and the MCP `boundaries` tool
-say the same.
+checked and nothing breaks a rule. What was not checked comes first as
+`(boundaries-not-checked :part . :reason declared-rules-not-read :files
+(.dependency-cruiser.js) :files-in-part 1177)`, and `(boundaries-partial
+:checked N :not-checked M)` replaces `ok`: a part whose own rule files were
+not read or without a determined style, files that belong to no part
+(`in-no-part`), a part with rules in which no file is in a layer
+(`no-file-in-a-layer`), and the source files of a part in a language Wingbox
+has no parser for (`not-parsed-language`, with `:languages`; they are in no
+module, so no rule reads them). `:checked` counts the files a rule places (in
+a layer, or as a test). The files of a checked part that no rule places are
+not judged and not counted as checked: each such part has a
+`(boundaries-no-layer :part . :files-in-part 3)` fact, the `ok`, `summary`,
+`partial` and result lines carry `:no-layer 3`, and `wingbox layers` shows the
+files with `:match none` (or `role` or `package`, a layer that is only a
+guess). When `.wingbox/config.yaml`, `baseline.sexp` or the
+learned layers of `decisions.sexp` changed after the build, the first line is
+`(boundaries-rules-changed :files (.wingbox/baseline.sexp) :hint "rebuild:
+wingbox build")` and no `ok` is printed. Exit status: 2 when a part's declared
+rules were not read or the scope names no module of the graph, 1 when a
+violation was found, 0 otherwise; REPORT.md and `wingbox advice` name the
+parts whose rules were not read or determined, and the MCP tool
+`check_boundaries` prints the lines of the command.
 
 For a gate (CI, a pre-merge check) add `--strict`: `wingbox boundaries all
 --strict` prints the same lines, then one `(boundaries-checked :part P :style
@@ -1605,17 +1713,23 @@ standard output, the result:
 
 | `:status` | Exit status | Meaning |
 |---|---|---|
-| `pass` | 0 | Every part with files was checked, at least one file was checked, and nothing breaks a rule |
+| `pass` | 0 | Every part with files was checked, at least one file was checked, the graph is not known to be older than the files or the rule files, and nothing breaks a rule |
 | `fail` | 1 | A violation: a broken layer rule, a capability violation or a pattern break (whatever else was not checked) |
-| `incomplete` | 2 | No violation, but a part was not checked, for any reason (`:reason part-not-checked`), or no file was checked at all (`:reason no-files-checked`) |
+| `incomplete` | 2 | No violation, but the check is not complete. `:reason`, the first that applies: `graph-stale` (the graph is known to miss changed files: the refresh is off, failed or timed out), `rules-changed` (a rule file changed after the build), `part-not-checked` (a part, or files in no part, were not checked), `not-parsed-language` (source files of a part are in a language without a parser), `no-files-checked` (a part has no file in a layer, or no file was checked at all) |
 | `error` | 3 | The check could not run: `:reason no-graph` (no `.wingbox/`), `invalid-graph` (the graph cannot be read) or `invalid-argument` |
 
-`:checked` and `:not-checked` count files, `:violations` the breaks that are
-not accepted, `:known` the breaks accepted in a baseline (they do not fail the
-gate; read the number to fail on them). In strict mode a part without a
-determined style, without a layer style or with too few files to judge, and
-files that belong to no part, are never a pass. Without `--strict` the output
-and the exit status are as described above.
+`:checked` counts the files a rule places and `:not-checked` the files that
+were not checked or not read, `:violations` the breaks that are not accepted,
+`:known` the breaks accepted in a baseline (they do not fail the gate; read
+the number to fail on them). `:no-layer N` follows `:known` when N files of
+the checked parts are in no layer: the rules say nothing about them, they do
+not change the status, and the number tells a gate how much of the code the
+rules do not cover. In strict mode a part without a determined style, without
+a layer style or with too few files to judge, files that belong to no part,
+files that were not read and facts older than the files or the rules are
+never a pass, and `boundaries-ok` is printed only in an answer whose result
+is `pass`. Without `--strict` the output and the exit status are as described
+above.
 
 Pass `--map` and `--root` (see [Running the scripts from a clone](#running-the-scripts-from-a-clone))
 when the graph is outside the current directory and its parents.
@@ -1660,7 +1774,11 @@ builds a project-local constant index and follows conservative Zeitwerk naming
 rules, so changing a shared model, concern, service, job, or mailer can reveal
 its likely callers and affected specs.
 
-The default Ruby map does not boot Rails. Ambiguous reopened constants remain
+The default Ruby map does not boot Rails. An association name is made singular
+by the rules of Rails (`has_many :statuses` is `Status`, `:people` is
+`Person`), and a scoped constant that resolves nowhere links the file of its
+scope (`User::LIMIT`, with `LIMIT` defined in a concern that `User` includes,
+links `User`). Ambiguous reopened constants remain
 unlinked, polymorphic associations stay open, and external or dynamic Ruby
 calls are not guessed. This keeps blast-radius results useful without executing
 application code.
@@ -1673,7 +1791,13 @@ Wingbox reads every `composer.json` (the root manifest and a module's nested
 one) and merges `autoload.psr-4` with `autoload-dev.psr-4`, the longest matching
 prefix first, as Composer does. A `.php` file is indexed as PHP, a `.blade.php`
 file as Blade: classes, interfaces, traits, enums, methods, attributes, `use`
-aliases and grouped uses, `extends`, `implements` and trait use.
+aliases and grouped uses, `extends`, `implements` and trait use. A function
+and a constant declared outside a class are entities too: `use function` and
+`use const` link the file that declares them, a call links the one file that
+declares the function (the namespace of the calling file first, then the
+global functions, as PHP looks them up), and `require __DIR__ . '/path.php'`
+(also `include`, `_once`, `dirname(__FILE__)` and `dirname(__DIR__)`) links
+the required file.
 
 Laravel conventions become edges. `view('users.show')`, `View::make(...)` and
 `view()->make(...)` name the template; a namespaced `admin::nav` uses the
@@ -1685,7 +1809,14 @@ component resolves through `Livewire::component(...)` registrations, its flat
 or dotted alias under `App\Livewire` or a module's `Livewire` folder, or its
 `livewire.<alias>` template; a component class that extends
 `Livewire\Component` also links to the template named after it
-(`App\Livewire\Chat\FileUpload` to `livewire.chat.file-upload`).
+(`App\Livewire\Chat\FileUpload` to `livewire.chat.file-upload`). An `<x-alert>`
+tag also links the class `View\Components\Alert` of the application when it
+has one, and a template links the classes it names: `@inject('name',
+'Class')`, `@use('Class')` and a qualified `\App\Models\Post::` in its code.
+`$this->view('emails.welcome')` names the template of a mailable, and a route
+action written `'HomeController@index'` links the controller: the class of
+that full name, else the one class `Http\Controllers\HomeController` of the
+application.
 
 Eloquent associations create edges when the first argument is `X::class`
 (`belongsTo`, `hasOne`, `hasMany`, the through and morph variants);
@@ -1697,7 +1828,10 @@ are service, `app/Events` is domain, and tests are test.
 
 The map is conservative: a class name that no file declares, or that several
 files declare without a single PSR-4 owner, creates no edge, and so do an alias
-with several targets and a view in several view directories. IDE-helper stubs
+with several targets and a view in several view directories. A function that
+two files declare creates no edge either, nor does a constant used without
+`use const`, a `require` whose path is not built from `__DIR__`, or a route
+action in a group that sets another namespace. IDE-helper stubs
 such as `_ide_helper_models.php` do not shadow the real class: the file the
 PSR-4 map autoloads wins. A Livewire alias that the application registers
 dynamically, in a loop over a directory for example, is left unlinked unless it
@@ -1721,12 +1855,19 @@ this order:
    order. A header has no entry of its own and takes the folders of the entries
    of the nearest folder. CMake writes the file with
    `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`.
-2. Without that file, the folders the CMake files of the repository name
+2. Without that file, and for a file that no entry of it covers (a database
+   of part of the tree: no translation unit in the folder of the file or
+   above it), the folders the CMake files of the repository name
    literally in `target_include_directories` and `include_directories`
    (`${CMAKE_CURRENT_SOURCE_DIR}`, `${CMAKE_CURRENT_LIST_DIR}`,
-   `${PROJECT_SOURCE_DIR}`, `${CMAKE_SOURCE_DIR}` or a relative path).
+   `${PROJECT_SOURCE_DIR}`, `${CMAKE_SOURCE_DIR}` or a relative path), and
+   after them, for such a file, every include folder of the database.
 3. Last, for a quoted name, the one file of the repository whose path ends
-   with the written name.
+   with the written name, and then the one file the name names when the case
+   of its letters is not compared (`"Core.h"` for `core.h`).
+
+An include found by step 2 or 3 is marked `inferred` in the graph: no
+compiler was given that folder for that file.
 
 A name that none of these finds is no dependency: a system header, a library
 outside the repository, a path that two files end with. A name in angle
@@ -1791,9 +1932,16 @@ source file that a test includes after declaring mocks for it).
 
 Build targets and tests. A build also reads what the CMake files state
 literally: `add_executable` and `add_library` with their source files,
-`target_sources`, and `add_test` in both forms. The graph holds one
+`target_sources`, and `add_test` in both forms. A source list may name a
+variable that the same CMake file sets once, at its top level, with literal
+values (`set(CORE_SOURCES core.cpp detail.cpp)`): its values are read, and a
+variable with one value is read inside a path too (`${SRC_DIR}/core.cpp`).
+Nothing else is evaluated: a variable set twice, appended to, set inside
+`if()` or another block, set in another file or filled by `file(GLOB ...)`
+stays unread, and so does a generator expression. The graph holds one
 `(target <name> :kind executable|library :in "<CMake file>" <module> ...)`
-fact per target and one `(ctest <name> :target <target> ...)` or
+fact per target, with `:sources unread` after the kind when an argument of
+its source list was not read, and one `(ctest <name> :target <target> ...)` or
 `(ctest <name> :runs ... <module> ...)` fact per test: the target the test
 runs (its command, or a `$<TARGET_FILE:<target>>` among its words) and the
 files of the repository its command names, a Python script for one.
@@ -1815,10 +1963,15 @@ not followed: a test of an executable that links a library and includes none
 of its headers is not named for a change inside that library. With `--diff
 --only tests` each `(changed ...)` fact carries `:targets (...) :tests (...)`
 as well: those of the file and of the files that use the changed function,
-usually far fewer than those of every dependent of the file. Not read: a
+usually far fewer than those of every dependent of the file. The targets
+marked `:sources unread` that the answer does not already name follow in
+`(unread-targets <file> <target> ...)` (`unread_targets` in JSON, a line in
+the text): the file may be one of their sources, so they are named, not left
+out. Not read: a
 target or a test whose name is written with a variable, what a function or a
 macro of the project adds, a command kept in a variable, an alias and an
-imported target.
+imported target. A call inside a comment, the bracket form `#[[ ... ]]`
+included, is no call.
 
 What is not read: the preprocessor is not run, so every branch of an `#if` is
 read and an include whose name is a macro is skipped; a header that a build
@@ -1846,7 +1999,9 @@ project module, so neither creates an edge.
 A file is indexed from its own text: classes, mixins, enums, extension types,
 extensions, type aliases and functions, with the members of each class, its
 `extends`, `with`, `implements` and `on` types, and `class A = B with M`. A
-`part`/`part of` pair links the library and its parts in both directions. The
+`part`/`part of` pair links the library and its parts in both directions,
+also when the part names its library (`part of app.main;` links the file that
+declares `library app.main;`). The
 generated parts that `build_runner` writes (`*.g.dart`, `*.freezed.dart`) are
 never required to exist: an import or a part directive whose file is missing
 adds nothing, so a fresh clone builds before code generation has run, and a

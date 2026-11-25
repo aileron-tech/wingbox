@@ -69,6 +69,8 @@ _BUILD_OUTPUT_DIRECTORIES = frozenset({"dist", "build", "lib", "out"})
 _BUILD_FORMAT_DIRECTORIES = frozenset({"esm", "cjs", "types"})
 # Extensions a specifier may leave out; .mjs and .cjs are always written in full.
 _IMPLIED_SUFFIXES = (".ts", ".tsx", ".js", ".jsx")
+# The files that state the path aliases of a project: TypeScript's, and the one editors read for JavaScript.
+_PROJECT_FILE_NAMES = ("tsconfig.json", "jsconfig.json")
 
 
 WalkedTree = list[tuple[str, list[str]]]  # (folder, its file names) in os.walk order
@@ -100,45 +102,55 @@ def _load_ts_path_aliases(
     """Load validated path mappings without merging independent projects."""
     contexts: list[TsPathAliasContext] = []
     loaded = {} if loaded is None else loaded
+    # The project files of the tree: every tsconfig.json and jsconfig.json, and the files their
+    # `references` name (tsconfig.app.json beside a tsconfig.json that only lists its projects).
+    project_files: dict[str, None] = {}
     for dirpath, filenames in _walk_tree(root, discovery_exclusions, walked):
         for fname in filenames:
-            if fname != "tsconfig.json":
-                continue
+            if fname in _PROJECT_FILE_NAMES:
+                project_files[os.path.normpath(os.path.join(dirpath, fname))] = None
+    todo = list(reversed(project_files))
+    seen: set[str] = set()
+    while todo:
+        tsconfig_path = todo.pop()
+        if tsconfig_path in seen:
+            continue
+        seen.add(tsconfig_path)
+        dirpath = os.path.dirname(tsconfig_path)
+        if is_excluded_path(discovery_exclusions, tsconfig_path):
+            continue
+        options = load_ts_path_options(tsconfig_path, loaded, root=root)
+        todo.extend(reference for reference in reversed(options.references) if os.path.isfile(reference))
+        if options.paths_directory is None and options.base_directory is None:
+            continue
+        # TypeScript resolves paths against baseUrl, else next to their tsconfig.
+        base_directory = options.base_directory or options.paths_directory
 
-            tsconfig_path = os.path.normpath(os.path.join(dirpath, fname))
-            if is_excluded_path(discovery_exclusions, tsconfig_path):
-                continue
-            options = load_ts_path_options(tsconfig_path, loaded)
-            if options.paths_directory is None and options.base_directory is None:
-                continue
-            # TypeScript resolves paths against baseUrl, else next to their tsconfig.
-            base_directory = options.base_directory or options.paths_directory
-
-            aliases = [
-                TsPathAlias(
-                    alias_pattern,
-                    tuple(
-                        os.path.normpath(os.path.join(base_directory, target))
-                        for target in targets
+        aliases = [
+            TsPathAlias(
+                alias_pattern,
+                tuple(
+                    os.path.normpath(os.path.join(base_directory, target))
+                    for target in targets
+                ),
+            )
+            for alias_pattern, targets in options.paths
+            if targets
+        ]
+        if aliases or options.base_directory is not None:
+            contexts.append(
+                TsPathAliasContext(
+                    config_directory=os.path.normpath(dirpath),
+                    aliases=tuple(
+                        sorted(
+                            aliases,
+                            key=lambda alias: len(alias.pattern),
+                            reverse=True,
+                        )
                     ),
+                    base_directory=options.base_directory,
                 )
-                for alias_pattern, targets in options.paths
-                if targets
-            ]
-            if aliases or options.base_directory is not None:
-                contexts.append(
-                    TsPathAliasContext(
-                        config_directory=os.path.normpath(dirpath),
-                        aliases=tuple(
-                            sorted(
-                                aliases,
-                                key=lambda alias: len(alias.pattern),
-                                reverse=True,
-                            )
-                        ),
-                        base_directory=options.base_directory,
-                    )
-                )
+            )
 
     return tuple(
         sorted(
@@ -164,7 +176,7 @@ def _load_ts_output_roots(
             tsconfig_path = os.path.normpath(os.path.join(dirpath, fname))
             if is_excluded_path(discovery_exclusions, tsconfig_path):
                 continue
-            options = load_ts_path_options(tsconfig_path, loaded)
+            options = load_ts_path_options(tsconfig_path, loaded, root=root)
             if options.output_directory is None:
                 continue
             # Without rootDir the compiler emits from the common folder of its inputs:
@@ -198,15 +210,17 @@ def _package_relative_parts(target: str) -> Optional[tuple[str, ...]]:
 
 def _export_targets(value: object) -> tuple[str, ...]:
     """Flatten one `exports` value (path, conditions, fallbacks) in declared order."""
-    if isinstance(value, str):
-        return (value,)
-    if isinstance(value, list):
-        return tuple(target for item in value for target in _export_targets(item))
-    if isinstance(value, dict):
-        return tuple(
-            target for item in value.values() for target in _export_targets(item)
-        )
-    return ()
+    targets: list[str] = []
+    todo = [value]
+    while todo:
+        current = todo.pop()
+        if isinstance(current, str):
+            targets.append(current)
+        elif isinstance(current, list):
+            todo.extend(reversed(current))
+        elif isinstance(current, dict):
+            todo.extend(reversed(list(current.values())))
+    return tuple(targets)
 
 
 def _package_exports(raw: object) -> tuple[TsPackageExport, ...]:

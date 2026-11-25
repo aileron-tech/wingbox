@@ -17,14 +17,17 @@ TOKEN_VARIABLE = "WINGBOX_HTTP_TOKEN"
 TOKEN_MIN_LENGTH = 32
 _TOKEN = re.compile(r"^[\x21-\x7e]+$")
 _ORIGIN = re.compile(r"^https?://[^/\s]+$")
+_OPTION_NAME = re.compile(r"--[a-z][a-z-]{0,22}")   # shorter than any token: what follows an unknown option is never repeated
 
 USAGE = f"""usage: wingbox-http [--root DIR] [--build-missing] [--host ADDRESS] [--port N]
                     [--token-file FILE] [--tls-cert FILE --tls-key FILE]
                     [--allow-origin ORIGIN]...
 
-Serve the Wingbox MCP server for the repository at DIR (default: the current
-directory) over the Streamable HTTP transport, at http://ADDRESS:N/mcp
-(default {DEFAULT_HOST}:{DEFAULT_PORT}). `wingbox mcp --http` is the same command.
+Serve the Wingbox MCP server for the project that holds DIR (default: the
+current directory; the nearest folder at or above DIR with a code graph, as
+every wingbox command finds it) over the Streamable HTTP transport, at
+http://ADDRESS:N/mcp (default {DEFAULT_HOST}:{DEFAULT_PORT}). `wingbox mcp --http` is the same
+command.
 
   --host ADDRESS       the address to listen on. Any address other than loopback
                        needs a token.
@@ -34,7 +37,12 @@ directory) over the Streamable HTTP transport, at http://ADDRESS:N/mcp
                        as `Authorization: Bearer <token>`.
   --tls-cert, --tls-key  serve HTTPS with this certificate and private key.
   --allow-origin ORIGIN  also accept browser requests from this origin
-                       (scheme://host[:port]); loopback origins always pass.
+                       (scheme://host[:port]) and let its pages read the
+                       answers: its preflight (OPTIONS) is answered and the
+                       answers carry Access-Control-Allow-Origin. Requests
+                       from loopback origins pass without the option but get
+                       no such header, so a page of another local site
+                       cannot read a listener that asks for no token.
   --build-missing      build the code graph of DIR in the background when it
                        has none."""
 
@@ -97,6 +105,18 @@ def _token(path: Optional[str], env: Mapping[str, str]) -> Union[Access, Problem
     return Token(value)
 
 
+def _unknown(arguments: list[str]) -> str:
+    """What to say about arguments the command does not take: the names of the options, never what follows
+    them or stands alone, which may be a token typed by mistake (the entry point prints this message)."""
+    names = list(dict.fromkeys(
+        name for name in (argument.split("=", 1)[0] for argument in arguments) if _OPTION_NAME.fullmatch(name)
+    ))
+    message = f"unknown option: {', '.join(names)}" if names else "an argument that is not an option is not expected"
+    if "--token" in names:
+        message += f" (the token is read from {TOKEN_VARIABLE} or --token-file, never from the command line)"
+    return message
+
+
 def read(args: list[str], cwd: str, env: Mapping[str, str]) -> Union[Settings, Problem]:
     parser = _Parser(prog="wingbox-http", add_help=False, allow_abbrev=False)
     parser.add_argument("--root", default=".")
@@ -108,9 +128,11 @@ def read(args: list[str], cwd: str, env: Mapping[str, str]) -> Union[Settings, P
     parser.add_argument("--allow-origin", action="append", default=[])
     parser.add_argument("--build-missing", action="store_true")
     try:
-        parsed = parser.parse_args(args)
+        parsed, unknown = parser.parse_known_args(args)
     except _Rejected as error:
         return Problem(str(error))
+    if unknown:
+        return Problem(_unknown(unknown))
     root = os.path.normpath(os.path.join(cwd, parsed.root))
     if not os.path.isdir(root):
         return Problem(f"--root is not a directory: {root}")

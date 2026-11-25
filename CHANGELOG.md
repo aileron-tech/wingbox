@@ -1,11 +1,203 @@
 # Changelog
 
-## Unreleased
+## 0.19.2 - 2026-11-25
 
 ### Changes
 
 - The interactive installer shows a Global Git ignore checkbox. Use
   `--global-gitignore` to preselect it.
+
+- After a review of 0.19.1 (answers that said "nothing depends on this" where something does, a
+  boundary gate that passed on code it never judged, writes and programs a repository could
+  cause, one file that stopped a build):
+
+  **Answers and their status**
+
+  - `analyze`, `deps`, `rdeps`, `module` and `boundary` take the path of a file of the graph as
+    well as its module ID; so do the MCP tools `describe_module`, `list_dependencies` and
+    `check_boundaries`.
+  - `analyze`, `deps`, `rdeps`, `module`, `boundary` and `flow` exit with status 1 when the file or
+    module asked about is not in the graph, as `impact` does and as the README said;
+    `usages <file>::Name` exits 1 when the file is not in the graph.
+  - A file name with an extension is matched exactly, from the repository root or the current
+    folder. A bare file name no longer matches a file of a like name in another folder: the answer
+    is `no-match` with suggestions. An empty argument is an invalid argument for every command.
+  - `impact --diff` names a deleted file and the old path of a renamed file with
+    `(changed-file <path> :status deleted|renamed [:to <new>] :dependents unknown)`
+    (`changed_files` in JSON), and `diff_functions` with `(diff-file ... :status ...)`. Lines that
+    were only removed are a change of their file and of the definition above them. The empty
+    answer now means that Git reports no change below the graph root.
+  - Under `impact --diff --only tests`, a changed function that only files other than tests use
+    carries `:other-users N`.
+  - `diff_functions` exits 1 when Git cannot give the diff and 2 for a ref that starts with `-`.
+    `impact --diff` and `diff_functions` need Git 2.24 or later, and in a partial clone they no
+    longer fetch missing objects.
+  - `usages` says `:incomplete <reason>` (`"incomplete"` in JSON) when its list may miss uses, and
+    lists a file that uses the symbol under another name without a position instead of leaving
+    it out.
+  - `impact --only tests` names the CMake targets whose source list was not all read:
+    `(unread-targets <file> <target> ...)`, `unread_targets` in JSON; the `target` fact carries
+    `:sources unread`.
+  - A graph file with fewer edge facts than its header declares is refused as an invalid graph.
+  - A file the build cannot take in is left out and recorded, and a question about it answers
+    `(error not-in-graph <file> :reason parser-failed|unreadable|binary|file-name)`.
+
+  **The boundary gate**
+
+  - `boundaries`: `:checked` counts the files a rule places. Files of a checked part that are in
+    no layer are counted apart: `(boundaries-no-layer :part P :files-in-part N)` and `:no-layer N`
+    on the ok, summary, partial and result lines. The status is unchanged by them.
+  - `boundaries` without `--strict` lists files in no part as not checked and prints
+    `boundaries-partial`, where it printed `boundaries-ok` with a count that included them. A
+    scope that matches no module exits 2.
+  - `boundaries --strict` is `incomplete` for a graph known to be older than the files
+    (`:reason graph-stale`), for rule files changed after the build (`rules-changed`), and for
+    source files of a part in a language without a parser (`not-parsed-language`). `boundaries-ok`
+    is printed only when the result is pass.
+  - A composition root (`main.*`, `container.*`, ...) or a test file that a file of a layer imports
+    is judged like the files of its folder, and importing such a file no longer exempts the
+    importing file. A gate that passed through such a file can fail now.
+  - A baseline entry that states `:rule` accepts a break of that rule only. An end date that is no
+    day of the calendar (`2026-99-99`) no longer hides its finding.
+  - `tests.py` is a test file; `*Test.java`, `*Tests.cs` and `*Test.cs` are matched as written
+    (`Latest.java` is no test).
+  - `boundaries` names the files of a part with capability rules that the capability detector
+    does not read: `(capability-not-read :part P :language L :files N)`.
+
+  **The architecture config**
+
+  - `.wingbox/config.yaml` is checked strictly: an unknown key, a key or a part written twice, a
+    folder under two layers, a layer name of `order` that is not one word, and a `declared` path
+    outside the repository stop the build with the line. A config that is there and cannot be
+    read (not UTF-8, no permission, too large) stops the build instead of being replaced by
+    detection.
+  - Part keys such as `./src` and `src/` name the folder `src`. A part that holds no source file
+    stays in the graph and the build names it in a warning. A folder listed under `layers:` or
+    `order:` that the part does not have (a typo such as `modles`) is named in a warning too: no
+    file gets its layer from that entry.
+  - `wingbox compare` prints `(compare-none ...)` instead of nothing when no part has a style and
+    a language. `wingbox learn --apply` exits 1 when the build after it fails.
+  - Rule files are read only when they are regular files inside the repository.
+
+  **Languages**
+
+  - Python: an absolute import is also looked for in the source roots of the repository (a
+    folder with a `pyproject.toml`, `setup.py` or `setup.cfg`, its `src/`, and the folders those
+    files name), so a test at the root depends on the package of a nested distribution. A name
+    that several roots hold stays unlinked. Inside a package, `import logging` is no longer
+    linked to a sibling `logging.py`.
+  - `usages` follows a name that an import inside a function or a class body binds, and
+    `usages <file>::Class.method` lists calls through the class name, on a module-level instance
+    or a Rust static, in Python, TypeScript and Rust.
+  - Go: the files of one package depend on each other through the names they use, so in-package
+    tests are found. C#: a partial class links every file that declares it; enclosing namespaces,
+    a `using` inside a namespace and a `global using` are followed. Java: a class used only through
+    static members, `::` or an annotation is a dependency. PHP: functions and constants outside a
+    class are entities; `use function`, `use const`, `require __DIR__ . '/...'`, the classes a Blade
+    template names and the class of an `<x-...>` component are dependencies. Ruby: `has_many
+    :batches`, `:people` and the like find their model. Rust: `include!("file.rs")` is a
+    dependency, and a crate name is read from the dependency tables of the importing package.
+    TypeScript and JavaScript: path aliases are read from `jsconfig.json` and from the project
+    files a `references` entry names. CMake: sources given through a variable that is set once
+    are read.
+  - A build says how many JavaScript files it left out for a line over 5,000 characters and names
+    them, and names a TypeScript file that its parser could not read completely (the imports of
+    such a file are still read, from its text).
+
+  **Where Wingbox writes and what it starts**
+
+  - Wingbox writes nothing through a symbolic link at `.wingbox` or below it. A `.wingbox` that is
+    a link, or a linked report, map, config, baseline, decision log, learned file, assistant setup,
+    refresh log or lock file, stops the command with one error that names the link.
+  - Every Git call switches off the programs that the configuration of the repository can name
+    (fsmonitor, hooks, filter, diff and signature programs, Git inside a submodule).
+  - `wingbox init` leaves a `.gitignore` that already has a rule about `.wingbox` as it is.
+    `.wingbox/refresh.log` keeps only its last part once it passes 1 MB.
+
+  **MCP server and HTTP transport**
+
+  - The HTTP transport keeps at most 64 connections open and 16 calls running or waiting and
+    answers 503 beyond that; a request must arrive within 30 seconds; a waiting call whose client
+    has gone is not run. `--allow-origin ORIGIN` lets a browser page of that origin use the
+    server (preflight and `Access-Control-Allow-Origin`); loopback origins get no such header.
+  - The MCP tool `build_graph` builds nothing in a folder that is in no source repository. The
+    first log line and the `instructions` of the server name the project whose graph is served.
+  - The skill gives every example as `wingbox <command>` and no longer tells an agent to search
+    `.wingbox/index.sexp` with `rg`.
+
+### Fixes
+
+- Fixes found by the review of 0.19.1:
+
+  **A file could be written or a program started**
+
+  - A ref that starts with `-` is refused by `diff_functions`, `impact --diff`, the query form
+    `(diff-functions ...)` and the MCP tools `list_changes` and `query_graph`. Before, a ref such
+    as `--output=<file>` made Git create or empty that file, and the MCP call answered without
+    an error.
+  - A repository could commit symbolic links at `.wingbox` or below it and make `wingbox build`,
+    a hook or `wingbox init` write outside the project.
+  - The Git configuration that arrives with a repository (not through `git clone`) could start a
+    program during `wingbox build`, `impact --diff` or `diff_functions`.
+  - A line break in a file name, in a TypeScript member name or in a value of the config could
+    add a line of its own to the graph file, which the queries read as a fact.
+  - A copied or committed `.wingbox/` whose snapshot names a relative root is no longer refreshed
+    by the hooks and the query commands; its skipped-language notes are no longer passed on as
+    they are written.
+  - The map request workflow removes a committed `.wingbox/` before the build, fails when the
+    build fails, uploads only regular files and gives its token only to the steps that comment.
+
+  **Answers that were wrong**
+
+  - `impact`, `usages`, `analyze`, `deps`, `rdeps`, `module` and `boundary` answered for another
+    file whose name is like the one asked (`app/user.py` for `app/user_service.py`).
+  - `deps`, `rdeps`, `find_callers`, `find_calls` and the query forms left out modules inside the
+    asked depth.
+  - `impact --diff` and `diff_functions` answered "empty" for a deleted function, a removed or
+    renamed file, under `diff.noprefix`, `diff.mnemonicPrefix`, `color.diff=always` or
+    `diff.external`, for a path with a space, and for a graph built below the top of the
+    repository. A hunk header whose context holds `+1,` raised an error.
+  - After a change of `tsconfig.json`, `composer.json`, `compile_commands.json` or another file
+    that decides how imports resolve, a later edit of an unrelated file brought the old
+    resolution back.
+  - `grep_functions` searched only the first lines of top-level functions: it now searches whole
+    bodies and the methods of classes and names a method `Class.method`.
+  - `source`, `grep` and `grep_functions` numbered lines differently from the graph in a file
+    with a form feed or another separator character.
+  - `from pkg import sub` gave no dependency when `sub` is a subpackage. Two Rust packages of the
+    same name shared one target. A C# type of the own namespace was also linked to the one a
+    `using` brings. A CMake call inside a bracket comment became a target, a `#` in a quoted
+    argument cut the call, and a quoted test name lost its second word.
+  - Two repositories of a workspace could get the same short ID, which made every query fail
+    with "node count mismatch".
+
+  **A build or a command that stopped**
+
+  - One source file with a chain of thousands of calls, terms or branches, binary content under
+    a source extension, or a manifest that is not UTF-8 or is nested very deep, stopped the
+    whole build. Such a file is now left out with a warning, and the readers of Python,
+    TypeScript, Rust, PHP, Ruby and C++ no longer depend on the depth of the tree.
+  - Text that made several expressions of the readers run for minutes on a file of 100 KB is
+    read in one pass.
+  - No traceback for: a graph or use file that is not UTF-8, a query function without its
+    argument, a query nested deeper than 100 levels, a damaged line of `.wingbox/decisions.sexp`
+    or `.wingbox/learned.sexp`, a folder name with braces, a settings or instructions file that
+    `wingbox install` or `uninstall` cannot read, a message to the MCP server that is nested
+    too deep, a Content-Length that is not a number.
+  - `wingbox learn --apply` with a style change, `wingbox init --from-folders` on folders named
+    like YAML values (`2024`, `on`, `Null`) and `wingbox init` of a new package no longer write a
+    config that the next build refuses; they keep `generators:`.
+  - `wingbox init` in an empty folder no longer writes into the home folder.
+  - `wingbox infra` quotes every name it writes and skips a manifest of an unexpected shape.
+
+  **Smaller ones**
+
+  - `wingbox-http` no longer repeats what follows an unknown option, which could be a token.
+  - REPORT.md shows the evidence line of a finding as code; the commands that the report, the
+    map, `impact --summary` and the search hook suggest quote the file name for a shell.
+  - `grep 'price\$'` finds the text `price$`; `entity engine` finds `Engine`.
+  - README: the one option under which code of a project may run and the network may be
+    reached, `wingbox build --lsp`, is named.
 
 ## 0.19.1 - 2026-11-24
 

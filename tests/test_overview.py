@@ -250,6 +250,79 @@ class OverviewTest(unittest.TestCase):
         self.assertIn("by the rules of the style of their part", report)
         self.assertNotIn("(impact", report)
 
+    def test_text_of_the_repository_is_never_markdown_of_the_report(self) -> None:
+        """/* REQ-OUT-021: REPORT.md shows text that comes from the repository as text: the evidence of a capability break, a pattern break or an advice (a line of source) stands in a code span whose fence is longer than any run of backticks in it, with a pipe escaped and a line break as a space, so an image, a link, an HTML tag or comment in the line stays inside one table cell and is not rendered; in the cells for the advice, its style and its rule and in the title, `<` is written `&lt;` and a backslash, `[` and `!` are escaped. */"""
+        evil = '![x](https://tracker.example/p.png) <!-- <img src=x onerror=1> --> `a` ``b`` | [k](javascript:1)'
+        hostile = dataclasses.replace(
+            self._overview(),
+            project="demo <b>!",
+            capability_breaks=(overview.CapabilityInfo("shop/api/orders.py", "sql", "api", "violation", 7, evil, "allowed in <infra> [x](y) \\[z](w)"),),
+            pattern_breaks=(overview.CapabilityInfo("shop/api/orders.py", "controller-skips-service", "api", "pattern", 9, "line\nbreak\r\n`", "reason"),),
+            advice=(overview.AdviceInfo("a1", ".", "fix-capability", "shop/api/orders.py", "move ![it](u) <there>", "layered", "sql in api", "line 7: " + evil),
+                    overview.AdviceInfo("a2", ".", "missing-folder", "shop/domain/events", "create it", "layered", "target", "")),
+        )
+        report = overview.render_report(hostile, "2026-11-15", "9.9.9")
+        span = "```![x](https://tracker.example/p.png) <!-- <img src=x onerror=1> --> `a` ``b`` \\| [k](javascript:1)```"
+        self.assertTrue(report.startswith("# Wingbox report: demo &lt;b>\\!\n"), report[:60])
+        self.assertIn(f"| `shop/api/orders.py` | sql | api | 7 | {span} | allowed in &lt;infra> \\[x](y) \\\\\\[z](w) |", report)
+        self.assertIn("| `shop/api/orders.py` | controller-skips-service | api | 9 | `` line break ` `` | reason |", report)
+        self.assertIn("| fix-capability | `shop/api/orders.py` | move \\!\\[it](u) &lt;there> | layered: sql in api "
+                      "| ```line 7: " + span[3:] + " |", report)
+        self.assertIn("| missing-folder | `shop/domain/events` | create it | layered: target |  |", report)
+        for line in report.splitlines():
+            outside = re.sub(r"(`+).*?\1", "", line)   # what is left of a line without its code spans
+            self.assertNotRegex(outside, r"<!--|<img|!\[|(?<!\\)\[[^\]]*\]\(", line)
+            if line.startswith("| `shop/api/orders.py` | sql "):
+                self.assertEqual(7, len(re.findall(r"(?<!\\)\|", line)), line)   # six cells, however many pipes the evidence holds
+
+    def test_the_command_of_the_next_steps_is_quoted_for_a_shell(self) -> None:
+        """/* REQ-OUT-022: the command REPORT.md prints under "Next steps" is safe to paste into a shell: a file name with spaces or shell characters (`;`, `$`, a quote) is one quoted word of `wingbox impact`, an ordinary path is printed as it is, and a file whose name holds a line break is never put into the command. */"""
+        view = self._overview()
+
+        def report_for(name: str) -> str:
+            modules = tuple(dataclasses.replace(module, file=name) if module.id == "shop/utils/money" else module for module in view.modules)
+            return overview.render_report(dataclasses.replace(view, modules=modules), "2026-11-15", "9.9.9")
+
+        def command(report: str) -> str:
+            return report.split("## Next steps", 1)[1].split("```")[1].strip("\n")
+
+        self.assertEqual("wingbox impact shop/utils/money.py", command(report_for("shop/utils/money.py")))
+        hostile = "src/core;touch${IFS}PWNED;.js"
+        self.assertEqual("wingbox impact 'src/core;touch${IFS}PWNED;.js'", command(report_for(hostile)))
+        self.assertEqual("wingbox impact 'my file.py'", command(report_for("my file.py")))
+        self.assertEqual("""wingbox impact 'it'"'"'s $(id).py'""", command(report_for("it's $(id).py")))
+        import shlex
+
+        for name in (hostile, "my file.py", "it's $(id).py", "a`b`.py", "shop/utils/money.py"):
+            self.assertEqual(["wingbox", "impact", name], shlex.split(command(report_for(name))), name)
+        broken = report_for("a\n```\nrm -rf x\n```\n.py")
+        self.assertNotIn("rm -rf x\n", broken.split("## Next steps", 1)[1])
+        self.assertIn("wingbox impact shop/", command(broken))   # the next file of the list stands in
+
+    def test_the_command_the_map_copies_is_quoted_for_a_shell(self) -> None:
+        """/* REQ-OUT-023: the command the map page shows and copies for a selected file, `wingbox impact <file>`, takes the file name through the page's `shellWord`, which gives an ordinary path as it is and any other name as one single-quoted word (a quote inside it closed, escaped and reopened), as Python's `shlex.quote` does; the function is run with node, and that part is skipped, and reported as skipped, where node is not installed. */"""
+        import shlex
+        import shutil
+        import subprocess
+
+        page = map_page.render_map(self._overview(), "2026-11-15", "9.9.9", map_page.read_assets())
+        self.assertIn("const command = `wingbox impact ${shellWord(file)}${", page)
+        self.assertNotIn("wingbox impact ${file}", page)
+        definition = re.search(r"^const shellWord = .*$", page, re.M)
+        self.assertIsNotNone(definition)
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed: the quoting function of the page was not run")
+        names = ["shop/utils/money.py", "src/core;touch${IFS}PWNED;.js", "my file.py", "it's $(id).py", "a`b`.py", "C:\\dir\\x.py", "x\ny.py", ""]
+        script = definition[0] + "\nprocess.stdout.write(JSON.stringify(" + json.dumps(names) + ".map(shellWord)));\n"
+        done = subprocess.run([node], input=script, capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(0, done.returncode, done.stderr)
+        quoted = json.loads(done.stdout)
+        self.assertEqual([shlex.quote(name) for name in names], quoted)
+        self.assertEqual("shop/utils/money.py", quoted[0])
+        for name, word in zip(names, quoted):
+            self.assertEqual([name], shlex.split(word), name)
+
     def test_map_page_is_a_single_offline_file_with_the_graph_data(self) -> None:
         """/* REQ-OUT-004: map.html must embed the data, the styles, the script and d3, and load nothing from the network. */"""
         page = map_page.render_map(self._overview(), "2026-11-15", "9.9.9", map_page.read_assets())

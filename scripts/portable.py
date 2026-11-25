@@ -12,12 +12,18 @@ r"""What differs between Windows, macOS and Linux, in one place. Everything else
 - text streams: `utf8_streams` makes stdout and stderr write UTF-8 and replace what they cannot encode;
 - paths at the edge: `local_path` turns a path from a person or a hook into this system's form (on Windows
   backslashes, Git Bash drives /c/..., the \\?\ prefix), `relative_posix` gives it relative to a root with
-  / (None outside), the form every .wingbox file, printout and comparison uses.
+  / (None outside), the form every .wingbox file, printout and comparison uses;
+- writes below a project's .wingbox: `refuse_links`, `make_folder` and `open_unlinked` raise `LinkRefused`
+  when `.wingbox` or anything below it on the way to the file is a symbolic link (a repository may commit
+  such a link; a write through it would leave the project). Every writer of a file in .wingbox calls one
+  of them. The check is an lstat of each part, so it works where O_NOFOLLOW does not exist (Windows);
+  where it exists the file is opened with it as well.
 
 Standard library only: the build scripts import it before anything else.
 """
 from __future__ import annotations
 
+import errno
 import multiprocessing
 import ntpath
 import functools
@@ -134,6 +140,75 @@ def read_text(path: str) -> Optional[str]:
                 raise
             time.sleep(_REPLACE_PAUSE)
     return None
+
+
+STATE_FOLDER = ".wingbox"
+
+
+class LinkRefused(OSError):
+    """A write below a project's .wingbox would go through a symbolic link: it is not made."""
+
+
+def _is_link(path: str) -> bool:
+    """A symbolic link, or on Windows a junction (os.path.isjunction exists from Python 3.12)."""
+    return os.path.islink(path) or bool(WINDOWS and getattr(os.path, "isjunction", lambda _path: False)(path))
+
+
+def linked_part(path: str) -> Optional[str]:
+    """The first symbolic link on the way from the `.wingbox` folder of path down to path itself (both
+    included), None when there is none. Only the last `.wingbox` of the path and what lies below it are looked
+    at: a project may itself sit below a linked folder, and a path outside any `.wingbox` is not judged."""
+    parts: list[str] = []
+    head = os.path.abspath(path)
+    while True:
+        parent, name = os.path.split(head)
+        if not name:
+            return None   # no .wingbox folder on the path
+        parts.append(head)
+        if os.path.normcase(name) == STATE_FOLDER:
+            break
+        head = parent
+    return next((part for part in reversed(parts) if _is_link(part)), None)
+
+
+def _refusal(linked: str) -> LinkRefused:
+    return LinkRefused(
+        f"{linked} is a symbolic link: Wingbox writes nothing through a link at {STATE_FOLDER} or below it. "
+        "Remove the link and run the command again."
+    )
+
+
+def refuse_links(path: str) -> None:
+    """Raise LinkRefused (an OSError) when a write to path would go through a symbolic link at `.wingbox` or
+    below it. Call it with the file for a write into the file itself (truncate, append, a lock), and with its
+    folder for a write that replaces the file (a temporary file renamed over it replaces a link, it does not
+    follow it)."""
+    linked = linked_part(path)
+    if linked is not None:
+        raise _refusal(linked)
+
+
+def make_folder(path: str) -> None:
+    """os.makedirs(path, exist_ok=True) for a project's `.wingbox` or a folder below it; LinkRefused instead
+    when it, or `.wingbox` above it, is a symbolic link."""
+    refuse_links(path)
+    os.makedirs(path, exist_ok=True)
+
+
+def open_unlinked(path: str, mode: str, **options: Any) -> IO[Any]:
+    """open(path, mode, ...) for a file below a project's .wingbox that is written in place: LinkRefused when
+    `.wingbox`, a folder below it or the file itself is a symbolic link. Where the system has O_NOFOLLOW the
+    file is opened with it too, so a link put in place after the check is not followed either."""
+    refuse_links(path)
+    no_follow = getattr(os, "O_NOFOLLOW", 0)
+    if not no_follow:
+        return open(path, mode, **options)
+    try:
+        return open(path, mode, opener=lambda name, flags: os.open(name, flags | no_follow, 0o666), **options)
+    except OSError as error:
+        if error.errno in (errno.ELOOP, errno.EMLINK):   # the file became a link after the check
+            raise _refusal(path) from error
+        raise
 
 
 JOBS_VARIABLE = "WINGBOX_JOBS"

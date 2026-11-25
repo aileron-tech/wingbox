@@ -27,13 +27,14 @@ A script or a gate that must not act on an incomplete answer reads the facts of 
 
 **Can it hide a defect?** Yes. This is the error that matters most: A is not read, not tested and not reviewed for the change of B. In a boundary check a missing edge is a violation that is not stated.
 
-**How it is reported today.** In general it is not: the tool cannot name an edge it did not find. Three cases are reported:
+**How it is reported today.** In general it is not: the tool cannot name an edge it did not find. Four cases are reported:
 
 | Condition | What is printed | Exit status | Command | Test |
 |---|---|---|---|---|
 | A method call whose receiver type is not in sight | `unresolved-call` rows, apart from the uses | 0 | `wingbox usages <file>::<Class.method>` | `tests/test_usages_command.py::UsagesCommandTests` |
-| The name asked about matches nothing | `(error no-match <file> :suggestions ...)` in place of the answer | 1 | `wingbox impact <file>` | `tests/test_code_graph_search.py::CodeGraphImpactTest`, `tests/test_output_formats.py::ImpactSeveralFilesTest` |
-| The file asked about is in the repository and not in the graph | `(error not-in-graph <file> :reason not-parsed-language\|skipped-language\|excluded\|not-source ...)`, no suggestions | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module` | `tests/test_coverage_limits.py::OutsideTheGraphTest` |
+| The name asked about matches nothing | `(error no-match <file> :suggestions ...)` in place of the answer; a path with a source extension is never answered for another file whose name is like it | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module`, `boundary` | `tests/test_code_graph_search.py::CodeGraphImpactTest`, `tests/test_output_formats.py::ImpactSeveralFilesTest`, `tests/test_review_wp2_query.py::ExactFileArgumentTest`, `tests/test_review_wp2_query.py::FilePathForModuleCommandsTest` |
+| The file asked about is in the repository and not in the graph | `(error not-in-graph <file> :reason not-parsed-language\|skipped-language\|excluded\|not-source ...)`, no suggestions | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module`, `boundary` | `tests/test_coverage_limits.py::OutsideTheGraphTest`, `tests/test_review_wp2_query.py::FilePathForModuleCommandsTest` |
+| One source file the build could not take in: the parser failed on it, it could not be read, its first 8 KB hold a NUL byte, or its path holds a control character | at the build, one line `[code-graph] WARNING: N source files left out of the graph: <file> (<reason>: <detail>); ...` and one `(not-parsed-file "<file>" :reason parser-failed\|unreadable\|binary\|file-name)` fact per file in `.wingbox/graph-unparsed.sexp`; the other files are mapped. A question about the file: `(error not-in-graph <file> :reason <reason> :language "<language>")` | 0 for the build, 1 for the question | `wingbox build .`, `wingbox impact <file>` | `tests/test_review_wp7_builder.py::OneFileCannotStopTheBuildTest`, `tests/test_review_wp7_builder.py::BinaryContentTest`, `tests/test_review_wp7_builder.py::NoForgedFactTest` |
 | A whole language was left out | see section 4 | | | |
 
 **Independent checks.**

@@ -32,6 +32,13 @@ class Difference:
     detail: str
 
 
+def nothing_compared(compared: tuple[ComparedPart, ...]) -> str:
+    """Why `compare` has no part to show, or "": a part is shown when it has a style and a language."""
+    if compared:
+        return ""
+    return "no part has a style and a language that a manifest names (package.json, pyproject.toml, go.mod ...)"
+
+
 def compare(parts: tuple[PartPlan, ...], languages: Mapping[str, str]) -> tuple[tuple[ComparedPart, ...], tuple[Difference, ...], tuple[Advice, ...]]:
     """`languages`: part path -> language. Parts without a style or a language are left out."""
     compared = tuple(
