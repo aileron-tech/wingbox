@@ -77,6 +77,7 @@ class PartPlan:
 class RepositoryPlan:
     parts: tuple[PartPlan, ...]
     roots: tuple[str, ...]       # part folders, deepest first ("" = root)
+    empty: tuple[str, ...] = ()  # parts .wingbox/config.yaml lists that hold no source file
 
     def part_of(self, path: str) -> Optional[PartPlan]:
         """The part a repository-relative file belongs to."""
@@ -126,9 +127,13 @@ def declared_rules(files: tuple[DeclaredFile, ...], read_text: ReadText) -> Decl
     baseline: frozenset[tuple[str, str]] = frozenset()
     baseline_file = ""
     for item in files:
-        text = read_text(item.path) or ""
+        found = read_text(item.path)
+        text = found or ""
         if item.kind == "exceptions":
             baseline, baseline_file = read_baseline(text), item.path
+            continue
+        if found is None:   # the reader said why, when the file is there
+            not_read.append(NotRead(item.path, "the file is missing or cannot be read"))
             continue
         if item.kind == "rules" and item.path.endswith((".mjs", ".js", ".cjs")) and layers is None:
             result = read_layer_table(item.path, text)
@@ -179,19 +184,35 @@ def detect_plan(
     return RepositoryPlan(parts=tuple(plans), roots=roots)
 
 
-def apply_learned(plan: RepositoryPlan, learned: Mapping[str, list], from_config: bool = False) -> RepositoryPlan:
+def unknown_learned(plan: RepositoryPlan, learned: Mapping[str, list], library: Optional[Library] = None) -> tuple:
+    """The learned folders whose layer is no layer of the style of their part: `apply_learned` leaves
+    them out, and the caller says so."""
+    library = library or load_library()
+    found = []
+    for part in plan.parts:
+        style = library.style(part.style)
+        if part.has_rules and part.style != DECLARED:
+            found += [item for item in learned.get(part.path, []) if style is None or style.layer(item.layer) is None]
+    return tuple(found)
+
+
+def apply_learned(
+    plan: RepositoryPlan, learned: Mapping[str, list], from_config: bool = False, library: Optional[Library] = None,
+) -> RepositoryPlan:
     """Folders the decisions store learned (`learned-layer`) take precedence over the style's words.
 
     With a .wingbox/config.yaml (`from_config`) the config states the layers: nothing is applied, so that
-    removing a learned folder from the config undoes it.
+    removing a learned folder from the config undoes it. A layer that the style of the part does not have
+    (`unknown_learned`) is not applied: a line of the store never invents a layer.
     """
     if not learned or from_config:
         return plan
+    unknown = unknown_learned(plan, learned, library)
     parts = []
     for part in plan.parts:
-        items = learned.get(part.path, [])
+        items = [item for item in learned.get(part.path, []) if item not in unknown]
         if items and part.has_rules and part.style != DECLARED:
             taught = tuple(LayerFolder(item.folder, item.layer, "learned", item.source, 0) for item in items)
             part = replace(part, layers=taught + part.layers)
         parts.append(part)
-    return RepositoryPlan(parts=tuple(parts), roots=plan.roots)
+    return replace(plan, parts=tuple(parts))

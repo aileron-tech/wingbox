@@ -156,7 +156,7 @@ try:
             load_git_ignored_paths,
         )
         from . import generation, graph_snapshot, layer_guess, portable, source_kinds
-        from .architecture.config import ConfigErr, plan_from_config, read_config
+        from .architecture.config import CONFIG_FILE, ConfigErr, plan_from_config, read_config
         from .architecture.baseline import read_baseline_terms, terms_sexp
         from .architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -164,9 +164,9 @@ try:
         from .architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
         from .architecture.library import load_library
         from .architecture.plan import RepositoryPlan, detect_plan
-        from .architecture.repository import list_files, text_reader
+        from .architecture.repository import file_reader, list_files, text_reader
         from .architecture.decisions import STORE_FILE, learned_layers, read_store
-        from .architecture.plan import apply_learned
+        from .architecture.plan import apply_learned, unknown_learned
     else:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
@@ -196,7 +196,7 @@ try:
         import layer_guess
         import portable
         import source_kinds
-        from architecture.config import ConfigErr, plan_from_config, read_config
+        from architecture.config import CONFIG_FILE, ConfigErr, plan_from_config, read_config
         from architecture.baseline import read_baseline_terms, terms_sexp
         from architecture.facts import (
             BASELINE_FILE, GraphArchitecture, graph_architecture, read_baseline_sexp, read_capability_baseline,
@@ -204,9 +204,9 @@ try:
         from architecture.capabilities import Finding as _finding, detect as detect_capabilities, supported as capability_language
         from architecture.library import load_library
         from architecture.plan import RepositoryPlan, detect_plan
-        from architecture.repository import list_files, text_reader
+        from architecture.repository import file_reader, list_files, text_reader
         from architecture.decisions import STORE_FILE, learned_layers, read_store
-        from architecture.plan import apply_learned
+        from architecture.plan import apply_learned, unknown_learned
 except ModuleNotFoundError as dependency_error:
     print(
         f"Error: missing Python dependency {dependency_error.name}. "
@@ -4938,20 +4938,34 @@ def architecture_plan(
     root: str, skip_directories: frozenset[str], ignored_paths: frozenset[str],
     listed: Optional[tuple[str, ...]] = None,
 ) -> Result[RepositoryPlan, str]:
-    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection."""
+    """The parts and styles of the repository: .wingbox/config.yaml when present, else detection.
+
+    A config file that is there and cannot be read is an error, never a reason to detect instead. A line
+    of .wingbox/decisions.sexp that cannot be read or applied is skipped with a warning: it stops nothing.
+    """
     library = load_library()
     paths = listed if listed is not None else list_files(root, skip_directories, ignored_paths)
     read = text_reader(root)
-    config = read_config(read, library)
+    config = read_config(file_reader(root), library)
     if isinstance(config, ConfigErr):
         return Err(config.error)
     if config is not None and config.note:
         print(f"[wingbox] note: {config.note}", file=sys.stderr)
-    learned = learned_layers(read_store(read(STORE_FILE) or ""))
+    store = read_store(read(STORE_FILE) or "")
+    for problem in store.skipped:
+        print(f"[wingbox] WARNING: {STORE_FILE} {problem}: the line is skipped", file=sys.stderr)
+    learned = learned_layers(store)
     if config is None:
         plan = detect_plan(paths, read, library)
-        return Ok(apply_learned(plan, learned))
-    return Ok(apply_learned(plan_from_config(config, paths, read, library), learned, from_config=True))
+        for item in unknown_learned(plan, learned, library):
+            print(f"[wingbox] WARNING: {STORE_FILE}: learned-layer {item.part!r} {item.folder!r}: {item.layer!r} "
+                  "is no layer of the style of the part: the line is ignored", file=sys.stderr)
+        return Ok(apply_learned(plan, learned, library=library))
+    plan = plan_from_config(config, paths, read, library)
+    for part in plan.empty:
+        print(f"[wingbox] WARNING: {CONFIG_FILE}: part {part} holds no source file: nothing is checked there",
+              file=sys.stderr)
+    return Ok(apply_learned(plan, learned, from_config=True))
 
 
 def _ignore_note(reason: str) -> str:

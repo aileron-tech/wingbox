@@ -239,7 +239,9 @@ def _store(root: str) -> tuple[str, str]:
 
     path = os.path.join(root, STORE_FILE)
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        # A byte that is not UTF-8 (a reason typed in another encoding) never stops a build: the line is
+        # read with the replacement character in its place.
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:
             return path, handle.read()
     except FileNotFoundError:
         return path, ""
@@ -306,11 +308,38 @@ def record_decisions(root: str, graph_path: str, advice: tuple) -> list | str:
     return visible(read_store(text + "\n".join(lines)), advice)
 
 
+def _warn_skipped(file: str, problems: list[str]) -> None:
+    """One warning per line of a file of .wingbox/ that was not read: the command goes on without it."""
+    for problem in problems:
+        print(f"[wingbox] WARNING: {file} {problem}: the line is skipped", file=sys.stderr)
+
+
+def _with_kept_keys(root: str, rendered: str) -> str:
+    """The rendered parts with the other keys of the present ROOT/.wingbox/config.yaml (`generators:`) after
+    them: a command that writes the parts anew replaces the parts and nothing else of the file."""
+    from architecture.config import CONFIG_FILE, kept_keys
+    from architecture.repository import read_text_file
+
+    existing = read_text_file(root, CONFIG_FILE)
+    return rendered + (kept_keys(existing) if isinstance(existing, str) else "")
+
+
+def _config_refused(text: str, library) -> Optional[str]:
+    """Why a text is not written as .wingbox/config.yaml: the check that reads the file refuses it. Every
+    writer of the file asks this before it replaces the file, so that the next build can read it."""
+    from architecture.config import CONFIG_FILE, refused_config
+
+    refused = refused_config(text, library)
+    if refused is None:
+        return None
+    return f"{CONFIG_FILE} not written: the check of the file refuses what Wingbox was about to write ({refused})"
+
+
 def _advice_command(args: list[str], cwd: str) -> int:
     """`wingbox advice [--learned] [--human]`, `wingbox advice accept|reject <id> [--reason TEXT]`."""
     load_script("architecture")
     from architecture.advice import to_sexp
-    from architecture.decisions import needs_reason, read_store, user_outcome, visible
+    from architecture.decisions import STORE_FILE, needs_reason, read_store, user_outcome, visible
     from architecture.sexp import q
 
     root = _find_root(cwd)
@@ -319,6 +348,7 @@ def _advice_command(args: list[str], cwd: str) -> int:
         return 1
     path, text = _store(root)
     store = read_store(text)
+    _warn_skipped(STORE_FILE, store.skipped)
     if args and args[0] in ("accept", "reject"):
         if len(args) < 2:
             print(f"[wingbox] ERROR: wingbox advice {args[0]} <id> [--reason TEXT]", file=sys.stderr)
@@ -639,12 +669,16 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
         parts.append(dataclasses.replace(base, layers=taught + tuple(f for f in base.layers if f.match != "learned")))
     library = load_library()
     today = date.today().isoformat()
+    text = _with_kept_keys(root, render_config(RepositoryPlan(tuple(parts), plan.value.roots), library, today,
+                                               list_files(root, skip, frozenset()))) if bases else ""
+    refused = _config_refused(text, library) if bases else None
+    if refused:
+        return refused
     try:
         _prepare_wingbox(root)
         if bases:   # nothing learned and no style change: the config stays as it is
             with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(render_config(RepositoryPlan(tuple(parts), plan.value.roots), library, today,
-                                           list_files(root, skip, frozenset())))
+                handle.write(text)
             facts.append(f"(align-config-written {q(CONFIG_FILE)})")
         with open(os.path.join(root, BASELINE_FILE), "w", encoding="utf-8", newline="\n") as handle:
             handle.write(f"; written by wingbox align --learn on {today}: rule breaks known at that time\n")
@@ -660,6 +694,32 @@ def _write_learned(root: str, learned: dict, bases: dict, baseline_lines: list[s
         f"(learned-layer {q(part)} {q(item.folder)} {item.layer} :from align :at {today})"
         for part, items in sorted(learned.items()) for item in items
     ])
+
+
+def _project_folders(start: str, within_repository: bool = False) -> list[str]:
+    """The folders a project may be found in, from `start` upward. The walk never reaches the home
+    folder, whose .wingbox/ holds the settings of a person, not a project; with `within_repository` it
+    ends with the root of the repository (the folder that holds .git)."""
+    home = os.path.realpath(str(Path.home()))
+    found: list[str] = []
+    folder = os.path.abspath(start)
+    while os.path.realpath(folder) != home:
+        found.append(folder)
+        if (within_repository and os.path.exists(os.path.join(folder, ".git"))) or folder == os.path.dirname(folder):
+            break
+        folder = os.path.dirname(folder)
+    return found
+
+
+def _has_project_config(folder: str) -> bool:
+    """True when FOLDER/.wingbox/config.yaml is the config of a project: it has `parts:`. A file that is
+    there and cannot be read counts, so that the command reports it."""
+    from architecture.config import CONFIG_FILE, declares_parts
+    from architecture.declared import NotRead
+    from architecture.repository import read_text_file
+
+    text = read_text_file(folder, CONFIG_FILE)
+    return isinstance(text, NotRead) or (text is not None and declares_parts(text))
 
 
 def _place_command(args: list[str], cwd: str) -> int:
@@ -679,12 +739,7 @@ def _place_command(args: list[str], cwd: str) -> int:
         print('[wingbox] ERROR: wingbox place "<what you add>" [--part PART] [--human|--json]', file=sys.stderr)
         return 2
     request = " ".join(words)
-    root = _find_root(cwd) or cwd
-    probe = cwd
-    while probe != os.path.dirname(probe) and not os.path.isfile(os.path.join(probe, ".wingbox", "config.yaml")):
-        probe = os.path.dirname(probe)
-    if os.path.isfile(os.path.join(probe, ".wingbox", "config.yaml")):
-        root = probe
+    root = next((folder for folder in _project_folders(cwd) if _has_project_config(folder)), _find_root(cwd) or cwd)
     skip = frozenset(builder.SKIP_DIRS)
     plan = builder.architecture_plan(root, skip, frozenset())
     if isinstance(plan, builder.Err):
@@ -768,17 +823,12 @@ def _compare_command(args: list[str], cwd: str) -> int:
     """`wingbox compare [--human]`: the parts of a monorepo side by side, per language."""
     builder = load_script("build_code_graph")
     from architecture.advice import to_sexp
-    from architecture.compare import compare
+    from architecture.compare import compare, nothing_compared
     from architecture.newproject import language_of
     from architecture.sexp import q
 
-    root = cwd
-    probe = cwd
-    while probe != os.path.dirname(probe):
-        if os.path.isfile(os.path.join(probe, ".wingbox", "config.yaml")) or os.path.isfile(_graph_file(probe)):
-            root = probe
-            break
-        probe = os.path.dirname(probe)
+    root = next((folder for folder in _project_folders(cwd)
+                 if _has_project_config(folder) or os.path.isfile(_graph_file(folder))), cwd)
     plan = builder.architecture_plan(root, frozenset(builder.SKIP_DIRS), frozenset())
     if isinstance(plan, builder.Err):
         print(f"[wingbox] ERROR: {plan.error}", file=sys.stderr)
@@ -797,6 +847,10 @@ def _compare_command(args: list[str], cwd: str) -> int:
               else f"  {item.language}: {item.kind}: {item.detail}")
     for item in advice:
         print(to_sexp(item) if sexp else f"  advice: {item.reason}")
+    nothing = nothing_compared(parts)
+    if nothing:   # never an empty answer: say that no part was compared, and why
+        print(f"(compare-none :parts {len(plan.value.parts)} :reason {q(nothing)})" if sexp
+              else f"nothing to compare: {nothing}")
     return 0
 
 
@@ -872,7 +926,9 @@ def _learn_command(args: list[str], cwd: str) -> int:
     search = load_script("code_graph_search")
     graph = search.CodeGraph()
     graph.load(_graph_file(root), root)
-    known = agent_learn.read_learned(_read_text(os.path.join(root, agent_learn.LEARNED_FILE)))
+    learned_text = _read_text(os.path.join(root, agent_learn.LEARNED_FILE))
+    _warn_skipped(agent_learn.LEARNED_FILE, agent_learn.unread_learned(learned_text))
+    known = agent_learn.read_learned(learned_text)
     file_module = {search.module_file(graph, module): module for module in graph.nodes}   # once: it probes the disk
     def part_task(part, style_id: str = ""):
         """What to ask about one part: the folders its style (the closest one unless style_id) leaves open."""
@@ -966,7 +1022,7 @@ def _learn_command(args: list[str], cwd: str) -> int:
 
 def _read_text(path: str) -> str:
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, "r", encoding="utf-8", errors="replace") as handle:   # as _store: bytes never stop it
             return handle.read()
     except FileNotFoundError:
         return ""
@@ -1010,9 +1066,10 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
     from architecture.config import CONFIG_FILE, ConfigOk, read_config, render_config
     from architecture.detect import judge
     from architecture.learn import closest_style
-    from architecture.plan import LayerFolder, RepositoryPlan
+    from architecture.plan import LayerFolder, RepositoryPlan, layer_folders
     from architecture.repository import list_files, text_reader
     from architecture.sexp import q
+    from architecture.words import DEFAULT_SETTINGS
 
     builder = load_script("build_code_graph")
     config = read_config(text_reader(root), library)
@@ -1023,7 +1080,15 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
     parts = []
     for part in plan.parts:
         mine = [e for e in entries if e.part == part.path]
-        style = next((e.value for e in mine if e.kind == "style"), part.style)
+        style = next((library.style(e.value).id for e in mine if e.kind == "style"), part.style)
+        if style != part.style:
+            # The layers of the part were those of its old style: the new style places the folders its own
+            # words name, and what the config stated for the old style no longer holds.
+            files = by_path.get(part.path)
+            placed, routing = layer_folders(library.style(style), files, DEFAULT_SETTINGS, library) if files else ((), ())
+            part = _replace(part, layers=placed, routing_root=routing)
+            stated = {key: layer for key, layer in stated.items() if key[0] != part.path}
+            out.append(f"(learn-style {q(part.path)} {style})")
         taught = []
         for e in mine:
             if e.kind != "layer":
@@ -1033,8 +1098,6 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
                 continue
             taught.append(LayerFolder(e.folder, e.value, "learned", f"{'agent' if mode.mode == 'agent' else 'person'}: {e.because}", 0))
             out.append(f"(learn-learned {q(part.path)} {q(e.folder)} {e.value} :because {q(e.because)})")
-        if style != part.style:
-            out.append(f"(learn-style {q(part.path)} {style})")
         parts.append(_replace(part, style=style, layers=tuple(taught) + tuple(f for f in part.layers if f.folder not in {t.folder for t in taught})))
     styles = {}
     for part in plan.parts:
@@ -1045,10 +1108,16 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
                                       if f.startswith(e.folder + "/") or f.startswith("src/" + e.folder + "/"))
               for e in entries if e.folder}
     skip = frozenset(builder.SKIP_DIRS)
+    text = _with_kept_keys(root, render_config(RepositoryPlan(tuple(parts), plan.roots), library, today,
+                                               list_files(root, skip, frozenset())))
+    refused = _config_refused(text, library)
+    if refused:
+        print(f"[wingbox] ERROR: {refused}; nothing was saved", file=sys.stderr)
+        return 1
     try:
         _prepare_wingbox(root)
         with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(render_config(RepositoryPlan(tuple(parts), plan.roots), library, today, list_files(root, skip, frozenset())))
+            handle.write(text)
         with open(os.path.join(root, agent_learn.LEARNED_FILE), "a", encoding="utf-8", newline="\n") as handle:
             handle.write("\n".join(agent_learn.learned_lines(entries, today, mode, styles, counts)) + "\n")
     except OSError as error:
@@ -1069,9 +1138,13 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
                       and not search.is_type_only_import(graph, b.source, b.target)})
     out.append(f"(learn-result :build {'ok' if status == 0 else 'failed'} :violations {violations})")
     out.append(f"(learn-saved {q('.wingbox/')} :commit \"config.yaml learned.sexp decisions.sexp baseline.sexp\")")
+    if status != 0:
+        # The answer is saved, but the graph is not the one it describes: the caller must not read success.
+        print(f"[wingbox] ERROR: the build after learn failed (status {status}): run `wingbox build` to see why",
+              file=sys.stderr)
     if sexp:
         print("\n".join(out))
-        return 0
+        return 1 if status != 0 else 0
     from architecture.sexp import keyword, parse
 
     for fact in out:
@@ -1083,10 +1156,10 @@ def _learn_record(root: str, plan, entries: tuple, mode, by_path: dict, top_fold
         elif t[0] == "learn-style":
             print(f"style of {t[1]}: {t[2]}")
         elif t[0] == "learn-result":
-            print(f"rebuilt: violations: {keyword(t, 'violations')}")
+            print(f"rebuilt: violations: {keyword(t, 'violations')}" if status == 0 else "not rebuilt: the build failed")
         elif t[0] == "learn-saved":
             print("saved in .wingbox/ - commit config.yaml, learned.sexp, decisions.sexp and baseline.sexp to share it")
-    return 0
+    return 1 if status != 0 else 0
 
 
 def _ask(prompt: str, default: str) -> str:
@@ -1286,27 +1359,32 @@ def _home_defaults(library) -> dict[str, str]:
         return {}
     try:
         import yaml
-
+    except ImportError as error:
+        print(f"[wingbox] WARNING: {path} not read: {error}", file=sys.stderr)
+        return {}
+    try:
         with open(path, "r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
-    except (OSError, ImportError, ValueError) as error:
-        print(f"[wingbox] WARNING: {path} not read: {error}", file=sys.stderr)
+    except (OSError, ValueError, yaml.YAMLError, RecursionError) as error:
+        print(f"[wingbox] WARNING: {path} not read: {str(error).splitlines()[0] if str(error) else type(error).__name__}",
+              file=sys.stderr)
         return {}
     defaults = data.get("defaults", {}) if isinstance(data, dict) else {}
     return {str(k): str(v) for k, v in defaults.items() if library.style(str(v)) is not None} if isinstance(defaults, dict) else {}
 
 
 def _siblings(root: str, library) -> tuple[dict[str, str], str]:
-    """(part -> style, language of each part) of the nearest parent repository with .wingbox/config.yaml."""
-    from architecture.config import ConfigOk, parse_config
+    """(part -> style, language of each part) of the nearest parent folder with the config of a project,
+    inside the repository of root: a .wingbox/config.yaml above the folder that holds .git, in the home
+    folder, or without `parts:` is not the config of this project."""
+    from architecture.config import CONFIG_FILE, ConfigOk, parse_config
     from architecture.newproject import language_of
+    from architecture.repository import read_text_file
 
-    parent = os.path.dirname(root)
-    while parent != os.path.dirname(parent):
-        config = os.path.join(parent, ".wingbox", "config.yaml")
-        if os.path.isfile(config):
-            with open(config, "r", encoding="utf-8") as handle:
-                parsed = parse_config(handle.read(), library)
+    for parent in _project_folders(root, within_repository=True)[1:]:
+        if _has_project_config(parent):
+            text = read_text_file(parent, CONFIG_FILE)
+            parsed = parse_config(text, library) if isinstance(text, str) else None
             if not isinstance(parsed, ConfigOk):
                 return {}, parent
             found = {}
@@ -1316,13 +1394,13 @@ def _siblings(root: str, library) -> tuple[dict[str, str], str]:
                 if os.path.realpath(folder) != root:
                     found[part.path] = (part.style, language_of(names))
             return {p: v for p, v in found.items()}, parent
-        parent = os.path.dirname(parent)
     return {}, ""
 
 
 def _init_new_project(parsed: "InitArguments", library) -> int:
     """`wingbox init` in a folder without source files: choose a language and a style, write the config."""
-    from architecture.config import CONFIG_FILE, render_config, with_header
+    from architecture.config import CONFIG_FILE, ConfigOk, add_parts, parse_config, render_config, with_header
+    from architecture.declared import NotRead
     from architecture.init import NEXT_STEP
     from architecture.newproject import LANGUAGES, choices
     from architecture.plan import PartPlan, RepositoryPlan
@@ -1389,17 +1467,29 @@ def _init_new_project(parsed: "InitArguments", library) -> int:
                     origin="config", score=None, judgement=None, layers=(), routing_root=(), declared=None)
     text = render_config(RepositoryPlan(parts=(part,), roots=("",)), library, date.today().isoformat(), (),
                          with_target=True, chosen=origin)
+    if in_repo:
+        from architecture.repository import read_text_file
+
+        existing = read_text_file(base, CONFIG_FILE)
+        if not isinstance(existing, str):
+            why = existing.reason if isinstance(existing, NotRead) else "the file is gone"
+            print(f"[wingbox] ERROR: cannot read {config_path}: {why}", file=sys.stderr)
+            return 1
+        listed = parse_config(existing, library)
+        if isinstance(listed, ConfigOk) and any(item.path == part_path for item in listed.parts):
+            print(f"(arch-config-kept {q(CONFIG_FILE)} :reason {q(f'part {part_path} is listed in the file')})")
+            return 0
+        text = with_header(add_parts(existing, text), library, date.today().isoformat())
+    else:
+        text = _with_kept_keys(base, text)
+    refused = _config_refused(text, library)
+    if refused:
+        print(f"[wingbox] ERROR: {refused}" + ("; add the part to the file by hand" if in_repo else ""), file=sys.stderr)
+        return 1
     try:
         _prepare_wingbox(os.path.dirname(os.path.dirname(config_path)))
-        if in_repo:
-            with open(config_path, "r", encoding="utf-8") as handle:
-                existing = handle.read()
-            block = text.split("parts:\n", 1)[1]
-            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(with_header(existing.rstrip("\n") + "\n" + block, library, date.today().isoformat()))
-        else:
-            with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(text)
+        with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
     except OSError as error:
         print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
         return 1
@@ -1445,7 +1535,7 @@ def _init_from_folders(args: list[str], cwd: str) -> int:
     builder = load_script("build_code_graph")
     search = load_script("code_graph_search")
     load_script("architecture")
-    from architecture.config import CONFIG_FILE, render_config
+    from architecture.config import CONFIG_FILE, layer_names, render_config
     from architecture.declared import layers_from_order
     from architecture.library import load_library
     from architecture.plan import DECLARED, DeclaredRules, PartPlan, RepositoryPlan
@@ -1465,9 +1555,7 @@ def _init_from_folders(args: list[str], cwd: str) -> int:
     if isinstance(found, str):
         print(f"(layers-from-folders-none {q(part)} :reason {q(found)})" if sexp else f"Nothing written: {found}.")
         return 1
-    names = {folder: folder for folder in found.folders}
-    if "." in names:   # the files directly in the part
-        names["."] = "root" if "root" not in names else "root-files"
+    names = layer_names(tuple(found.folders))   # the folder names, as words a layer name may be
     order = tuple((names[folder], (folder,)) for folder in found.folders)
     skip = frozenset(builder.SKIP_DIRS)
     plan = builder.architecture_plan(root, skip, frozenset())
@@ -1497,11 +1585,16 @@ def _init_from_folders(args: list[str], cwd: str) -> int:
         if existing is None:
             parts = tuple(sorted((*parts, new), key=lambda item: item.path))
         roots = tuple(sorted({*plan.value.roots, base}, key=lambda item: (-len(item), item)))
+        text = _with_kept_keys(root, render_config(RepositoryPlan(parts, roots), load_library(), date.today().isoformat(),
+                                                   list_files(root, skip, frozenset())))
+        refused = _config_refused(text, load_library())
+        if refused:
+            print(f"[wingbox] ERROR: {refused}", file=sys.stderr)
+            return 1
         try:
             _prepare_wingbox(root)
             with open(os.path.join(root, CONFIG_FILE), "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(render_config(RepositoryPlan(parts, roots), load_library(), date.today().isoformat(),
-                                           list_files(root, skip, frozenset())))
+                handle.write(text)
         except OSError as error:
             print(f"[wingbox] ERROR: cannot write {CONFIG_FILE}: {error}", file=sys.stderr)
             return 1
@@ -1570,10 +1663,15 @@ def _init(args: list[str], cwd: str) -> int:
     if os.path.exists(config_path) and not force:
         config_line = f"(arch-config-kept {q(CONFIG_FILE)} :reason {q('the file exists; wingbox init --force rewrites it')})"
     else:
+        text = _with_kept_keys(root, render_config(plan, library, date.today().isoformat(), paths))
+        refused = _config_refused(text, library)
+        if refused:
+            print(f"[wingbox] ERROR: {refused}", file=sys.stderr)
+            return 1
         try:
             _prepare_wingbox(os.path.dirname(os.path.dirname(config_path)))
             with open(config_path, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(render_config(plan, library, date.today().isoformat(), paths))
+                handle.write(text)
         except OSError as error:
             print(f"[wingbox] ERROR: cannot write {config_path}: {error}", file=sys.stderr)
             return 1

@@ -688,7 +688,10 @@ parts:
 ```
 
 Move a folder to another entry, put two folders into one layer
-(`- sales: [shop, app]`) or reorder the entries, then build again. From then
+(`- sales: [shop, app]`) or reorder the entries, then build again. A layer
+name is one word of letters, digits, `_`, `.` and `-`, and a folder has one
+layer; the build stops, with the line, on a key it does not know, on a key
+or a part folder written twice and on a file it cannot read. From then
 on `wingbox boundaries`, the report, `wingbox place` and the pull request
 check treat the part like any part with a style: an import of a higher layer
 is a violation, and the ones accepted with `wingbox align --learn` are

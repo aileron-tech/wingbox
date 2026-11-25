@@ -291,7 +291,12 @@ entry when it writes the file again and never adds them itself.
 (compare-part <part> :language <lang> :style <style> :layers "<layers>")
 (compare-diff <lang> :kind missing-layer|folder-meaning|style :detail "<what differs>")
 (advice <part> :id <id> :kind deviates :target <part> :style <style> :rule "majority <style>" :reason "..." :evidence "...")
+(compare-none :parts <parts of the repository> :reason "<why no part is shown>")
 ```
+
+A part is shown when it has a style and a language that a manifest names;
+parts are compared within a language. `compare-none` is the whole answer
+when no part is shown: the command never prints nothing.
 
 ## learn Output
 
