@@ -1654,7 +1654,7 @@ standard output, the result:
 
 | `:status` | Exit status | Meaning |
 |---|---|---|
-| `pass` | 0 | Every part with files was checked, at least one file was checked, the graph is not older than the files or the rule files, and nothing breaks a rule |
+| `pass` | 0 | Every part with files was checked, at least one file was checked, the graph is not known to be older than the files or the rule files, and nothing breaks a rule |
 | `fail` | 1 | A violation: a broken layer rule, a capability violation or a pattern break (whatever else was not checked) |
 | `incomplete` | 2 | No violation, but the check is not complete. `:reason`, the first that applies: `graph-stale` (the graph is known to miss changed files: the refresh is off, failed or timed out), `rules-changed` (a rule file changed after the build), `part-not-checked` (a part, or files in no part, were not checked), `not-parsed-language` (source files of a part are in a language without a parser), `no-files-checked` (a part has no file in a layer, or no file was checked at all) |
 | `error` | 3 | The check could not run: `:reason no-graph` (no `.wingbox/`), `invalid-graph` (the graph cannot be read) or `invalid-argument` |
