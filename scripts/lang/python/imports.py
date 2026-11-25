@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, Optional
 
-from ..interface import FileResult
+from ..interface import DiscoveryExclusions, FileResult
+from .roots import SOURCE_FOLDER, source_roots, top_level_names
 
-SOURCE_FOLDER = "src"
+# A name of the standard library is never a package of a source root: the library comes first on the path.
+_STANDARD_LIBRARY = frozenset(sys.stdlib_module_names)
 
 
 def _candidate_bases(
@@ -27,7 +30,11 @@ def _candidate_bases(
             relative_base = relative_base.parent
         return (str(relative_base),), parts
 
-    bases = [str(root_path), str(source_directory)]
+    # The folder of a package is not on the import path: inside a package an absolute name is never the
+    # module or the folder beside the importing file (`import logging` next to `logging.py`). The folder
+    # of a script is, as the first entry.
+    in_package = (source_directory / "__init__.py").is_file()
+    bases = [str(root_path)] if in_package else [str(root_path), str(source_directory)]
     first_segment = parts[0] if parts else ""
     current = source_directory
     while current == root_path or root_path in current.parents:
@@ -36,6 +43,7 @@ def _candidate_bases(
             first_segment
             and (current / first_segment).is_dir()
             and current_path not in bases
+            and not (in_package and current == source_directory)
         ):
             bases.append(current_path)
         if current == root_path:
@@ -64,6 +72,10 @@ class BoundPythonLanguage:
     _additional: dict[tuple[str, str], dict[str, list[int]]] = field(default_factory=dict, compare=False, repr=False)
     # The folders a module name is looked for in, per folder of the importing file (see _bases).
     _base_folders: dict[tuple[str, int, str], tuple[str, ...]] = field(default_factory=dict, compare=False, repr=False)
+    exclusions: Optional[DiscoveryExclusions] = field(default=None, compare=False, repr=False)
+    # The source roots that hold each top-level name (read on first need), and the answer per dotted name.
+    _top_level: list[dict[str, tuple[str, ...]]] = field(default_factory=list, compare=False, repr=False)
+    _rooted: dict[tuple[str, ...], str | None] = field(default_factory=dict, compare=False, repr=False)
 
     def _bases(self, source_path: str, import_name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """_candidate_bases(self.root, source_path, import_name), with the folders kept: they depend on the
@@ -85,19 +97,45 @@ class BoundPythonLanguage:
             self._resolved[key] = self._resolve_import(import_name, source_path)
         return self._resolved[key]
 
+    def _module_in(self, base: str, parts: tuple[str, ...]) -> str | None:
+        # As Python's finder: in one folder the package `name/__init__.py` is taken before the
+        # module `name.py`. A name without parts (`from . import x`) is the package folder
+        # itself, never a module file that lies beside that folder under the same name.
+        package = os.path.join(base, *parts, "__init__.py")
+        candidates = (package, os.path.join(base, *parts) + ".py") if parts else (package,)
+        for candidate in candidates:
+            target_id = self.path_to_id.get(os.path.normpath(candidate))
+            if target_id is not None:
+                return target_id
+        return None
+
+    def _in_bases(self, bases: tuple[str, ...], parts: tuple[str, ...]) -> str | None:
+        for base in bases:
+            target_id = self._module_in(base, parts)
+            if target_id is not None:
+                return target_id
+        return None
+
+    def _in_source_roots(self, parts: tuple[str, ...]) -> str | None:
+        """The module an absolute name means when exactly one source root of the repository holds it (a
+        package of another part of a monorepo, a folder a manifest names). Asked after the folders near
+        the importing file; a name that several roots hold is ambiguous and stays unlinked."""
+        if parts[0] in _STANDARD_LIBRARY:
+            return None
+        if parts not in self._rooted:
+            if not self._top_level:
+                roots = source_roots(self.root, self.path_to_id, self.exclusions)
+                self._top_level.append(top_level_names(self.root, roots, self.path_to_id))
+            found = {self._module_in(folder, parts) for folder in self._top_level[0].get(parts[0], ())} - {None}
+            self._rooted[parts] = found.pop() if len(found) == 1 else None
+        return self._rooted[parts]
+
     def _resolve_import(self, import_name: str, source_path: str) -> str | None:
         bases, parts = self._bases(source_path, import_name)
-        for base in bases:
-            # As Python's finder: in one folder the package `name/__init__.py` is taken before the
-            # module `name.py`. A name without parts (`from . import x`) is the package folder
-            # itself, never a module file that lies beside that folder under the same name.
-            package = os.path.join(base, *parts, "__init__.py")
-            candidates = (package, os.path.join(base, *parts) + ".py") if parts else (package,)
-            for candidate in candidates:
-                target_id = self.path_to_id.get(os.path.normpath(candidate))
-                if target_id is not None:
-                    return target_id
-        return None
+        target_id = self._in_bases(bases, parts)
+        if target_id is None and parts and not import_name.startswith("."):
+            target_id = self._in_source_roots(parts)
+        return target_id
 
     def resolve_additional_imports(self, result: FileResult) -> tuple[str, ...]:
         return tuple(self.additional_import_lines(result))
@@ -118,18 +156,18 @@ class BoundPythonLanguage:
             if not module or not original_name:
                 continue
 
+            # The submodule `module.name`: a module file or, when `name` is a subpackage, its `__init__.py`.
             bases, parts = self._bases(result.path, module)
-            for base in bases:
-                submodule_path = os.path.normpath(
-                    os.path.join(base, *parts, original_name + ".py")
-                )
-                target_id = self.path_to_id.get(submodule_path)
-                if target_id is not None:
-                    lines = extra_imports.setdefault(target_id, [])
-                    line = imported_name.get("line", 0)
-                    if line and line not in lines:
-                        lines.append(line)
-                        lines.sort()
-                    break
+            submodule = (*parts, original_name)
+            target_id = self._in_bases(bases, submodule)
+            # A package that a folder near the importing file holds has its submodules there and nowhere else.
+            if target_id is None and parts and not module.startswith(".") and self._in_bases(bases, parts) is None:
+                target_id = self._in_source_roots(submodule)
+            if target_id is not None:
+                lines = extra_imports.setdefault(target_id, [])
+                line = imported_name.get("line", 0)
+                if line and line not in lines:
+                    lines.append(line)
+                    lines.sort()
 
         return extra_imports
