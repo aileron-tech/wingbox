@@ -41,6 +41,37 @@ def list_files(root: str, skip_directories: frozenset[str], ignored_paths: froze
     return tuple(sorted(found))
 
 
+STATE_FOLDER = ".wingbox"
+# The one file below .wingbox whose refusal ends the command (config.read_config makes it an error). For the
+# others (decisions, learned, baseline) a file that cannot be read is a warning and the command goes on to the
+# writer, which names the link itself: naming it here too would say one thing twice.
+_FATAL_WHEN_UNREAD = STATE_FOLDER + "/config.yaml"   # config.CONFIG_FILE; REQ-ZONE-9990 fails when they differ
+
+
+def _link_below_state_folder(root: str, relative: str) -> Optional[str]:
+    """The first symbolic link from the `.wingbox` folder of the config file's path down to the file itself,
+    as an absolute path; None for any other file, and when no part of the path is a link."""
+    names = relative.split("/")
+    if relative != _FATAL_WHEN_UNREAD:
+        return None
+    start = names.index(STATE_FOLDER)
+    for end in range(start + 1, len(names) + 1):
+        candidate = os.path.abspath(os.path.join(root, *names[:end]))
+        if os.path.islink(candidate):
+            return candidate
+    return None
+
+
+def _refused(root: str, relative: str, otherwise: str) -> str:
+    """Why a file that leaves the repository through a link is not read. A link at `.wingbox` or below it
+    is named in the words of the writers (portable.refuse_links), so one condition has one message."""
+    link = _link_below_state_folder(root, relative)
+    if link is None:
+        return otherwise
+    return (f"{link} is a symbolic link: Wingbox writes nothing through a link at {STATE_FOLDER} or below it, "
+            "and does not read this file through one that leaves the project. Remove the link and run the command again.")
+
+
 def read_text_file(root: str, relative: str) -> "str | None | NotRead":
     """The text of a repository-relative file; None when there is no such file; NotRead with the reason
     when it is there and cannot be read.
@@ -53,7 +84,7 @@ def read_text_file(root: str, relative: str) -> "str | None | NotRead":
         status = os.stat(path)
     except (FileNotFoundError, NotADirectoryError):
         if os.path.islink(path):
-            return NotRead(relative, "it is a link to a file that does not exist")
+            return NotRead(relative, _refused(root, relative, "it is a link to a file that does not exist"))
         return None
     except (OSError, ValueError) as error:   # ValueError: a name with a null character
         return NotRead(relative, str(error))
@@ -61,7 +92,7 @@ def read_text_file(root: str, relative: str) -> "str | None | NotRead":
         return NotRead(relative, "it is not a regular file")
     real_root, real = os.path.normcase(os.path.realpath(root)), os.path.normcase(os.path.realpath(path))
     if real != real_root and not real.startswith(real_root.rstrip(os.sep) + os.sep):
-        return NotRead(relative, "it is outside the repository")
+        return NotRead(relative, _refused(root, relative, "it is outside the repository"))
     if status.st_size > MAX_TEXT_BYTES:
         return NotRead(relative, f"it is larger than {MAX_TEXT_BYTES} bytes")
     try:
