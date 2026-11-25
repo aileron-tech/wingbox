@@ -93,7 +93,7 @@ def is_test_file(relative: str, library: Library) -> bool:
     if any(re.split(r"[-_.]", segment.lower())[0] in {"test", "tests", "spec", "specs", "e2e"} for segment in segments[:-1]):
         return True
     base = segments[-1]
-    if any(fnmatch.fnmatchcase(base.lower(), pattern.lower()) for pattern in library.index.test_files):
+    if any(_matches_test_pattern(base, pattern) for pattern in library.index.test_files):
         return True
     stem = base.rsplit(".", 1)[0]
     # x.test-helpers.ts, x.test-data.ts: helpers that only tests import.
@@ -102,6 +102,14 @@ def is_test_file(relative: str, library: Library) -> bool:
         or ".test-" in stem or ".spec-" in stem
         or stem.startswith("test_")
     )
+
+
+def _matches_test_pattern(base: str, pattern: str) -> bool:
+    """A pattern with a capital letter is matched as written: the capital marks the word, so *Test.java is
+    OrderTest.java and not Latest.java. A lower-case pattern matches whatever the case of the name."""
+    if pattern != pattern.lower():
+        return fnmatch.fnmatchcase(base, pattern)
+    return fnmatch.fnmatchcase(base.lower(), pattern)
 
 
 def _is_ignored(relative: str, library: Library) -> bool:

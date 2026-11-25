@@ -33,7 +33,9 @@ min_source_files = 12        # smaller parts are not judged
 # Left out before anything is counted.
 folders = ["node_modules", "vendor", "dist", "build", "out", "target", "bin", "obj", "coverage", "generated", "gen", "migrations", "docs", "examples", "e2e"]
 tests = ["test", "tests", "spec", "specs", "testing", "mocks", "fixtures"]   # folders (matched as "__tests__" too)
-test_files = ["*.test.*", "*.spec.*", "*_test.*", "test_*.py", "*Test.java", "*Tests.cs", "*Test.cs"]
+# A pattern with a capital letter is matched as written (*Test.java is OrderTest.java, not Latest.java);
+# a lower-case pattern matches whatever the case of the file name. tests.py: the test module of a Django app.
+test_files = ["*.test.*", "*.spec.*", "*_test.*", "test_*.py", "tests.py", "*Test.java", "*Tests.cs", "*Test.cs"]
 
 [decision]
 # A style is a candidate for a part when its score reaches candidate_score and
@@ -61,12 +63,15 @@ manifest_fields = ["pyproject.toml:tool.importlinter", "pyproject.toml:tool.tach
 known_exceptions = ["layers.known-upward-imports.json", ".dependency-cruiser-known-violations.json", "deptrac.baseline.yaml"]
 
 [composition_roots]
-# Files that wire the application together may import every layer.
+# Files that wire the application together may import every layer, while only composition roots and
+# tests import them. One that a file of a layer imports could pass any import on: it is judged like any
+# file of its folder, and so is a test file that a file of a layer imports (code_graph_search._judged_names).
 files = ["main.*", "program.*", "startup.*", "bootstrap.*", "container.*", "composition*.*", "app.module.*", "dependencyinjection.*", "wire.go", "index.ts@root"]
 # A file that imports one of these names starts the application, whatever its name
 # ("module:name"): a Nest bootstrap, a nest-commander CLI command.
 imports = ["@nestjs/core:NestFactory", "nest-commander:Command", "nest-commander:CommandRunner", "nest-commander:CommandFactory", "nest-commander:SubCommand"]
-# A file that nothing imports and that imports a composition root is an entry point too (a worker bootstrap).
+# A file that nothing imports and that imports a composition root is an entry point too (a worker bootstrap),
+# unless a rule sets its layer: then a file of a layer imports that composition root, and both are judged.
 
 [domain_blocks]
 # The building blocks of the domain tier. Each style's [target] says where they live.

@@ -136,7 +136,7 @@ class LayerRulesFromRealRepositoriesTest(unittest.TestCase):
             self.assertEqual(expected, search.module_layer(alone, module), module)
 
     def test_boundaries_separates_folder_based_violations_from_guesses(self) -> None:
-        """/* REQ-CS-050: `boundaries` must print a violation only when both layers are certain; a pair that rests on a guessed layer is a candidate. */"""
+        """/* REQ-CS-050: `boundaries` must print a violation only when both layers are certain; a pair that rests on a guessed layer is a candidate, and a file whose layer is a guess or that has none is counted as in no layer, not as checked. */"""
         import io
         from contextlib import redirect_stdout
 
@@ -150,7 +150,8 @@ class LayerRulesFromRealRepositoriesTest(unittest.TestCase):
         self.assertEqual(1, sum(line.startswith("(violation ") for line in lines), lines)
         self.assertTrue(any(line.startswith("(violation src/domain/order web/components/label ") for line in lines), lines)
         self.assertTrue(any(line.startswith("(violation-candidate src/domain/order pkg/ledger ") for line in lines), lines)
-        self.assertIn("(boundaries-summary :violations 1 :known 0 :type-only 0 :candidates 1 :checked 6)", lines)
+        self.assertIn("(boundaries-no-layer :part . :files-in-part 2)", lines)
+        self.assertIn("(boundaries-summary :violations 1 :known 0 :type-only 0 :candidates 1 :checked 4 :no-layer 2)", lines)
 
 
 class ImpactTargetTest(unittest.TestCase):

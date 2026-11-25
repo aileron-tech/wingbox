@@ -699,6 +699,7 @@ class CodeGraph:
         self.arch_denies: dict[str, dict[tuple[str, str], str]] = {}   # part -> (from, to) -> reason
         self.candidate_rules: set[tuple[str, str, str]] = set()   # (part, from, to) of rules that give candidates
         self.entry_roots: dict[str, bool] = {}   # module -> nothing imports it and it imports a composition root
+        self.gate = GateFacts()   # what `boundaries` reads besides the labels and the rules
         self.arch_fixes: dict[tuple[str, str, str], str] = {}   # (part, from, to) -> fix the style prescribes
         self.arch_ranks: dict[str, dict[str, int]] = {}         # part -> layer -> rank
         self.arch_targets: list[tuple[str, str, str, str, bool, str, str]] = []   # part, layer, block, folder, proposed, present, source
@@ -755,6 +756,7 @@ class CodeGraph:
         self.arch_denies = {}
         self.candidate_rules = set()
         self.entry_roots = {}
+        self.gate = GateFacts()
         self.arch_fixes = {}
         self.arch_ranks = {}
         self.arch_targets = []
@@ -982,15 +984,19 @@ class CodeGraph:
                 ))
             elif kind == "arch-known" and len(tokens) >= 5:
                 pair = (_resolve(tokens[2]), _resolve(tokens[3]))
-                terms = _baseline.terms_of(tokens[5:])
-                if terms.expired(today):
-                    if pair not in self.known:
-                        self.known_expired[pair] = terms
-                    continue
-                self.known[pair] = tokens[4]
-                self.known_expired.pop(pair, None)
-                if terms.stated():
-                    self.known_terms[pair] = terms
+                entries = self.gate.known_entries.setdefault(pair, [])
+                entries.append((tokens[4], tokens[1], _baseline.terms_of(tokens[5:])))
+                self.gate.known_files[pair] = _settle_entries(
+                    pair, [(file, terms) for file, _part, terms in entries], today,
+                    self.known, self.known_terms, self.known_expired)
+            elif kind == "arch-known-rule" and len(tokens) >= 5:
+                self.gate.known_rules.setdefault((tokens[1], tokens[2], tokens[3]), set()).add(tokens[4])
+            elif kind in ("arch-not-parsed", "arch-capability-unread") and len(tokens) >= 3:
+                files = _keywords(tokens[3:]).get("files", "")
+                table = self.gate.not_parsed if kind == "arch-not-parsed" else self.gate.capability_unread
+                table.setdefault(tokens[1], {})[tokens[2]] = int(files) if files.isdigit() else 0
+            elif kind == "arch-rule-files":
+                self.gate.rule_digests = _keywords(tokens[1:])
             elif kind == "arch-capability" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])
                 self.arch_capabilities.setdefault(tokens[1], {})[tokens[2]] = CapabilityRuleFact(
@@ -1008,13 +1014,9 @@ class CodeGraph:
                 self.declared_unread.setdefault(tokens[1], []).append(tokens[2])
             elif kind == "capability-known" and len(tokens) >= 5:
                 key = (_resolve(tokens[2]), tokens[3])
-                terms = _baseline.terms_of(tokens[5:])
-                if terms.expired(today):
-                    self.capability_expired[key] = terms
-                    continue
-                self.capability_known[key] = tokens[4]
-                if terms.stated():
-                    self.capability_terms[key] = terms
+                entries = self.gate.capability_entries.setdefault(key, [])
+                entries.append((tokens[4], _baseline.terms_of(tokens[5:])))
+                _settle_entries(key, entries, today, self.capability_known, self.capability_terms, self.capability_expired)
             elif kind == "layer" and len(tokens) >= 3:
                 values = _keywords(tokens[3:])  # :learned-from <id> is part of the rule text as well
                 self.labels[_resolve(tokens[1])] = ModuleLabel(
@@ -1787,7 +1789,14 @@ _ROLE_GUESS_STYLES = ("layered",)
 
 
 def _default_labels(g: CodeGraph) -> None:
-    """Labels of a graph without architecture facts (written by hand): one part, the layered style."""
+    """Labels of a graph without architecture facts (written by hand): one part, the layered style.
+
+    Only in a project without .wingbox/config.yaml. Where a config states the parts and the graph still
+    has none, the parts of the config hold no file: the files are in no part and no style is assumed."""
+    if g.gate.no_default is None:
+        g.gate.no_default = bool(g._root) and os.path.isfile(os.path.join(g._root, ".wingbox", "config.yaml"))
+    if g.gate.no_default:
+        return
     library = load_library()
     style = library.style("layered")
     assert style is not None
@@ -2931,13 +2940,148 @@ class BoundaryBreak:
     severity: str = "violation"   # candidate: the rule itself gives candidates (a utility on infrastructure)
 
 
+@dataclass
+class GateFacts:
+    """What `boundaries` reads of a graph besides the labels and the rules, and what it works out once."""
+
+    stale_files: Optional[int] = None   # changed files the graph is known to miss; None when nobody checked
+    rule_digests: dict[str, str] = field(default_factory=dict)   # arch-rule-files: what the build read of each rule file
+    not_parsed: dict[str, dict[str, int]] = field(default_factory=dict)   # part -> language no parser reads -> source files
+    capability_unread: dict[str, dict[str, int]] = field(default_factory=dict)   # part -> language the detector skips -> files
+    # (source, target) -> (baseline file, part, terms) of each entry; the files that accept the pair today;
+    # (part, source, target) -> the rules the entries of .wingbox/baseline.sexp state for it.
+    known_entries: dict[tuple[str, str], list[tuple[str, str, _baseline.Acceptance]]] = field(default_factory=dict)
+    known_files: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
+    known_rules: dict[tuple[str, str, str], set[str]] = field(default_factory=dict)
+    capability_entries: dict[tuple[str, str], list[tuple[str, _baseline.Acceptance]]] = field(default_factory=dict)
+    judged: Optional[dict[str, ModuleLabel]] = None   # _judged_names, once per graph
+    no_default: Optional[bool] = None   # the project has a config: a graph without parts gets no default style
+
+
+def _settle_entries(
+    key: tuple[str, str], entries: Sequence[tuple[str, _baseline.Acceptance]], today: str,
+    known: dict[tuple[str, str], str], stated: dict[tuple[str, str], _baseline.Acceptance],
+    expired: dict[tuple[str, str], _baseline.Acceptance],
+) -> tuple[str, ...]:
+    """Set what the baseline entries of one finding come to, and return the files that accept it.
+
+    A baseline file accepts the finding when none of its entries for it is past its end date: another entry
+    of the same file (written for another part, or without terms) does not undo an end date. The project's
+    own baseline and .wingbox/baseline.sexp are two files: each accepts on its own.
+    """
+    by_file: dict[str, list[_baseline.Acceptance]] = {}
+    for file, terms in entries:
+        by_file.setdefault(file, []).append(terms)
+    live = sorted(file for file, items in by_file.items() if not any(terms.expired(today) for terms in items))
+    for table in (known, stated, expired):
+        table.pop(key, None)
+    if live:
+        known[key] = live[-1]
+        with_terms = [terms for terms in by_file[live[-1]] if terms.stated()]
+        if with_terms:
+            stated[key] = with_terms[-1]
+    else:
+        expired[key] = next(terms for items in by_file.values() for terms in items if terms.expired(today))
+    return tuple(live)
+
+
+def _accepting_file(g: CodeGraph, pair: tuple[str, str], rule: str) -> str:
+    """The baseline file that accepts a break of `rule` between two modules, or "".
+
+    An entry of .wingbox/baseline.sexp that states a rule accepts a break of that rule only: the same two
+    files breaking another rule (their layers changed) are a new finding. An entry that states no rule,
+    and the project's own baseline, accept the pair whatever the rule.
+    """
+    file = g.known.get(pair, "")
+    for candidate in reversed(g.gate.known_files.get(pair, ())):
+        if candidate != _baseline.BASELINE_FILE:
+            return candidate
+        parts = {part for entry_file, part, _terms in g.gate.known_entries[pair] if entry_file == candidate}
+        stated = [g.gate.known_rules.get((part, *pair)) for part in parts]
+        if any(rules is None or rule in rules for rules in stated):
+            return candidate
+        file = ""
+    return file
+
+
+def _label_beside(g: CodeGraph, module_id: str, label: ModuleLabel, by_folder: dict[str, list[str]]) -> Optional[ModuleLabel]:
+    """The label of a test file judged like the files of its folder: the layer most files of a layer have
+    in its folder, else in the nearest folder above it; None when no folder above it holds such a file."""
+    folder = _label_path(g, module_id)
+    while "/" in folder:
+        folder = folder.rpartition("/")[0]
+        layers = collections.Counter(
+            beside.layer for beside in (module_label(g, other) for other in by_folder.get(folder, ()))
+            if beside.part == label.part and beside.layer not in ("other", "test")
+            and beside.match not in ("role", "package", "none")
+        )
+        if layers:
+            layer = min(layers, key=lambda name: (-layers[name], name))
+            return replace(label, layer=layer, rule=f"test file that a file of a layer imports: judged as {folder}/ ({layer})")
+    return None
+
+
+def _judged_names(g: CodeGraph) -> dict[str, ModuleLabel]:
+    """The files that a name exempts from the rules and that a file of a layer imports, each with the
+    label it is judged by.
+
+    A composition root (main.ts, container.ts, ...) wires the layers and a test may import anything: no
+    rule is stated for them. A file of a layer that imports one of them would reach every layer through
+    it, so such a file is judged like any file of its folder instead: a composition root by the layer of
+    its own label, a test by the layer of the files beside it. A file that only composition roots and
+    tests (and files in no layer) import keeps the exemption. Worked out once per graph, to a fixed
+    point: a file that a judged file imports is judged too.
+    """
+    if g.gate.judged is not None:
+        return g.gate.judged
+    labels = {module: module_label(g, module) for module in g.nodes}
+    exempt = {module: label for module, label in labels.items() if label.root or label.layer == "test"}
+    by_folder: dict[str, list[str]] = {}   # folder -> its modules, filled when the first test is judged
+    importers = {module: [other for other in _collect_rdep_mods(g, module) if other in labels] for module in exempt}
+    judged: dict[str, ModuleLabel] = {}
+    unplaced: set[str] = set()   # tests with no file of a layer beside them: nothing to judge them by
+    changed = True
+    while changed:
+        changed = False
+        for module, label in exempt.items():
+            if module in judged or module in unplaced:
+                continue
+            if not any(other in judged or (other not in exempt and _layer_is_certain(g, other))
+                       for other in importers[module]):
+                continue
+            if label.layer != "test":
+                as_label: Optional[ModuleLabel] = replace(label, root=False)
+            else:
+                if not by_folder:
+                    for other in g.nodes:
+                        by_folder.setdefault(_label_path(g, other).rpartition("/")[0], []).append(other)
+                as_label = _label_beside(g, module, label, by_folder)
+            if as_label is None:
+                unplaced.add(module)
+            else:
+                judged[module] = as_label
+                changed = True
+    g.gate.judged = judged
+    return judged
+
+
+def _judged_label(g: CodeGraph, module_id: str) -> ModuleLabel:
+    """The label the rules judge a module by: its own, or the one of `_judged_names`."""
+    return _judged_names(g).get(module_id) or module_label(g, module_id)
+
+
 def _is_entry_root(g: CodeGraph, module_id: str) -> bool:
-    """A composition root by its label, or an entry point: nothing imports it and it imports a composition root."""
-    if module_label(g, module_id).root:
-        return True
+    """A composition root by its label that no file of a layer imports (`_judged_names`), or an entry point:
+    nothing imports it and it imports such a composition root. A file whose layer a rule sets is never
+    an entry point this way: the root it imports is judged, because a file of a layer imports it."""
     if module_id not in g.entry_roots:
-        g.entry_roots[module_id] = not _collect_rdep_mods(g, module_id) and any(
-            module_label(g, target).root for target in _collect_dep_mods(g, module_id)
+        judged = _judged_names(g)
+
+        def is_root(module: str) -> bool:
+            return module_label(g, module).root and module not in judged
+
+        g.entry_roots[module_id] = is_root(module_id) or (
+            not _collect_rdep_mods(g, module_id) and any(is_root(target) for target in _collect_dep_mods(g, module_id))
         )
     return g.entry_roots[module_id]
 
@@ -2959,13 +3103,14 @@ def boundary_violations(g: CodeGraph, scope_mods: set[str]) -> list[BoundaryBrea
     Rules apply between two modules of the same part only: a part is judged by
     its own style, and a dependency between parts is a dependency between
     packages, not between layers. A part without a determined style has no rules. A composition
-    root (main.ts, app.module.ts, Program.cs) wires the layers and may import every one.
+    root (main.ts, app.module.ts, Program.cs) wires the layers and may import every one, and so may a
+    test; one that a file of a layer imports is judged like the files of its folder (`_judged_names`).
     """
     if not g.arch_parts:
         _default_labels(g)
     found: list[BoundaryBreak] = []
     for src_mod in sorted(scope_mods):
-        source = module_label(g, src_mod)
+        source = _judged_label(g, src_mod)
         rules = g.arch_denies.get(source.part)
         if not rules or _is_entry_root(g, src_mod):
             continue
@@ -2975,17 +3120,18 @@ def boundary_violations(g: CodeGraph, scope_mods: set[str]) -> list[BoundaryBrea
             tgt_mod = edge.target.split("::")[0]
             if tgt_mod == src_mod:
                 continue
-            target = module_label(g, tgt_mod)
+            target = _judged_label(g, tgt_mod)
             if target.part != source.part or target.layer == source.layer:
                 continue
             reason = rules.get((source.layer, target.layer))
             if reason is None:
                 continue
+            rule = f"{source.layer} -> {target.layer}"
             found.append(BoundaryBreak(
                 source=src_mod, target=tgt_mod, source_layer=source.layer, target_layer=target.layer,
                 kind=edge.etype, reason=reason, part=source.part, style=source.style if source.style != "-" else
                 g.arch_parts.get(source.part, {}).get("style", "-"),
-                rule=f"{source.layer} -> {target.layer}", known=g.known.get((src_mod, tgt_mod), ""),
+                rule=rule, known=_accepting_file(g, (src_mod, tgt_mod), rule),
                 severity="candidate" if (source.part, source.layer, target.layer) in g.candidate_rules else "violation",
             ))
     return found
@@ -3054,7 +3200,7 @@ def capability_violations(g: CodeGraph, scope_mods: set[str]) -> list[Capability
         facts = g.capabilities.get(module)
         if not facts:
             continue
-        label = module_label(g, module)
+        label = _judged_label(g, module)
         rules = _capability_rules(g, label.part)
         if not rules or label.layer in ("other", "test") or _is_entry_root(g, module):
             continue
@@ -3086,7 +3232,7 @@ def pattern_violations(g: CodeGraph, scope_mods: set[str]) -> list[PatternBreak]
         _default_labels(g)
     found: list[PatternBreak] = []
     for module in sorted(scope_mods):
-        label = module_label(g, module)
+        label = _judged_label(g, module)
         patterns = g.arch_patterns.get(label.part, set())
         if not patterns or not _layer_is_certain(g, module) or _is_entry_root(g, module):
             continue
@@ -3119,10 +3265,27 @@ def print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> int:
 
 def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int, int]:
     """Print the capability and pattern facts; (capability violations and pattern breaks, known ones)."""
+    lines, violations, known = _capability_findings(g, scope_mods, boundaries_coverage(g, scope_mods).checked)
+    for line in lines:
+        print(line)
+    return violations, known
+
+
+def _capability_findings(g: CodeGraph, scope_mods: set[str], checked: int) -> tuple[list[str], int, int]:
+    """(the capability and pattern facts, capability violations and pattern breaks, known ones).
+
+    First, for each part of the scope that has capability rules, the files in a language the capability
+    detector does not read: `(capability-not-read :part P :language L :files N)`. `checked` is the number
+    of files the rules place, as `boundaries` counts them."""
+    lines: list[str] = []
+    for part in sorted({module_label(g, module).part for module in scope_mods} & set(g.gate.capability_unread)):
+        unread = g.gate.capability_unread[part]
+        lines.extend(f"(capability-not-read :part {_q(part)} :language {_q(language)} :files {unread[language]})"
+                     for language in sorted(unread, key=lambda name: (-unread[name], name)))
     breaks = capability_violations(g, scope_mods)
     patterns = pattern_violations(g, scope_mods)
     if not breaks and not patterns:
-        return 0, 0
+        return lines, 0, 0
     counts = {"capability-violation": 0, "capability-violation-known": 0, "capability-candidate": 0}
     for item in breaks:
         fact = "capability-candidate" if item.severity == "candidate" else (
@@ -3134,7 +3297,7 @@ def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int,
         if fact == "capability-violation":
             known = _expired_terms(g.capability_expired, (item.module, item.capability))
         pattern = f" :pattern {item.pattern}" if item.pattern else ""
-        print(
+        lines.append(
             f"({fact} {_q(module_file(g, item.module))} :capability {item.capability} :layer {item.layer}{allowed}{forbidden} "
             f":line {item.line} :evidence {_q(item.evidence)} :part {_q(item.part)} :style {item.style}{known}{pattern}"
             f"{' :fix ' + _q(item.fix) if item.fix else ''})"
@@ -3142,13 +3305,13 @@ def _print_capability_findings(g: CodeGraph, scope_mods: set[str]) -> tuple[int,
     for item in patterns:
         target = f" :target {_q(module_file(g, item.target))}" if item.target else ""
         line = f" :line {item.line} :evidence {_q(item.evidence)}" if item.line else ""
-        print(f"(pattern-violation {_q(module_file(g, item.source))} :pattern {item.pattern}{target}{line} "
-              f":part {_q(item.part)} :style {item.style} {_q(item.reason)})")
-    print(
+        lines.append(f"(pattern-violation {_q(module_file(g, item.source))} :pattern {item.pattern}{target}{line} "
+                     f":part {_q(item.part)} :style {item.style} {_q(item.reason)})")
+    lines.append(
         f"(capability-summary :violations {counts['capability-violation']} :known {counts['capability-violation-known']} "
-        f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {len(scope_mods)})"
+        f":candidates {counts['capability-candidate']} :patterns {len(patterns)} :checked {checked})"
     )
-    return counts["capability-violation"] + len(patterns), counts["capability-violation-known"]
+    return lines, counts["capability-violation"] + len(patterns), counts["capability-violation-known"]
 
 
 def _known_terms(terms: dict[tuple[str, str], _baseline.Acceptance], key: tuple[str, str]) -> str:
@@ -3176,9 +3339,11 @@ class NotChecked:
     """A part with files that no rule checked: saying ok for it would be a false pass."""
 
     part: str
-    reason: str               # declared-rules-not-read | style-undetermined | no-layer-style | too-few-files
+    reason: str               # declared-rules-not-read | style-undetermined | no-layer-style | too-few-files;
+    #                           from boundaries_coverage also in-no-part | no-file-in-a-layer | not-parsed-language
     files: tuple[str, ...]    # the rule files that were not read
-    count: int                # files (modules) of the part in the scope
+    count: int                # files (modules) of the part in the scope; not-parsed-language: files in no module
+    languages: tuple[str, ...] = ()   # not-parsed-language: the languages, most files first
 
 
 _NOT_CHECKED_WORDS = {
@@ -3186,6 +3351,9 @@ _NOT_CHECKED_WORDS = {
     "style-undetermined": "style not determined",
     "no-layer-style": "no layer style",
     "too-few-files": "too few files to judge a style",
+    "in-no-part": "in no part",
+    "no-file-in-a-layer": "no file in a layer",
+    "not-parsed-language": "a language no parser reads",
 }
 
 
@@ -3221,14 +3389,102 @@ def not_checked_parts(g: CodeGraph, scope_mods: set[str]) -> list[NotChecked]:
     return found
 
 
+@dataclass(frozen=True)
+class Coverage:
+    """What `boundaries` judged of a scope, in files.
+
+    `checked` counts the files a rule places (in a layer, or as a test) in a part that has rules. The
+    other files are not checked, each group with its reason (`unchecked`), or belong to a checked part and
+    to no layer of it (`no_layer`): the rules say nothing about those, and they are counted apart.
+    """
+
+    unchecked: tuple[NotChecked, ...]
+    parts: tuple[tuple[str, str, int], ...]   # (part, style, modules of the scope) of each checked part
+    no_layer: tuple[tuple[str, int], ...]     # (checked part, its files that no rule places)
+    checked: int
+
+    @property
+    def not_checked(self) -> int:
+        return sum(item.count for item in self.unchecked)
+
+    @property
+    def unplaced(self) -> int:
+        return sum(count for _part, count in self.no_layer)
+
+
+_NOTHING_CHECKED = Coverage((), (), (), 0)
+
+
+def boundaries_coverage(g: CodeGraph, scope_mods: set[str], whole: bool = False) -> Coverage:
+    """Sort the files of a scope into checked, not checked and in no layer.
+
+    Not checked, besides the parts of `not_checked_parts`: the files in no part of the plan, a part with
+    rules in which no file is in a layer, and the source files of a part in a language no parser reads
+    (they are in no module; `whole` counts them for every part, a narrower scope for the parts it touches).
+    """
+    unchecked = not_checked_parts(g, scope_mods)
+    left_out = {item.part for item in unchecked}
+    by_part: dict[str, list[str]] = {}
+    for module in scope_mods:
+        by_part.setdefault(module_label(g, module).part, []).append(module)
+    parts: list[tuple[str, str, int]] = []
+    no_layer: list[tuple[str, int]] = []
+    checked = 0
+    for part, modules in sorted(by_part.items()):
+        if part in left_out:
+            continue
+        if part not in g.arch_parts:
+            unchecked.append(NotChecked(part, "in-no-part", (), len(modules)))
+            continue
+        placed = sum(1 for module in modules if _layer_is_certain(g, module))
+        if not placed:
+            unchecked.append(NotChecked(part, "no-file-in-a-layer", (), len(modules)))
+            continue
+        checked += placed
+        parts.append((part, g.arch_parts[part].get("style", "-"), len(modules)))
+        if placed < len(modules):
+            no_layer.append((part, len(modules) - placed))
+    for part, counts in sorted(g.gate.not_parsed.items()):
+        if whole or part in by_part:
+            languages = tuple(sorted(counts, key=lambda name: (-counts[name], name)))
+            unchecked.append(NotChecked(part, "not-parsed-language", (), sum(counts.values()), languages))
+    return Coverage(tuple(unchecked), tuple(parts), tuple(no_layer), checked)
+
+
+def _not_checked_fact(item: NotChecked) -> str:
+    files = f" :files ({' '.join(_q(name) for name in item.files)})" if item.files else ""
+    languages = f" :languages ({' '.join(_q(name) for name in item.languages)})" if item.languages else ""
+    return f"(boundaries-not-checked :part {_q(item.part)} :reason {item.reason}{files}{languages} :files-in-part {item.count})"
+
+
+def _rule_reader(root: str) -> Callable[[str], Optional[str]]:
+    """The reader of repository files the build uses: the digests are compared on the same text."""
+    if __package__:
+        from .architecture.repository import text_reader
+    else:
+        from architecture.repository import text_reader
+    return text_reader(root)
+
+
+def changed_rule_files(g: CodeGraph) -> tuple[str, ...]:
+    """The rule files (.wingbox/config.yaml, baseline.sexp, the learned layers of decisions.sexp) that were
+    edited, added or deleted since the build recorded them: the facts of the graph are older than the
+    rules. None for a graph that holds no record."""
+    if not g.gate.rule_digests or not g._root:
+        return ()
+    return _baseline.changed_rule_files(g.gate.rule_digests, _baseline.rule_file_digests(_rule_reader(g._root)))
+
+
 STRICT_EXIT = {"pass": 0, "fail": 1, "incomplete": 2, "error": 3}
 
 
 def boundaries_result_line(status: str, checked: int = 0, not_checked: int = 0, violations: int = 0, known: int = 0,
-                           reason: str = "") -> str:
-    """The one line a gate reads in strict mode; the counts are files (modules), violations and known breaks."""
+                           reason: str = "", no_layer: int = 0) -> str:
+    """The one line a gate reads in strict mode; the counts are files (modules), violations and known breaks.
+    `:no-layer` (files of the checked parts that no rule places) is written only when it is not zero."""
     return (f"(boundaries-result :status {status} :checked {checked} :not-checked {not_checked} "
-            f":violations {violations} :known {known}{' :reason ' + reason if reason else ''})")
+            f":violations {violations} :known {known}{f' :no-layer {no_layer}' if no_layer else ''}"
+            f"{' :reason ' + reason if reason else ''})")
 
 
 def _strict_error(reason: str) -> int:
@@ -3237,41 +3493,36 @@ def _strict_error(reason: str) -> int:
     return STRICT_EXIT["error"]
 
 
-def _strict_result(g: CodeGraph, scope_mods: set[str], unchecked: list[NotChecked], violations: int, known: int) -> int:
-    """The strict lines after the plain output: a fact per checked part, then the result; returns the exit status.
+def _strict_status(g: CodeGraph, cover: Coverage, violations: int, changed: Sequence[str]) -> tuple[str, str]:
+    """(status, reason) of the strict result.
 
-    pass: every part with files was checked, at least one file was checked and nothing breaks a rule.
-    fail: a violation. incomplete: a part was not checked, for any reason, or no file was checked.
+    pass: every part with files was checked, at least one file was checked, the facts are current and
+    nothing breaks a rule. fail: a violation. incomplete, first that applies: the graph is known to miss
+    changed files; a rule file changed since the build; a part or the files in no part were not checked;
+    source files were not read (no parser); no file is in a layer of a part, or no file was checked.
     """
-    by_part: dict[str, int] = {}
-    for module in scope_mods:
-        part = module_label(g, module).part
-        by_part[part] = by_part.get(part, 0) + 1
-    left_out = {item.part for item in unchecked}
-    not_checked = sum(item.count for item in unchecked)
-    checked_lines: list[str] = []
-    for part, count in sorted(by_part.items()):
-        if part in left_out:
-            continue
-        if part not in g.arch_parts:
-            # Files outside every part of the plan have no rules: plain mode does not count them apart.
-            print(f"(boundaries-not-checked :part {_q(part)} :reason in-no-part :files-in-part {count})")
-            not_checked += count
-            continue
-        style = g.arch_parts[part].get("style", "-")
-        checked_lines.append(f"(boundaries-checked :part {_q(part)} :style {style} :modules {count})")
-    for line in checked_lines:
-        print(line)
-    checked = len(scope_mods) - not_checked
+    reasons = {item.reason for item in cover.unchecked}
     if violations:
-        status, reason = "fail", ""
-    elif not_checked:
-        status, reason = "incomplete", "part-not-checked"
-    elif checked == 0:
-        status, reason = "incomplete", "no-files-checked"
-    else:
-        status, reason = "pass", ""
-    print(boundaries_result_line(status, checked, not_checked, violations, known, reason))
+        return "fail", ""
+    if g.gate.stale_files:
+        return "incomplete", "graph-stale"
+    if changed:
+        return "incomplete", "rules-changed"
+    if reasons - {"not-parsed-language", "no-file-in-a-layer"}:
+        return "incomplete", "part-not-checked"
+    if "not-parsed-language" in reasons:
+        return "incomplete", "not-parsed-language"
+    if reasons or cover.checked == 0:
+        return "incomplete", "no-files-checked"
+    return "pass", ""
+
+
+def _strict_result(g: CodeGraph, cover: Coverage, violations: int, known: int, changed: Sequence[str]) -> int:
+    """The strict lines after the plain output: a fact per checked part, then the result; returns the exit status."""
+    for part, style, modules in cover.parts:
+        print(f"(boundaries-checked :part {_q(part)} :style {style} :modules {modules})")
+    status, reason = _strict_status(g, cover, violations, changed)
+    print(boundaries_result_line(status, cover.checked, cover.not_checked, violations, known, reason, cover.unplaced))
     return STRICT_EXIT[status]
 
 
@@ -3284,9 +3535,18 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
     Each line names the part, the style and the rule; `:known` names the
     project's own baseline when it already lists the pair.
 
+    What was not checked comes first (`boundaries-not-checked`, with
+    `boundaries-partial` in place of ok), then the files of a checked part that
+    no rule places (`boundaries-no-layer`); `:checked` counts the files a rule
+    places. `boundaries-ok` is a pass: it is not printed beside a violation of
+    any kind, nor when a rule file changed since the build
+    (`boundaries-rules-changed`). Exit status: 2 when a part's declared rules
+    were not read or the scope matches nothing, 1 for a violation, else 0.
+
     With `strict` the same lines are followed by a `boundaries-checked` fact
     per checked part and one `boundaries-result` line, and the exit status is
-    the one of that line (STRICT_EXIT): a part that was not checked is never a pass.
+    the one of that line (STRICT_EXIT): what was not checked or not read, and
+    facts known to be older than the files or the rules, are never a pass.
     """
     if module_id == "all":
         scope_mods = set(g.nodes.keys())
@@ -3294,25 +3554,35 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
         matches = g.resolve_module(module_id)
         if not matches:
             _print_no_match(g, module_id)
-            return _strict_result(g, set(), [], 0, 0) if strict else None
+            return _strict_result(g, _NOTHING_CHECKED, 0, 0, ()) if strict else 2
         scope_mods = set(matches)
 
     violations = boundary_violations(g, scope_mods)
-    unchecked = not_checked_parts(g, scope_mods)
-    for item in unchecked:
-        files = f" :files ({' '.join(_q(name) for name in item.files)})" if item.files else ""
-        print(f"(boundaries-not-checked :part {_q(item.part)} :reason {item.reason}{files} :files-in-part {item.count})")
-    not_checked = sum(item.count for item in unchecked)
-    coverage = (f"(boundaries-partial :checked {len(scope_mods) - not_checked} :not-checked {not_checked})"
-                if unchecked else "")
+    cover = boundaries_coverage(g, scope_mods, whole=module_id == "all")
+    changed = changed_rule_files(g)
+    if changed:
+        print(f"(boundaries-rules-changed :files ({' '.join(_q(name) for name in changed)}) "
+              f":hint {_q('rebuild: wingbox build')})")
+    for item in cover.unchecked:
+        print(_not_checked_fact(item))
+    for part, count in cover.no_layer:
+        print(f"(boundaries-no-layer :part {_q(part)} :files-in-part {count})")
+    no_layer = f" :no-layer {cover.unplaced}" if cover.unplaced else ""
+    coverage = (f"(boundaries-partial :checked {cover.checked} :not-checked {cover.not_checked}{no_layer})"
+                if cover.unchecked else "")
     # Exit 2: a part whose own rules were not read was not checked; 1: a violation; 0 otherwise.
-    status = 2 if any(item.reason == "declared-rules-not-read" for item in unchecked) else 0
+    status = 2 if any(item.reason == "declared-rules-not-read" for item in cover.unchecked) else 0
+    capability_lines, broken, accepted = _capability_findings(g, scope_mods, cover.checked)
 
     if not violations:
-        print(coverage or f"(boundaries-ok :checked {len(scope_mods)})")
-        broken, accepted = _print_capability_findings(g, scope_mods)
+        if coverage:
+            print(coverage)
+        elif not broken and not changed and (not strict or _strict_status(g, cover, 0, changed)[0] == "pass"):
+            print(f"(boundaries-ok :checked {cover.checked}{no_layer})")
+        for line in capability_lines:
+            print(line)
         if strict:
-            return _strict_result(g, scope_mods, unchecked, broken, accepted)
+            return _strict_result(g, cover, broken, accepted, changed)
         return max(status, 1 if broken else 0)
     pairs: dict[str, set[tuple[str, str]]] = {
         "violation": set(), "violation-known": set(), "violation-type-only": set(), "violation-candidate": set(),
@@ -3338,14 +3608,14 @@ def cmd_boundaries(g: CodeGraph, module_id: str, strict: bool = False) -> int:
     print(
         f"(boundaries-summary :violations {len(pairs['violation'])} :known {len(pairs['violation-known'])} "
         f":type-only {len(pairs['violation-type-only'])} "
-        f":candidates {len(pairs['violation-candidate'])} :checked {len(scope_mods)})"
+        f":candidates {len(pairs['violation-candidate'])} :checked {cover.checked}{no_layer})"
     )
     if coverage:
         print(coverage)
-    broken, accepted = _print_capability_findings(g, scope_mods)
+    for line in capability_lines:
+        print(line)
     if strict:
-        return _strict_result(g, scope_mods, unchecked, len(pairs["violation"]) + broken,
-                              len(pairs["violation-known"]) + accepted)
+        return _strict_result(g, cover, len(pairs["violation"]) + broken, len(pairs["violation-known"]) + accepted, changed)
     return status or (1 if pairs["violation"] or broken else 0)
 
 
@@ -5544,6 +5814,7 @@ def _answer(raw_args: list[str], form: str, form_error: Optional[str], graph_sta
             return 0, usages_forms.usages_json(usages_answer(g, args[1]))
         cmd_usages(g, args[1], form, show_all)
         return 0, None
+    g.gate.stale_files = graph_stale   # boundaries --strict: a graph known to miss changes is not a pass
     return _run_fact_command(g, args, sexp_path, show_all, strict), None
 
 

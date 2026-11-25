@@ -39,7 +39,8 @@ class Label:
     style: str     # style id of the part, "declared", or "-" outside any part
     rule: str      # what set the layer, for people and agents
     match: str     # exact | spelling | config | file | declared | test | none
-    root: bool = False   # a composition root (index.toml): it wires the layers and may import every one
+    root: bool = False   # a composition root (index.toml): it wires the layers and may import every one,
+    #                      while no file of a layer imports it (the query decides: it knows the importers)
 
 
 @dataclass(frozen=True)

@@ -1981,8 +1981,10 @@ def _answer_command(command: str, rest: list[str], cwd: str) -> int:
 def _refresh_before_query(args: list[str], cwd: str) -> Optional[int]:
     """Bring the graph a query reads up to date (WINGBOX_AUTO_REFRESH=0: only say it is stale).
 
-    Returns how many changed files the graph is known to miss (0 when it is up to date), or None when that
-    was not checked: a graph given with --map, no project, or a graph that was not built from this folder."""
+    Returns how many changed files the graph is known to miss (0 when it is up to date; at least 1 for a
+    graph that is stale, also when its state could not be read and no file is counted), or None when that
+    was not checked: a graph given with --map, no project, or a graph that was not built from this folder.
+    `boundaries --strict` does not pass on a graph that misses changes."""
     if "--map" in args or args[0] in ("-h", "--help", "help"):
         return None
     from wingbox import freshness
@@ -1997,7 +1999,8 @@ def _refresh_before_query(args: list[str], cwd: str) -> Optional[int]:
         print(f"[wingbox] WARNING: {line}", file=sys.stderr)
     for skipped in freshness.skipped_notes(result, root).splitlines():
         print(f"[wingbox] NOTE: {skipped}", file=sys.stderr)
-    return freshness.known_stale(result)
+    stale = freshness.known_stale(result)
+    return max(stale or 0, 1) if isinstance(result, freshness.Stale) else stale
 
 
 if __name__ == "__main__":
