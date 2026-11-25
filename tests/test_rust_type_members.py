@@ -113,14 +113,14 @@ class RustTypeMemberTest(unittest.TestCase):
         self.assertNotIn("src/settings/seed", qualified)
 
     def test_self_in_an_impl_block_names_the_members_of_the_other_impl_blocks(self) -> None:
-        """/* REQ-RUST-031: `Self::member` inside an impl block of a type names a member another file's impl block of that type defines: plan.rs (`Self::LIMIT`) depends on seed.rs; a member the file of the type defines adds no edge (`Self::defaults()`). */"""
+        """/* REQ-RUST-9961: `Self::member` inside an impl block of a type names a member another file's impl block of that type defines: plan.rs (`Self::LIMIT`) depends on seed.rs; a member the file of the type defines adds no edge (`Self::defaults()`). */"""
         plan = self.targets("src/settings/plan")
         self.assertEqual(("item",), plan["src/settings/seed"])
         self.assertIn("src/settings/running", plan)
         self.assertNotIn("src/settings/plan", self.targets("src/settings/seed"))
 
     def test_what_needs_the_type_of_a_value_or_a_trait_gives_no_edge(self) -> None:
-        """/* REQ-RUST-031: a member the file of the type defines, a method called on a value (`r.plan()`), an enum variant, a trait impl in another file, a function of the same name as a member and a module function give no edge to an impl file. */"""
+        """/* REQ-RUST-9962: a member the file of the type defines, a method called on a value (`r.plan()`), an enum variant, a trait impl in another file, a function of the same name as a member and a module function give no edge to an impl file. */"""
         only_type = self.targets("src/app/only_type")
         self.assertNotIn("src/settings/seed", only_type)
         self.assertNotIn("src/settings/plan", only_type)

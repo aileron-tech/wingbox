@@ -17,7 +17,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25   # longer than the wait for PyPI below (30 attempts of at most 30 s), so its error is printed
     env:
       MCP_PUBLISHER_VERSION: v1.8.9
     steps:
@@ -43,7 +43,7 @@ jobs:
           set -euo pipefail
           version="$(python3 -c "import json; print(json.load(open('server.json'))['version'])")"
           for attempt in $(seq 1 30); do
-            if curl --fail --silent "https://pypi.org/pypi/wingbox/${version}/json" | grep -q "mcp-name: io.github.aileron-tech/wingbox"; then
+            if curl --fail --silent --max-time 10 "https://pypi.org/pypi/wingbox/${version}/json" | grep -q "mcp-name: io.github.aileron-tech/wingbox"; then
               echo "wingbox ${version} is on PyPI with the mcp-name line"; exit 0
             fi
             sleep 20

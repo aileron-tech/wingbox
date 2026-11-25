@@ -56,6 +56,25 @@ print text and print their facts with `--sexp`.
 (calls <src>::<fn> <tgt>::<fn> :lines L1 L2 [:registry] [:lsp])
 ```
 
+In the file, `<id>`, `<mod>`, `<src>` and `<tgt>` are short IDs, not paths.
+The file maps every module path to a short ID once, in a `(paths ...)` form
+before the facts, nested by folder, and every fact after it names modules by
+those IDs:
+
+```scheme
+(paths
+  (shop
+    (sh1 checkout)
+    (sh2 pricing)))
+(imports sh1 sh2 :line 1)        ; shop/checkout imports shop/pricing
+```
+
+So a text search of the file for a path (`rg 'imports .* shop/pricing'
+.wingbox/index.sexp`) finds nothing, whatever imports the module. The query
+commands read the map and print the Module IDs of this page; only `search
+<pattern> --lines` prints facts as the file holds them, and `module <short
+id>` names the module of an ID. A short ID belongs to one build of the graph.
+
 `built-from` names what the graph was built from. `:tree` is a digest of the
 path and the text of every source file in the graph, as the parsers read it
 (without a byte order mark, every line ending `\n`): the same files give the

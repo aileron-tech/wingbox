@@ -166,6 +166,8 @@ const tint = (hex) => {
   }
   return out;
 };
+// One word of a shell command, as Python's shlex.quote writes it: a file name may hold spaces, quotes or `;`.
+const shellWord = (text) => (/^[A-Za-z0-9_@%+=:,.\/-]+$/.test(text) ? text : "'" + text.replace(/'/g, "'\"'\"'") + "'");
 function el(tag, props, ...kids) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props || {})) {
@@ -1217,7 +1219,7 @@ function selectionCard() {
       el("div", { class: "stat" }, el("b", { text: fmt(sel.uses.size) }), el("span", { text: "depends on" }))),
   );
   if (isModule) {
-    const command = `wingbox impact ${file}${state.depth === 2 ? "" : " " + state.depth}`;
+    const command = `wingbox impact ${shellWord(file)}${state.depth === 2 ? "" : " " + state.depth}`;
     const copy = el("button", { type: "button", text: "copy", onclick: () => {
       const done = () => { copy.textContent = "copied"; setTimeout(() => { copy.textContent = "copy"; }, 1400); };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(command).then(done, () => {});

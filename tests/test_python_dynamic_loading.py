@@ -131,14 +131,14 @@ class DynamicLoadingTest(unittest.TestCase):
         cls._directory.cleanup()
 
     def test_a_literal_module_name_given_to_importlib_is_an_import(self) -> None:
-        """/* REQ-PY-001: `importlib.import_module("<literal>")`, `import_module(".<literal>", __package__)` and `__import__("<literal>")` name a local module loaded at run time; each one is an import edge of the calling file. */"""
+        """/* REQ-PY-9954: `importlib.import_module("<literal>")`, `import_module(".<literal>", __package__)` and `__import__("<literal>")` name a local module loaded at run time; each one is an import edge of the calling file. */"""
         imports = _pairs(self.graph, "IMPORTS")
         self.assertIn(("shop/literal", "shop/helpers"), imports)
         self.assertIn(("shop/literal", "shop/plugins/unused"), imports)
         self.assertIn(("shop/literal", "shop/reports/csv_report"), imports)
 
     def test_a_module_name_filled_from_a_configuration_file_is_a_registry_wire(self) -> None:
-        """/* REQ-PY-002: a module name built from a literal package path and one variable (f-string or +) is a registry wire to every module of that package named by a string value of a JSON, YAML or TOML file in the folder of the loading file; values that name no module of that package give nothing. */"""
+        """/* REQ-PY-9955: a module name built from a literal package path and one variable (f-string or +) is a registry wire to every module of that package named by a string value of a JSON, YAML or TOML file in the folder of the loading file; values that name no module of that package give nothing. */"""
         wires = _pairs(self.graph, "REGISTRY_WIRES")
         self.assertEqual(
             {
@@ -156,13 +156,13 @@ class DynamicLoadingTest(unittest.TestCase):
         self.assertNotIn(("shop/loader", "shop/plugins/tax"), _pairs(self.graph, "IMPORTS"))
 
     def test_a_name_without_a_literal_package_or_a_configuration_beside_the_loader_gives_no_wire(self) -> None:
-        """/* REQ-PY-003: a module name that is only a variable, that has more than one variable, or whose values are listed only in a configuration file of another folder gives no edge. */"""
+        """/* REQ-PY-9956: a module name that is only a variable, that has more than one variable, or whose values are listed only in a configuration file of another folder gives no edge. */"""
         sources = {source for source, _target in _pairs(self.graph, "REGISTRY_WIRES") | _pairs(self.graph, "IMPORTS")}
         self.assertNotIn("shop/unbound", sources)
         self.assertNotIn("other/loader", sources)
 
     def test_a_method_called_on_an_object_looked_up_in_a_registry_calls_the_wired_modules(self) -> None:
-        """/* REQ-PY-004: in a loop, a method called on an object that a registry module returns for the loop variable is a call into each module the registry wires that defines the method; when the call result replaces one of its arguments (x = obj.m(x, ...)), the modules of one configuration list pass the data on in the order of that list. */"""
+        """/* REQ-PY-9957: in a loop, a method called on an object that a registry module returns for the loop variable is a call into each module the registry wires that defines the method; when the call result replaces one of its arguments (x = obj.m(x, ...)), the modules of one configuration list pass the data on in the order of that list. */"""
         calls = _pairs(self.graph, "CALLS")
         self.assertEqual(
             {
@@ -185,7 +185,7 @@ class DynamicLoadingTest(unittest.TestCase):
         self.assertEqual({("shop/plugins/tax", "shop/plugins/discount")}, pipeline)
 
     def test_the_code_graph_writes_the_new_facts_and_impact_follows_them(self) -> None:
-        """/* REQ-PY-005: the code graph writes (registry-wires <loader> <module> :config <file>), registry calls as (calls ... :registry) and pipeline order as (data-flow ... :pipeline); `impact` of a wired module names the loader and the caller, and a pipeline step does not make the previous step its dependent. */"""
+        """/* REQ-PY-9958: the code graph writes (registry-wires <loader> <module> :config <file>), registry calls as (calls ... :registry) and pipeline order as (data-flow ... :pipeline); `impact` of a wired module names the loader and the caller, and a pipeline step does not make the previous step its dependent. */"""
         sexp = build_code_graph.render_sexp(self.graph.nodes, self.graph.edges, str(self.root), "default", len(self.graph.nodes))
         sexp_path = self.root / "index.sexp"
         sexp_path.write_text(sexp, encoding="utf-8")

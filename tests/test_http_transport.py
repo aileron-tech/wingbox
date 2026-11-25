@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import ssl
 import subprocess
 import sys
@@ -169,6 +170,37 @@ class DecisionTest(unittest.TestCase):
         )
         self.assertEqual(413, transport.decide(_policy(), _post(body=b" " * (transport.MAX_BODY_BYTES + 1))).status)
 
+    def test_a_body_nested_too_deeply_is_a_parse_error(self) -> None:
+        """/* REQ-HTTP-9920: a body of 200,000 opening brackets, which the JSON reader gives up on with a recursion error, is answered 400 with a JSON-RPC parse error like any other body that is not JSON. */"""
+        for body in (b"[" * 200_000, b'{"a":' * 200_000):
+            decision = transport.decide(_policy(), _post(body=body))
+            self.assertIsInstance(decision, transport.Refuse)
+            self.assertEqual((400, mcp_server.PARSE_ERROR), (decision.status, _error_code(decision)))
+
+    def test_only_an_origin_given_with_allow_origin_gets_the_headers_a_browser_page_needs(self) -> None:
+        """/* REQ-HTTP-9921: for an origin given with --allow-origin the transport answers the preflight of a browser (OPTIONS with Access-Control-Request-Method, which carries no token) with 204 and Access-Control-Allow-Methods POST and the request headers it reads, and every answer to that origin carries Access-Control-Allow-Origin with that origin and `Vary: Origin`; a loopback origin, which passes without the option, gets neither (its OPTIONS is answered 405, or 401 when a token is set), and a request without Origin gets none. */"""
+        ide = "https://ide.example"
+        for access in (transport.Open(), transport.Token(TOKEN)):
+            policy = _policy(access=access, origins=(ide,))
+            preflight = transport.decide(policy, _post(method="OPTIONS", body=b"", headers={"origin": ide, "access-control-request-method": "POST", "access-control-request-headers": "authorization, content-type"}))
+            self.assertIsInstance(preflight, transport.Refuse)
+            self.assertEqual((204, b""), (preflight.status, preflight.body))
+            headers = dict(preflight.headers)
+            self.assertEqual("POST", headers["Access-Control-Allow-Methods"])
+            allowed = {name.strip().lower() for name in headers["Access-Control-Allow-Headers"].split(",")}
+            self.assertEqual({"authorization", "content-type", "accept", "mcp-protocol-version", "mcp-method", "mcp-name"}, allowed)
+            self.assertTrue(headers["Access-Control-Max-Age"].isdigit())
+            local = transport.decide(policy, _post(method="OPTIONS", body=b"", headers={"origin": "http://localhost:3000", "access-control-request-method": "POST"}))
+            self.assertEqual(405 if isinstance(access, transport.Open) else 401, local.status)
+            self.assertFalse([name for name, _ in local.headers if name.lower().startswith("access-control-")])
+            plain = transport.decide(policy, _post(method="OPTIONS", body=b"", headers={"origin": ide}))
+            self.assertEqual(405 if isinstance(access, transport.Open) else 401, plain.status)
+            self.assertEqual((("Access-Control-Allow-Origin", ide), ("Vary", "Origin")), transport.cors_headers(policy, ide))
+            for origin in ("http://localhost:3000", "http://127.0.0.1:8765", "http://[::1]", "https://other.example", None):
+                self.assertEqual((), transport.cors_headers(policy, origin), origin)
+        self.assertEqual((), transport.cors_headers(_policy(), ide))
+        self.assertEqual(403, transport.decide(_policy(), _post(method="OPTIONS", body=b"", headers={"origin": ide, "access-control-request-method": "POST"})).status)
+
 
 class SettingsTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -203,6 +235,27 @@ class SettingsTest(unittest.TestCase):
         self.assertIsInstance(self._read(["--token", TOKEN]), http_settings.Problem)
         self.assertIsInstance(self._read(["--token-file", str(Path(self.root) / "absent")]), http_settings.Problem)
 
+    def test_the_value_of_an_unknown_option_is_never_repeated(self) -> None:
+        """/* REQ-HTTP-9922: an argument the command does not take is refused without repeating what was typed after it: `--token <secret>`, `--token=<secret>` and a bare value give a message that names the option (`--token`) or says that an argument is not expected, and never the value, so the entry point, which prints the message, cannot log a token; the message for --token says where the token is read from. */"""
+        secret = "S3cret-" + "s" * 40
+        for arguments in (["--token", secret], [f"--token={secret}"], [secret], ["--port", "0", "--token", secret, "--bogus", "-" + secret]):
+            problem = self._read(arguments)
+            self.assertIsInstance(problem, http_settings.Problem, arguments)
+            self.assertNotIn(secret, problem.message)
+            self.assertNotIn("s" * 8, problem.message)
+        named = self._read(["--token", secret]).message
+        self.assertIn("--token", named)
+        self.assertIn("WINGBOX_HTTP_TOKEN", named)
+        self.assertIn("--bogus", self._read(["--bogus", "x"]).message)
+        errors = io.StringIO()
+        with mock.patch.object(listener, "make_listener") as opened, contextlib.redirect_stderr(errors):
+            from wingbox_http import main as http_main
+
+            self.assertEqual(2, http_main(["--token", secret], self.root, {}))
+        opened.assert_not_called()
+        self.assertNotIn(secret, errors.getvalue())
+        self.assertIn("--token", errors.getvalue())
+
     def test_the_other_arguments_are_checked(self) -> None:
         """/* REQ-HTTP-012: --root must be a directory, --port a port number, --tls-cert and --tls-key come together, and --allow-origin takes a scheme://host[:port] origin. */"""
         self.assertIsInstance(self._read(["--root", "absent"]), http_settings.Problem)
@@ -217,9 +270,11 @@ class SettingsTest(unittest.TestCase):
 class Running:
     """A listener on a free loopback port, served from a thread."""
 
-    def __init__(self, handle, access=transport.Open(), first_wait=1.0, keep_alive=10.0, tls=None) -> None:
-        policy = _policy(access=access)
-        self.httpd = listener.make_listener("127.0.0.1", 0, policy, handle, first_wait=first_wait, keep_alive=keep_alive, tls=tls)
+    def __init__(self, handle, access=transport.Open(), first_wait=1.0, keep_alive=10.0, tls=None, origins=(), limits=None) -> None:
+        policy = _policy(access=access, origins=origins)
+        self.log = io.StringIO()
+        more = {} if limits is None else {"limits": listener.Limits(**limits)}
+        self.httpd = listener.make_listener("127.0.0.1", 0, policy, handle, first_wait=first_wait, keep_alive=keep_alive, tls=tls, log=self.log, **more)
         self.port = self.httpd.server_address[1]
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
 
@@ -231,6 +286,21 @@ class Running:
         self.httpd.shutdown()
         self.httpd.server_close()
         self.thread.join(timeout=10)
+
+    def raw(self, data: bytes, wait: float = 10.0) -> bytes:
+        """Send bytes as they are and return what comes back until the server closes the connection."""
+        with socket.socket() as client:
+            client.settimeout(wait)
+            client.connect(("127.0.0.1", self.port))
+            client.sendall(data)
+            return _read_all(client)
+
+    def idle(self) -> socket.socket:
+        """A connection that sends nothing."""
+        client = socket.socket()
+        client.settimeout(10)
+        client.connect(("127.0.0.1", self.port))
+        return client
 
     def post(self, message, headers=None, context=None):
         if context is None:
@@ -245,6 +315,39 @@ class Running:
             return response.status, response.getheader("Content-Type", ""), response.read().decode("utf-8")
         finally:
             connection.close()
+
+
+def _read_all(client: socket.socket) -> bytes:
+    chunks = []
+    while True:
+        chunk = client.recv(65536)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+
+
+def _raw_post(message, extra: bytes = b"") -> bytes:
+    body = json.dumps(message).encode("utf-8")
+    return (b"POST /mcp HTTP/1.1\r\nHost: test\r\nContent-Type: application/json\r\n" + extra
+            + b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\nConnection: close\r\n\r\n" + body)
+
+
+def _until(condition, seconds: float = 15.0) -> bool:
+    """Wait until condition() holds; False when it does not within the time."""
+    deadline = time.monotonic() + seconds
+    while not condition():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.02)
+    return True
+
+
+def _handler_threads() -> int:
+    return sum(1 for thread in threading.enumerate() if "process_request_thread" in thread.name)
+
+
+def _status(answer: bytes) -> int:
+    return int(answer.split(b" ", 2)[1]) if answer.startswith(b"HTTP/1.1 ") else 0
 
 
 def _make_shop(root: Path) -> None:
@@ -369,6 +472,183 @@ class ListenerTest(unittest.TestCase):
             finally:
                 connection.close()
 
+    def test_a_request_the_listener_cannot_read_is_answered_and_the_listener_goes_on(self) -> None:
+        """/* REQ-HTTP-9923: a Content-Length that is not a number in ASCII digits (the superscript two passes `isdigit()` and has no integer value; more digits than a number of the size limit) is answered 400, or 413 for a number over the limit, and a body nested too deeply for the JSON reader 400 with a parse error: each gets an HTTP answer instead of a dropped connection, and the listener answers the next request. */"""
+        reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
+        head = b"POST /mcp HTTP/1.1\r\nHost: test\r\nContent-Type: application/json\r\nConnection: close\r\n"
+        with Running(lambda line: reply) as running:
+            for length, status in ((b"\xb2", 400), (b"12a", 400), (b"-1", 400), (b"9" * 5000, 413), (b"0" * 30 + b"2", 200)):
+                answer = running.raw(head + b"Content-Length: " + length + b"\r\n\r\n{}")
+                self.assertEqual(status, _status(answer), (length[:8], answer[:120]))
+            deep = b"[" * 200_000
+            answer = running.raw(head + b"Content-Length: " + str(len(deep)).encode("ascii") + b"\r\n\r\n" + deep)
+            self.assertEqual(400, _status(answer), answer[:120])
+            self.assertEqual(mcp_server.PARSE_ERROR, json.loads(answer.split(b"\r\n\r\n", 1)[1])["error"]["code"])
+            status, _, body = running.post(_message("ping"))
+            self.assertEqual((200, reply), (status, json.loads(body)))
+
+    def test_the_number_of_open_connections_is_capped(self) -> None:
+        """/* REQ-HTTP-9924: the listener keeps at most `Limits.connections` connections open, each with one thread (64 by default): a connection beyond that gets no thread and is answered 503 at once, with or without a token; when a connection ends, the next one is served. */"""
+        reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
+        self.assertEqual(64, listener.Limits().connections)
+        with Running(lambda line: reply, limits={"connections": 3}) as running:
+            threads = _handler_threads()   # of listeners of earlier tests; they can only become fewer
+            held = [running.idle() for _ in range(3)]
+            try:
+                self.assertTrue(_until(lambda: running.httpd._open == 3), running.httpd._open)
+                for _ in range(5):
+                    with running.idle() as extra:
+                        answer = _read_all(extra)
+                    self.assertEqual(503, _status(answer), answer[:120])
+                    self.assertIn(b"Connection: close", answer)
+                self.assertEqual(3, running.httpd._open)
+                self.assertLessEqual(_handler_threads() - threads, 3)
+            finally:
+                for client in held:
+                    client.close()
+            self.assertTrue(_until(lambda: running.httpd._open == 0), running.httpd._open)
+            status, _, body = running.post(_message("ping"))
+            self.assertEqual((200, reply), (status, json.loads(body)))
+
+    def test_a_request_must_arrive_within_a_total_time(self) -> None:
+        """/* REQ-HTTP-9925: the header and the body of one request must arrive within `Limits.request_seconds` in all (30 by default): a client that sends one byte at a time, each well within that time, is cut off when the total is over, in the header and in the body alike, so no client holds a thread for as long as it likes; a request that arrives in time is answered. */"""
+        reply = {"jsonrpc": "2.0", "id": 1, "result": {}}
+        self.assertEqual(30.0, listener.Limits().request_seconds)
+        body = json.dumps(_message("ping")).encode("utf-8")
+        head = b"POST /mcp HTTP/1.1\r\nHost: test\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+        with Running(lambda line: reply, limits={"request_seconds": 1.0}) as running:
+            for sent_first, slow in ((b"", head + b"X-Slow: " + b"a" * 400), (head + b"\r\n", body)):
+                with running.idle() as client:
+                    client.sendall(sent_first)
+                    started = time.monotonic()
+                    closed = None
+                    client.settimeout(0.01)
+                    for byte in slow[:60]:
+                        try:
+                            client.sendall(bytes([byte]))
+                            if client.recv(4096) == b"":
+                                closed = time.monotonic() - started
+                                break
+                        except TimeoutError:
+                            pass
+                        except OSError:
+                            closed = time.monotonic() - started
+                            break
+                        time.sleep(0.1)
+                self.assertIsNotNone(closed, "the connection was held for as long as bytes came")
+                self.assertLess(closed, 4.0)
+                self.assertGreater(closed, 0.5)
+            self.assertIn("timed out", running.log.getvalue())
+            status, _, answer = running.post(_message("ping"))
+            self.assertEqual((200, reply), (status, json.loads(answer)))
+
+    def test_the_number_of_waiting_calls_is_capped(self) -> None:
+        """/* REQ-HTTP-9926: at most `Limits.calls` calls run or wait for the one worker (16 by default): a call beyond that is answered 503 with a JSON-RPC error and Retry-After and never reaches the server; the calls that were taken are answered, and once they ended the next call is taken again. */"""
+        release = threading.Event()
+        seen = []
+
+        def handle(line):
+            message = json.loads(line)
+            seen.append(message["id"])
+            release.wait(20)
+            return {"jsonrpc": "2.0", "id": message["id"], "result": {}}
+
+        self.assertEqual(16, listener.Limits().calls)
+        answers = {}
+        with Running(handle, limits={"calls": 2}) as running:
+            def call(number):
+                answers[number] = running.post(_message("ping", number), {"Accept": "application/json"})
+
+            taken = [threading.Thread(target=call, args=(number,)) for number in (1, 2)]
+            for count, thread in enumerate(taken, start=1):
+                thread.start()
+                self.assertTrue(_until(lambda: running.httpd._taken == count), running.httpd._taken)   # one runs, one waits
+            answer = running.raw(_raw_post(_message("ping", 3)))
+            self.assertEqual(503, _status(answer), answer[:200])
+            self.assertIn(b"Retry-After: ", answer)
+            self.assertEqual(transport.SERVER_BUSY, json.loads(answer.split(b"\r\n\r\n", 1)[1])["error"]["code"])
+            release.set()
+            for thread in taken:
+                thread.join(timeout=20)
+            self.assertEqual({1: 200, 2: 200}, {number: answer[0] for number, answer in answers.items()})
+            self.assertEqual([1, 2], seen)
+            status, _, body = running.post(_message("ping", 4))
+            self.assertEqual((200, 4), (status, json.loads(body)["id"]))
+
+    def test_a_waiting_call_whose_client_has_gone_is_not_run(self) -> None:
+        """/* REQ-HTTP-9927: a call that still waits for its turn when its client closes the connection is taken out of the queue and never reaches the server, so abandoned calls do not make the next caller wait; the call that is running cannot be interrupted and ends; the log names the client that left. */"""
+        release = threading.Event()
+        seen = []
+
+        def handle(line):
+            message = json.loads(line)
+            seen.append(message["id"])
+            if message["id"] == 1:
+                release.wait(20)
+            return {"jsonrpc": "2.0", "id": message["id"], "result": {}}
+
+        with Running(handle) as running:
+            first = threading.Thread(target=running.post, args=(_message("tools/call", 1, {"name": "slow"}), {"Accept": "application/json"}))
+            first.start()
+            self.assertTrue(_until(lambda: seen == [1]), seen)   # the first call runs; every later one waits for it
+            for number in (2, 3, 4):
+                with running.idle() as client:
+                    accept = b"" if number == 2 else b"Accept: application/json, text/event-stream\r\n"
+                    client.sendall(_raw_post(_message("tools/call", number, {"name": "abandoned"}), accept))
+                    self.assertTrue(_until(lambda: running.httpd._taken == 2), running.httpd._taken)   # it is in the queue
+                # the client is gone: its connection sees that within a few looks and takes the call out
+                self.assertTrue(_until(lambda: running.httpd._taken == 1), running.httpd._taken)
+            self.assertTrue(_until(lambda: running.log.getvalue().count("left before the answer") == 3), running.log.getvalue())
+            release.set()
+            first.join(timeout=20)
+            status, _, body = running.post(_message("ping", 9))
+            self.assertEqual((200, 9), (status, json.loads(body)["id"]))
+            self.assertEqual([1, 9], seen)
+            self.assertEqual(3, running.log.getvalue().count("left before the answer"), running.log.getvalue())
+
+    def test_a_page_of_an_allowed_origin_can_read_the_answers(self) -> None:
+        """/* REQ-HTTP-9928: over a real connection, a page of an origin given with --allow-origin gets its preflight answered 204 with the Access-Control headers, without a token, and its POST answered with Access-Control-Allow-Origin naming that origin, also when the answer is a refusal (401) or an event stream; a page of a loopback origin gets its POST served but no Access-Control header on any answer, and its preflight refused, so its browser hands it nothing. */"""
+        ide = "https://ide.example"
+
+        def handle(line):
+            message = json.loads(line)
+            if message.get("params", {}).get("name") == "slow":
+                time.sleep(0.6)
+            return {"jsonrpc": "2.0", "id": message["id"], "result": {}}
+
+        def headers_of(answer: bytes) -> dict[str, str]:
+            lines = answer.split(b"\r\n\r\n", 1)[0].decode("latin-1").split("\r\n")[1:]
+            return {name.lower(): value.strip() for name, value in (line.split(":", 1) for line in lines)}
+
+        preflight = (b"OPTIONS /mcp HTTP/1.1\r\nHost: test\r\nOrigin: %s\r\nAccess-Control-Request-Method: POST\r\n"
+                     b"Access-Control-Request-Headers: authorization, content-type\r\nConnection: close\r\n\r\n")
+        with Running(handle, access=transport.Token(TOKEN), origins=(ide,), first_wait=0.2, keep_alive=0.2) as running:
+            auth = b"Authorization: Bearer " + TOKEN.encode("ascii") + b"\r\n"
+            answer = running.raw(preflight % ide.encode("ascii"))
+            self.assertEqual(204, _status(answer), answer[:200])
+            sent = headers_of(answer)
+            self.assertEqual((ide, "POST", "Origin"), (sent["access-control-allow-origin"], sent["access-control-allow-methods"], sent["vary"]))
+            self.assertIn("authorization", sent["access-control-allow-headers"].lower())
+            for request, status in (
+                (_raw_post(_message("ping"), auth + b"Origin: " + ide.encode("ascii") + b"\r\n"), 200),
+                (_raw_post(_message("ping"), b"Origin: " + ide.encode("ascii") + b"\r\n"), 401),
+                (_raw_post(_message("tools/call", 2, {"name": "slow"}), auth + b"Accept: text/event-stream\r\nOrigin: " + ide.encode("ascii") + b"\r\n"), 200),
+            ):
+                answer = running.raw(request)
+                self.assertEqual(status, _status(answer), answer[:200])
+                self.assertEqual(ide, headers_of(answer).get("access-control-allow-origin"), answer[:300])
+            self.assertIn(b"event: message", answer)
+            local = b"Origin: http://localhost:3000\r\n"
+            for request, status in (
+                (_raw_post(_message("ping"), auth + local), 200),
+                (_raw_post(_message("ping"), local), 401),
+                (preflight % b"http://localhost:3000", 401),
+                (_raw_post(_message("ping"), auth), 200),
+            ):
+                answer = running.raw(request)
+                self.assertEqual(status, _status(answer), answer[:200])
+                self.assertFalse([name for name in headers_of(answer) if name.startswith("access-control-")], answer[:300])
+
     def test_tls(self) -> None:
         """/* REQ-HTTP-018: with --tls-cert and --tls-key the listener speaks HTTPS: a client that trusts the certificate gets its answer, and plain HTTP on the same port gets none. */"""
         openssl = shutil.which("openssl")
@@ -420,6 +700,59 @@ class CommandTest(unittest.TestCase):
             self.assertEqual(2, http_main(["--host", "0.0.0.0"], os.getcwd(), {}))
         opened.assert_not_called()
         self.assertIn("WINGBOX_HTTP_TOKEN", errors.getvalue())
+
+
+    def test_the_entry_point_listens_with_the_settings_it_was_given(self) -> None:
+        """/* REQ-HTTP-9929: `wingbox-http` opens its listener with exactly what the arguments, the environment and the token file say: the host and the port, the token as the access rule (and no token only on a loopback address), the certificate and key of --tls-cert and --tls-key, the origins of --allow-origin, and the protocol revisions of the MCP server; its first log line names the address and the project whose graph is served, and never the token. */"""
+        from wingbox_http import main as http_main
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = os.path.realpath(folder)
+            token_file = os.path.join(root, "token")
+            Path(token_file).write_text(TOKEN + "\n", encoding="ascii")
+
+            def start(arguments, env):
+                httpd = mock.Mock()
+                httpd.server_address = ("ignored", 4321)
+                errors = io.StringIO()
+                with mock.patch.object(listener, "make_listener", return_value=httpd) as opened, contextlib.redirect_stderr(errors):
+                    status = http_main(arguments, root, env)
+                self.assertEqual(0, status, errors.getvalue())
+                httpd.serve_forever.assert_called_once_with()
+                httpd.server_close.assert_called_once_with()
+                opened.assert_called_once()
+                return opened.call_args, errors.getvalue()
+
+            (host, port, policy, handle), more = start(
+                ["--host", "0.0.0.0", "--port", "9123", "--token-file", token_file, "--tls-cert", "c.pem", "--tls-key", "k.pem",
+                 "--allow-origin", "https://ide.example"], {})[0]
+            self.assertEqual(("0.0.0.0", 9123), (host, port))
+            self.assertEqual(transport.Token(TOKEN), policy.access)
+            self.assertEqual(frozenset({"https://ide.example"}), policy.origins)
+            self.assertEqual((mcp_server.SUPPORTED_VERSIONS, mcp_server.MODERN_VERSIONS, mcp_server.META_VERSION),
+                             (policy.versions, policy.modern_versions, policy.meta_version))
+            self.assertEqual(listener.Tls("c.pem", "k.pem"), more["tls"])
+            self.assertEqual("2.0", handle(json.dumps(_message("ping")))["jsonrpc"])
+
+            arguments, log = start(["--host", "0.0.0.0", "--port", "9123"], {"WINGBOX_HTTP_TOKEN": TOKEN})
+            self.assertEqual(transport.Token(TOKEN), arguments[0][2].access)
+            self.assertIsNone(arguments[1]["tls"])
+            self.assertEqual(frozenset(), arguments[0][2].origins)
+            self.assertNotIn(TOKEN, log)
+            self.assertIn("WARNING: no TLS", log)
+            self.assertIn(f"on http://0.0.0.0:4321/mcp for {root}\n", log)
+
+            arguments, log = start([], {})
+            self.assertEqual(("127.0.0.1", 8765), arguments[0][:2])
+            self.assertEqual(transport.Open(), arguments[0][2].access)
+            self.assertIn("no token is set", log)
+
+            sub = os.path.join(root, "pkg")
+            os.makedirs(os.path.join(root, ".wingbox"))
+            os.makedirs(sub)
+            Path(root, ".wingbox", "index.sexp").write_text("", encoding="utf-8")
+            _, log = start(["--root", "pkg"], {})
+            self.assertIn(f"/mcp for {root} (the project that holds --root {sub})\n", log)
 
 
 class PackagingTest(unittest.TestCase):

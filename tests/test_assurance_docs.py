@@ -38,11 +38,20 @@ class WorkspaceTest(unittest.TestCase):
 '''
 STAND_IN_B = '''\
 def test_again():
+    """/* REQ-CS-3: a third one, in a folder below. */"""
+'''
+# What the index accepted until an id had to belong to one test: the id of ATest.test_one a second time.
+STAND_IN_DOUBLED = '''\
+def test_again():
     """/* REQ-CS-2: the first one, checked a second time. */"""
+
+
+def test_other():
+    """/* REQ-TS-WS-001: another behaviour under an id that is taken. */"""
 '''
 EXPECTED_ROWS = [
-    "| REQ-CS-2 | the first one, checked a second time. | `tests/sub/test_b.py::test_again` |",
     "| REQ-CS-2 | the first one. | `tests/test_a.py::ATest::test_one` |",
+    "| REQ-CS-3 | a third one, in a folder below. | `tests/sub/test_b.py::test_again` |",
     "| REQ-CS-10 | the second one \\| with a pipe, `a\\|b` in code, a &lt;tag>, a \\*star\\* and \\_\\_init\\_\\_.py, "
     "written over two lines. | `tests/test_a.py::ATest::test_two` |",
     "| REQ-TS-WS-001 | a prefix of two words is an area of its own. | `tests/test_a.py::WorkspaceTest::test_workspace` |",
@@ -81,7 +90,7 @@ class RequirementsIndexTest(unittest.TestCase):
         self.assertEqual(0, done.returncode, done.stdout + done.stderr)
 
     def test_one_table_per_area_and_one_row_per_test(self) -> None:
-        """/* REQ-DOC-005: the index has one table per area (the id without its number: `CS`, `TS-WS`), areas in name order, and one row per test whose docstring states a requirement (`REQ-<AREA>-<n>: text` between the comment marks): the id, the text on one line with what Markdown would read as markup escaped outside code, and the test as `file::Class::method`; rows follow the number of the id, then the test; the page states how many tests, ids and areas it lists and names every test that carries no id. */"""
+        """/* REQ-DOC-005: the index has one table per area (the id without its number: `CS`, `TS-WS`), areas in name order, and one row per test whose docstring states a requirement (`REQ-<AREA>-<n>: text` between the comment marks): the id, the text on one line with what Markdown would read as markup escaped outside code, and the test as `file::Class::method`; rows follow the number of the id; the page states how many tests and areas it lists and names every test that carries no id. */"""
         with tempfile.TemporaryDirectory() as tmp:
             script = stand_in(Path(tmp))
             done = run(script)
@@ -89,7 +98,7 @@ class RequirementsIndexTest(unittest.TestCase):
             text = (Path(tmp) / "docs" / "assurance" / "requirements.md").read_text(encoding="utf-8")
         self.assertEqual(EXPECTED_ROWS, [line for line in text.splitlines() if line.startswith("| REQ-")])
         self.assertEqual(["## CS", "## TS-WS"], [line for line in text.splitlines() if line.startswith("## ")])
-        self.assertIn("4 tests carry a requirement id; 3 ids in 2 areas.", text)
+        self.assertIn("4 tests carry a requirement id, each its own, in 2 areas.", text)
         self.assertIn("1 test carries no requirement id:", text)
         self.assertIn("- `tests/test_a.py::ATest::test_none`", text)
         self.assertNotIn("helper", text)
@@ -117,6 +126,31 @@ class RequirementsIndexTest(unittest.TestCase):
             self.assertEqual(0, run(script).returncode)
             self.assertIn("the first one, reworded.", index.read_text(encoding="utf-8"))
             self.assertEqual(0, run(script, "--check").returncode)
+
+
+    def test_an_id_that_two_tests_carry_is_refused(self) -> None:
+        """/* REQ-DOC-9940: an id belongs to one test: when two tests carry the same id (one behaviour checked twice, or two behaviours under one number), `tools/requirements_index.py` and `--check` exit 1, name on standard error each such id with the tests that carry it, and write nothing, so the index never lists one id for two behaviours; once every test has its own id the index is written; no id of this repository is carried by two tests. */"""
+        with tempfile.TemporaryDirectory() as tmp:
+            script = stand_in(Path(tmp))
+            index = Path(tmp) / "docs" / "assurance" / "requirements.md"
+            doubled = Path(tmp) / "tests" / "sub" / "test_b.py"
+            doubled.write_text(STAND_IN_DOUBLED, encoding="utf-8")
+            for arguments in ((), ("--check",)):
+                done = run(script, *arguments)
+                self.assertEqual(1, done.returncode, done.stdout + done.stderr)
+                self.assertIn("REQ-CS-2 is carried by 2 tests: tests/sub/test_b.py::test_again, tests/test_a.py::ATest::test_one", done.stderr)
+                self.assertIn("REQ-TS-WS-001 is carried by 2 tests: tests/sub/test_b.py::test_other, tests/test_a.py::WorkspaceTest::test_workspace", done.stderr)
+                self.assertNotIn("REQ-CS-10", done.stderr)
+                self.assertFalse(index.exists())
+            doubled.write_text(STAND_IN_B, encoding="utf-8")
+            self.assertEqual(0, run(script).returncode)
+            self.assertTrue(index.is_file())
+            before = index.read_bytes()
+            doubled.write_text(STAND_IN_DOUBLED, encoding="utf-8")
+            self.assertEqual(1, run(script).returncode)
+            self.assertEqual(before, index.read_bytes())
+        tool = load_tool()
+        self.assertEqual({}, tool.doubled(tool.read_tests(REPO)))
 
 
 class AssurancePagesTest(unittest.TestCase):

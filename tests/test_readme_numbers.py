@@ -36,6 +36,38 @@ class ReadmeNumbersTest(unittest.TestCase):
                         offenders.append(f"{report_path}: {number} in README row {row[:60]!r}")
         self.assertEqual([], offenders)
 
+    def test_the_sentences_around_the_comparison_table_follow_the_result_files(self) -> None:
+        """/* REQ-DOC-9965: beside its table, the comparison section of the README names the Wingbox versions that benchmarks/graphify/results/versions.txt records for the tests the table summarises (`wingbox_test_b` for the FastAPI row, `wingbox_test_c` and `wingbox_test_d` for the others) and no other, and its sentence on the size of the answers gives the two numbers of the same sentence of the generated report, which are the means of `tokens_chars_div_4` over the questions CodeGraph answers in the result files. */"""
+        import json
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        start = re.search(r"^## [^\n]*on the same tests[^\n]*\n", readme, re.M)
+        body = readme[start.end():]
+        body = body[: re.search(r"^## ", body, re.M).start()]
+        versions = dict(
+            line.split(None, 1) for line in (ROOT / "benchmarks/graphify/results/versions.txt").read_text(encoding="utf-8").splitlines()
+        )
+        recorded = {versions[key] for key in ("wingbox_test_b", "wingbox_test_c", "wingbox_test_d")}
+        intro = body.split("\n|", 1)[0]
+        self.assertEqual(recorded, set(re.findall(r"Wingbox (\d+\.\d+\.\d+)", intro)), intro[-400:])
+        self.assertIn(f"FastAPI row with Wingbox {versions['wingbox_test_b']}", " ".join(intro.split()))
+
+        sizes = re.compile(r"\(([\d,]+) tokens against ([\d,]+) for Wingbox")
+        report = (ROOT / "benchmarks/graphify/README.md").read_text(encoding="utf-8")
+        in_report, in_readme = sizes.search(report), sizes.search(" ".join(body.split()))
+        self.assertIsNotNone(in_report)
+        self.assertIsNotNone(in_readme, "the sentence on the size of the answers is missing")
+        self.assertEqual(in_report.groups(), in_readme.groups())
+        results = ROOT / "benchmarks/graphify/results"
+        wingbox = json.loads((results / "command_check.json").read_text(encoding="utf-8"))
+        codegraph = json.loads((results / "command_check.codegraph.json").read_text(encoding="utf-8"))
+        rows = list(codegraph.values()) if isinstance(codegraph, dict) else codegraph
+        answered = {row["question"] for row in rows if row["codegraph"]["files_named"]}
+        mean = lambda tool, rows: round(sum(row[tool]["tokens_chars_div_4"] for row in rows) / len(rows))  # noqa: E731
+        measured = (mean("codegraph", [row for row in rows if row["question"] in answered]),
+                    mean("wingbox", [row for row in wingbox if row["question"] in answered]))
+        self.assertEqual(tuple(f"{value:,}" for value in measured), in_readme.groups())
+
 
 if __name__ == "__main__":
     unittest.main()

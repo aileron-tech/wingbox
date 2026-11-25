@@ -102,7 +102,8 @@ Wingbox is safe to run on code that must not leave the company:
   `docker run --rm --network none -v "$PWD":/repo wingbox`
   (PowerShell: `docker run --rm --network none -v "${PWD}:/repo" wingbox`).
   The one command that reaches the network is `wingbox update`, which runs
-  your package installer (pipx, uv or pip) when you ask it to.
+  your package installer (pipx, uv or pip) when you ask it to. The one build
+  option that can is `--lsp`, off by default: see "never run" below.
   Wingbox listens on no port either. Serving the MCP server to another machine is a
   separate package, `wingbox-http`, that you install and start yourself; it only
   answers the requests that reach it and opens no connection of its own.
@@ -114,8 +115,15 @@ Wingbox is safe to run on code that must not leave the company:
   repository. Every `git` call on a repository switches off the programs
   that its own Git configuration can name (`core.fsmonitor`, hooks,
   filter, diff and signature programs, Git inside a submodule, a fetch of
-  missing objects). The `--lsp` option, off by
-  default, starts a language server that is installed on the machine.
+  missing objects). One option is the exception:
+  `wingbox build --lsp`, off by default, starts the language servers that are
+  installed on the machine (`rust-analyzer`, `gopls`, `jdtls`, `csharp-ls`,
+  `typescript-language-server`, `pyright-langserver`, `clangd`, `ruby-lsp`,
+  `intelephense`, `dart language-server`), and what such a server does is its
+  own: it can run the build of the project (Cargo build scripts and
+  procedural macros, a Gradle or Maven import) and fetch dependencies from a
+  package registry. Leave `--lsp` off for code you do not trust and where
+  nothing may leave the machine.
 - **The results stay in one folder of the repository, `.wingbox/`:** the
   graph `index.sexp`, `REPORT.md` and `map.html`. The map is one HTML file
   that loads nothing from outside and opens offline.
@@ -305,8 +313,8 @@ of a codebase, documents and images for coding agents; CodeGraph and OntoIndex
 index code for agents. Wingbox is narrower: a deterministic graph of the code
 alone, built without a model, and exact lists of what depends on a file. The
 four ran on the same public repositories, questions, reference lists and
-scoring (Wingbox 0.5.1, Graphify 0.9.110, CodeGraph 1.6.2, OntoIndex 3.1.9;
-no model inside any of the tools):
+scoring (Wingbox 0.10.0, the FastAPI row with Wingbox 0.9.1; Graphify 0.9.110,
+CodeGraph 1.6.2, OntoIndex 3.1.9; no model inside any of the tools):
 
 | Test | Wingbox | Graphify | CodeGraph | OntoIndex |
 |---|---|---|---|---|
@@ -320,7 +328,7 @@ Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
 Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).
 
 What the others do better: CodeGraph's answers are the shortest where it
-answers (1,000 tokens against 1,065 for Wingbox on the same three questions),
+answers (1,000 tokens against 1,454 for Wingbox on the same three questions),
 and per its documentation it covers more languages (Swift, Kotlin, C, C++, Lua
 and others); per its documentation Graphify also maps documents, PDFs, images
 and videos. `graphify affected` follows calls and references as well as
@@ -1431,9 +1439,18 @@ annotations: a title, and read-only for every tool except `build_graph`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
 ```bash
-wingbox mcp                         # serve the current directory
+wingbox mcp                         # serve the project of the current directory
 wingbox mcp --root /path/to/project
 ```
+
+`--root DIR` (default: the current directory) is where the search for the code
+graph starts, as for every `wingbox` command, not a boundary: the server serves
+the project that holds DIR, the nearest folder at or above it with
+`.wingbox/index.sexp`, and the tools answer for that whole project. Its first
+log line and its `instructions` name the project that is served. In a folder
+that is in no source repository (no `.git` and no project manifest with source
+files at or above it) every tool, `build_graph` included, answers that there
+is nothing to map, and nothing is written.
 
 The server speaks protocol revision 2026-07-28 (requests with per-request
 `_meta`, `server/discover`) and the `initialize` handshake of revisions
@@ -1570,12 +1587,22 @@ library, listens and answers, and opens no connection of its own.
 - Any other address is refused without a token of at least 32 characters, from
   `WINGBOX_HTTP_TOKEN` or `--token-file FILE`. Clients send it as
   `Authorization: Bearer <token>`; it is never read from the command line and
-  never logged.
+  never logged: an option the command does not know is refused by its name,
+  without repeating what was typed after it.
 - `--tls-cert` and `--tls-key` serve HTTPS. Without them the token travels
   unencrypted: keep the port inside a private network or behind a TLS proxy.
-- A browser request from a foreign origin is answered 403 (`--allow-origin`
-  adds one). `GET` and `DELETE` are answered 405: the server keeps no session
-  and opens no stream of its own.
+- A browser request from a foreign origin is answered 403. `--allow-origin
+  ORIGIN` adds one and lets its pages read the answers: its preflight
+  (`OPTIONS`) is answered, and the answers carry `Access-Control-Allow-Origin`.
+  Requests from loopback origins pass without the option but never get such a
+  header: its absence is what keeps a page of another local site from reading
+  a listener that asks for no token. `GET` and `DELETE` are answered 405: the
+  server keeps no session and opens no stream of its own.
+- What a client can hold is bounded, with or without a token: at most 64 open
+  connections and 16 calls running or waiting, beyond which the answer is 503;
+  the header and the body of a request must arrive within 30 seconds in all;
+  and a call that still waits for its turn when its client closes the
+  connection is not run. A call that is running cannot be interrupted.
 - A call that runs longer than a second, such as `build_graph` on a large
   repository, is answered as an event stream with a keep-alive line every ten
   seconds, so an idle timeout on the way does not cut it.

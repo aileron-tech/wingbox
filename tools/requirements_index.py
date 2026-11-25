@@ -9,7 +9,8 @@ Every test of this repository says in its docstring which requirement it verifie
 This tool reads those docstrings from every Python file under tests/ (with `ast`: no test is
 imported or run) and writes one table per area, the id without its number (`CS`, `REL`, `TS-WS`):
 the id, the text, and the test as `file::Class::method`. A test without such a docstring is named
-at the top of the page.
+at the top of the page. An id belongs to one test: when two tests carry the same id the tool names
+them, writes nothing and exits 1 (a new test takes the next free number of its area).
 
     python3 tools/requirements_index.py           rewrite the file
     python3 tools/requirements_index.py --check   exit 1 when the file is stale, write nothing
@@ -83,6 +84,14 @@ def read_tests(repo: Path) -> Found:
     return Found(tuple(requirements), tuple(without))
 
 
+def doubled(found: Found) -> dict[str, tuple[str, ...]]:
+    """The ids that more than one test carries, each with those tests: one id would stand for two behaviours."""
+    tests: dict[str, list[str]] = {}
+    for item in found.requirements:
+        tests.setdefault(item.id, []).append(item.test)
+    return {id: tuple(sorted(names)) for id, names in sorted(tests.items()) if len(names) > 1}
+
+
 def cell(text: str) -> str:
     """Text as one table cell: one line, markup escaped outside code, every pipe escaped."""
     parts = _CODE.split(" ".join(text.split()))
@@ -100,7 +109,6 @@ def render_found(found: Found) -> str:
     areas: dict[str, list[Requirement]] = {}
     for item in found.requirements:
         areas.setdefault(item.area, []).append(item)
-    ids = {item.id for item in found.requirements}
     lines = [
         "# Requirements and the tests that verify them",
         "",
@@ -109,12 +117,12 @@ def render_found(found: Found) -> str:
         "(`--check` exits 1 when the file is stale; a test compares the two, REQ-DOC-004).",
         "",
         "Every test states the requirement it verifies in its docstring, `/* REQ-<AREA>-<n>: <behaviour> */`. "
-        "Below, one table per area in the order of the area names; a requirement that several tests verify "
-        "has one row per test, with the text of that test. To run one test: "
+        "Below, one table per area in the order of the area names; an id belongs to one test, and the tool "
+        "refuses an id that two tests carry. To run one test: "
         "`python -m unittest tests.<file>.<Class>.<method>` with the requirements of AGENTS.md, section 2.",
         "",
-        f"{_count(len(found.requirements), 'test')} carr{'ies' if len(found.requirements) == 1 else 'y'} a requirement id; "
-        f"{_count(len(ids), 'id')} in {_count(len(areas), 'area')}.",
+        f"{_count(len(found.requirements), 'test')} carr{'ies' if len(found.requirements) == 1 else 'y'} a requirement id, "
+        f"each its own, in {_count(len(areas), 'area')}.",
         "",
     ]
     if found.without:
@@ -147,7 +155,14 @@ def main(argv: list[str] | None = None) -> int:
         print(__doc__, file=sys.stderr)
         return 2
     output = REPO / OUTPUT
-    wanted = render(REPO).encode("utf-8")
+    found = read_tests(REPO)
+    twice = doubled(found)
+    if twice:
+        for id, tests in twice.items():
+            print(f"{id} is carried by {len(tests)} tests: {', '.join(tests)}", file=sys.stderr)
+        print("An id belongs to one test: give each of these tests the next free number of its area.", file=sys.stderr)
+        return 1
+    wanted = render_found(found).encode("utf-8")
     current = output.read_bytes() if output.is_file() else None
     if current == wanted:
         return 0

@@ -22,7 +22,9 @@ jobs:
       - name: Build the image
         run: docker build -f Dockerfile.benchmark -t wingbox-benchmark .
       - name: Run the benchmark and compare with the committed results
-        run: docker run --rm wingbox-benchmark | tee docker_run.log
+        run: |
+          set -o pipefail
+          docker run --rm wingbox-benchmark | tee docker_run.log
       - name: Summary
         run: |
           {

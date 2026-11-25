@@ -88,15 +88,16 @@ Each of these prints facts as text; add `--sexp` for S-expressions.
 
 ## Scripts
 
-This skill bundles Python scripts. Resolve the skill and target roots before
-running them so the scanned project is always explicit:
-
-- `scripts/code_graph_search.py` -- query the code graph
-- `scripts/build_code_graph.py` -- generate the code graph from source
-- `scripts/build_infra_topology.py` -- extract Kustomize, Helm, and Terraform topology facts
-- `scripts/git_descendants.py` -- find all commits descending from HEAD (or a given ref)
-
-Never use project-local copies of these scripts -- they may be outdated and output JSON instead of sexp.
+Every example in this file is written as `wingbox <command>`. An installed
+skill (from `wingbox install` or a plugin) holds this file and `references/`,
+and no script. The scripts behind the command are in a clone of the Wingbox
+repository only; there, without the command, run them by path with the same
+arguments: `python3 scripts/code_graph_search.py <command> ...` for a query,
+`python3 scripts/build_code_graph.py --root <project>` for `wingbox build
+<project>`, `python3 scripts/build_infra_topology.py` for `wingbox infra`
+(`scripts/git_descendants.py` lists the commits that descend from a ref).
+Never use a copy of these scripts that lies in the project you work on: it may
+be outdated.
 
 ## Prerequisite
 
@@ -104,29 +105,21 @@ Locate the code graph. If absent, build it:
 
 ```bash
 ls .wingbox/index.sexp 2>/dev/null
-SKILL_ROOT="$(pwd -P)"
-TARGET_ROOT="$(cd /absolute/path/to/project && pwd -P)"
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
+wingbox build .                              # in the project folder
+wingbox build /absolute/path/to/project      # or name the project
+wingbox build . --full                       # parse every file again
 ```
 
 Python indexing has no external parser dependency. When the parser of
 TypeScript or Rust is absent or has the wrong version, the first build fails
 before publication; files of C#, Java, Go, Ruby, PHP, Dart, C or C++ without
 their parser are skipped with a warning (a project of such a language alone fails
-too). Either way the builder prints the exact per-language command to run, such as:
-
-```bash
-python3 -m pip install -r "$SKILL_ROOT/requirements/typescript.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/csharp.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/ruby.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/php.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/dart.txt"
-python3 -m pip install -r "$SKILL_ROOT/requirements/cpp.txt"
-```
-
-Install only the requirement files named by the builder, then rerun it.
-`requirements.txt` is reserved for the infrastructure-topology dependency.
+too). Either way the builder prints what to run: `pip install
+"wingbox[<language>]"` for a language that is a pip extra, a reinstall of
+`wingbox` for TypeScript and Rust, whose parsers are its own dependencies,
+and in a clone of the repository `python3 -m pip install -r` with the
+requirements file of the language. Run only what the builder prints, in the
+environment that runs Wingbox, then build again.
 
 ## Mandatory Workflow: Query Before Code
 
@@ -137,7 +130,7 @@ already been inspected.
 
 **Fast first pass when the task has a clear keyword:**
 ```bash
-python3 scripts/code_graph_search.py quick "keyword"
+wingbox quick "keyword"
 ```
 `quick` searches for the first matching module and immediately runs `analyze`.
 Use it to get boundary files, dependencies, reverse dependencies, layers, and
@@ -146,14 +139,14 @@ explicit `search` -> `analyze` flow below.
 
 **Step 1 -- Find the module ID:**
 ```bash
-python3 scripts/code_graph_search.py search "keyword"
-python3 scripts/code_graph_search.py entity EntityName
+wingbox search "keyword"
+wingbox entity EntityName
 ```
 Use `search` or `entity` to locate the module ID. Module IDs are **full relative paths** like `billing-service/src/modules/invoice/invoice.service`, not short codes like `bs34`. The code graph may contain short path-map IDs internally, but they are resolved automatically -- always pass human-readable path-like strings. Do NOT guess or invent module IDs -- always confirm with `search` first.
 
 **Step 2 -- Analyze the module (do this IMMEDIATELY, not optionally):**
 ```bash
-python3 scripts/code_graph_search.py analyze <module-id>
+wingbox analyze <module-id>
 ```
 `analyze` is the PRIMARY command. It returns the full context: boundary files, dependencies, reverse dependencies, architecture layer, and violations. Always run it before reading any source.
 
@@ -230,34 +223,42 @@ once, the list not cut, test files included). In Claude Code's Code Mode follow
 [references/code-mode.md](references/code-mode.md): one call in one block of
 code whose value is the answer.
 
-## Quick Reference: rg Queries
+## Quick Reference: Targeted Lookups
 
-When you need fast, targeted lookups without invoking the Python script, query the code graph directly with `rg`. The builder writes the graph to `.wingbox/index.sexp`:
+Do not search `.wingbox/index.sexp` for a path with `rg`. The graph file
+names every module by a short ID and maps the paths to those IDs once, in its
+`(paths ...)` form, so an import is stored as `(imports q21 q24 :line 1)`:
+`rg 'imports .* src/billing/tax' .wingbox/index.sexp` finds nothing, and
+nothing found there does not mean that nothing imports the module. Ask the
+commands, which print full paths:
 
 ```bash
-# All facts about a module
-rg 'drive/modules/drive_db/api ' .wingbox/index.sexp
+# One module: its entities and edges, each import and ref with its line
+wingbox module drive/modules/drive_db/api/drive_db_api --lines
 
-# Who imports a module
-rg 'imports .* drive/modules/commons/result' .wingbox/index.sexp
+# Who imports a module, and what it imports (one hop)
+wingbox rdeps drive/modules/commons/result 1
+wingbox deps drive/modules/drive_db/api/drive_db_api 1
 
-# What does a module import
-rg 'imports drive/modules/drive_db/api' .wingbox/index.sexp
+# Where an entity is defined and which modules refer to it
+wingbox entity DriveDbCommitResponse
 
-# All references to an entity
-rg 'DriveDbCommitResponse' .wingbox/index.sexp
+# The classes, interfaces and types whose name matches
+wingbox find_type "Drive.*Response"
 
-# All classes in a repo
-rg '^\(cls drive/' .wingbox/index.sexp
+# The stored facts of one kind, as the graph file holds them
+wingbox search "data-flow" --lines
+wingbox search "registry-wires" --lines      # Python modules loaded by a name read from a configuration file
 
-# Data flow edges
-rg 'data-flow' .wingbox/index.sexp
-
-# Python modules loaded by a name read from a configuration file
-rg 'registry-wires' .wingbox/index.sexp
+# A text in the source files of the graph
+wingbox grep "Basket is empty"
 ```
 
-These one-liners are useful for quick checks. For structured output and full analysis, use the Python script commands.
+`search <pattern>` answers with module IDs when the pattern matches a module
+path; otherwise it prints the stored facts that match, with `--lines` as the
+file holds them. Those facts name modules by short ID: `wingbox module <short
+id>` prints the module of one. A short ID belongs to one build of the graph,
+so never keep one or pass one on.
 
 ## Output Notation
 
@@ -385,35 +386,40 @@ If a command returns `(error no-match ...)`:
 3. Use the `:suggestions` field if present -- it lists similar module IDs
 
 ```bash
-# Wrong: guessing IDs
-python3 scripts/code_graph_search.py analyze bs34        # fails: bs34 is a short path-map ID
-python3 scripts/code_graph_search.py analyze invoice.service  # fails: incomplete path
+# Wrong: guessing IDs until one answers
+wingbox analyze invoices_service
+wingbox analyze bs34          # a short ID of the graph file: after the next build it names another module
 
 # Right: search first, then use the full path from results
-python3 scripts/code_graph_search.py search "invoice.*service"
-# Output shows: billing-service/src/modules/invoice/invoice.service
-python3 scripts/code_graph_search.py analyze billing-service/src/modules/invoice/invoice.service
+wingbox search "invoice.*service"
+# Output shows: (result billing-service/src/modules/invoice/invoice.service)
+wingbox analyze billing-service/src/modules/invoice/invoice.service
 ```
 
 ## Anti-patterns
 
-- **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are internal path-map IDs and must not be used directly. Always `search` first.
+- **Guessing module IDs.** Module IDs are full relative paths (e.g., `billing-service/src/modules/invoice/invoice.service`). Short codes like `bs34` are the IDs of one build of the graph file: the next build may give them to other modules. Always `search` first.
 - **Build but never query.** Building the code graph and then never running `search`, `analyze`, or `boundary` provides zero value.
 - **Querying after reading source.** The first source-code read should come from the `boundary-file` lines and the `:file` of the `analyze-dependent` lines in `analyze` output.
-- **Reading `.wingbox/index.sexp` as a whole file.** Use `search`, `analyze`, or `rg` to query specific facts.
+- **Reading `.wingbox/index.sexp` as a whole file, or searching it for a path with `rg`.** The file names modules by short ID, so a path is not in its facts. Use `search`, `analyze` or `module` to query specific facts.
 - **Skipping the code graph for cross-module tasks.** Always query the graph to understand boundaries before reading source files.
 - **Reading all files in a directory.** When the boundary shows 2-3 files, read only those.
-- **Using project-local scripts.** Always use this skill's bundled scripts. Project copies may output JSON instead of sexp.
+- **Using project-local scripts.** Always use the `wingbox` command. A copy of its scripts inside a project may be outdated.
 
 ## Rebuilding the Graph
 
 ```bash
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT"
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --full
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" --root "$TARGET_ROOT" --lsp
-python3 "$SKILL_ROOT/scripts/build_code_graph.py" \
-  --root "$TARGET_ROOT" --exclude-dir review-bundles
+wingbox build .                                # parse the files that changed
+wingbox build . --full                         # parse every file again
+wingbox build . --lsp                          # add the edges a language server finds
+wingbox build . --exclude-dir review-bundles
 ```
+
+`--lsp` starts the language servers installed on the machine. Such a server
+can run the build of the project and fetch its dependencies from a package
+registry, so use `--lsp` only when the user asks for it: it is the one build
+option under which the code of the project may run and the network may be
+reached.
 
 Use repeatable `--exclude-dir NAME` options for tracked snapshots, generated
 fixtures, or other source-shaped trees that are not part of the live product.
@@ -539,20 +545,20 @@ languages in directories with that name remain indexable.
 
 ## Infrastructure Topology
 
-Extract service topology from Kustomize, Helm, and Terraform files. This script requires `PyYAML` (`pip3 install pyyaml`).
+Extract service topology from Kustomize, Helm, and Terraform files (`PyYAML`, which the command needs, is installed with the package).
 
 ```bash
-python3 scripts/build_infra_topology.py                    # auto-detect all IaC
-python3 scripts/build_infra_topology.py --kustomize .      # kustomize only
-python3 scripts/build_infra_topology.py --helm ./charts    # helm charts only
-python3 scripts/build_infra_topology.py --terraform ./infra # terraform only
-python3 scripts/build_infra_topology.py --append .wingbox/index.sexp  # merge into graph
+wingbox infra                                # auto-detect all IaC
+wingbox infra --kustomize .                  # kustomize only
+wingbox infra --helm ./charts                # helm charts only
+wingbox infra --terraform ./infra            # terraform only
+wingbox infra --append .wingbox/index.sexp   # merge into graph
 ```
 
-Emits `infra-node`, `k8s-depends`, `k8s-service`, `helm-depends`, `tf-depends`, and `infra-maps` edges. Query with:
+Emits `infra-node`, `k8s-depends`, `k8s-service`, `helm-depends`, `tf-depends`, and `infra-maps` edges. These facts name services, not modules, so they are stored as they are printed. Query with:
 ```bash
-rg 'infra-node' .wingbox/index.sexp                  # all services
-rg 'k8s-depends' .wingbox/index.sexp                 # service dependencies
-rg 'infra-node.*:component database' .wingbox/index.sexp  # all databases
-rg 'infra-maps.*app-service' .wingbox/index.sexp     # infra -> source code mapping
+wingbox search "infra-node" --lines                       # all services
+wingbox search "k8s-depends" --lines                      # service dependencies
+wingbox search "infra-node.*:component database" --lines  # all databases
+wingbox search "infra-maps.*app-service" --lines          # infra -> source code mapping
 ```
