@@ -700,7 +700,8 @@ graph, C and C++ included.
 
 `wingbox init [PATH] [--force] [--sexp] [--details]` splits the repository into parts and
 judges the architecture style of each, then writes `.wingbox/config.yaml` and
-adds `/.wingbox/` to the project's `.gitignore`:
+adds `/.wingbox/` to the project's `.gitignore` (a file that already has a rule
+about `.wingbox` is left as it is):
 
 ```
 $ wingbox init
@@ -1250,7 +1251,9 @@ The generated files are rewritten on every build and never committed thanks to
 `.wingbox/.gitignore`. `wingbox init` ignores the whole folder at the project
 level. Files already tracked by Git continue to be tracked. A `.wingbox/`
 folder copied or moved to another place is read as it is but never refreshed
-there: queries say `rebuild`. Wingbox deletes nothing outside `.wingbox/`;
+there: queries say `rebuild`, and it gives no skipped-language note. Wingbox
+writes nothing through a symbolic link at `.wingbox` or below it: a command
+that would names the link and stops. Wingbox deletes nothing outside `.wingbox/`;
 `wingbox update` names files that versions before 0.4.1 left in a project
 (`.code_graph*`, `wingbox-out/`) so that you can remove them.
 
