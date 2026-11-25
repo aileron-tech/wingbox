@@ -22,7 +22,18 @@ from .validation import validation_evidence
 
 
 _IMPORTS = (ast.Import, ast.ImportFrom)
-PY_ABC_RE = re.compile(r"""class\s+\w+\s*\(.*(?:ABC|ABCMeta|Protocol).*\)""")
+_CLASS = (ast.ClassDef,)
+_NAMED = (ast.Name, ast.Attribute)
+# What marks a base of a class statement as abstract: ABC, ABCMeta, Protocol, as a name or inside one.
+_ABSTRACT_MARKS = ("ABC", "Protocol")
+# What `ast.parse` raises for a file it does not read: a syntax error; a tree deeper than the parser of
+# this Python builds (RecursionError, MemoryError); a NUL character (ValueError before Python 3.12).
+_NOT_PARSED = (SyntaxError, RecursionError, MemoryError, ValueError)
+# One statement on one line of a file the parser refuses. Each part matches a different class of
+# characters than the part after it, so a line is read in one pass.
+_IMPORT_STATEMENT = re.compile(r"[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import(?![\w.])|import[ \t]+)(.*)", re.DOTALL)
+_IMPORTED_NAME = re.compile(r"([\w.]+|\*)(?:[ \t]+as[ \t]+(\w+))?\Z")
+_CLASS_STATEMENT = re.compile(r"[ \t]*class[ \t]+(\w+)[ \t]*\(")
 
 
 def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult:
@@ -42,8 +53,8 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
     launches: list[dict] = []
     validation = ""
 
-    try:
-        tree = ast.parse(content, filename=path)
+    tree = _tree_of(path, content)
+    if tree is not None:
         # The one walk of the tree: the imports, the run-time loads, the registry calls and the
         # use sites below read from it.
         index = index_tree(tree)
@@ -152,25 +163,15 @@ def parse_python(path: str, content: str, repo: str, mtime: float) -> FileResult
         uses = _use_sites(tree, path, entities, variables, bindings, full=False, index=index)
         validation = validation_evidence(tree, bindings)
 
-    except SyntaxError as error:
-        print(
-            f"[code-graph] WARNING: AST parse failed for {path}: {error}",
-            file=sys.stderr,
-        )
-        # Fallback: regex for imports only
-        for m in re.finditer(
-            r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))",
-            content, re.MULTILINE,
-        ):
-            imp = m.group(1) or m.group(2)
-            if imp:
-                imports.append(imp)
+        # Classes with an abstract base, in source order, nested ones included.
+        for position in index.positions(_CLASS):
+            node = index.nodes[position]
+            if node.name not in exports_abstract and _has_abstract_base(node, index, position):  # type: ignore[attr-defined]
+                exports_abstract.append(node.name)  # type: ignore[attr-defined]
 
-    # Detect ABC / Protocol definitions
-    for m in PY_ABC_RE.finditer(content):
-        name = m.group(0).split("(")[0].split()[-1]
-        if name not in exports_abstract:
-            exports_abstract.append(name)
+    else:
+        # Fallback: the import statements and the abstract classes, read from the text line by line.
+        (imports, imported_names, import_lines), exports_abstract = _text_imports(content), _text_abstract_classes(content)
 
     return FileResult(
         path=path, language="python", repo=repo, mtime=mtime,
@@ -211,6 +212,94 @@ def _use_sites(
     return use_sites(tree, module_names, has_glob, path.endswith("__init__.py"), full, imported, index)
 
 
+def _tree_of(path: str, content: str) -> ast.Module | None:
+    """The syntax tree of the file; None, with a warning, when Python's parser does not read it."""
+    try:
+        return ast.parse(content, filename=path)
+    except _NOT_PARSED as error:
+        print(f"[code-graph] WARNING: AST parse failed for {path}: {error}", file=sys.stderr)
+        return None
+
+
+def _has_abstract_base(node: ast.ClassDef, index: TreeIndex, position: int) -> bool:
+    """Whether a name among the bases or the keywords of the class statement (`ABC`, `abc.ABCMeta`,
+    `Protocol[T]`, `metaclass=ABCMeta`) holds one of the marks. The names are those of the walk of the
+    tree that lie before the body of the class and after its decorators."""
+    written = {id(expression) for expression in (*node.bases, *(keyword.value for keyword in node.keywords))}
+    if not written:
+        return False
+    nodes, ends = index.nodes, index.ends
+    for child in index.children(position):
+        target = nodes[child].value if isinstance(nodes[child], ast.keyword) else nodes[child]  # type: ignore[attr-defined]
+        if id(target) not in written:
+            continue
+        for found in index.positions(_NAMED, child, ends[child]):
+            named = nodes[found]
+            name = named.id if isinstance(named, ast.Name) else named.attr  # type: ignore[attr-defined]
+            if any(mark in name for mark in _ABSTRACT_MARKS):
+                return True
+    return False
+
+
+def _text_imports(content: str) -> tuple[list[str], list[ImportedName], dict[str, list[int]]]:
+    """The imports of a file the parser refuses: every module of `import a.b as x, c.d` and every name of
+    `from m import x, y as z`, also over the lines of a list in parentheses or after a backslash, and
+    after a `;`. Only what is written as names counts; the text of a string that does not is skipped."""
+    imports: list[str] = []
+    imported_names: list[ImportedName] = []
+    import_lines: dict[str, list[int]] = {}
+    lines = content.split("\n")
+    number = 0
+    while number < len(lines):
+        first = number + 1
+        text = lines[number].split("#", 1)[0]
+        number += 1
+        if "import" not in text:
+            continue
+        # A list in parentheses, or a line that ends with a backslash, goes on over the next lines.
+        while number < len(lines) and (text.count("(") > text.count(")") or text.rstrip().endswith("\\")):
+            text = text.rstrip().rstrip("\\") + " " + lines[number].split("#", 1)[0]
+            number += 1
+        for statement in text.split(";"):
+            match = _IMPORT_STATEMENT.match(statement)
+            if match is None:
+                continue
+            module = match.group(1)
+            names = [name.strip() for name in match.group(2).replace("(", " ").replace(")", " ").split(",")]
+            found = [named for named in map(_IMPORTED_NAME.match, names) if named is not None]
+            if module and found:
+                imports.append(module)
+                add_import_line(import_lines, module, first)
+            for named in found:
+                original, alias = named.group(1), named.group(2)
+                if module:
+                    imported_names.append(ImportedName(local_name=alias or original, original_name=original, module=module, line=first))
+                elif original != "*":
+                    imports.append(original)
+                    add_import_line(import_lines, original, first)
+                    imported_names.append(ImportedName(
+                        local_name=alias or original.split(".")[-1], original_name=original, module=original, line=first))
+    return imports, imported_names, import_lines
+
+
+def _text_abstract_classes(content: str) -> list[str]:
+    """The classes of a file the parser refuses whose class line names an abstract base between its
+    brackets (a class statement written on one line)."""
+    found: list[str] = []
+    for line in content.split("\n"):
+        match = _CLASS_STATEMENT.match(line) if "class" in line else None
+        if match is None:
+            continue
+        depth, end = 1, match.end()
+        while end < len(line) and depth:
+            depth += {"(": 1, ")": -1}.get(line[end], 0)
+            end += 1
+        bases = line[match.end():end - 1] if not depth else ""
+        if match.group(1) not in found and any(mark in bases for mark in _ABSTRACT_MARKS):
+            found.append(match.group(1))
+    return found
+
+
 def python_use_positions(path: str, content: str) -> list[UsePayload]:
     """Every use site of the file (names, chains, method calls), for `usages` and `entity --positions`.
 
@@ -219,7 +308,7 @@ def python_use_positions(path: str, content: str) -> list[UsePayload]:
     """
     try:
         tree = ast.parse(content, filename=path)
-    except SyntaxError:
+    except _NOT_PARSED:
         return []
     definitions = [
         Entity(name=node.name, kind="function", line=node.lineno, methods=[], decorators=[], bases=[])
@@ -231,23 +320,22 @@ def python_use_positions(path: str, content: str) -> list[UsePayload]:
 
 
 def _decorator_name(node: ast.expr) -> str:
+    while isinstance(node, ast.Call):
+        node = node.func
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
         return node.attr
-    if isinstance(node, ast.Call):
-        return _decorator_name(node.func)
     return ""
 
 
 def _name_of(node: ast.expr) -> str:
     """A base class as written: ``Base`` or ``package.module.Base``."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        owner = _name_of(node.value)
-        return f"{owner}.{node.attr}" if owner else ""
-    return ""
+    attributes: list[str] = []
+    while isinstance(node, ast.Attribute):
+        attributes.append(node.attr)
+        node = node.value
+    return ".".join([node.id, *reversed(attributes)]) if isinstance(node, ast.Name) else ""
 
 
 def _submodule(module: str, name: str) -> str:

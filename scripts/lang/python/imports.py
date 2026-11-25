@@ -33,7 +33,7 @@ def _candidate_bases(
     # The folder of a package is not on the import path: inside a package an absolute name is never the
     # module or the folder beside the importing file (`import logging` next to `logging.py`). The folder
     # of a script is, as the first entry.
-    in_package = (source_directory / "__init__.py").is_file()
+    in_package = os.path.isfile(source_directory / "__init__.py")
     bases = [str(root_path)] if in_package else [str(root_path), str(source_directory)]
     first_segment = parts[0] if parts else ""
     current = source_directory
@@ -41,7 +41,8 @@ def _candidate_bases(
         current_path = str(current)
         if (
             first_segment
-            and (current / first_segment).is_dir()
+            # os.path.isdir answers False for a name the file system refuses (one of a thousand letters).
+            and os.path.isdir(current / first_segment)
             and current_path not in bases
             and not (in_package and current == source_directory)
         ):
