@@ -304,6 +304,7 @@ def prepare_wingbox_directory(root: str) -> None:
 # 6: validation is read from the syntax tree and stored with its evidence.
 # 7: results carry the lines of their import statements (import_lines, line of a name) and text_hash.
 CACHE_SCHEMA_VERSION = 8
+RESOLUTION_CONFIGS_FIELD = "resolution_configs"  # in cache.json: resolution_config_digest of the build
 MAP_SCHEMA_VERSION = 1
 BUILDER_CONFIG_VERSION = "2026-11-16-php"
 
@@ -458,6 +459,22 @@ def is_resolution_config(name: str) -> bool:
     )
 
 
+def resolution_config_digest(root: str, paths: Iterable[str]) -> str:
+    """Identity of the files outside the sources that decide how imports resolve (is_resolution_config), as
+    discovery saw them: the path and the content of each; "" without such a file.
+
+    Parse results do not depend on these files, so the build cache keeps its entries when one changes. What
+    was resolved does: the digest is part of symbol_index_key (the use file and the fragment store of other
+    settings are written again) and of the surface of the walk cache (_surface_digest)."""
+    digest = hashlib.sha256()
+    found = False
+    for path in sorted(paths):
+        relative = os.path.relpath(path, root).replace(os.sep, "/")
+        digest.update(f"{relative}\0{file_hash(path)}\n".encode("utf-8", "surrogateescape"))
+        found = True
+    return digest.hexdigest()[:32] if found else ""
+
+
 @dataclass
 class TreeSnapshot:
     """What discovery saw: (mtime_ns, size) of every source and resolution config, mtime_ns of every folder."""
@@ -517,9 +534,11 @@ def discover_files(
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
     snapshot: Optional[TreeSnapshot] = None,
     not_parsed: Optional[dict[str, int]] = None,
+    configs: Optional[list[str]] = None,
 ) -> list[tuple[str, str, str]]:
     """Source files under root: (path, language, repository). With snapshot, also record what was seen;
-    with not_parsed, count per language the files of languages no parser reads (source_kinds)."""
+    with not_parsed, count per language the files of languages no parser reads (source_kinds); with
+    configs, collect the paths of the resolution configs that are no sources (resolution_config_digest)."""
     results: list[tuple[str, str, str]] = []
     root_path = Path(root).resolve()
 
@@ -572,6 +591,8 @@ def discover_files(
                             _record_file(entry)
                         elif is_resolution_config(entry.name):
                             _record_file(entry)
+                            if configs is not None:
+                                configs.append(entry.path)
                         if language is None and not_parsed is not None:
                             other = source_kinds.not_parsed_language(entry.name)
                             if other is not None:
@@ -859,13 +880,17 @@ def save_cache(
     entries: dict,
     language_names: frozenset[str],
     exclusions: DiscoveryExclusions = DEFAULT_DISCOVERY_EXCLUSIONS,
+    configs: str = "",
 ) -> None:
+    """Write the build cache. configs (resolution_config_digest) is kept for the readers that work out the
+    key of the published graph from the cache: a partial update and the fill of use positions."""
     cache = {
         "schema_version": CACHE_SCHEMA_VERSION,
         "builder_fingerprint": _builder_fingerprint(
             language_names,
             exclusions,
         ),
+        RESOLUTION_CONFIGS_FIELD: configs,
         "entries": entries,
     }
     serialized = json.dumps(cache, sort_keys=True, separators=(",", ":")) + "\n"
@@ -3944,9 +3969,10 @@ def text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-def symbol_index_key(results: Sequence[FileResult], fingerprint: str, mode: str) -> str:
-    """Identity of every input of use resolution: each file and its content, the builder, the mode."""
-    digest = hashlib.sha256(f"{fingerprint}|{mode}".encode("utf-8"))
+def symbol_index_key(results: Sequence[FileResult], fingerprint: str, mode: str, configs: str = "") -> str:
+    """Identity of every input of use resolution: each file and its content, the builder, the mode, and
+    the resolution configs (resolution_config_digest)."""
+    digest = hashlib.sha256((f"{fingerprint}|{mode}" + (f"|{configs}" if configs else "")).encode("utf-8"))
     for result in sorted(results, key=lambda item: item.path):
         digest.update(f"\n{result.path}\0{result.content_hash}".encode("utf-8"))
     return digest.hexdigest()[:32]
@@ -4132,11 +4158,11 @@ def _load_walk_cache(path: str, fingerprint: str) -> WalkCache:
     return WalkCache(str(cache.get("surface", "")), files, imports)
 
 
-def _surface_digest(results: Sequence[FileResult]) -> str:
-    """What resolving one file's uses reads of the others: every path, and the definitions and
-    bindings of the files with a use index. While it is the same, a file whose content did not
-    change resolves as before."""
-    digest = hashlib.sha256()
+def _surface_digest(results: Sequence[FileResult], configs: str = "") -> str:
+    """What resolving one file's uses reads of the others: every path, the definitions and
+    bindings of the files with a use index, and the resolution configs (resolution_config_digest).
+    While it is the same, a file whose content did not change resolves as before."""
+    digest = hashlib.sha256(configs.encode("utf-8"))
     for result in sorted(results, key=lambda item: item.path):
         digest.update(result.path.encode("utf-8") + b"\0")
         if supports_symbols(result.language):
@@ -4183,10 +4209,10 @@ def _modified_since(result: FileResult) -> bool:
         return True
 
 
-def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, list[FileResult]], str]:
+def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, list[FileResult], str], str]:
     """(the text of the graph, the key of its use file, the builder fingerprint, the parse results of the
-    build cache) for filling use positions; Err with the reason when the use file, the graph and the cache
-    do not belong together."""
+    build cache, the digest of the resolution configs of that build) for filling use positions; Err with the
+    reason when the use file, the graph and the cache do not belong together."""
     try:
         with open(uses_path(map_path), "r", encoding="utf-8") as uses_file:
             header = next((line for line in uses_file if line.startswith("(code-graph-uses ")), "")
@@ -4210,9 +4236,10 @@ def _position_inputs(map_path: str, root: str) -> Result[tuple[str, str, str, li
         results.append(decoded.value)
     mode_match = re.search(r"^; mode (.+)$", graph_text, re.M)
     fingerprint = str(cache.get("builder_fingerprint", ""))
-    if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1)) != key_match.group(1):
+    configs = str(cache.get(RESOLUTION_CONFIGS_FIELD, ""))
+    if mode_match is None or symbol_index_key(results, fingerprint, mode_match.group(1), configs) != key_match.group(1):
         return Err("the build cache does not match the code graph")
-    return Ok((graph_text, key_match.group(1), fingerprint, results))
+    return Ok((graph_text, key_match.group(1), fingerprint, results, configs))
 
 
 def use_position_lines(map_path: str, root: str, name: str) -> Result[list[str], str]:
@@ -4228,7 +4255,7 @@ def use_position_lines(map_path: str, root: str, name: str) -> Result[list[str],
     inputs = _position_inputs(map_path, root)
     if isinstance(inputs, Err):
         return inputs
-    _graph_text, _key, _fingerprint, results = inputs.value
+    _graph_text, _key, _fingerprint, results, _configs = inputs.value
     wanted = name.encode("utf-8")
     candidates: list[FileResult] = []
     for result in results:
@@ -4345,7 +4372,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
     inputs = _position_inputs(map_path, root)
     if isinstance(inputs, Err):
         return inputs
-    graph_text, key, fingerprint, results = inputs.value
+    graph_text, key, fingerprint, results, configs = inputs.value
     indexed = [result for result in results if supports_symbols(result.language)]
     # A file whose modification time is the one the build saw is not read again to compare hashes.
     changed = [result.path for result in indexed if _modified_since(result) and file_hash(result.path) != result.content_hash]
@@ -4354,7 +4381,7 @@ def write_use_positions(map_path: str, root: str) -> Result[UsePositions, str]:
 
     walk_cache_path = uses_cache_path(map_path)
     walk_cache = _load_walk_cache(walk_cache_path, fingerprint)
-    surface = _surface_digest(results)
+    surface = _surface_digest(results, configs)
     same_surface = walk_cache.surface == surface
     entries_out: dict[str, list] = {}
     to_walk: list[tuple[str, str]] = []
@@ -4618,7 +4645,8 @@ def _run_build(options: BuilderOptions) -> int:
     prepare_wingbox_directory(root)
     snapshot = TreeSnapshot() if options.snapshot_path else None
     not_parsed: dict[str, int] = {}
-    files = discover_files(root, exclusions, snapshot, not_parsed)
+    config_paths: list[str] = []
+    files = discover_files(root, exclusions, snapshot, not_parsed, config_paths)
     language_counts = {
         language.name: sum(
             1 for _, language_name, _ in files if language_name == language.name
@@ -4687,7 +4715,10 @@ def _run_build(options: BuilderOptions) -> int:
         cached_results + new_results,
         key=lambda result: os.path.relpath(result.path, root).replace(os.sep, "/"),
     )
-    symbol_key = symbol_index_key(all_results, _builder_fingerprint(active_language_names, exclusions), mode)
+    # A changed tsconfig.json, composer.json or compile_commands.json changes the key with no source change:
+    # nothing resolved under the old settings (use file, fragment store) is taken over.
+    configs = resolution_config_digest(root, config_paths)
+    symbol_key = symbol_index_key(all_results, _builder_fingerprint(active_language_names, exclusions), mode, configs)
     # A fragment store that does not match these inputs is rewritten, which needs the uses resolved.
     stale_store = bool(options.fragments_path) and fragments_key(options.fragments_path or "") != symbol_key
     reused = (
@@ -4763,6 +4794,7 @@ def _run_build(options: BuilderOptions) -> int:
         new_cache,
         active_language_names,
         exclusions,
+        configs,
     )
     _atomic_write_text(options.output_path, map_content)
     _atomic_write_text(uses_path(options.output_path), uses_content)

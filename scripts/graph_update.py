@@ -201,7 +201,8 @@ def _folders(root: str, path: str) -> list[str]:
     return folders
 
 
-def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], NotApplicable]:
+def _load_cache(root: str) -> Union[tuple[str, str, dict[str, builder.FileResult]], NotApplicable]:
+    """(builder fingerprint, digest of the resolution configs, parse results by path) of the build cache."""
     try:
         with open(builder.cache_path(root), "r", encoding="utf-8") as handle:
             cache = json.load(handle)
@@ -211,7 +212,8 @@ def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], N
         return NotApplicable("build cache of another schema")
     entries = cache.get("entries")
     fingerprint = cache.get("builder_fingerprint")
-    if not isinstance(entries, dict) or not isinstance(fingerprint, str):
+    configs = cache.get(builder.RESOLUTION_CONFIGS_FIELD, "")
+    if not isinstance(entries, dict) or not isinstance(fingerprint, str) or not isinstance(configs, str):
         return NotApplicable("build cache without entries")
     results: dict[str, builder.FileResult] = {}
     for path, entry in entries.items():
@@ -219,7 +221,7 @@ def _load_cache(root: str) -> Union[tuple[str, dict[str, builder.FileResult]], N
         if isinstance(decoded, builder.Err):
             return NotApplicable(f"invalid cache entry {path}: {decoded.error}")
         results[path] = decoded.value
-    return fingerprint, results
+    return fingerprint, configs, results
 
 
 def _relative_key(root: str):
@@ -238,11 +240,13 @@ def _published_key(output_path: str) -> Optional[str]:
     return None
 
 
-def _write_cache(root: str, fingerprint: str, results: list[builder.FileResult]) -> None:
-    """The build cache as save_cache writes it, with the fingerprint of the build it extends."""
+def _write_cache(root: str, fingerprint: str, configs: str, results: list[builder.FileResult]) -> None:
+    """The build cache as save_cache writes it, with the fingerprint and the resolution configs of the build
+    it extends (a changed resolution config is never patched in, so they are the ones of that build)."""
     cache = {
         "schema_version": builder.CACHE_SCHEMA_VERSION,
         "builder_fingerprint": fingerprint,
+        builder.RESOLUTION_CONFIGS_FIELD: configs,
         "entries": {result.path: builder._serialize_file_result(result) for result in results},
     }
     builder._atomic_write_text(
@@ -324,9 +328,9 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
     loaded = _load_cache(root)
     if isinstance(loaded, NotApplicable):
         return loaded
-    fingerprint, cached = loaded
+    fingerprint, configs, cached = loaded
     old_list = sorted(cached.values(), key=_relative_key(root))
-    old_key = builder.symbol_index_key(old_list, fingerprint, _MODE)
+    old_key = builder.symbol_index_key(old_list, fingerprint, _MODE, configs)
     if _published_key(output_path) != old_key:
         return NotApplicable("the published graph does not match the build cache")
     store = builder.read_fragments(fragments_path, root)
@@ -398,9 +402,9 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
         return NotApplicable(built.error)
     content = builder.render_sexp(graph.nodes, graph.edges, root, _MODE, len(new_list), built.value[0],
                                   builder.built_from(root, new_list))
-    new_key = builder.symbol_index_key(new_list, fingerprint, _MODE)
+    new_key = builder.symbol_index_key(new_list, fingerprint, _MODE, configs)
     uses = builder.render_uses_sexp(graph.nodes, new_key, content)
-    _write_cache(root, fingerprint, new_list)
+    _write_cache(root, fingerprint, configs, new_list)
     builder._atomic_write_text(output_path, content)
     builder._atomic_write_text(builder.uses_path(output_path), uses)
     builder.publish_layer_guesses(root, graph.nodes)
