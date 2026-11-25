@@ -102,7 +102,8 @@ Wingbox is safe to run on code that must not leave the company:
   `docker run --rm --network none -v "$PWD":/repo wingbox`
   (PowerShell: `docker run --rm --network none -v "${PWD}:/repo" wingbox`).
   The one command that reaches the network is `wingbox update`, which runs
-  your package installer (pipx, uv or pip) when you ask it to.
+  your package installer (pipx, uv or pip) when you ask it to. The one build
+  option that can is `--lsp`, off by default: see "never run" below.
   Wingbox listens on no port either. Serving the MCP server to another machine is a
   separate package, `wingbox-http`, that you install and start yourself; it only
   answers the requests that reach it and opens no connection of its own.
@@ -110,8 +111,15 @@ Wingbox is safe to run on code that must not leave the company:
   or to a service, and nothing is collected about its use.
 - **Your code is read, never run.** Wingbox parses source files with its own
   parsers and calls `git` for the ignore rules; it does not execute the code,
-  the tests or the build of the repository. The `--lsp` option, off by
-  default, starts a language server that is installed on the machine.
+  the tests or the build of the repository. One option is the exception:
+  `wingbox build --lsp`, off by default, starts the language servers that are
+  installed on the machine (`rust-analyzer`, `gopls`, `jdtls`, `csharp-ls`,
+  `typescript-language-server`, `pyright-langserver`, `clangd`, `ruby-lsp`,
+  `intelephense`, `dart language-server`), and what such a server does is its
+  own: it can run the build of the project (Cargo build scripts and
+  procedural macros, a Gradle or Maven import) and fetch dependencies from a
+  package registry. Leave `--lsp` off for code you do not trust and where
+  nothing may leave the machine.
 - **The results stay in one folder of the repository, `.wingbox/`:** the
   graph `index.sexp`, `REPORT.md` and `map.html`. The map is one HTML file
   that loads nothing from outside and opens offline.
@@ -301,8 +309,8 @@ of a codebase, documents and images for coding agents; CodeGraph and OntoIndex
 index code for agents. Wingbox is narrower: a deterministic graph of the code
 alone, built without a model, and exact lists of what depends on a file. The
 four ran on the same public repositories, questions, reference lists and
-scoring (Wingbox 0.5.1, Graphify 0.9.110, CodeGraph 1.6.2, OntoIndex 3.1.9;
-no model inside any of the tools):
+scoring (Wingbox 0.10.0, the FastAPI row with Wingbox 0.9.1; Graphify 0.9.110,
+CodeGraph 1.6.2, OntoIndex 3.1.9; no model inside any of the tools):
 
 | Test | Wingbox | Graphify | CodeGraph | OntoIndex |
 |---|---|---|---|---|
@@ -316,7 +324,7 @@ Building the graph of FastAPI on a hosted runner takes Wingbox 2.2 s and
 Graphify 17.9 s (measured with Wingbox 0.2.0; not measured for the other two).
 
 What the others do better: CodeGraph's answers are the shortest where it
-answers (1,000 tokens against 1,065 for Wingbox on the same three questions),
+answers (1,000 tokens against 1,454 for Wingbox on the same three questions),
 and per its documentation it covers more languages (Swift, Kotlin, C, C++, Lua
 and others); per its documentation Graphify also maps documents, PDFs, images
 and videos. `graphify affected` follows calls and references as well as

@@ -4,8 +4,14 @@ What is being built next. Items move to the [Changelog](CHANGELOG.md) when they 
 
 ## Recently shipped
 
-- **0.7:** native Windows support; hooks and the plugin work without Git Bash; the test suite runs on Linux, macOS and Windows with Python 3.11 to 3.13.
-- **0.6:** architecture commands (`init`, `learn`, `align`, `place`, `advice`, `compare`); checks of what a layer does (SQL in repositories, outbound HTTP in infrastructure, no web framework in the domain); `boundaries` says "not checked" where it did not read a project's rules; the find-usages benchmark; the MCP Registry entry.
+- **0.19:** `wingbox impact <file> --summary` for a file with hundreds of dependents; `wingbox init --from-folders` gives layers to a repository that fits no style; `wingbox init` adds `/.wingbox/` to the project's `.gitignore`; `usages` of C and C++ code misses far fewer uses.
+- **0.18:** `impact --only tests` (the tests to run for a change, with the CMake targets and tests it reaches) and `impact --diff`; `impact` of a C or C++ source file answers through its header; `wingbox cycles` for repositories that fit no layer style; the first `usages` after a build no longer takes as long as the build; benchmark pages for C and C++ and for Python names that collide.
+- **0.17:** C and C++; a generated file depends on its generator and its inputs, and a launched script on its launcher; a question about a file the graph does not cover says why; an `impact` row says what it rests on when the code does not state it.
+- **0.16:** `wingbox grep` and the MCP tool `search_source`; the build of a large Python repository is linear in its size.
+- **0.15:** MCP tools named with a verb and a noun, `wingbox files` and `wingbox source`; checksums and an SBOM on every release, a build that can be repeated from the tag; the assurance pages (`docs/assurance`).
+- **0.14:** answers are S-expressions by default, with `--human` and `--json`; `impact` takes several files in one call; the text for Claude Code's Code Mode.
+- **0.13:** edges carry the source line they come from; `boundaries --strict` for gates; the MCP server over HTTP (`wingbox mcp --http`, the package `wingbox-http`); the parsers of every language are in the package and nothing is downloaded.
+- **The pull request check:** the GitHub Action [`aileron-tech/wingbox-action`](https://github.com/aileron-tech/wingbox-action) and its GitLab CI templates are published; this repository runs the action on its own pull requests (`.github/workflows/wingbox.yml`).
 
 Details are in the [Changelog](https://github.com/aileron-tech/wingbox/blob/main/CHANGELOG.md).
 
@@ -52,7 +58,7 @@ Distribution channels, each one a place where a developer or an agent already lo
 
 - **Editor marketplaces:** a VS Code extension and a JetBrains Marketplace plugin that register the `wingbox mcp` server and the skill, so the IntelliJ family and VS Code get the graph without a manual setup.
 - **Assistant directories:** the Claude plugin directory and a Claude Desktop extension for the local MCP server; the ChatGPT and Codex plugin marketplace when it takes local tools.
-- **GitHub and GitLab, in the review itself:** a GitHub Action (its own repository, `aileron-tech/wingbox-action`, listed in GitHub Marketplace) and a GitLab CI/CD component that run Wingbox on a pull or merge request and write one comment: the files that depend on the change and were not touched by it, and the layer findings the change introduces. Both are run on our own repositories and their past requests before they are published.
+- **GitHub and GitLab, in the review itself (published):** the GitHub Action (its own repository, `aileron-tech/wingbox-action`, listed in GitHub Marketplace) and the GitLab CI templates of the same repository run the released Wingbox on a pull or merge request and write one comment: the modules that use what the change touches and are not part of it, the tests that use it, the layer findings the change introduces and a review plan. The action runs on the pull requests of this repository.
 - **An architecture picture for the README:** `wingbox export svg` draws the layers of a repository as a static picture (layers lowest first, the modules in them, the dependencies between layers, counts), in a light and a dark version, straight from the graph and the same for the same code. Like everything Wingbox writes, the picture and a small badge (layers and findings) live in `.wingbox/` (`.wingbox/architecture.svg`), nowhere else in the repository; the GitHub Action keeps them current on every change of the default branch and prints the lines to paste into a README. Each picture carries a link back to Wingbox.
 - **Rankings and the remaining MCP catalogues:** the catalogues that read the official MCP Registry, and the ones that take a submission (Best MCP, PulseMCP, mcp.so, Smithery).
 - **Documentation for agents:** every page of wingbox.dev also served as Markdown, next to `llms.txt`.

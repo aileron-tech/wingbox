@@ -307,14 +307,14 @@ class WorkflowSafetyTest(unittest.TestCase):
             self.assertIn("pull_request", triggers, name)
 
     def test_a_change_of_documents_runs_every_test_that_reads_a_document(self) -> None:
-        """/* REQ-REL-9908: docs.yml, the only workflow a change of Markdown files starts, runs the test modules that compare a document with the code or with result files: tests.test_english_only, test_readme_numbers, test_plugins, test_mcpb, test_assurance_docs, test_output_formats_cli (SKILL.md, REQ-INSTALL-045), test_json_errors (references/code-mode.md, REQ-INSTALL-046), test_mcp_registry (README, REQ-MCP-014), test_benchmark_report and test_benchmark_cpp_collisions (the benchmark READMEs, REQ-BENCH-001, -008, -009, -011, -024); every module it names exists. */"""
+        """/* REQ-REL-9908: docs.yml, the only workflow a change of Markdown files starts, runs the test modules that compare a document with the code or with result files: tests.test_english_only, test_readme_numbers, test_plugins, test_mcpb, test_assurance_docs, test_output_formats_cli (SKILL.md, REQ-INSTALL-045), test_json_errors (references/code-mode.md, REQ-INSTALL-046), test_mcp_registry (README, REQ-MCP-014), test_benchmark_report and test_benchmark_cpp_collisions (the benchmark READMEs, REQ-BENCH-001, -008, -009, -011, -024) and test_review_wp9_mcp_ci_docs (SKILL.md, the README, AGENTS.md, ROADMAP.md, the limits page); every module it names exists. */"""
         script = self.step(self.workflow("docs.yml"), "docs", "Documentation tests")["run"]
         named = re.findall(r"\btests\.(test_\w+)", script)
         for module in named:
             self.assertTrue((REPO / "tests" / f"{module}.py").is_file(), module)
         wanted = {"test_english_only", "test_readme_numbers", "test_plugins", "test_mcpb", "test_assurance_docs",
                   "test_output_formats_cli", "test_json_errors", "test_mcp_registry", "test_benchmark_report",
-                  "test_benchmark_cpp_collisions"}
+                  "test_benchmark_cpp_collisions", "test_review_wp9_mcp_ci_docs"}
         self.assertLessEqual(wanted, set(named))
 
 

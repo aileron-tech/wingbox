@@ -33,4 +33,4 @@ jobs:
           uv run --no-project --python 3.12 --with-requirements "$RUNNER_TEMP/wingbox-requirements.txt" \
             python -m unittest tests.test_english_only tests.test_readme_numbers tests.test_plugins tests.test_mcpb tests.test_assurance_docs \
               tests.test_output_formats_cli tests.test_json_errors tests.test_mcp_registry \
-              tests.test_benchmark_report tests.test_benchmark_cpp_collisions
+              tests.test_benchmark_report tests.test_benchmark_cpp_collisions tests.test_review_wp9_mcp_ci_docs
