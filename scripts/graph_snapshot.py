@@ -7,7 +7,8 @@ holds, as the parsers read it (decoded, without a byte order mark, every line
 ending "\n"): the same files give the same digest on any machine and with any
 line endings, and a changed character gives another. `:commit` is the commit checked out when Git reported no
 change and no untracked file under the root at build time; with any change it
-is left out, because the graph then describes files no commit holds.
+is left out, because the graph then describes files no commit holds. Git is
+not started inside a submodule, so a change there is not looked at.
 `:wingbox` is the version that built the graph, when it runs as an installed
 package.
 
@@ -22,9 +23,9 @@ from dataclasses import dataclass
 from typing import Iterable
 
 try:
-    from . import portable
+    from . import git_safe
 except ImportError:  # loaded as a top-level script module
-    import portable
+    import git_safe
 
 FACT = "built-from"
 _GIT_TIMEOUT_SECONDS = 20
@@ -62,14 +63,14 @@ def clean_commit(root: str) -> str:
     file under root; "" with any change, outside a repository, before the first commit or without Git."""
     environment = os.environ.copy()
     environment["GIT_OPTIONAL_LOCKS"] = "0"   # a status that only reads: no index refresh behind the user's back
-    options = dict(capture_output=True, check=False, env=environment, text=True, encoding="utf-8", errors="replace",
-                   timeout=_GIT_TIMEOUT_SECONDS, **portable.hidden_process_options())
+    options = dict(capture_output=True, check=False, environment=environment, text=True, encoding="utf-8",
+                   errors="replace", timeout=_GIT_TIMEOUT_SECONDS)
     try:
-        head = subprocess.run(("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD"), **options)
+        head = git_safe.run(root, "rev-parse", ("--verify", "--quiet", "HEAD"), **options)
         if head.returncode != 0 or not head.stdout.strip():
             return ""
-        status = subprocess.run(("git", "-C", root, "status", "--porcelain", "--", "."), **options)
-    except (OSError, subprocess.SubprocessError):
+        status = git_safe.run(root, "status", ("--porcelain", "--", "."), **options)
+    except (OSError, subprocess.SubprocessError):   # no Git, no answer in time, or a call git_safe refuses
         return ""
     if status.returncode != 0 or status.stdout.strip():
         return ""

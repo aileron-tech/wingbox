@@ -624,7 +624,18 @@ source file stands `(impact-paired-header <file> <header>)` (the rows marked
 `:basis paired-header` include that header) or `(impact-no-includers <file>)`.
 `impact --diff [ref]` ends with one `(changed <file>::<name> :line N :used-by
 (<file> ...))` fact per changed function, with `:targets (...) :tests (...)`
-after `:used-by` under `--only tests` in a graph with build facts. The form is complete: nothing is cut.
+after `:used-by` under `--only tests` in a graph with build facts. Under
+`--only tests` the list holds test files: a function that no test file uses
+directly and N other files do use carries `:other-users N` after its empty
+`:used-by ()`. Lines that were only removed count for the definition that
+holds the line above them. After these facts stands one `(changed-file <path>
+:status deleted :dependents unknown)` per file the diff deletes and one
+`(changed-file <old path> :status renamed :to <new path> :dependents
+unknown)` per renamed file (`changed_files` in JSON): such a path is no
+longer in the graph, so the files that depended on it are not listed (search
+for its name with `grep`); the new path of a rename has its own form.
+`(impact-diff-empty <ref>)` means that Git reports no change below the graph
+root, and nothing else. The form is complete: nothing is cut.
 The `(advice ...)` facts that concern a file follow its form.
 
 `impact --summary` prints `(impact-summary <file> :direct N :total M :depth D
@@ -634,7 +645,8 @@ depth, `(kinds :generated N :tests N :entry-points N :other N)`, `(folders
 `(first <file> ... [:more N])` at most twenty files, `(build :targets N :tests
 M)` under `--only tests` in a graph with build facts, and `(full "<command>")`,
 the command of the complete list. With `--diff` each changed function is one
-`(changed-summary <file>::<name> :line N :used-by K [:targets T :tests M])`.
+`(changed-summary <file>::<name> :line N :used-by K [:other-users N]
+[:targets T :tests M])`, followed by the same `(changed-file ...)` facts.
 
 `graph` says when the graph file was written (UTC), how many files it holds
 and how many changed files it is known to miss: 0 after the refresh that every
@@ -786,9 +798,24 @@ read or are a symbolic link; their lines are never printed.
 (diff-fn <mod>::<name> :kind fn :line 42 :lang ts :file <path>)
 (diff-functions-summary :changed 5 :files 3 :ref "HEAD")
 (diff-file <path> :hunks 2)
+(diff-file <path> :hunks 1 :status deleted)
+(diff-file <old path> :hunks 0 :status renamed :to <new path>)
 (diff-functions-no-match :files 3 :ref "HEAD")
 (diff-functions-empty "HEAD")
+(error git-diff-failed "<the message of Git, on one line>")
+(error invalid-argument "not a git ref: ...")
 ```
+
+The files are those Git reports as changed below the graph root, by their
+paths relative to it. A changed line belongs to the definition that starts
+at or above it (the last definition of a file runs to its end), and lines
+that were only removed to the definition that holds the line above them. `diff-file`
+lines stand in place of `diff-fn` lines when no definition matches; those
+with `:status` name a file the diff deletes or renames and are printed in
+every answer. `diff-functions-empty` means that Git reports no change. An
+error ends the command with a non-zero exit status: 2 for a ref that starts
+with `-` (Git would read it as an option; Git is not started), 1 when Git
+cannot give the diff.
 
 ## query / repl Output
 
