@@ -276,7 +276,7 @@ class BuildLinksTest(ProjectCase):
         self.assertIn("order_total", graph)
 
     def test_a_graph_reached_through_a_linked_wingbox_is_read_and_nothing_is_written_there(self) -> None:
-        """/* REQ-ZONE-9820: when `.wingbox` is a symbolic link to a folder that holds a graph built for this project, the readers of the graph write nothing into that folder: marking a changed file (the edit hook) raises LinkRefused, the background fill of use positions is not started and leaves no lock file, and a query command that would record a change names the link and exits with a status that is not 0. */"""
+        """/* REQ-ZONE-9820: when `.wingbox` is a symbolic link to a folder that holds a graph built for this project, the readers of the graph write nothing into that folder: marking a changed file (the edit hook) and writing the state raise LinkRefused, the background fill of use positions is not started and leaves no lock file, and a query command that would record a change names the link and exits with a status that is not 0. */"""
         self.build()
         shutil.move(str(self.root / ".wingbox"), str(self.outside / "state"))
         link = self.link("", self.outside / "state")
@@ -286,9 +286,24 @@ class BuildLinksTest(ProjectCase):
         started.assert_not_called()
         with self.assertRaises(portable.LinkRefused):
             freshness.mark_changed(str(self.root), ["shop/cart.py"])
+        with self.assertRaises(portable.LinkRefused):
+            freshness.write_state(str(self.root), freshness.State())
         self.write({"shop/cart.py": "from shop.pricing import order_total\nX = order_total([1])\n"})
         self.assert_refused(self.wingbox("impact", "shop/pricing.py"), link)
         self.assertEqual(before, _tree(self.outside))
+
+    def test_the_build_lock_and_the_first_build_lock_are_not_opened_through_a_link(self) -> None:
+        """/* REQ-ZONE-9821: the lock files of a build are opened only when they are no symbolic link: with `.wingbox/build.lock` a link to a file that does not exist, `wingbox build` names the link in one error, exits with a status that is not 0, builds nothing and does not create the file, and the MCP server started with --build-missing does not create it either; with `.wingbox/first-build.lock` such a link, that server names the link, exits with a status that is not 0 and creates nothing. */"""
+        missing = self.outside / "lock-target"
+        link = self.link("build.lock", missing)
+        self.assert_refused(self.wingbox("build", str(self.root)), link)
+        self.assertFalse((self.root / ".wingbox" / "index.sexp").exists())
+        self.wingbox("mcp", "--root", str(self.root), "--build-missing")
+        self.assertEqual({}, _tree(self.outside))
+        link.unlink()
+        link = self.link("first-build.lock", missing)
+        self.assert_refused(self.wingbox("mcp", "--root", str(self.root), "--build-missing"), link)
+        self.assertEqual({}, _tree(self.outside))
 
 
 class RefreshLinksTest(ProjectCase):
@@ -468,6 +483,29 @@ class FoldersLinksTest(ProjectCase):
                 self.assertEqual(before, _tree(self.outside), done.stderr)
                 self.assert_refused(done, link)
                 link.unlink()
+
+
+class NewProjectLinksTest(ProjectCase):
+    FILES: dict[str, str] = {}
+
+    def test_init_of_a_new_project_writes_no_config_through_a_link(self) -> None:
+        """/* REQ-ZONE-9822: `wingbox init --language L --style S --yes` in a folder without source files leaves a file outside the project byte for byte as it was, and creates none there, when the `.wingbox/config.yaml` it would write is a symbolic link: its own, pointing at nothing, or the one of the repository above it, to which it would add the new part. It names the link in one error and exits with a status that is not 0. */"""
+        arguments = ("--language", "python", "--style", "layered", "--yes", "--sexp")
+        link = self.link("config.yaml", self.outside / "no-config")
+        before = _tree(self.outside)
+        done = self.wingbox("init", str(self.root), *arguments)
+        self.assertEqual(before, _tree(self.outside), done.stderr)
+        self.assert_refused(done, link)
+        link.unlink()
+        # A new package inside a repository that states its parts: init adds the part to the root config.
+        link = self.link("config.yaml", self.victim("config.yaml", "parts:\n  services/api:\n    style: layered\n"))
+        package = self.root / "services" / "new"
+        package.mkdir(parents=True)
+        before = _tree(self.outside)
+        done = subprocess.run([sys.executable, "-m", "wingbox.cli", "init", str(package), *arguments], cwd=package,
+                              env=self.environment, capture_output=True, text=True, timeout=300)
+        self.assertEqual(before, _tree(self.outside), done.stderr)
+        self.assert_refused(done, link)
 
 
 class ForeignGraphTest(ProjectCase):
