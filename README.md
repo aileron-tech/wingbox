@@ -749,6 +749,28 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
 - **Folder names.** A folder matches a style word as a whole name after
   lowercasing and dropping `-` and `_`; a spelling variant one edit away
   matches (`controlers`). Each label says which step matched.
+- **Files the rules exempt.** A test may import anything and a composition
+  root wires the layers, so no rule is stated for them. Tests are the files
+  in a test folder (`test`, `tests`, `spec`, `specs`, `testing`, `mocks`,
+  `fixtures`, `__tests__`, `__mocks__`, `e2e`, `testdata`,
+  `integration_test`, or a folder whose name starts with `test`, `tests`,
+  `spec`, `specs` or `e2e` and a `-`, `_` or `.`: `test-utils`) and the
+  files named `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `test_*`,
+  `*.test-*`, `*.spec-*`, `tests.py`, `*Test.java`, `*Tests.cs` or
+  `*Test.cs` (a pattern with a capital letter is matched as written:
+  `Latest.java` is no test). A composition root is a file of a layer named
+  `main.*`, `program.*`, `startup.*`, `bootstrap.*`, `container.*`,
+  `composition*.*`, `app.module.*`, `dependencyinjection.*` or `wire.go`
+  (`index.ts` in the part folder or one folder below it), or a file that
+  imports a name that starts the application (`NestFactory`, a
+  nest-commander command); a file that nothing imports and that imports a
+  composition root is an entry point and exempt too. The names are in
+  `scripts/architecture/styles/index.toml`. The exemption holds while only
+  tests and composition roots import the file. Once a file of a layer
+  imports it, it could pass any import on, so it is judged like any file of
+  its folder: `src/models/container.ts` imported by a model is a domain
+  file, and a test helper imported by production code takes the layer of
+  the files beside it.
 
 - **Target layout.** For each part with a style, `init` lists the full layout
   of that style: one folder per layer and the building blocks of the domain
@@ -799,7 +821,12 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
   `capabilities:` of a part in `.wingbox/config.yaml` restates a rule; REPORT.md
   ("What layers do") and `wingbox advice` (`fix-capability`, `fix-pattern`)
   name the fix; `align --learn` accepts the current ones in the baseline. SQL
-  assembled at run time or behind a helper of another package is not seen.
+  assembled at run time or behind a helper of another package is not seen,
+  nor is what stands after the first 2000 characters of a line. In a part
+  with capability rules, the files of a language the detector does not read
+  (Rust, Dart, Pascal, C and C++) are named:
+  `(capability-not-read :part . :language Rust :files 21)`; the status does
+  not change.
 
 - **Align.** `wingbox align [PART] [--to STYLE] [--learn]` measures the gaps
   of each part against its style: files placed, dependencies that follow the
@@ -824,10 +851,17 @@ next: wingbox learn settles the open points (run by a coding agent it is the age
 
   (one line in the file). `wingbox boundaries` prints the owner, the reason
   and the date on the `violation-known` line. `:expires` is the last day the
-  entry holds: from the next day, or when the date is not `YYYY-MM-DD`, the
-  break is a `violation` again (with `:expired <date>`), `boundaries` exits 1
-  and `wingbox advice` asks for the fix again. `baseline-capability` entries
-  take the same fields.
+  entry holds: from the next day, or when the date is not a `YYYY-MM-DD` day
+  of the calendar (`2026-99-99`), the break is a `violation` again (with
+  `:expired <date>`), `boundaries` exits 1 and `wingbox advice` asks for the
+  fix again. An end date is changed in its entry: a second entry for the same
+  two files does not undo it (of two end dates the earlier holds).
+  `baseline-capability` entries take the same fields. An entry that states a
+  `:rule` accepts a break of that rule only: when the layers of the two files
+  change and they break another rule, that is a new violation. An entry
+  without `:rule` accepts the pair whatever the rule, and a
+  `baseline-capability` entry accepts its capability in the whole file (its
+  `:line` is where it was first seen).
 
 - **A new project.** In a folder without source files, `init` asks the
   language and offers the styles that fit it, best first: the style of the
@@ -1586,13 +1620,28 @@ keeps reading the same lines. `boundaries` reports
 an import of TypeScript types only apart from the violations: the compiler
 erases it, but a change of the type still reaches the importing file.
 `boundaries` prints `boundaries-ok` only when every part with files was
-checked. A part whose own rule files were not read (or without a determined
-style) comes first as `(boundaries-not-checked :part . :reason
-declared-rules-not-read :files (.dependency-cruiser.js) :files-in-part 1177)`,
-and `(boundaries-partial :checked N :not-checked M)` replaces `ok`. Exit
-status: 2 when a part's declared rules were not read, 1 when a violation was
-found, 0 otherwise; REPORT.md, `wingbox advice` and the MCP `boundaries` tool
-say the same.
+checked and nothing breaks a rule. What was not checked comes first as
+`(boundaries-not-checked :part . :reason declared-rules-not-read :files
+(.dependency-cruiser.js) :files-in-part 1177)`, and `(boundaries-partial
+:checked N :not-checked M)` replaces `ok`: a part whose own rule files were
+not read or without a determined style, files that belong to no part
+(`in-no-part`), a part with rules in which no file is in a layer
+(`no-file-in-a-layer`), and the source files of a part in a language Wingbox
+has no parser for (`not-parsed-language`, with `:languages`; they are in no
+module, so no rule reads them). `:checked` counts the files a rule places (in
+a layer, or as a test). The files of a checked part that no rule places are
+not judged and not counted as checked: each such part has a
+`(boundaries-no-layer :part . :files-in-part 3)` fact, the `ok`, `summary`,
+`partial` and result lines carry `:no-layer 3`, and `wingbox layers` shows the
+files with `:match none` (or `role` or `package`, a layer that is only a
+guess). When `.wingbox/config.yaml`, `baseline.sexp` or the
+learned layers of `decisions.sexp` changed after the build, the first line is
+`(boundaries-rules-changed :files (.wingbox/baseline.sexp) :hint "rebuild:
+wingbox build")` and no `ok` is printed. Exit status: 2 when a part's declared
+rules were not read or the scope names no module of the graph, 1 when a
+violation was found, 0 otherwise; REPORT.md and `wingbox advice` name the
+parts whose rules were not read or determined, and the MCP tool
+`check_boundaries` prints the lines of the command.
 
 For a gate (CI, a pre-merge check) add `--strict`: `wingbox boundaries all
 --strict` prints the same lines, then one `(boundaries-checked :part P :style
@@ -1605,17 +1654,23 @@ standard output, the result:
 
 | `:status` | Exit status | Meaning |
 |---|---|---|
-| `pass` | 0 | Every part with files was checked, at least one file was checked, and nothing breaks a rule |
+| `pass` | 0 | Every part with files was checked, at least one file was checked, the graph is not older than the files or the rule files, and nothing breaks a rule |
 | `fail` | 1 | A violation: a broken layer rule, a capability violation or a pattern break (whatever else was not checked) |
-| `incomplete` | 2 | No violation, but a part was not checked, for any reason (`:reason part-not-checked`), or no file was checked at all (`:reason no-files-checked`) |
+| `incomplete` | 2 | No violation, but the check is not complete. `:reason`, the first that applies: `graph-stale` (the graph is known to miss changed files: the refresh is off, failed or timed out), `rules-changed` (a rule file changed after the build), `part-not-checked` (a part, or files in no part, were not checked), `not-parsed-language` (source files of a part are in a language without a parser), `no-files-checked` (a part has no file in a layer, or no file was checked at all) |
 | `error` | 3 | The check could not run: `:reason no-graph` (no `.wingbox/`), `invalid-graph` (the graph cannot be read) or `invalid-argument` |
 
-`:checked` and `:not-checked` count files, `:violations` the breaks that are
-not accepted, `:known` the breaks accepted in a baseline (they do not fail the
-gate; read the number to fail on them). In strict mode a part without a
-determined style, without a layer style or with too few files to judge, and
-files that belong to no part, are never a pass. Without `--strict` the output
-and the exit status are as described above.
+`:checked` counts the files a rule places and `:not-checked` the files that
+were not checked or not read, `:violations` the breaks that are not accepted,
+`:known` the breaks accepted in a baseline (they do not fail the gate; read
+the number to fail on them). `:no-layer N` follows `:known` when N files of
+the checked parts are in no layer: the rules say nothing about them, they do
+not change the status, and the number tells a gate how much of the code the
+rules do not cover. In strict mode a part without a determined style, without
+a layer style or with too few files to judge, files that belong to no part,
+files that were not read and facts older than the files or the rules are
+never a pass, and `boundaries-ok` is printed only in an answer whose result
+is `pass`. Without `--strict` the output and the exit status are as described
+above.
 
 Pass `--map` and `--root` (see [Running the scripts from a clone](#running-the-scripts-from-a-clone))
 when the graph is outside the current directory and its parents.

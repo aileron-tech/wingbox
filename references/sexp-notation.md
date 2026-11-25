@@ -140,7 +140,11 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
 (arch-part <part> :style <style> :state <state> :origin detected|config|declared :level system|container|component :kind "<kind>" :files <n> [:source "<citation>"] [:declared "<file>"])
 (arch-deny <part> <from-layer> <to-layer> "<reason>")
 (arch-known <part> <src> <tgt> "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <YYYY-MM-DD>])
+(arch-known-rule <part> <src> <tgt> "<from -> to>")
+(arch-not-parsed <part> "<language>" :files <n>)
+(arch-rule-files :config <digest> :baseline <digest> :learned <digest>)
 (arch-capability <part> <capability> [:allowed (<layer> ...)] [:forbidden (<layer> ...)] [:fix "<text>"])
+(arch-capability-unread <part> "<language>" :files <n>)
 (arch-pattern <part> <pattern>)
 (capability <mod> <capability> :line <n> :evidence "<source line>" [:suspect])
 (capability-known <part> <mod> <capability> "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <YYYY-MM-DD>])
@@ -159,7 +163,20 @@ Architecture of the parts (written by `wingbox build`; see `wingbox init` below)
   known exceptions (for example `layers.known-upward-imports.json`), or in
   `.wingbox/baseline.sexp`, with the owner, the reason and the end date its
   entry states. A query compares `:expires` with the current day: past it
-  (or with a date that cannot be read) the pair is not known any more.
+  (or with a date that is no day of the calendar) the pair is not known any
+  more, whatever another entry of the same file says.
+  `(arch-known-rule <part> <source> <target> "<rule>")` is the rule an entry
+  of `.wingbox/baseline.sexp` states: that entry accepts a break of that rule
+  only. A pair with an entry that states no rule has no such fact.
+- `(arch-not-parsed <part> "<language>" :files <n>)`: source files of the
+  part (`-`: of no part) in a language no parser reads; they are in no
+  module. `(arch-capability-unread <part> "<language>" :files <n>)`: files of
+  a part with capability rules in a language the capability detector does
+  not read. `(arch-rule-files :config <digest> :baseline <digest> :learned
+  <digest>)`: what the build read of `.wingbox/config.yaml`,
+  `.wingbox/baseline.sexp` and the learned layers of
+  `.wingbox/decisions.sexp` (`-`: missing); `boundaries` compares them with
+  the files.
 - `layer`: `:rule` says what set the layer (`folder routes/ -> api`,
   `file *.tsx -> ui`, `route file page.* in src/app/`, `<file>: layer core`,
   `test file`); `:match` says how the folder name matched the style's word.
@@ -515,35 +532,54 @@ line, module IDs, uses sorted by file, line and column, at most 200 unless
 (violation-candidate <src> <tgt> :src-layer infra :tgt-layer api :via imports :lang ts :part <part> :style layered :rule "infra -> api" :src-file <path> :tgt-file <path> "<reason>")
 (violation-known <src> <tgt> ... :known "<baseline file>" [:owner "<who>"] [:reason "<why>"] [:expires <date>] ... "<reason>")
 (violation <src> <tgt> ... :rule "domain -> api" :expired <date> [:owner "<who>"] ... "<reason>")   ; its baseline entry is past its end date
-(boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587)
-(boundaries-ok :checked 3587)
-(boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files [:files (<rule file> ...)] :files-in-part <n>)
-(boundaries-partial :checked <n> :not-checked <m>)
+(boundaries-summary :violations 2 :known 93 :type-only 6 :candidates 7 :checked 3587 [:no-layer <n>])
+(boundaries-ok :checked 3587 [:no-layer <n>])
+(boundaries-rules-changed :files (<rule file> ...) :hint "rebuild: wingbox build")
+(boundaries-not-checked :part <part> :reason declared-rules-not-read|style-undetermined|no-layer-style|too-few-files|in-no-part|no-file-in-a-layer|not-parsed-language [:files (<rule file> ...)] [:languages (<language> ...)] :files-in-part <n>)
+(boundaries-no-layer :part <part> :files-in-part <n>)
+(boundaries-partial :checked <n> :not-checked <m> [:no-layer <n>])
 ; with --strict only, after the lines above:
 (boundaries-checked :part <part> :style <style> :modules <n>)
-(boundaries-result :status pass|fail|incomplete|error :checked <files> :not-checked <files> :violations <n> :known <n> [:reason part-not-checked|no-files-checked|no-graph|invalid-graph|invalid-argument])
+(boundaries-result :status pass|fail|incomplete|error :checked <files> :not-checked <files> :violations <n> :known <n> [:no-layer <files>] [:reason graph-stale|rules-changed|part-not-checked|not-parsed-language|no-files-checked|no-graph|invalid-graph|invalid-argument])
 ```
 
 `boundaries-ok` is printed only when every part with files was checked against
-rules that were read or determined. A part whose declared rules were not read,
-whose style is undetermined, that has no layer style or too few files to judge
-is listed first as `boundaries-not-checked`, and `boundaries-partial` replaces
-`boundaries-ok` (it follows `boundaries-summary` when there are violations).
-Exit status: 2 when a part's declared rules were not read (that part was not
-checked), else 1 when a violation, a capability violation or a pattern break
+rules that were read or determined and nothing breaks a rule (a layer rule, a
+capability rule or a pattern). What was not checked is listed first as
+`boundaries-not-checked`, and `boundaries-partial` replaces `boundaries-ok` (it
+follows `boundaries-summary` when there are violations): a part whose declared
+rules were not read, whose style is undetermined, that has no layer style or
+too few files to judge; the files in no part (`in-no-part`, part `-`); a part
+with rules in which no file is in a layer (`no-file-in-a-layer`); the source
+files of a part in a language no parser reads (`not-parsed-language`, with
+`:languages`; these files are in no module, `:files-in-part` is their number).
+`:checked` counts the files a rule places: in a layer, or as a test. A file of
+a checked part that no rule places is not judged and not counted as checked:
+`boundaries-no-layer` gives the number per part and `:no-layer` the total, on
+every line that carries `:checked`; the keyword is absent when the number is
+zero. `boundaries-rules-changed` comes first when `.wingbox/config.yaml`,
+`.wingbox/baseline.sexp` or the learned layers of `.wingbox/decisions.sexp`
+differ from what the build read (`arch-rule-files`): the facts are older than
+the rules, and no `boundaries-ok` is printed. Exit status: 2 when a part's
+declared rules were not read (that part was not checked) or the scope matches
+no module, else 1 when a violation, a capability violation or a pattern break
 was found, else 0.
 
 `boundaries --strict` is the form for a gate. It prints the same lines, then a
 `boundaries-checked` fact for each part that was checked and `boundaries-result`
-as the last line of standard output. Its exit status follows `:status`: 0
-`pass` (every part with files was checked, at least one file was checked,
-nothing breaks a rule), 1 `fail` (a violation, a capability violation or a
-pattern break), 2 `incomplete` (a part was not checked for any reason,
-including an undetermined style, no layer style, too few files and files in
-no part - reason `in-no-part` on their `boundaries-not-checked` line - or no
-file was checked), 3 `error` (no graph, a graph that cannot be read, an
-invalid argument). `:known` counts the breaks accepted in a baseline; they do
-not change the status.
+as the last line of standard output; `boundaries-ok` is printed only when the
+result is `pass`. Its exit status follows `:status`: 0 `pass` (every part with
+files was checked, at least one file was checked, the graph is not known to
+be older than the files or the rule files, nothing breaks a rule), 1 `fail`
+(a violation, a capability violation or a pattern break), 2 `incomplete`, 3
+`error` (no graph, a graph that cannot be read, an invalid argument). The
+`:reason` of `incomplete` is the first that applies: `graph-stale` (the graph
+is known to miss changed files: the refresh is off, failed or timed out),
+`rules-changed`, `part-not-checked` (a `boundaries-not-checked` line with one
+of the first five reasons), `not-parsed-language`, `no-files-checked` (a part
+with no file in a layer, or no file checked at all). `:known` counts the
+breaks accepted in a baseline and `:no-layer` the files no rule places; they
+do not change the status.
 
 `violation`: both layers come from rules. `violation-known`: the same, but the
 pair is listed in a baseline (the project's own, or `.wingbox/baseline.sexp`
@@ -567,6 +603,7 @@ What a layer may do (capability rules) follows, when a file breaks one:
 (pattern-violation <file> :pattern controller-skips-service :target <repository file> :part <part> :style <style> "<reason>")
 (pattern-violation <file> :pattern service-builds-http-response :line 12 :evidence "return JSONResponse(...)" ...)
 (capability-summary :violations 3 :known 0 :candidates 1 :patterns 2 :checked 707)
+(capability-not-read :part <part> :language <language> :files <n>)   ; before the lines above
 ```
 
 Capabilities (`scripts/architecture/capabilities.py`), found by syntax in
@@ -581,8 +618,13 @@ style states `allowed_in` or `forbidden_in` layers per capability (its
 replaces a rule. One line per file and capability, at the first line that
 shows it. `capability-candidate`: a SQL literal no query call on the line (or
 the call opened just above) receives, or a layer guessed from the role of the
-file. A composition root, tests and files in no layer are not judged; a part
-with declared rules has no capability rules. Pattern checks of the style:
+file. A composition root, tests and files in no layer are not judged (a
+composition root or a test that a file of a layer imports is judged like the
+files of its folder); a part with declared rules has no capability rules.
+`capability-not-read`: the part has capability rules and files in a language
+the detector does not read (Rust, Dart, Pascal, C and C++), so nothing is
+said about what those files do; the status does not change. The detector
+reads the first 2000 characters of a line. Pattern checks of the style:
 `controller-skips-service` (a controller imports a repository and the style
 has a service layer), `service-builds-http-response`, `domain-imports-orm`
 (set on the db-client violation of a domain file).
