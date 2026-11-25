@@ -1380,9 +1380,18 @@ annotations: a title, and read-only for every tool except `build_graph`, which
 writes the graph; no tool is destructive or reaches outside the repository.
 
 ```bash
-wingbox mcp                         # serve the current directory
+wingbox mcp                         # serve the project of the current directory
 wingbox mcp --root /path/to/project
 ```
+
+`--root DIR` (default: the current directory) is where the search for the code
+graph starts, as for every `wingbox` command, not a boundary: the server serves
+the project that holds DIR, the nearest folder at or above it with
+`.wingbox/index.sexp`, and the tools answer for that whole project. Its first
+log line and its `instructions` name the project that is served. In a folder
+that is in no source repository (no `.git` and no project manifest with source
+files at or above it) every tool, `build_graph` included, answers that there
+is nothing to map, and nothing is written.
 
 The server speaks protocol revision 2026-07-28 (requests with per-request
 `_meta`, `server/discover`) and the `initialize` handshake of revisions

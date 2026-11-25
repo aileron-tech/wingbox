@@ -328,6 +328,106 @@ class McpProtocolTest(unittest.TestCase):
             self.assertIn("No repository here", text)
         self.assertFalse((self.root / ".wingbox").exists())
 
+    def test_build_graph_builds_nothing_where_there_is_no_repository(self) -> None:
+        """/* REQ-MCP-9910: started without --build-missing in a folder that is in no source repository (source files, but no .git and no project manifest at or above it), `build_graph` answers what every other tool answers there, a tool error that says there is no repository here, and writes no .wingbox/ folder. */"""
+        (self.root / "notes.txt").write_text("hello\n", encoding="utf-8")
+        (self.root / "tool.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+        session = McpSession(self.root, [_initialize(), _call(2, "list_files", {}), _call(3, "build_graph", {}), _call(4, "build_graph", {"full": True})])
+        for identifier in (2, 3, 4):
+            self.assertTrue(session.reply(identifier)["result"]["isError"], session.reply(identifier))
+            self.assertIn("No repository here", _texts(session.reply(identifier))[0])
+        self.assertFalse((self.root / ".wingbox").exists())
+
+    def test_the_server_names_the_project_whose_graph_it_serves(self) -> None:
+        """/* REQ-MCP-9911: --root is where the search for the code graph starts, not a boundary: `wingbox mcp --root <project>/shop` serves the graph of <project>, and its first log line and its `instructions` name <project> (the log line also the --root it was given); started at the project folder itself, both name that folder only. */"""
+        _make_shop(self.root)
+        built = McpSession(self.root, [_initialize(), _call(2, "build_graph", {})])
+        self.assertFalse(built.reply(2)["result"]["isError"], built.reply(2))
+        self.assertIn(f"on stdio for {self.root}\n", built.stderr)
+        self.assertIn(f"the code graph of {self.root}. ", built.reply(1)["result"]["instructions"])
+        below = self.root / "shop"
+        session = McpSession(below, [_initialize(), _call(2, "list_files", {})])
+        self.assertIn("(file shop/pricing.py ", _texts(session.reply(2))[0])
+        self.assertIn(f"the code graph of {self.root}. ", session.reply(1)["result"]["instructions"])
+        self.assertNotIn(str(below), session.reply(1)["result"]["instructions"])
+        self.assertIn(f"on stdio for {self.root} (the project that holds --root {below})\n", session.stderr)
+        modern = McpSession(below, [_request(1, "server/discover", {"_meta": _modern_meta()})])
+        self.assertIn(f"the code graph of {self.root}. ", modern.reply(1)["result"]["instructions"])
+
+    def test_a_message_nested_too_deeply_is_a_parse_error_and_the_server_goes_on(self) -> None:
+        """/* REQ-MCP-9912: a line of 200,000 opening brackets, which the JSON reader gives up on with a recursion error, is answered -32700 with a null id like any other text that is not JSON; the server goes on and answers the next request, and exits 0 at the end of its input. */"""
+        session = McpSession(self.root, ["[" * 200_000, '{"a":' * 200_000, _request(5, "ping")])
+        self.assertEqual(0, session.returncode, session.stderr[-2000:])
+        self.assertEqual(3, len(session.messages))
+        for reply in session.messages[:2]:
+            self.assertEqual((-32700, None), (reply["error"]["code"], reply["id"]))
+        self.assertEqual({}, session.reply(5)["result"])
+        self.assertNotIn("Traceback", session.stderr)
+
+    def test_an_empty_item_of_a_list_argument_is_refused(self) -> None:
+        """/* REQ-MCP-9913: an empty string as an item of `targets` (analyze_impact) or of `exclude_dirs` (build_graph) is refused as an invalid argument that names the parameter, as an empty `target`, `symbol`, `scope` or `ref` is: no file is answered for in its place, and nothing is built; the input schema states the rule (`minLength` 1 for the items). */"""
+        _make_shop(self.root)
+        session = McpSession(
+            self.root,
+            [
+                _initialize(),
+                _call(2, "build_graph", {"exclude_dirs": [""]}),
+                _call(3, "build_graph", {}),
+                _call(4, "analyze_impact", {"targets": [""]}),
+                _call(5, "analyze_impact", {"targets": ["shop/pricing.py", ""]}),
+                _call(6, "analyze_impact", {"target": ""}),
+                _call(7, "find_usages", {"symbol": ""}),
+                _call(8, "check_boundaries", {"scope": ""}),
+                _call(9, "list_changes", {"ref": ""}),
+                _call(10, "analyze_impact", {"targets": ["shop/pricing.py"]}),
+                _request(11, "tools/list"),
+            ],
+        )
+        refused = _texts(session.reply(2))[0]
+        self.assertTrue(session.reply(2)["result"]["isError"], refused)
+        self.assertIn("exclude_dirs", refused)
+        self.assertNotIn("Scanning", refused)
+        self.assertFalse(session.reply(3)["result"]["isError"], session.reply(3))
+        for identifier, name in ((4, "targets"), (5, "targets"), (6, "target"), (7, "symbol"), (8, "scope"), (9, "ref")):
+            text = _texts(session.reply(identifier))[0]
+            self.assertTrue(session.reply(identifier)["result"]["isError"], text)
+            self.assertTrue(text.startswith("Invalid arguments: "), text)
+            self.assertIn(name, text)
+            self.assertNotIn("(impact", text)
+        self.assertIn("(impact shop/pricing.py ", _texts(session.reply(10))[0])
+        schemas = {tool["name"]: tool["inputSchema"]["properties"] for tool in session.reply(11)["result"]["tools"]}
+        self.assertEqual({"type": "string", "minLength": 1}, schemas["analyze_impact"]["targets"]["items"])
+        self.assertEqual({"type": "string", "minLength": 1}, schemas["build_graph"]["exclude_dirs"]["items"])
+
+    def test_a_tool_answer_of_more_than_200_lines_stops_there_unless_all_is_set(self) -> None:
+        """/* REQ-MCP-9914: through `tools/call`, an answer without its own list limit stops at 200 lines and ends with one line that says how many are hidden and to call again with all=true, and with `all: true` it is complete: for a tool that prints the answer of one command (`list_files` on 230 files) and for `find_definitions` without a kind, which filters the answer of a command first. */"""
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        (self.root / "pkg").mkdir()
+        for number in range(230):
+            (self.root / "pkg" / f"part_{number:03}.py").write_text(f"def handler_{number:03}():\n    return {number}\n", encoding="utf-8")
+        session = McpSession(
+            self.root,
+            [
+                _initialize(),
+                _call(2, "build_graph", {}),
+                _call(3, "list_files", {}),
+                _call(4, "list_files", {"all": True}),
+                _call(5, "find_definitions", {"name": "handler_.*"}),
+                _call(6, "find_definitions", {"name": "handler_.*", "all": True}),
+            ],
+        )
+        self.assertFalse(session.reply(2)["result"]["isError"], session.reply(2))
+        for cut, whole, first in ((3, 4, "(file pkg/part_000.py "), (5, 6, "")):
+            lines = _texts(session.reply(cut))[0].splitlines()
+            self.assertEqual(201, len(lines), lines[-3:])
+            self.assertTrue(lines[0].startswith(first), lines[0])
+            every = _texts(session.reply(whole))[0].splitlines()
+            self.assertGreaterEqual(len(every), 230)
+            self.assertEqual(f'(answer-more :hidden {len(every) - 200} :rerun "call again with all=true")', lines[200])
+            self.assertEqual(every[:200], lines[:200])
+            self.assertNotIn("answer-more", "\n".join(every))
+            self.assertFalse(session.reply(cut)["result"]["isError"])
+
     def test_malformed_input_gets_json_rpc_errors_and_the_server_keeps_running(self) -> None:
         """/* REQ-MCP-006: malformed JSON must get -32700, a message that is not a request object -32600, and the server must go on answering the next request. */"""
         session = McpSession(
