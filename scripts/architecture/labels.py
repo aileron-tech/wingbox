@@ -251,3 +251,36 @@ def part_denies(part: PartPlan, library: Library) -> tuple[Deny, ...]:
         for rule in style.denies
         if rule.source in layers and rule.target in layers
     )
+
+
+def unmatched_folders(plan: RepositoryPlan, paths: tuple[str, ...]) -> tuple[tuple[str, str, str], ...]:
+    """(part, layer, folder) for each folder that .wingbox/config.yaml lists under `layers:` or `order:` of
+    a part and that the part does not have, so that no file gets its layer from the entry (a typo, a folder
+    that was renamed).
+
+    Only what follows from the label rules is said: a name of `layers:` decides through a folder of a file
+    whose normalised name equals it (`_label_in_part`), a path through a folder that ends in its last name,
+    and an `order:` folder through a path that starts with it (`declared.layers_from_order`). So an entry
+    named here places no file; an entry that is not named may still place none (a folder with tests only).
+    """
+    names: dict[str, set[str]] = {}       # part -> normalised names of the folders of its files
+    prefixes: dict[str, set[str]] = {}    # part -> the folders of its files, relative to the part
+    for path in paths:
+        part = plan.part_of(path)
+        if part is None:
+            continue
+        folders = _relative(path, part).split("/")[:-1]
+        names.setdefault(part.path, set()).update(normalise(folder) for folder in folders)
+        prefixes.setdefault(part.path, set()).update("/".join(folders[:end]) for end in range(1, len(folders) + 1))
+    found: list[tuple[str, str, str]] = []
+    for part in plan.parts:
+        if part.declared is not None and part.declared.layers is not None:
+            have = prefixes.get(part.path, set())
+            for layer in part.declared.layers.layers:
+                found += [(part.path, layer.name, folder) for folder in layer.folders
+                          if folder.strip("/") not in ("", ".") and folder.strip("/") not in have]
+        else:
+            have = names.get(part.path, set())
+            found += [(part.path, entry.layer, entry.folder) for entry in part.layers
+                      if entry.match == "config" and normalise(entry.folder.strip("/").split("/")[-1]) not in have]
+    return tuple(found)

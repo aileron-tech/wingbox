@@ -167,6 +167,7 @@ try:
         from .architecture.repository import file_reader, list_files, text_reader
         from .architecture.decisions import STORE_FILE, learned_layers, read_store
         from .architecture.plan import apply_learned, unknown_learned
+        from .architecture.labels import unmatched_folders
     else:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from lang import (
@@ -207,6 +208,7 @@ try:
         from architecture.repository import file_reader, list_files, text_reader
         from architecture.decisions import STORE_FILE, learned_layers, read_store
         from architecture.plan import apply_learned, unknown_learned
+        from architecture.labels import unmatched_folders
 except ModuleNotFoundError as dependency_error:
     print(
         f"Error: missing Python dependency {dependency_error.name}. "
@@ -5275,6 +5277,10 @@ def architecture_plan(
     for part in plan.empty:
         print(f"[wingbox] WARNING: {CONFIG_FILE}: part {part} holds no source file: nothing is checked there",
               file=sys.stderr)
+    for part, layer, folder in unmatched_folders(plan, paths):
+        # A typo or a renamed folder: the entry places no file, so the rules of the layer judge nothing there.
+        print(f"[wingbox] WARNING: {CONFIG_FILE}: part {part}: layer {layer} lists the folder {folder}, and the part "
+              "has no such folder: no file gets the layer from it", file=sys.stderr)
     return Ok(apply_learned(plan, learned, from_config=True))
 
 

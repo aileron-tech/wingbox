@@ -125,5 +125,77 @@ class DottedPartKeyTest(unittest.TestCase):
         self.assertIn(":violations 1", lines[-1])
 
 
+class FolderThatMatchesNothingTest(unittest.TestCase):
+    LAYERED = ("parts:\n  .:\n    style: layered\n    layers:\n      api: [routes]\n      service: [services]\n"
+               "      infra: [repositories]\n      domain: [{domain}]\n")
+    ORDERED = "parts:\n  src:\n    style: declared\n    order:\n      - core: [core]\n      - ui: [{ui}]\n"
+
+    def project(self, files: dict[str, str]) -> Path:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        base = Path(os.path.realpath(folder.name))
+        self.home = base / "home"
+        self.home.mkdir()
+        root = base / "project"
+        for name, content in files.items():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(content, encoding="utf-8")
+        return root
+
+    def wingbox(self, root: Path, *arguments: str) -> subprocess.CompletedProcess:
+        environment = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home), "WINGBOX_JOBS": "1",
+                       "PYTHONPATH": str(REPO / "src")}
+        return subprocess.run([sys.executable, "-P", "-m", "wingbox", *arguments], cwd=root, env=environment,
+                              capture_output=True, text=True, encoding="utf-8", check=False)
+
+    def warnings(self, done: subprocess.CompletedProcess) -> list[str]:
+        return [line for line in done.stderr.splitlines() if "WARNING" in line and "config.yaml" in line]
+
+    def layered(self, domain: str) -> Path:
+        files = {"package.json": '{"name": "shop"}\n',
+                 **{f"src/{name}/{name}{i}.ts": f"export const {name}{i} = {i};\n"
+                    for name in ("routes", "services", "models", "repositories") for i in range(4)},
+                 ".wingbox/config.yaml": self.LAYERED.format(domain=domain)}
+        return self.project(files)
+
+    def test_a_layer_folder_that_the_part_does_not_have_is_named_at_the_build(self) -> None:
+        """/* REQ-ARCH-108: when `layers:` of a part in .wingbox/config.yaml lists a folder name and no folder of the part has that name (a typo such as `modles` for `models`), `wingbox build` names the part, the layer and the folder in one warning on standard error, because no file gets the layer from that entry and its rules judge nothing; the build still ends with status 0 and the graph is written. */"""
+        root = self.layered("modles")
+        done = self.wingbox(root, "build", ".")
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertTrue((root / ".wingbox" / "index.sexp").is_file())
+        found = self.warnings(done)
+        self.assertEqual(1, len(found), done.stderr)
+        for word in ("part .", "layer domain", "modles"):
+            self.assertIn(word, found[0])
+
+    def test_a_layer_folder_that_exists_gives_no_warning_however_it_is_spelled(self) -> None:
+        """/* REQ-ARCH-109: a folder listed under `layers:` that the part has gives no such warning, also when the config writes it in another case or with a hyphen or underscore the folder name lacks (`Models`, `mo_dels` for `models`): those spellings name the folder for the layer rules too, so `wingbox layers` puts its files in that layer. */"""
+        for written in ("models", "Models", "mo_dels"):
+            with self.subTest(written=written):
+                root = self.layered(written)
+                done = self.wingbox(root, "build", ".")
+                self.assertEqual(0, done.returncode, done.stderr)
+                self.assertEqual([], self.warnings(done), done.stderr)
+                layers = self.wingbox(root, "layers").stdout
+                self.assertIn("(layer-member domain src/models/models0 ", layers)
+
+    def test_a_folder_of_a_declared_order_that_the_part_does_not_have_is_named_at_the_build(self) -> None:
+        """/* REQ-ARCH-110: when `order:` of a declared part lists a folder the part does not have, `wingbox build` names the part, the layer and the folder in one warning; a folder the part has gives none. */"""
+        files = {"package.json": '{"name": "shop"}\n', "src/core/a.ts": "export const a = 1;\n",
+                 "src/ui/b.ts": 'import { a } from "../core/a";\nexport const b = a;\n'}
+        root = self.project({**files, ".wingbox/config.yaml": self.ORDERED.format(ui="uii")})
+        done = self.wingbox(root, "build", ".")
+        self.assertEqual(0, done.returncode, done.stderr)
+        found = self.warnings(done)
+        self.assertEqual(1, len(found), done.stderr)
+        for word in ("part src", "layer ui", "uii"):
+            self.assertIn(word, found[0])
+        root = self.project({**files, ".wingbox/config.yaml": self.ORDERED.format(ui="ui")})
+        done = self.wingbox(root, "build", ".")
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertEqual([], self.warnings(done), done.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
