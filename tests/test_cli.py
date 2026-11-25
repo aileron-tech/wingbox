@@ -141,7 +141,7 @@ class WingboxInitTest(unittest.TestCase):
         _layered_project(self.root)
 
     def test_init_prints_the_styles_and_writes_the_config(self) -> None:
-        """/* REQ-CLI-008: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and layer -> folders mapping, .wingbox/.gitignore, .wingbox/assistant-setup.md and the project .gitignore, creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
+        """/* REQ-CLI-9950: `wingbox init` prints each part with its style, score and evidence, writes .wingbox/config.yaml with the style and layer -> folders mapping, .wingbox/.gitignore, .wingbox/assistant-setup.md and the project .gitignore, creates nothing else, and ends with the next step: `wingbox learn` settles the open points (the agent's task in a coding agent, questions in a terminal), then build; nobody is told to edit the file by hand. */"""
         before = {path for path in self.root.rglob("*")}
         status, text = _run(["init", str(self.root)])
         self.assertEqual(0, status, text)
@@ -164,7 +164,7 @@ class WingboxInitTest(unittest.TestCase):
         self.assertIn("To have every member's assistant use Wingbox here", text)
 
     def test_init_keeps_an_existing_config_unless_forced(self) -> None:
-        """/* REQ-CLI-009: when .wingbox/config.yaml exists, `wingbox init` keeps it and still prints the candidates; --force rewrites it. */"""
+        """/* REQ-CLI-9951: when .wingbox/config.yaml exists, `wingbox init` keeps it and still prints the candidates; --force rewrites it. */"""
         config = self.root / ".wingbox" / "config.yaml"
         config.parent.mkdir()
         config.write_text("parts:\n  .:\n    style: none\n", encoding="utf-8")

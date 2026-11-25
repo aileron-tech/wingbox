@@ -250,7 +250,7 @@ class McpProtocolTest(unittest.TestCase):
         self.assertNotIn(":validated", (self.root / ".wingbox/index.sexp").read_text(encoding="utf-8"))
 
     def test_usages_returns_the_text_answer(self) -> None:
-        """/* REQ-MCP-011: the `find_usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
+        """/* REQ-MCP-9953: the `find_usages` tool must return the text answer of `wingbox usages`: every use of the symbol by file with line:column and kind, as one text item and no S-expression facts. */"""
         _make_shop(self.root)
         session = McpSession(
             self.root,

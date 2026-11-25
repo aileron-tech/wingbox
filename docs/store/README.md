@@ -121,7 +121,7 @@ Plugin bundle. Repository `aileron-tech/wingbox`, plugin path
 | No symlinks, submodules, LFS, system files; every file the plugin runs inside the plugin folder; no top-level `bin/` | ready (tested) |
 | Directory listing fields `icon`, `documentationUrl`, `supportUrl`, `privacyPolicyUrl` in `plugin.json` | ready; the privacy URL resolves once this branch is merged |
 | Every `uvx` command of the manifest pinned to a full commit (`uvx --from git+https://github.com/aileron-tech/wingbox@<40-char commit>`, the release tag's commit; a PyPI version alone is refused as a pin) | ready |
-| Software Directory Policy 5E: every MCP tool carries annotations (`title`, `readOnlyHint`, `destructiveHint`; also `idempotentHint`, `openWorldHint`) | ready (tested, REQ-MCP-011): `build` is the only tool that is not read-only, none is destructive or open-world |
+| Software Directory Policy 5E: every MCP tool carries annotations (`title`, `readOnlyHint`, `destructiveHint`; also `idempotentHint`, `openWorldHint`) | ready (tested, REQ-MCP-011): `build_graph` is the only tool that is not read-only, none is destructive or open-world |
 | Policy 5C: tool names under 64 characters | ready (tested, REQ-MCP-012) |
 | Software Directory Terms: a mechanism to receive vulnerability reports | ready: [SECURITY.md](../../SECURITY.md), GitHub private vulnerability reporting enabled |
 | Listing `termsOfServiceUrl` | ready: the MIT LICENSE |
