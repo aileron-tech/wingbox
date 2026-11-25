@@ -124,7 +124,9 @@ def _segments(node: Node) -> list[Node]:
     return names
 
 
-_BRACE_TOKENS = re.compile(rb"//[^\n]*|/\*.*?\*/|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|[{}]", re.S)
+# A comment that nothing closes runs to the end of the file, as it does for a compiler: read once, it
+# cannot be read again from every `/*` inside it.
+_BRACE_TOKENS = re.compile(rb"//[^\n]*|/\*.*?(?:\*/|\Z)|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])*'|[{}]", re.S)
 
 
 def brace_pairs(source: bytes) -> dict[int, int]:
@@ -145,7 +147,9 @@ def brace_pairs(source: bytes) -> dict[int, int]:
 
 _TEXT_CLASS = re.compile(
     rb"(?<![A-Za-z0-9_])(?P<enum>enum[ \t]+)?(?:class|struct)[ \t\r\n]+(?:[A-Z_][A-Z0-9_]*[ \t\r\n]+)?"
-    rb"(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*(?:<[^;{}]*>[ \t\r\n]*)?(?:final[ \t\r\n]*)?(?::[^;{}()]*)?\{"
+    # The template arguments and the base classes are read in a window: a heading that never reaches its
+    # brace costs the window, not the rest of the file.
+    rb"(?P<name>[A-Za-z_][A-Za-z0-9_]*)[ \t\r\n]*(?:<[^;{}]{0,1024}>[ \t\r\n]*)?(?:final[ \t\r\n]*)?(?::[^;{}()]{0,1024})?\{"
 )
 
 

@@ -30,7 +30,9 @@ from ..interface import DiscoveryExclusions, FileResult
 
 _PACKAGE_PREFIX = "package:"
 _DART_PREFIX = "dart:"
-_PUBSPEC_NAME = re.compile(r"^name\s*:\s*(?P<name>.+?)\s*$", re.MULTILINE)
+_LIBRARY_PREFIX = "dart-library:"
+# `library app.main;` on a line of its own: the name a `part of app.main;` refers to.
+_LIBRARY_NAME = re.compile(r"^[ \t]*library[ \t]+([A-Za-z_$][\w$.]*)[ \t]*;", re.MULTILINE)
 # The source extension of the adapter; repeated here so that this module, and
 # the registry that binds it, never import the tree-sitter package.
 DART_EXTENSION = ".dart"
@@ -52,10 +54,14 @@ def _pubspec_name(content: str) -> str:
     package name: the first column-0 `name:` pair is it.
     """
     for line in content.splitlines():
-        match = _PUBSPEC_NAME.match(line)
-        if match is None:
+        # `name`, a colon and a value, read without a pattern: a pattern that tries every split of a long
+        # line between the value and the space after it takes quadratic time.
+        if not line.startswith("name"):
             continue
-        value = match.group("name").split(" #", 1)[0].strip()
+        rest = line[len("name"):].lstrip()
+        if not rest.startswith(":") or not rest[1:]:
+            continue
+        value = rest[1:].strip().split(" #", 1)[0].strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
             value = value[1:-1]
         return value
@@ -120,6 +126,9 @@ class BoundDartLanguage:
     _resolved: dict[tuple[str, str], str | None] = field(
         default_factory=dict, compare=False, repr=False
     )
+    # Library name -> the files that declare it (`library app.main;`); filled when a part first asks.
+    _libraries: dict[str, tuple[str, ...]] = field(default_factory=dict, compare=False, repr=False)
+    _libraries_read: list[bool] = field(default_factory=list, compare=False, repr=False)
 
     @classmethod
     def create(
@@ -210,6 +219,32 @@ class BoundDartLanguage:
             os.path.join(source_directory, *import_name.split("/"))
         )
 
+    def _library_id(self, name: str, source_path: str) -> str | None:
+        """The file that declares `library <name>;`, for a part written `part of <name>;`. When several
+        files declare the name, the one of the package of the part; no answer without a single one."""
+        if not self._libraries_read:
+            self._libraries_read.append(True)
+            declared: dict[str, list[str]] = {}
+            for path in sorted(self.path_to_id):
+                if not path.endswith(DART_EXTENSION):
+                    continue
+                try:
+                    with open(path, "r", encoding="utf-8-sig", errors="replace") as source:
+                        content = source.read()
+                except OSError as error:
+                    print(f"[code-graph] Cannot read the Dart library name of {path}: {error}", file=sys.stderr)
+                    continue
+                for library in _LIBRARY_NAME.findall(content) if "library" in content else ():
+                    declared.setdefault(library, []).append(os.path.normpath(path))
+            self._libraries.update({library: tuple(paths) for library, paths in declared.items()})
+        candidates = self._libraries.get(name, ())
+        if len(candidates) > 1:
+            source = os.path.normpath(os.path.abspath(source_path))
+            package = next((package for package in self.packages if _within(source, package.directory)), None)
+            if package is not None:
+                candidates = tuple(path for path in candidates if _within(path, package.directory))
+        return self._relative_id(candidates[0]) if len(candidates) == 1 else None
+
     def resolve_import(self, import_name: str, source_path: str) -> str | None:
         # One build asks the same (specifier, file) pairs many times (imports,
         # imported names, relations); the answer depends only on this state.
@@ -221,6 +256,8 @@ class BoundDartLanguage:
     def _resolve_import(self, import_name: str, source_path: str) -> str | None:
         if not import_name:
             return None
+        if import_name.startswith(_LIBRARY_PREFIX):
+            return self._library_id(import_name[len(_LIBRARY_PREFIX):], source_path)
         if import_name.startswith(_DART_PREFIX):
             return None
         if import_name.startswith(_PACKAGE_PREFIX):

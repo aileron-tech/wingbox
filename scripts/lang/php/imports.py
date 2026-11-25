@@ -46,9 +46,16 @@ _LOAD_VIEWS_CALL = re.compile(r"\bloadViewsFrom\s*\(")
 _ADD_NAMESPACE_CALL = re.compile(r"\bView\s*::\s*addNamespace\s*\(")
 _ADD_LOCATION_CALL = re.compile(r"\bView\s*::\s*addLocation\s*\(")
 _LIVEWIRE_COMPONENT_CALL = re.compile(r"\bLivewire\s*::\s*component\s*\(")
+# The name starts where no name is running (the look-behind): a long run of name characters is read once,
+# not once from each of its characters.
 _CLASS_CONSTANT_PATTERN = re.compile(
-    r"(\\?[A-Za-z_][A-Za-z0-9_]*(?:\\[A-Za-z_][A-Za-z0-9_]*)*)\s*::\s*class\b"
+    r"(?<![A-Za-z0-9_\\])(\\?[A-Za-z_][A-Za-z0-9_]*(?:\\[A-Za-z_][A-Za-z0-9_]*)*)\s*::\s*class\b"
 )
+# The arguments of one call are read in a window, as the Blade scanner reads them: a call that never
+# closes costs the window, not the rest of the file. The registrations read here take a line or two.
+_MAX_ARGUMENT_SCAN = 1024
+_ARGUMENT_MARK = re.compile(r"[()'\"]")
+_QUOTE_END = {"'": re.compile(r"\\.|'", re.S), '"': re.compile(r'\\.|"', re.S)}
 _LIVEWIRE_COMPONENT_IMPORT = re.compile(r"\buse\s+Livewire\\Component\b")
 # Helper functions whose first argument is a repository-relative directory;
 # base_path() itself means the repository root.
@@ -161,25 +168,28 @@ def _read_parenthesized(content: str, start: int) -> tuple[str, int]:
     """Read a parenthesized argument list, quotes and nesting respected."""
     depth = 1
     index = start
-    quote = ""
-    while index < len(content):
-        char = content[index]
-        if quote:
-            if char == "\\":
-                index += 2
-                continue
-            if char == quote:
-                quote = ""
-        elif char in "'\"":
-            quote = char
-        elif char == "(":
+    limit = min(len(content), start + _MAX_ARGUMENT_SCAN)
+    while True:
+        mark = _ARGUMENT_MARK.search(content, index, limit)
+        if mark is None:
+            return "", limit   # not closed in the window: no argument list is read
+        index = mark.end()
+        char = mark.group()
+        if char == "(":
             depth += 1
         elif char == ")":
             depth -= 1
             if depth == 0:
-                return content[start:index], index + 1
-        index += 1
-    return content[start:], len(content)
+                return content[start:mark.start()], index
+        else:
+            # A quoted string: to its closing quote, an escaped character skipped.
+            while True:
+                end = _QUOTE_END[char].search(content, index, limit)
+                if end is None:
+                    return "", limit
+                index = end.end()
+                if end.group() == char:
+                    break
 
 
 def _split_arguments(arguments: str) -> tuple[str, ...]:
