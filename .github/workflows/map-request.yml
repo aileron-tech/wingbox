@@ -3,6 +3,10 @@
 # The result is an artifact of the run and a comment on the issue; nothing is published
 # automatically. The requested code is cloned and parsed, never executed. The issue body
 # reaches the shell only through an environment variable and is matched against a pattern.
+# Anyone can open such an issue, so nothing of the requested repository is trusted: a
+# .wingbox/ folder it commits is removed before the build, a failed build fails the run,
+# only regular files that the build wrote are uploaded (never a link), and the token is
+# given only to the steps that call gh.
 name: map-request
 
 on:
@@ -31,7 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SELF: ${{ github.repository }}
       ISSUE: ${{ github.event.issue.number }}
       REQUEST: ${{ github.event.issue.body || inputs.repository }}
@@ -40,6 +43,8 @@ jobs:
     steps:
       - name: Read and check the requested repository
         id: req
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           say() { if [ -n "${ISSUE:-}" ]; then gh issue comment "$ISSUE" -R "$SELF" --body "$1"; fi; echo "$1"; }
@@ -65,17 +70,22 @@ jobs:
         run: |
           set -euo pipefail
           git clone --quiet --depth 1 --no-tags "https://github.com/$NAME.git" target
+          # What the repository commits there (a report, a map, a link) is not what the build writes.
+          rm -rf target/.wingbox
           git -C target rev-parse HEAD > commit.txt
 
       - name: Install Wingbox from PyPI
         run: |
+          set -euo pipefail
           # Every language parser with the package: a requested repository may be in any language.
           pipx install "wingbox[all]==$WINGBOX_VERSION"
           wingbox --version | tee version.txt
 
       - name: Build the graph, the report and the map
         working-directory: target
-        run: timeout 20m wingbox build . 2>&1 | tail -20
+        run: |
+          set -euo pipefail
+          timeout 20m wingbox build . 2>&1 | tail -20
 
       - name: Collect
         env:
@@ -83,7 +93,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p out
-          cp target/.wingbox/REPORT.md target/.wingbox/map.html out/
+          # Only what the build wrote: a link would upload a file of the runner as the map.
+          if [ -L target/.wingbox ]; then echo "target/.wingbox is a link" >&2; exit 1; fi
+          for name in REPORT.md map.html; do
+            file="target/.wingbox/$name"
+            if [ -L "$file" ] || [ ! -f "$file" ]; then echo "$file is missing or is not a regular file" >&2; exit 1; fi
+            cp -P "$file" "out/$name"
+          done
           printf 'repository %s\ncommit %s\n%s\n' "$NAME" "$(cat commit.txt)" "$(cat version.txt)" > out/source.txt
           cat out/source.txt
 
@@ -96,6 +112,7 @@ jobs:
       - name: Tell the issue
         if: github.event_name == 'issues'
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NAME: ${{ steps.req.outputs.name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

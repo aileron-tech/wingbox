@@ -5,7 +5,7 @@ name: tests
 # A change of documents only (Markdown, docs/, LICENSE) skips this matrix; docs.yml checks it on one cell.
 on:
   push:
-    branches: [main, windows-support, windows-powershell, mcpb-extension, github-action, fix-init-small-repo, windows-console-and-refresh, write-zones-and-install-list, rust-definer-edges, rust-numbers, rust-reference-definers]
+    branches: [main]
     paths-ignore: ["**/*.md", "docs/**", "LICENSE"]
   pull_request:
     paths-ignore: ["**/*.md", "docs/**", "LICENSE"]
@@ -13,7 +13,7 @@ on:
 permissions:
   contents: read
 
-# A new push to a pull request or a feature branch replaces the run in progress; every push to main runs.
+# A new push to a pull request replaces the run in progress; every push to main runs.
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
