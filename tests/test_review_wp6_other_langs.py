@@ -104,7 +104,7 @@ class GoPackageFilesTest(unittest.TestCase):
         self.assertEqual({"store/limits.go"}, built.dependencies("store/keys.go"))
 
     def test_a_local_name_or_an_ambiguous_name_gives_no_edge(self) -> None:
-        """/* REQ-GO-9603: A name a Go file binds locally, a struct field key, a name of another package or directory and a name two files define give no edge. */"""
+        """/* REQ-GO-9603: A name a Go file binds locally (a parameter, a variable, a type parameter, also the one a method receiver names), a struct field key, a name of another package or directory and a name two files define give no edge. */"""
         built = _Built({
             "go.mod": "module example.com/app\n\ngo 1.22\n",
             "app/names.go": "package app\n\nvar count = 1\n\nvar Name = \"n\"\n\ntype Config struct{ Name string }\n",
@@ -120,12 +120,15 @@ class GoPackageFilesTest(unittest.TestCase):
             "app/literal.go": "package app\n\nfunc build() Config { return Config{Name: \"x\"} }\n",
             "app/caller.go": "package app\n\nfunc run() int { return open() }\n",
             "lib/lib.go": "package lib\n\nconst Limit = 3\n\ntype Config struct{}\n",
+            "app/generic.go": "package app\n\ntype Box[T any] struct{ v T }\n\nfunc (b *Box[T]) Get() T { return b.v }\n",
+            "app/t.go": "package app\n\ntype T struct{}\n",
             "tool/main.go": "package main\n\nfunc main() { _ = count }\n",
             "tool/gen.go": "//go:build ignore\n\npackage gen\n\nvar count = 2\n",
         })
         self.assertEqual({"lib/lib.go"}, built.dependencies("app/local.go"))
         self.assertEqual({"app/names.go"}, built.dependencies("app/literal.go"))
         self.assertEqual(set(), built.dependencies("app/caller.go"))
+        self.assertEqual(set(), built.dependencies("app/generic.go"))
         self.assertEqual(set(), built.dependencies("tool/main.go"))
 
     def test_a_name_is_local_only_from_its_declaration_on(self) -> None:
@@ -874,6 +877,215 @@ class RubyRailsNamesTest(unittest.TestCase):
             started = time.perf_counter()
             self.assertEqual([], list(_autoload_join_arguments(content)))
             self.assertLess(time.perf_counter() - started, 1.0)
+
+
+class CppIncludeFoldersTest(unittest.TestCase):
+    def test_a_file_the_database_does_not_cover_takes_the_cmake_folders(self) -> None:
+        """/* REQ-CPP-9680: With a compilation database for part of the tree, a source file without an entry and without a translation unit at or above its folder finds its includes in the folders the CMake files name, then in every folder of the database: both edges are marked `inferred`; a file with an entry keeps its stated edges. */"""
+        built = _Built({
+            "build/compile_commands.json": json.dumps([
+                {"directory": ".", "file": "../src/a.cpp", "arguments": ["c++", "-I", "../inc1", "-c", "../src/a.cpp"]},
+            ]),
+            "inc1/h1.h": "int h1();\n",
+            "src/a.cpp": "#include <h1.h>\nint a() { return h1(); }\n",
+            "src/near.h": "#include <h1.h>\n",
+            "other/CMakeLists.txt": "add_library(other sub/c.cpp)\ntarget_include_directories(other PUBLIC inc)\n",
+            "other/inc/oh.h": "int oh();\n",
+            "other/sub/c.cpp": "#include <oh.h>\n#include <h1.h>\nint c() { return oh() + h1(); }\n",
+        })
+        self.assertEqual(["inferred"], built.relations[("other/sub/c.cpp", "other/inc/oh.h")])
+        self.assertEqual(["inferred"], built.relations[("other/sub/c.cpp", "inc1/h1.h")])
+        self.assertEqual([], built.relations[("src/a.cpp", "inc1/h1.h")])
+        self.assertEqual([], built.relations[("src/near.h", "inc1/h1.h")])
+
+    def test_an_include_written_in_another_case_is_found_when_one_file_matches(self) -> None:
+        """/* REQ-CPP-9681: An include whose name differs from the file only in the case of its letters is an edge marked `inferred` when exactly one file matches; with two such files there is no edge. */"""
+        built = _Built({
+            "case/core.h": "int core();\n",
+            "case/sub/deep.h": "int deep();\n",
+            "case/main.cpp": '#include "Core.h"\n#include "SUB/Deep.H"\n#include "Util.h"\nint main() { return core(); }\n',
+            "one/util.h": "int one();\n",
+            "two/UTIL.h": "int two();\n",
+            "exact/core.h": "int other_core();\n",
+        })
+        self.assertEqual({"case/core.h", "case/sub/deep.h"}, built.dependencies("case/main.cpp"))
+        self.assertEqual(["inferred"], built.relations[("case/main.cpp", "case/core.h")])
+        self.assertEqual(["inferred"], built.relations[("case/main.cpp", "case/sub/deep.h")])
+
+
+class CppOperatorNameTest(unittest.TestCase):
+    def test_the_call_operator_reads_back_whole(self) -> None:
+        """/* REQ-CPP-9682: A method named `operator()` is written to the graph quoted, as a function and in the methods of its class, so that it reads back whole: `find_function` names `operator()`, not `operator(`. */"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(os.path.realpath(directory))
+            _write(root, {
+                "ops.h": (
+                    "#pragma once\nstruct Cmp {\n  bool operator()(int a, int b) const { return a < b; }\n"
+                    "  bool operator==(const Cmp& o) const;\n};\n"
+                ),
+                "use.cpp": '#include "ops.h"\nint use() { Cmp c; return c(1, 2) ? 1 : 0; }\n',
+            })
+            source = Path(__file__).resolve().parents[1] / "src"
+            environment = dict(os.environ, PYTHONPATH=str(source) + os.pathsep + os.environ.get("PYTHONPATH", ""), WINGBOX_JOBS="1")
+
+            def run(*args: str) -> str:
+                return subprocess.run([sys.executable, "-m", "wingbox", *args], capture_output=True, env=environment,
+                                      cwd=str(root), timeout=180, text=True).stdout
+
+            run("build", ".")
+            graph = (root / ".wingbox" / "index.sexp").read_text(encoding="utf-8")
+            found = run("find_function", "operator")
+        self.assertIn('"Cmp.operator()"', graph)
+        self.assertIn('(:methods "operator()" operator==)', graph)
+        self.assertIn("ops.h::Cmp.operator()", found)
+        self.assertNotIn("Cmp.operator( ", found)
+
+
+class DartPartOfNameTest(unittest.TestCase):
+    def test_part_of_a_library_name_links_the_part_to_its_library(self) -> None:
+        """/* REQ-DART-9690: `part of app.main;`, the form that names the library, makes the part depend on the file that declares `library app.main;`, with the line of the directive; a name two libraries declare is settled by the package of the part, and stays unlinked without one. */"""
+        built = _Built({
+            "pubspec.yaml": "name: app\n",
+            "lib/main.dart": "library app.main;\n\npart 'src/part_old.dart';\n\nvoid main() {}\n",
+            "lib/src/part_old.dart": "part of app.main;\n\nclass Old {}\n",
+            "lib/src/lost.dart": "part of app.nowhere;\n\nclass Lost {}\n",
+            "packages/shared/pubspec.yaml": "name: shared\n",
+            "packages/shared/lib/shared.dart": "library shared.core;\n\npart 'src/impl.dart';\n",
+            "packages/shared/lib/src/impl.dart": "part of shared.core;\n\nclass Impl {}\n",
+            "packages/other/pubspec.yaml": "name: other\n",
+            "packages/other/lib/other.dart": "// library app.main; in a comment\nlibrary shared.core;\n",
+            "tool/twice_a.dart": "library twice;\n",
+            "tool/twice_b.dart": "library twice;\n",
+            "tool/part.dart": "part of twice;\n",
+        })
+        self.assertEqual({"lib/main.dart"}, built.dependencies("lib/src/part_old.dart"))
+        self.assertEqual({"packages/shared/lib/shared.dart"}, built.dependencies("packages/shared/lib/src/impl.dart"))
+        self.assertEqual(set(), built.dependencies("lib/src/lost.dart"))
+        self.assertEqual(set(), built.dependencies("tool/part.dart"))
+        self.assertEqual({"dart-library:app.main": [1]}, built.results["lib/src/part_old.dart"].import_lines)
+
+
+_KB100 = 100_000   # the size of the adversarial inputs
+_TIME_BOUND = 5.0   # seconds; before, each input below took minutes (a fifth of it took 5 to 60 seconds)
+
+
+class LinearScansTest(unittest.TestCase):
+    """Text scans that were quadratic in the size of one file: each reads 100 KB within the time bound."""
+
+    def _timed(self, call):
+        started = time.perf_counter()
+        value = call()
+        self.assertLess(time.perf_counter() - started, _TIME_BOUND)
+        return value
+
+    def test_the_pubspec_name_is_read_in_linear_time(self) -> None:
+        """/* REQ-DART-9691: The name of a pubspec.yaml is read in linear time (one line of 100 KB within the bound), and as before: the first `name:` at column 0, without its comment and quotes. */"""
+        from scripts.lang.dart.imports import _pubspec_name
+
+        self.assertEqual("x" + " " * _KB100 + "y", self._timed(lambda: _pubspec_name("name: x" + " " * _KB100 + "y")))
+        for content, name in (
+            ("name: app\n", "app"), ("# c\nversion: 1\nname:   'quoted'   # the name\n", "quoted"),
+            ("name : spaced\nname: second\n", "spaced"), (" name: indented\n", ""), ("name:\nname: late\n", "late"),
+            ("names: no\n", ""), ('name: "d"\n', "d"),
+        ):
+            self.assertEqual(name, _pubspec_name(content), content)
+
+    def test_a_pascal_include_directive_is_read_in_linear_time(self) -> None:
+        """/* REQ-PAS-9692: A Pascal include directive is read in linear time (100 KB of spaces in one directive within the bound), and as before. */"""
+        from scripts.lang.pascal.parser import extract_pascal_imports
+
+        found = self._timed(lambda: extract_pascal_imports("unit u;\n{$I a" + " " * _KB100 + "b}\n"))
+        self.assertEqual(1, len(found))
+        paths = [item.explicit_path for item in extract_pascal_imports("unit u;\n{$I defs.inc}\n{$INCLUDE 'more defs.inc' }\n{$IFDEF X}\n")]
+        self.assertEqual(["defs.inc", "more defs.inc"], paths)
+
+    def test_php_registrations_are_scanned_in_linear_time(self) -> None:
+        """/* REQ-PHP-9693: The registrations of a PHP file are scanned in linear time: 100 KB of one name as the class of `Livewire::component`, and 100 KB of `loadViewsFrom(` that never closes, within the bound; a real registration is still read. */"""
+        from scripts.lang.php.imports import _scan_registrations
+
+        def scan(content: str) -> tuple[list, list, list]:
+            views: list = []
+            locations: list = []
+            livewire: list = []
+            _scan_registrations(content, "a.php", "/a.php", views, locations, livewire)
+            return views, locations, livewire
+
+        self._timed(lambda: scan("<?php Livewire::component('x', " + "a" * _KB100 + ");"))
+        self._timed(lambda: scan("<?php " + "loadViewsFrom(" * (_KB100 // 14)))
+        views, _locations, livewire = scan(
+            "<?php\n$this->loadViewsFrom(__DIR__ . '/../resources/views', 'crm');\n"
+            "Livewire::component('counter', \\App\\Livewire\\Counter::class);\n"
+        )
+        self.assertEqual([("crm", "__DIR__ . '/../resources/views'", "a.php")], views)
+        self.assertEqual([("counter", "\\App\\Livewire\\Counter", "/a.php")], livewire)
+
+    def test_cpp_text_scans_are_linear(self) -> None:
+        """/* REQ-CPP-9694: A C++ file of 100 KB is parsed within the bound when it holds one long declaration with `= 0`, a long MOCK_METHOD name or tail, or block comments that never close; and the scans of a text of 100 KB stay within it: the template arguments of a name nested thousands deep, the braces of a text of comments that never close, class headings that never reach a brace. */"""
+        from scripts.lang.cpp import CPP_LANGUAGE
+        from scripts.lang.cpp import parser as cpp_parser
+        from scripts.lang.cpp import symbols as cpp_symbols
+
+        cases = {
+            "pure_virtual.h": "struct A {\n  void f(int a = 0" + " " * _KB100 + ", int b);\n};\n",
+            "mock_method.h": "struct A {\n  MOCK_METHOD" + "1" * _KB100 + " x;\n};\n",
+            "mock_tail.h": "struct A {\n  MOCK_METHOD1(run, void(int))" + " " * _KB100 + "x;\n};\n",
+            "open_comments.cpp": "int f() {\n" + "/* " * (_KB100 // 3) + "\n",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, content in cases.items():
+                path = Path(directory) / name
+                path.write_text(content, encoding="utf-8")
+                with self.subTest(name=name):
+                    self._timed(lambda: CPP_LANGUAGE.parse(str(path), content, "fixture", 0.0))
+        nested = "A<" * (_KB100 // 2) + "int" + ">" * (_KB100 // 2)
+        self.assertEqual("A", self._timed(lambda: cpp_parser._plain(nested)))
+        comments = ("int f() {\n" + "/* " * (_KB100 // 3) + "\n").encode()
+        self.assertEqual({8: len(comments)}, self._timed(lambda: cpp_symbols.brace_pairs(comments)))
+        for heading in ("struct X<\n", "struct X :\n"):
+            source = (heading * (_KB100 // len(heading)) + "int f( {\n").encode()
+            pairs = cpp_symbols.brace_pairs(source)
+            with self.subTest(heading=heading):
+                self.assertEqual([], self._timed(lambda: cpp_symbols.text_classes(source, pairs)))
+
+    def test_a_block_comment_that_never_closes_ends_the_text_that_is_parsed(self) -> None:
+        """/* REQ-CPP-9696: A C++ file is read up to a block comment that nothing closes: the include and the declarations before it are those of the file. A `/*` in a string, a raw string, a character literal or a line comment opens no comment, and the declarations after it are read. */"""
+        built = _Built({
+            "src/dep.h": "int dep();\n",
+            "src/open.h": '#include "dep.h"\nint before();\n/* never closed\nint inside();\n',
+            "src/globs.cpp": (
+                '#include "dep.h"\nconst char* a = "src/*.cpp";   // all of src/*\n'
+                'const char* b = R"x(\n  docs/*\n)x";\nconst char c = \'"\';\nint after() { return dep(); }\n'
+            ),
+        })
+        self.assertEqual({"src/dep.h"}, built.dependencies("src/open.h"))
+        self.assertEqual(["before"], list(_entities(built, "src/open.h")))
+        self.assertEqual({"src/dep.h"}, built.dependencies("src/globs.cpp"))
+        self.assertIn("after", _entities(built, "src/globs.cpp"))
+
+    def test_the_rewritten_cpp_scans_answer_as_before(self) -> None:
+        """/* REQ-CPP-9695: The C++ text scans keep their answers: a name without its template arguments, a pure virtual method, the method of a googlemock macro, braces outside comments and strings, the classes of a text. */"""
+        from scripts.lang.cpp import parser as cpp_parser
+        from scripts.lang.cpp import symbols as cpp_symbols
+
+        for text, plain in (
+            ("std :: map<K, std::vector<V>>::iterator", "std::map::iterator"), ("a<b>c<d", "ac<d"), ("a>b<c>", "a>b"),
+            ("A<B<C>", "A<B"), ("plain", "plain"),
+        ):
+            self.assertEqual(plain, cpp_parser._plain(text), text)
+        for text, pure in (
+            ("virtual void f() = 0;", True), ("virtual void f() =0 ; ", True), ("void f() = 0", True),
+            ("int a = 10;", False), ("void f(int a = 0, int b);", False), ("void f();", False),
+        ):
+            self.assertEqual(pure, cpp_parser._is_pure_virtual(text), text)
+        for text, method in (
+            ("MOCK_METHOD(void, run, (int), (override));", "run"), ("MOCK_METHOD1(stop, void(int));", "stop"),
+            ("MOCK_CONST_METHOD0_T(size, int())  ;  ", "size"), ("MOCK_METHOD x;", ""), ("int run();", ""),
+        ):
+            self.assertEqual(method, cpp_parser._mock_method(text), text)
+        source = b'int f() { /* } */ g("}"); // {\n if (x) { y(); } }\nstruct S : B<int> { int m; };\n/* open { \n'
+        pairs = cpp_symbols.brace_pairs(source)
+        self.assertEqual([source.index(b"{"), source.index(b"{ y"), source.index(b"{ int m")], sorted(pairs))
+        self.assertEqual([("S", source.index(b"{ int m"), pairs[source.index(b"{ int m")])], cpp_symbols.text_classes(source, pairs))
 
 
 if __name__ == "__main__":
