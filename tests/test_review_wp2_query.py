@@ -27,7 +27,7 @@ def write_tree(root: Path, files: dict[str, str]) -> None:
     for relative, content in files.items():
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_text(content, encoding="utf-8", newline="")   # the bytes as written, on Windows too
 
 
 def write_graph(root: Path, nodes: dict[str, str], facts: Sequence[str] = (), uses: Sequence[str] = ()) -> Path:
@@ -375,7 +375,7 @@ class GrepFunctionsTest(TemporaryProject):
         class of a file without top-level functions is searched. */"""
         write_tree(self.root, BODIES)
         build(self.root)
-        file = f"{self.root}/shop/cart.py"
+        file = str(self.root / "shop" / "cart.py")   # :file is the path as the system writes it
         self.assertEqual(
             [f'(grep-fn shop/cart::Cart.total :line 17 :lang py :file {file} :match "        marker_in_method = sum(self.items)")',
              f'(grep-fn shop/cart::Cart.total :line 18 :lang py :file {file} :match "        return marker_in_method")',

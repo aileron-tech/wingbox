@@ -484,7 +484,7 @@ class ProjectRootTest(ProjectCase):
         project.mkdir(parents=True)
         status, out, err = self.run_cli("init", "--language", "python", "--style", "hexagonal", "--yes", cwd=project)
         self.assertEqual(0, status, out + err)
-        self.assertIn("wrote .wingbox/config.yaml", out)
+        self.assertIn("wrote .wingbox/config.yaml", out.replace("\\", "/"))   # a path as the system writes it
         self.assertEqual(["."], [part.path for part in self.assert_reads(self.config(project)).parts])
         self.assertEqual("defaults:\n  python: hexagonal\n", self.config(self.home))
         self.assertEqual({self.home / ".wingbox", self.home / ".wingbox" / "config.yaml", self.home / "work"},

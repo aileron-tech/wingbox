@@ -481,7 +481,9 @@ class LongTreeTests(unittest.TestCase):
             line = len(text.splitlines())
             self.assertIn({"path": ["a", "x"], "at": [[line, 16], [line, 18]]}, positions[name], name)
         self.assertGreaterEqual(len(positions["terms.py"]), LONG if read_by_python == len(shapes) else 0)
-        if sys.version_info >= (3, 12):
+        # Python 3.12 reads all of them, except on Windows, where the smaller stack of the main thread makes its
+        # parser give up earlier: there each file takes the branch above (imports kept, the file named).
+        if sys.version_info >= (3, 12) and os.name != "nt":
             self.assertEqual(len(shapes), read_by_python)
 
 

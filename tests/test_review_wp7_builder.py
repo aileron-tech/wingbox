@@ -3,6 +3,7 @@ file that cannot be parsed does not stop the build, and nothing read from a repo
 import contextlib
 import io
 import json
+import multiprocessing
 import os
 import re
 import shutil
@@ -302,6 +303,8 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         self.assertFalse((root / ".wingbox" / "graph-unparsed.sexp").exists())
         self.assertIn(":nodes 4 ", _graph(root))
 
+    @unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(),
+                         "the stand-in parser reaches the workers only through fork")
     def test_a_worker_process_that_dies_loses_only_its_file(self) -> None:
         """/* REQ-CS-223: when the process that parses one file dies, the files of the other processes and the files not parsed yet are parsed all the same, and only that file comes back as left out (`parser-failed`, the process that parsed it died). */"""
         root = self.project({f"pkg/m{number}.py": f"VALUE = {number}\n" for number in range(8)} | {"pkg/dies.py": "VALUE = 0\n"})
@@ -341,7 +344,7 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         status, output = _build(root)
         self.assertEqual(0, status, output[-2000:])
         self.assertNotIn("Traceback", output)
-        self.assertIn("packages/old/composer.json", output)
+        self.assertIn("packages/old/composer.json", output.replace("\\", "/"))   # a path as the system writes it
         self.assertIn("public/index.php", _query(root, "impact", "app/Service.php").stdout)
 
     def test_binding_goes_on_without_the_manifest_its_reader_fails_on(self) -> None:
@@ -637,7 +640,8 @@ class InfraTopologyTest(ProjectTestCase):
                      "k8s/bad-service/service.yaml", "charts/odd/Chart.yaml", "charts/ported/Chart.yaml", "charts/unnamed/Chart.yaml",
                      "other/kustomization.yaml"):
             with self.subTest(manifest=name):
-                self.assertRegex(printed, rf"; warning: skipped \S*{re.escape(name)}: unexpected shape")
+                written = re.escape(name).replace("/", r"[\\/]")   # a path as the system writes it
+                self.assertRegex(printed, rf"; warning: skipped \S*{written}: unexpected shape")
 
 
 class LinkedSourceTest(ProjectTestCase):
