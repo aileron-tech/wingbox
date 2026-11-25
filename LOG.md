@@ -1,5 +1,110 @@
 # Completion Log
 
+## 2026-11-25 - Fixes after a review of 0.19.1; version 0.19.2 prepared
+
+A review of the whole of 0.19.1 (eight readers by area, every top finding reproduced on a fixture
+before it was accepted) found four kinds of defect: answers that say "nothing depends on this"
+where something does, a boundary gate that passes on code it never judged, writes and programs a
+repository can cause, and one file that stops a build. They were fixed in nine packages with
+separate files, each defect with a test that failed first, then merged.
+
+### What changed and why
+
+- Git: every call on a repository goes through `scripts/git_safe.py`, which switches off the
+  programs its configuration can name; a ref that starts with `-` is refused. A ref such as
+  `--output=<file>` made `diff_functions` and the MCP tools `list_changes` and `query_graph` empty
+  that file while answering without an error.
+- `impact --diff` and `diff_functions` read the patch exactly and name removed lines, removed and
+  renamed files; they answered "empty" for those, which an agent reads as "safe".
+- Query commands: a path that names a file is that file or an error; `deps` and `rdeps` list
+  every module within the depth; `analyze`, `deps`, `rdeps`, `module`, `boundary` take a file path
+  and exit 1 for a name outside the graph, as the README said; `grep_functions` searches whole
+  bodies and methods.
+- The gate: `:checked` counts the files a rule places, files in no layer are counted apart, and
+  `--strict` is incomplete for a stale graph, changed rule files and a language without a parser.
+  A file name no longer exempts a file that a layer imports.
+- The config: a file that cannot be read is an error, never replaced by detection; every writer
+  checks its text with the check of the file before it replaces the file.
+- Builder: the content of the resolution configs is part of the cache keys (a changed
+  `tsconfig.json` was undone by the next partial update); a file the parser fails on is recorded
+  and left out; control characters are escaped in every line written.
+- Readers: Python source roots, imports inside functions, members behind a class name; Go files
+  of one package; C# partial classes and namespaces; Java static members; PHP functions,
+  `require`, Blade classes and route strings; Rust crates by the importer's manifest. The walks
+  keep their own work list, so the depth of a tree no longer decides whether a build ends.
+- Writes: nothing is written through a symbolic link at `.wingbox` or below it; install and
+  uninstall report a file they cannot read.
+- MCP and HTTP: `build_graph` refuses where there is no repository, the listener bounds
+  connections, waiting calls and the time of a request, `--allow-origin` answers the preflight.
+- Workflows: the map request removes a committed `.wingbox/`, fails when the build fails and
+  gives its token only to the steps that comment.
+
+Found at the merge, where two packages met: a `.wingbox/config.yaml` that is a link out of the
+project was refused in two different messages depending on which check met it first (nothing was
+written in either case). The reader now names it in the words of the writers. A layer folder of
+the config that the part does not have (`domain: [modles]`) is named in a build warning: the gate
+still passes for it by design, with `:no-layer N`, because the rules say nothing about files no
+rule places. The warning of the TypeScript reader said "syntax error" for valid code the pinned
+grammar cannot read (a tagged template with type arguments, `export type * from`): it now says
+that the parser could not read all of the file.
+
+### Verified
+
+- Tests: `python -m unittest discover -s tests`, 1,169 tests, on Python 3.12 (2 skipped) and on
+  3.11 (4 skipped: two need 3.12 syntax, one is for Windows, one tests a state the build no longer
+  reaches). Not run on Windows.
+- The 306 test ids of the packages were renumbered to the next free numbers of their areas; the
+  diff holds no other change than the ids (309 lines removed and added, equal once ids are
+  masked). 13 tests that shared an id with another test have their own.
+- Existing tests whose expectation changed, each one pinning what the review called wrong:
+  REQ-BCOV-019 (plain `boundaries` said ok and counted files in no part), REQ-CS-050 (`:checked`
+  counted files in no layer), REQ-DOC-005 (the index accepted one id on two tests). The guard
+  tests of REQ-SEC-001 and REQ-REL-001 were rewritten to read syntax; both still reject every
+  case the old versions rejected (checked by calling them on those cases).
+- The released pull request check (action 1.6.4) reads the new gate lines: 8 lines of real output
+  of this build went through its parser, none unread. Not run end to end.
+- Benchmarks without a model, this build against 0018247, same machine, one worker:
+
+  | Benchmark | 0018247 | This build |
+  |---|---|---|
+  | architecture | 31 of 33 | the same, result files unchanged |
+  | impact, edges on 7 corpora | FastAPI 1,802 pairs, 0 wrong, 0 missing | identical files |
+  | impact, 100 questions | 100 exact | 100 rows identical |
+  | collisions | 51 edges, 0 wrong, 0 missing | the same |
+  | graphify, tests B and C | scores as committed | score files identical; 4 more `refs` in FastAPI |
+  | ToCS | | result files identical |
+  | C and C++ (libuv, leveldb, fmt) | | result files identical |
+  | PHP (bookstack, livewire, monica) | 6,050 edges, 0 wrong, 0 missing; 60 of 60 | 6,386 edges, 0 missing; see below |
+
+  impact, graphify, ToCS and C++ ran before the last two changes of this entry (two messages on
+  standard error); PHP ran after them. The agent parts of the benchmarks were not run.
+- `benchmarks/impact/run.sh` with its default (Wingbox 0.10.0 from PyPI) reproduces the 105
+  committed result files.
+
+### The PHP benchmark no longer reproduces: open
+
+This build has 336 more PHP edges than 0018247 and none fewer: 208 files that call a function of
+a helper file, 85 Blade views that name a class by its full name, 39 route files that name a
+controller as `'Controller@method'`, 4 `require` of a file. Each was checked in the text of its
+source file, the function calls also against PHP's rule for an unqualified call in a namespace.
+The reference of `benchmarks/php` counts imports and class references in PHP code only, so its
+script reports these 336 as wrong and 50 of the 60 answers as exact. The maintainer decided to
+ship the edges in 0.19.2. Open: extend `benchmarks/php/tools/php_reference.php` to these four
+kinds and show the new numbers to the maintainer before they replace the published ones. Nothing
+under `benchmarks/php/` is changed here.
+
+### Not done
+
+- A line per method in the graph (`find_function` and `usages` give a Python or TypeScript method
+  the line of its class).
+- Calls edges without `--lsp` (`find_callers` and `find_calls` now say on standard error that
+  `wingbox usages` lists the call sites).
+- The first-screen figures of the README are unchanged; recomputed from the result files, "2-4x
+  cheaper" is a mean of five questions and the three "up to" figures are each the best single
+  question (means: 1.46x tokens, 69 USD per 1,000 questions, 1.32x time).
+- The pull request check does not know `:no-layer`, so a layer folder that matches nothing is not
+  shown in its comment.
+
 ## 2026-11-24 - Global Git ignore in the install checklist
 
 - The terminal checklist exposes the opt-in Git ignore rule under Git. It
