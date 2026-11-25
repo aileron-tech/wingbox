@@ -30,7 +30,9 @@ does not apply (NotApplicable, the caller runs an incremental build) when the
 store does not match the published graph, when a resolution config changed
 (package.json, tsconfig*.json, pyproject.toml, .gitignore, ...), when a
 changed source is not Python or TypeScript/JavaScript (the other languages
-read the contents of other files to resolve imports), when module IDs of
+read the contents of other files to resolve imports), when a changed file is
+one the build left out of the graph or cannot be parsed now (the build writes
+the record of such files), when module IDs of
 unchanged files move, when more than MAX_CHANGED_FILES files changed or more
 than MAX_AFFECTED_SHARE of the modules (and more than MIN_AFFECTED_LIMIT)
 would be redone.
@@ -143,9 +145,13 @@ def classify(
     # The configuration files beside a module loader name the modules it loads (registry-wires edges).
     loaders = {os.path.dirname(path) for path, result in cached.items()
                if isinstance(result, builder.FileResult) and result.module_loads}
+    left_out = builder.unparsed_files(root)
     for relative in sorted(set(changed)):
         path = os.path.join(root, *relative.split("/"))
         name = os.path.basename(path)
+        if relative in left_out or builder.has_control_character(relative):
+            # The build keeps the record of the files it leaves out: it decides again and writes it.
+            return NotApplicable(f"a file that is left out of the graph changed: {relative!r}")
         if builder.is_resolution_config(name):
             return NotApplicable(f"resolution config changed: {relative}")
         if name.endswith(builder.CONFIG_SUFFIXES) and os.path.dirname(path) in loaders:
@@ -360,7 +366,10 @@ def update_graph(root: str, changed: list[str], fragments_path: str, jobs: int =
         if old is not None and isinstance(builder._cache_entry_result(path, builder._serialize_file_result(old)), builder.Ok):
             continue  # same content: nothing to redo
         repo = old.repo if old is not None else _repo_of(root, path)
-        new_by_path[path] = builder.parse_file((path, language.name, repo, root))
+        parsed = builder.parse_source((path, language.name, repo, root))
+        if isinstance(parsed, builder.UnparsedFile):
+            return NotApplicable(f"{os.path.relpath(path, root)} cannot be parsed ({parsed.reason}: {parsed.detail})")
+        new_by_path[path] = parsed
     if {result.language for result in new_by_path.values()} != {result.language for result in cached.values()}:
         return NotApplicable("the set of languages changed")
     new_list = sorted(new_by_path.values(), key=_relative_key(root))

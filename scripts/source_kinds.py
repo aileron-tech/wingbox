@@ -8,8 +8,9 @@ Standard library only.
 """
 from __future__ import annotations
 
+import json
 import os
-from typing import Optional
+from typing import Mapping, Optional
 
 # Extension -> the display name of the language that parses it (scripts/lang/<language>/__init__.py).
 PARSED_EXTENSIONS: dict[str, str] = {
@@ -106,6 +107,42 @@ def not_parsed_facts(counts: dict[str, int]) -> str:
     """The record of the files a build has no parser for: one fact per language, most files first."""
     ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return "".join(f'(not-parsed-language "{language}" :files {files})\n' for language, files in ordered)
+
+
+# Why a build left one source file of a parsed language out of the graph: the reason of its fact in the
+# record (.wingbox/graph-unparsed.sexp) and of the `(error not-in-graph <file> :reason <reason>)` answer to a
+# question about it. Each text ends the sentence "<file> is not in the graph: ...".
+UNPARSED_FILE_REASONS: dict[str, str] = {
+    "parser-failed": "the {language} parser failed on it",
+    "binary": "its content is binary, not {language} text",
+    "unreadable": "the build could not read it",
+    "file-name": "its path holds a control character (a line break, a tab)",
+}
+_UNPARSED_FILE_FACT = "(not-parsed-file "
+
+
+def unparsed_file_facts(files: Mapping[str, str]) -> str:
+    """The record of the source files a build left out: one `(not-parsed-file "<path>" :reason <reason>)` fact
+    per file (path relative to the root with /, reason a key of UNPARSED_FILE_REASONS), in path order. The
+    path is written as a JSON string, so a line break or a quote in a file name stays inside its fact."""
+    return "".join(f"{_UNPARSED_FILE_FACT}{json.dumps(path)} :reason {reason})\n" for path, reason in sorted(files.items()))
+
+
+def read_unparsed_files(text: str) -> dict[str, str]:
+    """path -> reason of every `(not-parsed-file ...)` fact of the record; a line that is not such a fact, or
+    names a reason this version does not know, is passed over."""
+    found: dict[str, str] = {}
+    for line in text.splitlines():
+        if not line.startswith(_UNPARSED_FILE_FACT + '"'):
+            continue
+        try:
+            path, end = json.JSONDecoder().raw_decode(line, len(_UNPARSED_FILE_FACT))
+        except ValueError:
+            continue
+        reason = line[end:].strip().removeprefix(":reason ").rstrip(")").strip()
+        if isinstance(path, str) and reason in UNPARSED_FILE_REASONS:
+            found[path] = reason
+    return found
 
 
 def read_not_parsed(text: str) -> tuple[tuple[str, int], ...]:
