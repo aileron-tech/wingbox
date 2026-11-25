@@ -87,6 +87,21 @@ def _tree(folder: Path) -> dict[str, bytes]:
     return found
 
 
+def _remove_when_released(tmp: tempfile.TemporaryDirectory) -> None:
+    """Remove the temporary folder of a test. On Windows a refresh process that a hook started may still hold
+    `.wingbox/refresh.log` open for a moment after it wrote its result, and an open file cannot be removed
+    there: try again for a few seconds before giving up."""
+    deadline = time.monotonic() + 15
+    while True:
+        try:
+            tmp.cleanup()
+            return
+        except PermissionError:
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.25)
+
+
 class ProjectCase(unittest.TestCase):
     """A project, a home folder and a folder outside both, in one temporary folder."""
 
@@ -94,7 +109,7 @@ class ProjectCase(unittest.TestCase):
 
     def setUp(self) -> None:
         tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
+        self.addCleanup(_remove_when_released, tmp)
         self.base = Path(os.path.realpath(tmp.name))
         self.root, self.home, self.outside = self.base / "project", self.base / "home", self.base / "outside"
         for folder in (self.root, self.home, self.outside):
