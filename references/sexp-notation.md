@@ -464,7 +464,12 @@ each kind followed by its `line:col` positions. Kinds: `import`, `re-export`,
 `call`, `type`, `extends` (extends or implements), `reference`,
 `unresolved-call`. `:unresolved` is said only when it is not 0. A bare name
 with several definitions answers with the candidates, each written as it can
-be asked. The form is complete.
+be asked. The form is complete, unless its head says `:incomplete <reason>`
+(`"incomplete"` with `--json`, a line of the text): `positions-pending` while
+the positions of the use file are still being read (a file listed without a
+position uses the symbol; ask again for its lines), `no-use-file`,
+`stale-use-file` or `unreadable-use-file` when the use file cannot be used
+(only the references the graph itself holds are listed; run `wingbox build`).
 
 `usages --json` prints `{"usages": {"symbol", "kind", "file", "line", "uses",
 "files", "unresolved", "rows"}}` with one row `{"file", "line", "column",
@@ -499,6 +504,11 @@ line, module IDs, uses sorted by file, line and column, at most 200 unless
 (rdeps-root <mod> :lang ts)
 (rdep <root> <src> :lang tsx :via imports :depth 1)
 ```
+
+Every module within the depth has one line without `:cycle`, at its shortest
+depth, and is followed from there. A line with `:cycle` is a module that is
+already listed and comes up again on another path; it is not followed again.
+`<mod>` is a module ID, a pattern of one, or the path of a file of the graph.
 
 ## flow Output
 
@@ -734,6 +744,7 @@ graph gives its `(error no-match ...)` line and exit status 0.
 
 ```scheme
 (grep-fn <mod>::<fn> :line 55 :lang ts :file <path> :match "matched line text")
+(grep-fn <mod>::<Class>.<method> :line 71 :lang py :file <path> :match "a line inside a method")
 (grep-functions-summary :matches 12 :pattern "pattern")
 (grep-functions-empty "pattern")
 ```

@@ -32,8 +32,8 @@ A script or a gate that must not act on an incomplete answer reads the facts of 
 | Condition | What is printed | Exit status | Command | Test |
 |---|---|---|---|---|
 | A method call whose receiver type is not in sight | `unresolved-call` rows, apart from the uses | 0 | `wingbox usages <file>::<Class.method>` | `tests/test_usages_command.py::UsagesCommandTests` |
-| The name asked about matches nothing | `(error no-match <file> :suggestions ...)` in place of the answer | 1 | `wingbox impact <file>` | `tests/test_code_graph_search.py::CodeGraphImpactTest`, `tests/test_output_formats.py::ImpactSeveralFilesTest` |
-| The file asked about is in the repository and not in the graph | `(error not-in-graph <file> :reason not-parsed-language\|skipped-language\|excluded\|not-source ...)`, no suggestions | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module` | `tests/test_coverage_limits.py::OutsideTheGraphTest` |
+| The name asked about matches nothing | `(error no-match <file> :suggestions ...)` in place of the answer; a path with a source extension is never answered for another file whose name is like it | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module`, `boundary` | `tests/test_code_graph_search.py::CodeGraphImpactTest`, `tests/test_output_formats.py::ImpactSeveralFilesTest`, `tests/test_review_wp2_query.py::ExactFileArgumentTest`, `tests/test_review_wp2_query.py::FilePathForModuleCommandsTest` |
+| The file asked about is in the repository and not in the graph | `(error not-in-graph <file> :reason not-parsed-language\|skipped-language\|excluded\|not-source ...)`, no suggestions | 1 | `wingbox impact <file>`, `analyze`, `deps`, `rdeps`, `module`, `boundary` | `tests/test_coverage_limits.py::OutsideTheGraphTest`, `tests/test_review_wp2_query.py::FilePathForModuleCommandsTest` |
 | A whole language was left out | see section 4 | | | |
 
 **Independent checks.**

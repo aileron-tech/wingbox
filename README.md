@@ -577,7 +577,9 @@ positions of every file and keeps them. In a larger one it reads the positions
 from the files that hold the name (a few seconds where the build takes a
 minute) and answers; it also starts one process that reads the positions of
 every file (about as long as a build) and keeps them, so the next calls answer
-at once. `WINGBOX_POSITIONS_FILL=0` leaves that process out: every `usages`
+at once. A file that uses the symbol under another name (an alias, a
+re-export) does not hold the name: such an answer lists it without a position
+and says `:incomplete positions-pending`. `WINGBOX_POSITIONS_FILL=0` leaves that process out: every `usages`
 then reads the files that hold its name; `=1` takes that way in a small
 repository too. Python, TypeScript, JavaScript, Rust, C and C++
 have use positions; in other languages `usages` names the files that

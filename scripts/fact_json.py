@@ -122,7 +122,7 @@ def route_json(items: list) -> dict[str, Any]:
     values = [str(item) for item in items[1:] if not isinstance(item, list)]
     through = values.pop(0) if way in ROUTES_WITH_THROUGH and values else ""
     count = len(values)
-    if len(values) >= 2 and values[-2] == ":of" and values[-1].isdigit():
+    if len(values) >= 2 and values[-2] == ":of" and values[-1].isdecimal():   # isdigit takes a superscript digit, int() does not
         count, values = int(values[-1]), values[:-2]
     return {"way": way, "through": through, "names": values, "of": count}
 
