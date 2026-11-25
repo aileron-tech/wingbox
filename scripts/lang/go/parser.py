@@ -175,7 +175,8 @@ def _identifiers(node: Node | None) -> frozenset[str]:
 
 
 def _parameter_names(node: Node) -> frozenset[str]:
-    """The receiver, the parameters, the named results and the type parameters of a function or a type."""
+    """The receiver, the parameters, the named results and the type parameters of a function or a type;
+    the type parameters of a method are the names its receiver gives them (`func (b *Box[T]) Get() T`)."""
     names: set[str] = set()
     for field_name in ("type_parameters", "receiver", "parameters", "result"):
         parameters = node.child_by_field_name(field_name)
@@ -184,6 +185,18 @@ def _parameter_names(node: Node) -> frozenset[str]:
         for declaration in parameters.named_children:
             if declaration.type in _PARAMETER_NODES:
                 names.update(node_text(name) for name in _field_children(declaration, "name"))
+        if field_name == "receiver":
+            pending = list(parameters.named_children)
+            while pending:
+                current = pending.pop()
+                if current.type == "type_arguments":
+                    names.update(
+                        node_text(item) for element in current.named_children
+                        for item in ([element] if element.type == "type_identifier" else element.named_children)
+                        if item.type == "type_identifier"
+                    )
+                else:
+                    pending.extend(current.named_children)
     return frozenset(names)
 
 
