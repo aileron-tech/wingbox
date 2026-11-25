@@ -5045,13 +5045,18 @@ def parse_files(to_parse: list[tuple[str, ...]]) -> list[FileResult | UnparsedFi
 def _parse_in_workers(to_parse: list[tuple[str, ...]], workers: int) -> list[FileResult | UnparsedFile]:
     """parse_files in a pool. A worker that dies (a crash inside a parser, the system killing it) breaks the
     pool and with it every file not answered yet: those are parsed again one at a time in a process of their
-    own, so that only the file whose process dies is left out. BrokenProcessPool is raised when no file was
-    answered at all: worker processes do not work here."""
+    own, so that only a file whose process dies is left out. BrokenProcessPool is raised when no worker
+    ever answers: worker processes do not work here."""
     context = multiprocessing.get_context(portable.start_method())
     outcomes: list[FileResult | UnparsedFile] = []
     unanswered: list[tuple[str, ...]] = []
     with ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
-        futures = {pool.submit(parse_source, item): item for item in to_parse}
+        futures = {}
+        for item in to_parse:
+            try:
+                futures[pool.submit(parse_source, item)] = item
+            except BrokenProcessPool:   # a worker died while the files were still being handed out
+                unanswered.append(item)
         for future in as_completed(futures):
             try:
                 outcomes.append(future.result())
@@ -5059,13 +5064,13 @@ def _parse_in_workers(to_parse: list[tuple[str, ...]], workers: int) -> list[Fil
                 unanswered.append(futures[future])
     if not unanswered:
         return outcomes
-    if not outcomes:
-        raise BrokenProcessPool("no worker process answered")
     print(
         f"[code-graph] WARNING: a parser process died; parsing {len(unanswered)} file{'' if len(unanswered) == 1 else 's'} "
         "again, one at a time",
         file=sys.stderr,
     )
+    answered = bool(outcomes)
+    died: list[tuple[str, ...]] = []
     pool = None
     try:
         for item in unanswered:
@@ -5073,14 +5078,24 @@ def _parse_in_workers(to_parse: list[tuple[str, ...]], workers: int) -> list[Fil
                 pool = ProcessPoolExecutor(max_workers=1, mp_context=context)
             try:
                 outcomes.append(pool.submit(parse_source, item).result())
+                answered = True
             except BrokenProcessPool:
-                outcomes.append(UnparsedFile(item[0], "parser-failed", "the process that parsed it died"))
+                died.append(item)
                 pool.shutdown()
                 pool = None
+                if not answered and len(died) >= _DEATHS_WITHOUT_AN_ANSWER:
+                    break
     finally:
         if pool is not None:
             pool.shutdown()
+    if not answered:
+        raise BrokenProcessPool("no worker process answered")
+    outcomes.extend(UnparsedFile(item[0], "parser-failed", "the process that parsed it died") for item in died)
     return outcomes
+
+
+# After this many processes died one after the other and none has ever answered, the pool is given up.
+_DEATHS_WITHOUT_AN_ANSWER = 3
 
 
 def _published_modules(path: str) -> bool:

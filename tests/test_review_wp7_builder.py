@@ -307,25 +307,27 @@ class OneFileCannotStopTheBuildTest(ProjectTestCase):
         root = self.project({f"pkg/m{number}.py": f"VALUE = {number}\n" for number in range(8)} | {"pkg/dies.py": "VALUE = 0\n"})
         parent = os.getpid()
         real = builder.parse_file
-
-        def parse(args):
-            if os.path.basename(args[0]) == "dies.py":
-                if os.getpid() == parent:
-                    raise AssertionError("dies.py must be parsed in a worker process")
-                time.sleep(0.5)   # the other files are answered first
-                os._exit(7)
-            return real(args)
-
         items = [(str(path), "python", "project", str(root)) for path in sorted(root.rglob("*.py"))]
-        output = io.StringIO()
-        with mock.patch.object(builder, "parse_file", parse), contextlib.redirect_stderr(output), \
-                mock.patch.dict(os.environ, {builder.portable.JOBS_VARIABLE: "3", "WINGBOX_START_METHOD": "fork"}):
-            outcomes = builder.parse_files(items)
-        parsed = sorted(os.path.basename(item.path) for item in outcomes if isinstance(item, builder.FileResult))
-        left_out = [item for item in outcomes if isinstance(item, builder.UnparsedFile)]
-        self.assertEqual([f"m{number}.py" for number in range(8)], parsed, output.getvalue())
-        self.assertEqual([("dies.py", "parser-failed")], [(os.path.basename(item.path), item.reason) for item in left_out])
-        self.assertIn("died", left_out[0].detail)
+        # It dies after the other files were answered, and at once (it is the first file handed out).
+        for wait in (0.5, 0.0):
+            with self.subTest(wait=wait):
+                def parse(args, wait=wait):
+                    if os.path.basename(args[0]) == "dies.py":
+                        if os.getpid() == parent:
+                            raise AssertionError("dies.py must be parsed in a worker process")
+                        time.sleep(wait)
+                        os._exit(7)
+                    return real(args)
+
+                output = io.StringIO()
+                with mock.patch.object(builder, "parse_file", parse), contextlib.redirect_stderr(output), \
+                        mock.patch.dict(os.environ, {builder.portable.JOBS_VARIABLE: "3", "WINGBOX_START_METHOD": "fork"}):
+                    outcomes = builder.parse_files(items)
+                parsed = sorted(os.path.basename(item.path) for item in outcomes if isinstance(item, builder.FileResult))
+                left_out = [item for item in outcomes if isinstance(item, builder.UnparsedFile)]
+                self.assertEqual([f"m{number}.py" for number in range(8)], parsed, output.getvalue())
+                self.assertEqual([("dies.py", "parser-failed")], [(os.path.basename(item.path), item.reason) for item in left_out])
+                self.assertIn("died", left_out[0].detail)
 
     def test_a_manifest_that_is_not_utf8_is_named_and_the_build_goes_on(self) -> None:
         """/* REQ-CS-9715: a nested composer.json with a byte that is not UTF-8 does not end the build: status 0, a warning that names the file, and the imports of the other manifest are resolved. */"""

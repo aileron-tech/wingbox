@@ -145,7 +145,10 @@ def classify(
     # The configuration files beside a module loader name the modules it loads (registry-wires edges).
     loaders = {os.path.dirname(path) for path, result in cached.items()
                if isinstance(result, builder.FileResult) and result.module_loads}
-    left_out = builder.unparsed_files(root)
+    try:
+        left_out = builder.unparsed_files(root)
+    except (OSError, ValueError) as error:
+        return NotApplicable(f"the record of the files left out of the graph cannot be read: {error}")
     for relative in sorted(set(changed)):
         path = os.path.join(root, *relative.split("/"))
         name = os.path.basename(path)
